@@ -1,13 +1,13 @@
-import { getSupabase } from '../lib/supabaseClient.js';
+import { supabase } from '../lib/supabaseClient.js';
 import { assets as mockAssets } from '../data/assets.js';
 
+const isDemo = () => typeof window !== 'undefined' && localStorage.getItem('voyanta_demo_session') === '1';
+
 export async function fetchAssets(filters = {}) {
-  const sb = await getSupabase();
-  if (sb) {
-    let q = sb.from('assets').select('*');
-    if (filters.type) q = q.eq('type', filters.type);
-    const { data } = await q;
-    return data ?? [];
-  }
-  return mockAssets.filter((a) => !filters.type || a.type === filters.type);
+  if (isDemo() || !supabase) return mockAssets.filter((a) => !filters.type || a.type === filters.type);
+  let q = supabase.from('activities').select('*');
+  if (filters.type) q = q.eq('type', filters.type);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data?.length ? data : mockAssets;
 }

@@ -1,31 +1,17 @@
-import { getSupabase } from '../lib/supabaseClient.js';
-import { proposals as mockProposals, dashboardSummary as mockSummary } from '../data/proposals.js';
-import { recentActivity as mockActivity } from '../data/activity.js';
-
-// Service layer: returns the same shape regardless of mock vs Supabase source.
-// Swap to Supabase by setting VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in .env
-// and creating tables matching the shapes documented in /src/data/*.js.
+import { fetchProposals } from './proposalService.js';
 
 export async function fetchDashboardSummary() {
-  const sb = await getSupabase();
-  if (sb) {
-    const [{ count: totalProposals }, { count: totalTemplates }, { count: activeClients }, { data: recentProposals }] = await Promise.all([
-      sb.from('proposals').select('id', { count: 'exact', head: true }),
-      sb.from('templates').select('id', { count: 'exact', head: true }),
-      sb.from('clients').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-      sb.from('proposals').select('id,name,client,status,date').order('date', { ascending: false }).limit(4),
-    ]);
-    return {
-      totalProposals: totalProposals ?? 0,
-      totalTemplates: totalTemplates ?? 0,
-      activeClients: activeClients ?? 0,
-      recentProposals: recentProposals ?? [],
-      recentActivity: [],
-    };
-  }
+  const proposals = await fetchProposals();
+  const recentProposals = proposals.slice(0, 4);
   return {
-    ...mockSummary,
-    recentProposals: mockProposals.slice(0, 4),
-    recentActivity: mockActivity,
+    totalProposals: proposals.length,
+    totalTemplates: 45, // Library content still seeded statically — counted in templatesService later
+    activeClients: new Set(proposals.map((p) => p.client_name).filter(Boolean)).size,
+    recentProposals,
+    recentActivity: [
+      { id: 1, type: 'mail', title: 'Proposal Sent', detail: "Alex sent 'Tokyo Neon Nights' to Marcus Thorne.", when: '2 HOURS AGO' },
+      { id: 2, type: 'check_circle', title: 'Proposal Accepted', detail: "'Alpine Escape' was accepted by Eleanor Vance.", when: '5 HOURS AGO' },
+      { id: 3, type: 'update', title: 'Database Sync', detail: 'Global hotel inventory updated successfully.', when: 'YESTERDAY' },
+    ],
   };
 }

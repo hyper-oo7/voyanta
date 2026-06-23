@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend-only verification of Supabase integration + Demo Mode for Voyanta. All critical flows pass: landing page renders Stitch UI; protected routes correctly redirect to /login when localStorage is cleared; Supabase signInWithPassword fires (returns 'Invalid login credentials' toast as expected since no users exist); forgot-password resetPasswordForEmail fires and shows success toast without navigating; sign-up modal opens and submits via supabase.auth.signUp; demo-mode button enters demo and routes to /dashboard; dashboard hydrates from demoStore with 4 seeded proposals + 'Demo User / Demo Session' label; 'Create New Proposal' header CTA routes to /proposals/brief; Client Brief Form Next Step saves a proposal, navigates to /proposals?highlight=<id>, and the new row appears (5 total); View/Edit/Duplicate/Delete row actions all work with correct success toasts; sign-out clears demo flag and redirects to /login; all other Stitch pages (/proposals/new, /proposals/preview, /cost-calculator, /libraries, /libraries/hotels, /libraries/assets, /branding) render without runtime errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ClientBriefFormPage", "issue": "The 'Save Draft' secondary button on the brief form is not wired — clicking it does nothing (no toast, no nav, no persistence). Only 'Next Step' triggers persistence.", "selector": "button:has-text('Save Draft')", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global", "issues": ["Tailwind CDN warning in console (cdn.tailwindcss.com should not be used in production) — informational, expected for the Stitch port."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: wire 'Save Draft' button on Client Brief Form to persist a Draft-status proposal via proposalService.createProposal (currently dead).",
+    "When real Supabase schema is deployed, populate /app/memory/test_credentials.md with at least one confirmed test account so a real signInWithPassword path can be verified end-to-end."
+  ],
+  "critical_code_review_comments": [
+    "ProposalService correctly routes to demoStore when localStorage 'voyanta_demo_session' === '1', and to Supabase otherwise — clean fallback architecture.",
+    "ProtectedRoute correctly exposes data-testid='auth-loading' and uses replace navigation with location.from state — good.",
+    "AuthenticationPage's 'Forgot password?' selector uses the first a[href='#'] in the DOM — fragile if Stitch HTML adds more such links. Consider a more specific selector or a data-testid on the anchor.",
+    "DashboardPage and other pages re-attach DOM listeners on each render via querySelectorAll(...).onclick — overrides any prior handler (intentional here) but worth keeping in mind if Stitch adds onclick attributes later.",
+    "Landing page CTA matching uses textContent regex including 'sign in|login|get started' which can double-match — first match wins, ordering matters."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% of in-scope flows verified"},
+  "test_credentials": "/app/memory/test_credentials.md is empty. No real Supabase user exists yet (schema not deployed). All CRUD verified via demo mode + localStorage demoStore.",
+  "seed_data_creation": "Demo store auto-seeds 4 proposals (Alpine Escape: St. Moritz, Tokyo Neon Nights, Amalfi Coast Luxury, Safari Serenity: Kenya) on first read of /proposals.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Demo mode is the primary tested path; the supabase.auth.* calls were validated by observing the expected 400 'Invalid login credentials' error toast (confirms wiring). Sidebar contains BOTH a 'New Proposal' nav anchor (routes to /proposals/new, the AI Itinerary generator) AND a header 'Create New Proposal' button (routes to /proposals/brief, the Client Brief Form). When testing dashboard CTAs, target text 'Create New Proposal' specifically — generic 'New Proposal' will hit the sidebar link first. The Client Brief Form has TWO CTAs: 'Save Draft' (currently unwired) and 'Next Step' (the wired primary). The proposals list uses data-testid='proposal-row-<id>', 'view-icon', 'edit-icon', 'duplicate-icon', 'delete-icon', 'proposal-drawer', 'proposals-count'.",
+  "rca of the issue": "n/a — no functional defects found beyond the dead 'Save Draft' button noted above."
+}

@@ -3,7 +3,7 @@
 const NAV_MAP = {
   'Dashboard': '/dashboard',
   'New Proposal': '/proposals/new',
-  'Proposals': '/proposals/new',
+  'Proposals': '/proposals',
   'Templates': '/proposals/preview',
   'Hotels': '/libraries/hotels',
   'Flights': '/libraries',

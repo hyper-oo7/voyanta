@@ -1,33 +1,28 @@
-// Supabase client — initialised lazily so the app runs without env vars during
-// the Stitch-port phase. To activate:
-//   1. yarn add @supabase/supabase-js
-//   2. Set in /app/frontend/.env:
-//        VITE_SUPABASE_URL=...
-//        VITE_SUPABASE_ANON_KEY=...
-//   3. Services in /src/services/* will switch from mocks to Supabase automatically.
+import { createClient } from '@supabase/supabase-js';
 
-let _client = null;
-let _attempted = false;
+const url = import.meta.env.VITE_SUPABASE_URL;
+const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export async function getSupabase() {
-  if (_client) return _client;
-  if (_attempted) return null;
-  _attempted = true;
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  try {
-    // Build the module specifier at runtime so Vite's static analyzer doesn't
-    // try to resolve it during dev. This keeps @supabase/supabase-js optional.
-    const pkg = ['@supabase', 'supabase-js'].join('/');
-    const mod = await import(/* @vite-ignore */ pkg);
-    _client = mod.createClient(url, key);
-    return _client;
-  } catch (e) {
-    console.warn('[supabase] not available yet:', e?.message);
-    return null;
-  }
-}
+export const supabase = (url && key)
+  ? createClient(url, key, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    })
+  : null;
 
-export const isSupabaseConfigured = () =>
-  Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+export const isSupabaseConfigured = () => Boolean(supabase);
+
+export const DEMO_MODE = String(import.meta.env.VITE_DEMO_MODE || 'false') === 'true';
+
+export const DEFAULT_AGENCY_ID = '00000000-0000-0000-0000-000000000001';
+
+// In-memory demo user (no Supabase auth call needed)
+export const DEMO_USER = {
+  id: 'demo-user',
+  email: 'demo@voyanta.app',
+  user_metadata: { full_name: 'Demo User' },
+  isDemo: true,
+};
