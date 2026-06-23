@@ -1,15 +1,11 @@
-import StitchPage from '../components/StitchPage.jsx';
-import navMap from '../lib/navMap.js';
-import { VoyantaAssetsLibrary_bodyClass, VoyantaAssetsLibrary_extraStyles, VoyantaAssetsLibrary_html } from './_html/voyanta_assets_library.js';
+import ResourceModulePage from '../components/ResourceModulePage.jsx';
+import { activitiesService } from '../services/resourceService.js';
 
 export default function AssetsLibraryPage() {
-  return (
-    <StitchPage
-      styleId="stitch-style-assets"
-      bodyClass={VoyantaAssetsLibrary_bodyClass}
-      extraStyles={VoyantaAssetsLibrary_extraStyles}
-      html={VoyantaAssetsLibrary_html}
-      navMap={navMap}
-    />
-  );
+  return <ResourceModulePage
+    resource="activities" service={activitiesService}
+    title="Activities" subtitle="Imported supplier experiences."
+    sidebarLabel="Activities" itemKind="activity"
+    toLabel={(r) => r.name} toUnitPrice={(r) => Number(r.price || 0)}
+  />;
 }

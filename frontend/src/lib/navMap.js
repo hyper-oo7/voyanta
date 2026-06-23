@@ -9,7 +9,7 @@ const NAV_MAP = {
   'Proposals': '/proposals',
   'Templates': '/templates',
   'Hotels': '/libraries/hotels',
-  'Flights': '/libraries',
+  'Flights': '/flights',
   'Activities': '/activities',
   'Libraries': '/libraries',
   'Hotel Library': '/libraries/hotels',

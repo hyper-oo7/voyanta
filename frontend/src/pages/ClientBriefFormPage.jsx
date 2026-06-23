@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import StitchPage from '../components/StitchPage.jsx';
 import navMap from '../lib/navMap.js';
 import { useToast } from '../context/ToastContext.jsx';
+import { useProposalBuilder } from '../context/ProposalBuilderContext.jsx';
 import { createProposal } from '../services/proposalService.js';
 import { VoyantaClientBriefForm_bodyClass, VoyantaClientBriefForm_extraStyles, VoyantaClientBriefForm_html } from './_html/voyanta_client_brief_form.js';
 
@@ -14,6 +15,7 @@ export default function ClientBriefFormPage() {
   const wrapperRef = useRef(null);
   const navigate = useNavigate();
   const toast = useToast();
+  const builder = useProposalBuilder();
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -43,8 +45,9 @@ export default function ClientBriefFormPage() {
       try {
         const payload = harvest(root);
         const proposal = await createProposal(payload);
-        toast.success('Proposal saved');
-        setTimeout(() => navigate(`/proposals?highlight=${encodeURIComponent(proposal.id)}`), 400);
+        builder?.setActiveId(proposal.id);
+        toast.success('Proposal saved — now active');
+        setTimeout(() => navigate(`/proposals/new?id=${encodeURIComponent(proposal.id)}`), 400);
       } catch (err) {
         toast.error(err.message || 'Failed to save proposal');
         btn.innerHTML = original;
