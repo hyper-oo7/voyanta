@@ -67,14 +67,18 @@
 
 ## What's implemented (Jan 2026)
 - 11/11 Stitch screens ported with pixel-accurate fidelity
-- React Router-based navigation; sidebar/topnav anchors mapped via `navMap.js`
-- Dashboard hydrates 3 stats + 4 recent proposals from `dashboardService`
-- Hotel library hydrates result count from `hotelService`
-- Supabase service layer ready (currently returns mock data)
+- **Supabase integration** (`@supabase/supabase-js` v2) with browser-side client at `/src/lib/supabaseClient.js`
+- **Auth flows**: Sign Up, Sign In, Sign Out, Password Reset — wired into the existing Stitch login + signup-modal UI
+- **Protected routes**: ProtectedRoute redirects unauthenticated users to `/login`
+- **Demo Mode** (`VITE_DEMO_MODE=true`): "Try Demo" affordances on Landing and Login pages enter an in-memory Demo User session. Proposal CRUD persists in `localStorage` via `services/demoStore.js`
+- **Proposals page** (`/proposals`): list with View, Edit, Duplicate, Delete actions
+- **New Proposal flow**: Dashboard → "Create New Proposal" → Client Brief Form → on submit, persists a proposal and navigates to `/proposals?highlight=<id>`
+- **Loading states + toasts**: `ToastContext` provides success/error/info toasts; auth buttons show inline spinners
+- SQL schema at `/app/supabase/schema.sql` ready to paste into Supabase Studio (no RLS yet, per agreement)
 
 ## Backlog / next actions
-- P1 — Wire form submissions (login, client brief, branding) to Supabase writes
-- P1 — Add proposal create/update flow that persists to `proposals` table
-- P2 — Replace remaining hard-coded mock content in itinerary/preview screens with
-  service-driven rendering (currently embedded in Stitch HTML for fidelity)
-- P2 — Image asset pipeline (currently uses Stitch's `lh3.googleusercontent.com` URLs)
+- P1 — User runs `/app/supabase/schema.sql` in Supabase Studio to enable real backend
+- P1 — Create at least one real Supabase user account; once done, document credentials in `/app/memory/test_credentials.md`
+- P2 — Wire "Save Draft" and step-by-step persistence on the multi-step Client Brief Form
+- P2 — Wire AI Itinerary Generator, Cost Calculator, Hotels, Activities pages to live Supabase tables (currently still showing Stitch-embedded sample content)
+- P3 — Enable agency-scoped RLS policies (DDL stub already commented in schema.sql)

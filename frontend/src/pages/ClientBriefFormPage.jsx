@@ -22,12 +22,18 @@ export default function ClientBriefFormPage() {
 
     // Find the primary submit-style button. Stitch CTA pattern: bg-primary text-on-primary.
     // We hook all of them and route based on label text.
-    const ctas = root.querySelectorAll('button.bg-primary, button[type="submit"]');
+    const ctas = Array.from(root.querySelectorAll('button.bg-primary, button[type="submit"]'));
+    // Also wire any secondary "Save Draft" button to persist as a draft.
+    Array.from(root.querySelectorAll('button')).forEach((b) => {
+      if (/save draft|save as draft/i.test((b.textContent || '').trim()) && !ctas.includes(b)) {
+        ctas.push(b);
+      }
+    });
     const handler = async (e) => {
       const btn = e.currentTarget;
       const label = (btn.textContent || '').trim().toLowerCase();
       // Only treat "Save", "Submit", "Create", "Save Proposal", "Generate" as proposal-submit
-      if (!/save|submit|create|generate|finish|next/.test(label)) return;
+      if (!/save|submit|create|generate|finish|next|draft/.test(label)) return;
       e.preventDefault();
       if (saving) return;
       setSaving(true);
