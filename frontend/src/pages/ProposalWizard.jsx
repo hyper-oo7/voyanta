@@ -189,13 +189,15 @@ export default function ProposalWizard() {
   const onPrev = () => goStep(Math.max(1, stepParam - 1));
 
   // ---- Items helpers used by 2/3/4/5 -------------------------------------
+  const sanitizeCurrency = (v) => /^[A-Z]{3}$/.test(String(v || '').toUpperCase()) ? String(v).toUpperCase() : (proposal?.currency || 'USD');
   const addItemsToProposal = async (kind, rows, toLabel, toUnit) => {
     if (!proposal?.id) { toast.error('Save the client info first'); return; }
     try {
       for (const r of rows) {
         await addItem(proposal.id, {
           kind, ref_id: r.id, label: toLabel(r),
-          qty: 1, unit_price: toUnit(r), currency: r.currency || 'USD',
+          qty: 1, unit_price: toUnit(r),
+          currency: sanitizeCurrency(r.currency),
           meta: { source: kind + 's' },
         });
       }
@@ -239,7 +241,8 @@ export default function ProposalWizard() {
                 addItems={(rows) => addItemsToProposal('activity', rows, (r) => r.name, (r) => Number(r.price||0))}
                 onRemoveItem={onRemoveItem} />}
               {stepParam === 5 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
-                onPatchItem={onPatchItem} onRemoveItem={onRemoveItem} />}
+                onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
+                proposalCurrency={proposal?.currency || 'USD'} />}
               {stepParam === 6 && <Step6Branding branding={branding} setBranding={setBranding} />}
               {stepParam === 7 && <Step7Preview proposalId={proposal?.id} />}
             </>
@@ -420,7 +423,7 @@ function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem }
 // ───────────────────────────────────────────────────────────────────────────
 const KINDS = ['transfer', 'visa', 'tax', 'margin', 'custom'];
 
-function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem }) {
+function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, proposalCurrency = 'USD' }) {
   const total = useMemo(() => items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0), [items]);
   const byKind = useMemo(() => {
     const m = {}; items.forEach((it) => { m[it.kind] = (m[it.kind]||0) + (Number(it.qty)||0)*(Number(it.unit_price)||0); });
@@ -446,7 +449,7 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem }
             <option value="">+ Add line…</option>
             {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
-          <span className="font-headline-sm text-primary" data-testid="costing-total">{total.toFixed(2)} {items[0]?.currency || 'USD'}</span>
+          <span className="font-headline-sm text-primary" data-testid="costing-total">{total.toFixed(2)} {proposalCurrency}</span>
         </div>
         <table className="w-full text-left">
           <thead className="bg-surface-container-low">
