@@ -52,11 +52,11 @@ export default function DashboardPage() {
     const root = wrapperRef.current;
     if (!root) return;
 
-    // "Create New Proposal" CTA  → Client Brief flow
+    // "Create New Proposal" CTA  → wizard
     root.querySelectorAll('button').forEach((btn) => {
       const t = (btn.textContent || '').trim();
       if (/create new proposal|new proposal/i.test(t)) {
-        btn.onclick = () => navigate('/proposals/brief');
+        btn.onclick = () => navigate('/proposals/wizard');
       }
       if (/view all/i.test(t)) {
         btn.onclick = () => navigate('/proposals');
@@ -65,11 +65,11 @@ export default function DashboardPage() {
 
     // Floating "+" FAB
     const fab = root.querySelector('button.fixed.bottom-lg');
-    if (fab) fab.onclick = () => navigate('/proposals/brief');
+    if (fab) fab.onclick = () => navigate('/proposals/wizard');
 
-    // Proposal rows → details
+    // Recent-proposal rows → open wizard at preview step (shows full content)
     root.querySelectorAll('tbody tr[data-pid]').forEach((tr) => {
-      tr.addEventListener('click', () => navigate(`/proposals?highlight=${encodeURIComponent(tr.dataset.pid)}`));
+      tr.addEventListener('click', () => navigate(`/proposals/wizard?id=${encodeURIComponent(tr.dataset.pid)}&step=7`));
     });
 
     // Sign-out via user card

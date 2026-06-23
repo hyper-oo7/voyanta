@@ -25,13 +25,13 @@ const NAV_MAP = {
   'Itinerary Generator': '/proposals/new',
   'Proposal Preview': '/proposals/preview',
   'View All': '/proposals',
-  'Continue to Proposal': '/proposals/brief',
+  'Continue to Proposal': '/proposals/wizard',
   'Continue to Costing': '/cost-calculator',
   'Review & Send': '/proposals/preview',
   'Edit Mode': '/proposals/new',
   'Finalize AI Draft': '/proposals/preview',
-  'Use Template': '/proposals/brief',
-  'Create New': '/proposals/brief',
+  'Use Template': '/proposals/wizard',
+  'Create New': '/proposals/wizard',
 
   // ── Landing page nav + auth CTAs ───────────────────────────────────────
   'Login': '/login',

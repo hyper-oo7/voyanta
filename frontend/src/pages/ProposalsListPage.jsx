@@ -63,12 +63,12 @@ export default function ProposalsListPage() {
     const sub = h2?.parentElement?.querySelector('p');
     if (sub) sub.textContent = 'All saved proposals for your agency.';
 
-    // Primary CTA: route to brief form
+    // Primary CTA: route to wizard (new proposal)
     const cta = canvas.querySelector('button.bg-primary');
     if (cta) {
       cta.textContent = '';
       cta.innerHTML = '<span class="material-symbols-outlined">add</span> New Proposal';
-      cta.onclick = () => navigate('/proposals/brief');
+      cta.onclick = () => navigate('/proposals/wizard');
     }
 
     // Remove stat cards + bento + footer block to make room for the list
@@ -120,8 +120,8 @@ export default function ProposalsListPage() {
           loading={loading}
           error={error}
           highlightId={params.get('highlight')}
-          onView={(p) => setEditing({ ...p, mode: 'view' })}
-          onEdit={(p) => setEditing({ ...p, mode: 'edit' })}
+          onView={(p) => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=7`)}
+          onEdit={(p) => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=1`)}
           onDuplicate={async (p) => {
             try { await duplicateProposal(p.id); toast.success('Proposal duplicated'); reload(); }
             catch (e) { toast.error(e.message || 'Failed to duplicate'); }
@@ -190,19 +190,19 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
               </td></tr>
             )}
             {proposals.map((p) => (
-              <tr key={p.id} data-testid={`proposal-row-${p.id}`} className={'hover:bg-surface-container-low transition-colors ' + (highlightId === p.id ? 'bg-primary-fixed/30' : '')}>
+              <tr key={p.id} data-testid={`proposal-row-${p.id}`} className={'hover:bg-surface-container-low transition-colors cursor-pointer ' + (highlightId === p.id ? 'bg-primary-fixed/30' : '')} onClick={() => onView(p)}>
                 <td className="px-lg py-md">
-                  <button onClick={() => onView(p)} data-testid="view-btn" className="font-label-md text-label-md text-primary hover:underline text-left">{p.name}</button>
+                  <button onClick={(e) => { e.stopPropagation(); onView(p); }} data-testid="view-btn" className="font-label-md text-label-md text-primary hover:underline text-left">{p.name}</button>
                 </td>
                 <td className="px-lg py-md font-body-md text-body-md text-on-surface">{p.client_name || '—'}</td>
                 <td className="px-lg py-md">
                   <span className={chipClass(p.status) + ' px-md py-xs text-[11px] font-bold rounded-full uppercase tracking-widest'}>{p.status || 'Draft'}</span>
                 </td>
                 <td className="px-lg py-md font-body-md text-body-md text-on-surface-variant">{p.date || '—'}</td>
-                <td className="px-lg py-md">
+                <td className="px-lg py-md" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-end gap-xs">
-                    <IconBtn icon="visibility" testid="view-icon"      onClick={() => onView(p)} title="View" />
-                    <IconBtn icon="edit"       testid="edit-icon"      onClick={() => onEdit(p)} title="Edit" />
+                    <IconBtn icon="visibility" testid="view-icon"      onClick={() => onView(p)} title="Open" />
+                    <IconBtn icon="edit"       testid="edit-icon"      onClick={() => onEdit(p)} title="Edit in wizard" />
                     <IconBtn icon="content_copy" testid="duplicate-icon" onClick={() => onDuplicate(p)} title="Duplicate" />
                     <IconBtn icon="delete"     testid="delete-icon"    onClick={() => onDelete(p)} title="Delete" className="hover:text-error" />
                   </div>
