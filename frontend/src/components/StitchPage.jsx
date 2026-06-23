@@ -1,26 +1,40 @@
-// Reusable Stitch HTML page renderer.
-// Renders the Stitch HTML inside a container while preserving exact UI fidelity.
-// Page-specific <style> blocks are injected once into <head>.
-// Internal anchor clicks are intercepted and routed via React Router so the
-// SPA navigation works on Stitch's static links.
+// Reusable Stitch HTML page renderer with universal click interception.
+//
+// Responsibilities:
+// 1. Renders Stitch's body HTML verbatim (no styling changes).
+// 2. Injects each page's <style> block once into <head>.
+// 3. Applies the page's body class while mounted.
+// 4. Intercepts <a> clicks:
+//    - "#section" hash → smooth scroll to the in-page section (if it exists).
+//    - label in NAV_MAP → React Router navigate.
+//    - href="#" placeholder with no mapping → "Coming soon" toast (no dead nav).
+// 5. Intercepts <button> clicks:
+//    - label in NAV_MAP → navigate.
+//    - label in COMING_SOON_LABELS → toast.
+//    - Otherwise: untouched (lets per-page handlers do their thing).
+//
+// Per-page wiring (e.g. dashboard's "Create New Proposal") can still attach
+// listeners directly to DOM nodes — those run BEFORE this delegated handler
+// (which lives on the wrapper) thanks to capture: false; or, if attached as
+// .onclick, this delegated handler is also unaffected since we only act on
+// labels we recognise.
 
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '../context/ToastContext.jsx';
+import NAV_MAP, { HASH_SECTION_MAP, COMING_SOON_LABELS } from '../lib/navMap.js';
 
-// Map: Stitch screen slug -> in-app route used when an anchor is clicked
-// (anchors in Stitch HTML point to "#" so we use sensible defaults per page)
 export default function StitchPage({
   bodyClass = '',
   extraStyles = '',
   html = '',
   styleId,
-  // Map of [data-nav] anchor labels -> in-app routes (used for sidebar/topnav links)
-  navMap = {},
+  navMap = NAV_MAP,
 }) {
   const containerRef = useRef(null);
   const navigate = useNavigate();
+  const toast = useToast();
 
-  // Inject page-specific styles once.
   useEffect(() => {
     if (!extraStyles || !styleId) return;
     if (document.getElementById(styleId)) return;
@@ -30,7 +44,6 @@ export default function StitchPage({
     document.head.appendChild(el);
   }, [extraStyles, styleId]);
 
-  // Apply body class while page is mounted
   useEffect(() => {
     if (!bodyClass) return;
     const prev = document.body.className;
@@ -38,29 +51,71 @@ export default function StitchPage({
     return () => { document.body.className = prev; };
   }, [bodyClass]);
 
-  // Intercept anchor clicks for SPA-style routing on internal nav links.
-  // Stitch links contain a Material Symbol span + a label span; we read only
-  // the label span so the navMap lookup matches "Hotels", not "hotelHotels".
+  // Universal click interception
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
     const handler = (e) => {
+      // Anchor clicks
       const a = e.target.closest('a');
-      if (!a) return;
-      const labelEl = a.querySelector('.font-label-md, .font-label-sm');
-      const label = (labelEl ? labelEl.textContent : a.textContent || '').trim();
-      const mapped = navMap[label];
-      if (mapped) {
+      if (a) {
+        const href = a.getAttribute('href') || '';
+        const labelEl = a.querySelector('.font-label-md, .font-label-sm');
+        const label = (labelEl ? labelEl.textContent : a.textContent || '').trim();
+
+        // Smooth scroll for in-page hash anchors
+        if (href.startsWith('#') && href.length > 1) {
+          const sectionId = HASH_SECTION_MAP[href] || href.slice(1);
+          const target = document.getElementById(sectionId);
+          if (target) {
+            e.preventDefault();
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+          }
+        }
+
+        // Labelled route
+        const mapped = navMap[label];
+        if (mapped) {
+          e.preventDefault();
+          navigate(mapped);
+          return;
+        }
+
+        // Dead placeholder href="#" — show a soft toast, don't reload
+        if (href === '#') {
+          e.preventDefault();
+          if (label && COMING_SOON_LABELS.has(label)) toast.info(`${label} — coming soon`);
+          return;
+        }
+        return;
+      }
+
+      // Button clicks — let per-page handlers run first; only act if button
+      // hasn't already been handled.
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      if (btn.type === 'submit') return;   // forms own their submit buttons
+      if (e.defaultPrevented) return;
+      if (btn.onclick) return;             // page-specific handler owns this button
+      // Prefer the labelled span; fall back to full textContent
+      const labelEl = btn.querySelector('.font-label-md, .font-label-sm');
+      const text = (labelEl ? labelEl.textContent : btn.textContent || '').trim();
+      const stripped = text.replace(/^[a-z_]+\s/, '').replace(/\s[a-z_]+$/, '').trim();
+      const label = navMap[stripped] ? stripped : (navMap[text] ? text : '');
+      if (label) {
         e.preventDefault();
-        navigate(mapped);
-      } else if (a.getAttribute('href') === '#') {
-        // Prevent jarring `#` jumps for unmapped placeholder links.
+        navigate(navMap[label]);
+        return;
+      }
+      if (COMING_SOON_LABELS.has(stripped) || COMING_SOON_LABELS.has(text)) {
         e.preventDefault();
+        toast.info(`${stripped || text} — coming soon`);
       }
     };
     root.addEventListener('click', handler);
     return () => root.removeEventListener('click', handler);
-  }, [navMap, navigate]);
+  }, [navMap, navigate, toast]);
 
   return (
     <div ref={containerRef} style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: html }} />

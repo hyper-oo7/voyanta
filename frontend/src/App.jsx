@@ -29,6 +29,8 @@ export default function App() {
           <Route path="/proposals/new"       element={<Protected><AiItineraryGeneratorPage /></Protected>} />
           <Route path="/proposals/brief"     element={<Protected><ClientBriefFormPage /></Protected>} />
           <Route path="/proposals/preview"   element={<Protected><ProposalPreviewPage /></Protected>} />
+          <Route path="/templates"           element={<Protected><LibrariesPage /></Protected>} />
+          <Route path="/activities"          element={<Protected><AssetsLibraryPage /></Protected>} />
           <Route path="/cost-calculator"     element={<Protected><CostCalculatorPage /></Protected>} />
           <Route path="/libraries"           element={<Protected><LibrariesPage /></Protected>} />
           <Route path="/libraries/hotels"    element={<Protected><HotelLibraryPage /></Protected>} />
