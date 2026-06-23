@@ -1,0 +1,45 @@
+// Mock activities/assets — shape mirrors the future Supabase `assets` table.
+// id, name, type (activity|flight|transfer|dining), location, duration_hours,
+// price, currency, description, image_url.
+export const assets = [
+  {
+    id: 'a-001',
+    name: 'VIP Arrival & Transfer',
+    type: 'transfer',
+    location: 'Paris CDG',
+    duration_hours: 2,
+    price: 850,
+    currency: 'USD',
+    description: 'Private concierge, fast-track customs, luxury sedan transfer.',
+  },
+  {
+    id: 'a-002',
+    name: 'Private History & Patisserie Tour',
+    type: 'activity',
+    location: 'Le Marais, Paris',
+    duration_hours: 4,
+    price: 620,
+    currency: 'EUR',
+    description: 'Expert-led walking tour of hidden courtyards and pastry tastings.',
+  },
+  {
+    id: 'a-003',
+    name: 'Welcome Dinner at L\'Ambroisie',
+    type: 'dining',
+    location: 'Place des Vosges, Paris',
+    duration_hours: 3,
+    price: 980,
+    currency: 'EUR',
+    description: 'Tasting menu at three-star Michelin restaurant. Formal attire.',
+  },
+  {
+    id: 'a-004',
+    name: 'Air France La Première',
+    type: 'flight',
+    location: 'JFK → CDG',
+    duration_hours: 7,
+    price: 9800,
+    currency: 'USD',
+    description: 'First-class direct flight with availability for 4 passengers.',
+  },
+];
