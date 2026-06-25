@@ -9,7 +9,9 @@ import {
   deleteProposal,
   duplicateProposal,
   updateProposal,
+  archiveProposal
 } from '../services/proposalService.js';
+import { buildProposalExport } from '../services/proposalItemService.js';
 // Reuse the dashboard's Stitch HTML chrome (sidebar + topbar + table styling)
 // so the new Proposals list page matches the existing design language without
 // touching any styles.
@@ -131,6 +133,21 @@ export default function ProposalsListPage() {
             try { await deleteProposal(p.id); toast.success('Proposal deleted'); reload(); }
             catch (e) { toast.error(e.message || 'Failed to delete'); }
           }}
+          onArchive={async (p) => {
+            try { await archiveProposal(p.id); toast.success('Proposal archived'); reload(); }
+            catch (e) { toast.error(e.message || 'Failed to archive'); }
+          }}
+          onExport={async (p) => {
+            try {
+              const json = await buildProposalExport(p.id);
+              const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a'); a.href = url;
+              a.download = `proposal-${p.name || p.id}.json`;
+              document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+              toast.success('Proposal Exported');
+            } catch (e) { toast.error(e.message || 'Export failed'); }
+          }}
         />
       </Portal>}
       {editing && (
@@ -155,7 +172,7 @@ export default function ProposalsListPage() {
 import { createPortal } from 'react-dom';
 function Portal({ node, children }) { return createPortal(children, node); }
 
-function ProposalsListPanel({ proposals, loading, error, highlightId, onView, onEdit, onDuplicate, onDelete }) {
+function ProposalsListPanel({ proposals, loading, error, highlightId, onView, onEdit, onDuplicate, onDelete, onArchive, onExport }) {
   return (
     <div className="glass-card rounded-xl overflow-hidden flex flex-col" data-testid="proposals-list">
       <div className="px-lg py-md border-b border-outline-variant flex justify-between items-center">
@@ -204,6 +221,8 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
                     <IconBtn icon="visibility" testid="view-icon"      onClick={() => onView(p)} title="Open" />
                     <IconBtn icon="edit"       testid="edit-icon"      onClick={() => onEdit(p)} title="Edit in wizard" />
                     <IconBtn icon="content_copy" testid="duplicate-icon" onClick={() => onDuplicate(p)} title="Duplicate" />
+                    <IconBtn icon="download"   testid="export-icon"    onClick={() => onExport(p)} title="Export JSON" />
+                    <IconBtn icon="archive"    testid="archive-icon"   onClick={() => onArchive(p)} title="Archive" />
                     <IconBtn icon="delete"     testid="delete-icon"    onClick={() => onDelete(p)} title="Delete" className="hover:text-error" />
                   </div>
                 </td>

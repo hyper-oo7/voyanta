@@ -8,7 +8,9 @@ const TABLE = 'proposals';
 export async function fetchProposals() {
   if (!supabase) return [];
   const { data, error } = await supabase.from(TABLE).select('*')
-    .eq('agency_id', DEFAULT_AGENCY_ID).order('created_at', { ascending: false });
+    .eq('agency_id', DEFAULT_AGENCY_ID)
+    .neq('is_archived', true)
+    .order('created_at', { ascending: false });
   if (error) throw error;
   return (data || []).map(normalize);
 }
@@ -61,7 +63,27 @@ export async function duplicateProposal(id) {
   if (!src) return null;
   // eslint-disable-next-line no-unused-vars
   const { id: _, created_at, updated_at, date, ...rest } = src;
-  return createProposal({ ...rest, name: (src.name || 'Proposal') + ' (Copy)', status: 'Draft' });
+  const newProposal = await createProposal({ ...rest, name: (src.name || 'Proposal') + ' (Copy)', status: 'Draft' });
+  
+  // Duplicate items
+  if (supabase) {
+    const { data: items } = await supabase.from('proposal_items').select('*').eq('proposal_id', id);
+    if (items && items.length > 0) {
+      const newItems = items.map(item => {
+        const { id: __, created_at: ___, proposal_id: ____, ...itemRest } = item;
+        return { ...itemRest, proposal_id: newProposal.id };
+      });
+      await supabase.from('proposal_items').insert(newItems);
+    }
+  }
+  return newProposal;
+}
+
+export async function archiveProposal(id) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data, error } = await supabase.from(TABLE).update({ is_archived: true }).eq('id', id).select().single();
+  if (error) throw error;
+  return normalize(data);
 }
 
 function normalize(row) {

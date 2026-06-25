@@ -51,7 +51,7 @@ create table if not exists public.proposals (
   travelers int default 1,
   budget_min numeric,
   budget_max numeric,
-  currency text default 'USD',
+  currency text default 'INR',
   total_cost numeric,
   preferences jsonb,
   trip_details jsonb,
@@ -73,7 +73,7 @@ create table if not exists public.hotels (
   category text,
   rating numeric,
   price_per_night numeric,
-  currency text default 'USD',
+  currency text default 'INR',
   amenities text[],
   image_url text,
   created_at timestamptz default now()
@@ -90,7 +90,7 @@ create table if not exists public.flights (
   duration text,
   flight_no text,
   cost numeric,
-  currency text default 'USD',
+  currency text default 'INR',
   created_at timestamptz default now()
 );
 
@@ -103,7 +103,7 @@ create table if not exists public.activities (
   location text,
   duration_hours numeric,
   price numeric,
-  currency text default 'USD',
+  currency text default 'INR',
   description text,
   image_url text,
   created_at timestamptz default now()
@@ -118,7 +118,7 @@ create table if not exists public.templates (
   days int,
   destination text,
   price_from numeric,
-  currency text default 'USD',
+  currency text default 'INR',
   image_url text,
   data jsonb,
   created_at timestamptz default now()

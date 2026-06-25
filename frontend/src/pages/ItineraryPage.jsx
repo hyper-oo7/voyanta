@@ -5,8 +5,9 @@ import StitchPage from '../components/StitchPage.jsx';
 import navMap from '../lib/navMap.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import { itinerariesService } from '../services/resourceService.js';
+import { itinerariesService, itineraryBlocksService } from '../services/resourceService.js';
 import ImportModal from '../components/ImportModal.jsx';
+import LogoUploader from '../components/LogoUploader.jsx';
 import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
 
 export default function ItineraryPage() {
@@ -20,10 +21,11 @@ export default function ItineraryPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [editingItinerary, setEditingItinerary] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newDest, setNewDest] = useState('');
-  const [newDays, setNewDays] = useState(3);
   const [saving, setSaving] = useState(false);
+  
+  const [formData, setFormData] = useState({
+    name: '', destination: '', description: '', duration: 3, cover_image: ''
+  });
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -39,12 +41,10 @@ export default function ItineraryPage() {
 
   useEffect(() => { reload(); }, [reload]);
 
-  // Adjust sidebar navigation and titles
   useEffect(() => {
     const root = wrapperRef.current; if (!root) return;
     const canvas = root.querySelector('main .max-w-7xl'); if (!canvas) return;
 
-    // Sidebar active highlight
     root.querySelectorAll('aside a').forEach((a) => {
       const lab = a.querySelector('.font-label-md'); if (!lab) return;
       const t = lab.textContent.trim();
@@ -53,18 +53,15 @@ export default function ItineraryPage() {
         : 'flex items-center gap-md text-on-surface-variant py-md px-lg hover:bg-surface-container-low transition-all duration-200';
     });
 
-    // Page titles
     const h2 = canvas.querySelector('h2'); if (h2) h2.textContent = 'Itinerary Library';
-    const p = h2?.parentElement?.querySelector('p'); if (p) p.textContent = 'Manage independent travel itineraries and import PDF travel concierges.';
+    const p = h2?.parentElement?.querySelector('p'); if (p) p.textContent = 'Manage comprehensive travel itineraries and schedules.';
 
-    // Primary CTA -> Create New
     const cta = canvas.querySelector('button.bg-primary');
     if (cta) {
       cta.innerHTML = '<span class="material-symbols-outlined text-[20px]">add</span> Create New';
       cta.onclick = () => setCreateOpen(true);
     }
 
-    // Clear old dashboard grid & inject itinerary-mount
     canvas.querySelectorAll(':scope > div.grid, :scope > .bento-grid').forEach((n) => n.remove());
     let mount = canvas.querySelector('#itinerary-mount');
     if (!mount) {
@@ -74,7 +71,6 @@ export default function ItineraryPage() {
     }
   });
 
-  // User card navigation and sign-out
   useEffect(() => {
     const root = wrapperRef.current; if (!root) return;
     const card = root.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
@@ -90,33 +86,30 @@ export default function ItineraryPage() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!newName.trim()) { toast.error('Itinerary Name is required'); return; }
+    if (!formData.name.trim()) { toast.error('Itinerary Name is required'); return; }
     setSaving(true);
     try {
-      const daysArr = [];
-      for (let i = 1; i <= newDays; i++) {
-        daysArr.push({
-          day: i,
-          title: `Day ${i} Theme`,
-          description: 'Add activities, hotels, and schedule details for this day.',
-          hotels: [],
-          activities: [],
-          transfers: [],
-          meals: [],
-          notes: ''
-        });
-      }
-      await itinerariesService.create({
-        name: newName.trim(),
-        destination: newDest.trim(),
-        days: newDays,
-        data: { days: daysArr }
+      const it = await itinerariesService.create({
+        name: formData.name.trim(),
+        destination: formData.destination.trim(),
+        duration: formData.duration,
+        description: formData.description,
+        cover_image: formData.cover_image,
       });
+      
+      // Auto-create basic blocks
+      const blocks = [];
+      blocks.push({ itinerary_id: it.id, block_type: 'arrival', title: 'Arrival & Check-in', position: 0 });
+      for (let i = 1; i <= formData.duration; i++) {
+        blocks.push({ itinerary_id: it.id, block_type: 'day', day_number: i, title: `Day ${i} Itinerary`, position: i });
+      }
+      blocks.push({ itinerary_id: it.id, block_type: 'departure', title: 'Departure', position: formData.duration + 1 });
+      
+      for (const b of blocks) await itineraryBlocksService.create(b);
+      
       toast.success('Itinerary created');
-      setNewName('');
-      setNewDest('');
-      setNewDays(3);
       setCreateOpen(false);
+      setFormData({ name: '', destination: '', description: '', duration: 3, cover_image: '' });
       reload();
     } catch (err) {
       toast.error(err.message || 'Create failed');
@@ -136,24 +129,6 @@ export default function ItineraryPage() {
     }
   };
 
-  const handleSaveDays = async (updatedDays) => {
-    if (!editingItinerary) return;
-    setSaving(true);
-    try {
-      await itinerariesService.update(editingItinerary.id, {
-        days: updatedDays.length,
-        data: { ...editingItinerary.data, days: updatedDays }
-      });
-      toast.success('Itinerary saved');
-      setEditingItinerary(null);
-      reload();
-    } catch (err) {
-      toast.error(err.message || 'Failed to save');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const mount = wrapperRef.current?.querySelector('#itinerary-mount');
 
   return (
@@ -162,87 +137,79 @@ export default function ItineraryPage() {
         extraStyles={VoyantaDashboard_extraStyles} html={VoyantaDashboard_html} navMap={navMap} />
       {mount && createPortal(
         <div className="space-y-lg">
-          <div className="glass-card p-md rounded-xl flex items-center gap-md flex-wrap">
-            <h3 className="font-headline-sm text-headline-sm text-primary flex-1">Standalone Itineraries</h3>
-            <button onClick={() => setImportOpen(true)} data-testid="import-pdf-itinerary-btn"
-              className="px-lg py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-              <span className="material-symbols-outlined text-[18px]">upload</span> Import PDF
-            </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-lg">
+            {loading ? (
+              <div className="col-span-3 text-center py-xl text-on-surface-variant">Loading itineraries…</div>
+            ) : itineraries.length === 0 ? (
+              <div className="col-span-3 text-center py-xl text-on-surface-variant">No itineraries found. Create one!</div>
+            ) : itineraries.map((it) => (
+              <div key={it.id} className="glass-card rounded-xl overflow-hidden flex flex-col group hover:border-primary transition-all shadow-sm">
+                <div className="h-40 bg-slate-100 relative">
+                  {it.cover_image ? (
+                    <img src={it.cover_image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-on-surface-variant bg-surface-variant">
+                      <span className="material-symbols-outlined text-[32px]">map</span>
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <button onClick={() => handleDelete(it.id)} title="Delete" className="w-8 h-8 rounded-full bg-white/90 text-error flex items-center justify-center hover:bg-error hover:text-white transition-colors shadow-sm">
+                      <span className="material-symbols-outlined text-[16px]">delete</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="p-lg flex flex-col flex-1">
+                  <h4 className="font-headline-sm text-primary font-bold line-clamp-1" title={it.name}>{it.name}</h4>
+                  <p className="text-xs text-on-surface-variant mb-md font-semibold">{it.destination || 'Multiple Destinations'} · {it.duration} Days</p>
+                  <p className="text-sm text-on-surface line-clamp-2 mb-lg flex-1">{it.description || 'No description provided.'}</p>
+                  <button onClick={() => setEditingItinerary(it)} className="w-full py-sm bg-surface-container-low border border-outline-variant rounded-lg font-label-md text-primary font-bold hover:bg-primary/10 transition-colors">
+                    Edit Schedule
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
 
-          <div className="glass-card rounded-xl overflow-hidden">
-            <table className="w-full text-left">
-              <thead className="bg-surface-container text-on-surface font-label-sm uppercase tracking-wider">
-                <tr>
-                  <th className="px-lg py-md">Name</th>
-                  <th className="px-lg py-md">Destination</th>
-                  <th className="px-lg py-md">Days</th>
-                  <th className="px-lg py-md text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant font-body-md text-on-surface">
-                {loading ? (
-                  <tr>
-                    <td colSpan="4" className="text-center py-xl text-on-surface-variant">Loading itineraries…</td>
-                  </tr>
-                ) : itineraries.length === 0 ? (
-                  <tr>
-                    <td colSpan="4" className="text-center py-xl text-on-surface-variant">No itineraries found. Create or import one!</td>
-                  </tr>
-                ) : itineraries.map((it) => (
-                  <tr key={it.id} className="hover:bg-surface-container-low transition-colors" data-testid={`itinerary-row-${it.id}`}>
-                    <td className="px-lg py-md font-bold text-primary">{it.name}</td>
-                    <td className="px-lg py-md">{it.destination || '—'}</td>
-                    <td className="px-lg py-md font-mono">{it.days || it.data?.days?.length || 0}</td>
-                    <td className="px-lg py-md text-right flex justify-end gap-sm">
-                      <button onClick={() => setEditingItinerary(it)} title="Edit Day-by-Day"
-                        className="px-md py-1 border border-outline rounded hover:bg-surface-container-high text-xs font-semibold">
-                        Edit Schedule
-                      </button>
-                      <button onClick={() => handleDelete(it.id)} title="Delete"
-                        className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container text-error">
-                        <span className="material-symbols-outlined text-[18px]">delete</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Import Modal */}
           {importOpen && <ImportModal resource="itineraries" onClose={() => setImportOpen(false)} onImported={reload} />}
 
-          {/* Create Modal */}
           {createOpen && (
             <div className="fixed inset-0 z-[90] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm" onClick={() => setCreateOpen(false)}>
-              <div className="bg-white w-full max-w-md rounded-xl p-lg border border-outline-variant space-y-md" onClick={(e) => e.stopPropagation()}>
-                <div className="flex justify-between items-center">
-                  <h3 className="font-headline-sm text-primary font-bold">New Independent Itinerary</h3>
+              <div className="bg-white w-full max-w-lg rounded-xl p-xl border border-outline-variant space-y-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-md">
+                  <h3 className="font-headline-sm text-primary font-bold">New Itinerary</h3>
                   <button onClick={() => setCreateOpen(false)} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center">
                     <span className="material-symbols-outlined">close</span>
                   </button>
                 </div>
                 <form onSubmit={handleCreate} className="space-y-md">
+                  <LogoUploader value={formData.cover_image} onChange={(v) => setFormData(s => ({ ...s, cover_image: v }))} label="Cover Image" testid="itin-cover" folder="covers" />
+                  
+                  <div className="grid grid-cols-2 gap-md">
+                    <label className="flex flex-col gap-xs col-span-2">
+                      <span className="font-label-md text-on-surface font-semibold">Itinerary Name *</span>
+                      <input type="text" required value={formData.name} onChange={(e) => setFormData(s => ({ ...s, name: e.target.value }))}
+                        className="px-md py-md border border-outline-variant rounded-lg font-body-md bg-surface-container-lowest" placeholder="e.g. Italian Lakes Luxury Getaway" />
+                    </label>
+                    <label className="flex flex-col gap-xs">
+                      <span className="font-label-md text-on-surface font-semibold">Destination</span>
+                      <input type="text" value={formData.destination} onChange={(e) => setFormData(s => ({ ...s, destination: e.target.value }))}
+                        className="px-md py-md border border-outline-variant rounded-lg font-body-md bg-surface-container-lowest" placeholder="e.g. Como & Garda, Italy" />
+                    </label>
+                    <label className="flex flex-col gap-xs">
+                      <span className="font-label-md text-on-surface font-semibold">Duration (Days)</span>
+                      <input type="number" min="1" max="90" value={formData.duration} onChange={(e) => setFormData(s => ({ ...s, duration: parseInt(e.target.value) || 1 }))}
+                        className="px-md py-md border border-outline-variant rounded-lg font-body-md bg-surface-container-lowest" />
+                    </label>
+                  </div>
                   <label className="flex flex-col gap-xs">
-                    <span className="font-label-md text-on-surface font-semibold">Itinerary Name *</span>
-                    <input type="text" required value={newName} onChange={(e) => setNewName(e.target.value)}
-                      className="px-md py-md border border-outline-variant rounded-lg font-body-md" placeholder="e.g. Italian Lakes Luxury Getaway" />
+                    <span className="font-label-md text-on-surface font-semibold">Description</span>
+                    <textarea value={formData.description} onChange={(e) => setFormData(s => ({ ...s, description: e.target.value }))} rows={3}
+                      className="px-md py-md border border-outline-variant rounded-lg font-body-md bg-surface-container-lowest" placeholder="Brief overview of the experience..." />
                   </label>
-                  <label className="flex flex-col gap-xs">
-                    <span className="font-label-md text-on-surface font-semibold">Destination</span>
-                    <input type="text" value={newDest} onChange={(e) => setNewDest(e.target.value)}
-                      className="px-md py-md border border-outline-variant rounded-lg font-body-md" placeholder="e.g. Como & Garda, Italy" />
-                  </label>
-                  <label className="flex flex-col gap-xs">
-                    <span className="font-label-md text-on-surface font-semibold">Duration (Days)</span>
-                    <input type="number" min="1" max="30" value={newDays} onChange={(e) => setNewDays(parseInt(e.target.value) || 1)}
-                      className="px-md py-md border border-outline-variant rounded-lg font-body-md" />
-                  </label>
-                  <div className="flex gap-md pt-sm">
-                    <button type="button" onClick={() => setCreateOpen(false)} className="flex-1 py-md border border-outline-variant rounded-lg font-label-md hover:bg-slate-50">Cancel</button>
-                    <button type="submit" disabled={saving} className="flex-1 py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90">
-                      {saving ? 'Creating…' : 'Create'}
+                  <div className="flex gap-md pt-md">
+                    <button type="button" onClick={() => setCreateOpen(false)} className="flex-1 py-md border border-outline-variant rounded-lg font-label-md hover:bg-slate-50 transition-colors">Cancel</button>
+                    <button type="submit" disabled={saving} className="flex-1 py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 transition-colors shadow-sm">
+                      {saving ? 'Creating…' : 'Create Itinerary'}
                     </button>
                   </div>
                 </form>
@@ -250,13 +217,10 @@ export default function ItineraryPage() {
             </div>
           )}
 
-          {/* Schedule Editor Drawer */}
           {editingItinerary && (
             <ItineraryScheduleDrawer
               itinerary={editingItinerary}
               onClose={() => setEditingItinerary(null)}
-              onSave={handleSaveDays}
-              saving={saving}
             />
           )}
         </div>,
@@ -266,106 +230,181 @@ export default function ItineraryPage() {
   );
 }
 
-// Sub-component: Standalone Schedule Editor Drawer
-function ItineraryScheduleDrawer({ itinerary, onClose, onSave, saving }) {
-  const [days, setDays] = useState(itinerary.data?.days || []);
+function ItineraryScheduleDrawer({ itinerary, onClose }) {
+  const toast = useToast();
+  const [blocks, setBlocks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  
+  const [draggedIdx, setDraggedIdx] = useState(null);
 
-  const updateDay = (index, key, val) => {
-    setDays((prev) => prev.map((d, i) => i === index ? { ...d, [key]: val } : d));
+  useEffect(() => {
+    const fetchBlocks = async () => {
+      try {
+        const list = await itineraryBlocksService.list({ itinerary_id: itinerary.id });
+        setBlocks(list.sort((a, b) => (a.position || 0) - (b.position || 0)));
+      } catch (e) {
+        toast.error('Failed to load blocks');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBlocks();
+  }, [itinerary.id, toast]);
+
+  const updateBlock = (index, key, val) => {
+    setBlocks((prev) => prev.map((b, i) => i === index ? { ...b, [key]: val } : b));
   };
 
-  const addDay = () => {
-    const nextNum = days.length + 1;
-    setDays((prev) => [...prev, {
-      day: nextNum,
-      title: `Day {nextNum} Schedule`,
-      description: 'Add description for activities or meals.',
-      hotels: [],
-      activities: [],
-      transfers: [],
-      meals: [],
-      notes: ''
+  const onSave = async () => {
+    setSaving(true);
+    try {
+      for (let i = 0; i < blocks.length; i++) {
+        const b = blocks[i];
+        const patch = { ...b, position: i };
+        if (b.id) {
+          await itineraryBlocksService.update(b.id, patch);
+        } else {
+          await itineraryBlocksService.create({ ...patch, itinerary_id: itinerary.id });
+        }
+      }
+      toast.success('Schedule saved successfully');
+      onClose();
+    } catch (err) {
+      toast.error('Failed to save schedule');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDragStart = (e, index) => {
+    setDraggedIdx(index);
+    e.dataTransfer.effectAllowed = 'move';
+    // Small delay to allow the drag image to generate before adding opacity
+    setTimeout(() => { if (e.target) e.target.classList.add('opacity-50'); }, 0);
+  };
+
+  const handleDragEnd = (e) => {
+    setDraggedIdx(null);
+    if (e.target) e.target.classList.remove('opacity-50');
+  };
+
+  const handleDrop = (e, targetIdx) => {
+    e.preventDefault();
+    if (draggedIdx === null || draggedIdx === targetIdx) return;
+    const newBlocks = [...blocks];
+    const item = newBlocks.splice(draggedIdx, 1)[0];
+    newBlocks.splice(targetIdx, 0, item);
+    setBlocks(newBlocks);
+  };
+
+  const addBlock = (type) => {
+    const nextNum = type === 'day' ? blocks.filter(b => b.block_type === 'day').length + 1 : null;
+    setBlocks([...blocks, {
+      block_type: type,
+      day_number: nextNum,
+      title: type === 'day' ? `Day ${nextNum}` : type === 'arrival' ? 'Arrival' : 'Departure',
+      description: '', morning_notes: '', afternoon_notes: '', evening_notes: '', night_notes: '', notes: ''
     }]);
-  };
-
-  const removeDay = (index) => {
-    if (days.length <= 1) return;
-    setDays((prev) => prev.filter((_, i) => i !== index).map((d, i) => ({ ...d, day: i + 1 })));
   };
 
   return (
     <div className="fixed inset-0 z-[80] flex text-on-surface">
       <div className="flex-1 bg-on-surface/30 backdrop-blur-sm" onClick={onClose} />
-      <aside className="w-full max-w-[640px] bg-white h-full overflow-y-auto border-l border-outline-variant shadow-2xl p-xl flex flex-col">
-        <div className="flex items-center justify-between mb-lg">
+      <aside className="w-full max-w-[720px] bg-white h-full flex flex-col shadow-2xl border-l border-outline-variant">
+        <div className="p-xl border-b border-outline-variant bg-surface-container-lowest flex justify-between items-center z-10">
           <div>
             <h3 className="font-headline-sm text-primary font-bold">Edit Schedule</h3>
-            <p className="text-xs text-on-surface-variant">{itinerary.name}</p>
+            <p className="text-sm font-semibold text-on-surface-variant mt-1">{itinerary.name}</p>
           </div>
-          <button onClick={onClose} className="w-9 h-9 inline-flex items-center justify-center rounded-full hover:bg-slate-100">
+          <button onClick={onClose} className="w-10 h-10 inline-flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-sm space-y-md custom-scrollbar">
-          {days.map((d, i) => (
-            <div key={i} className="p-md border border-outline-variant rounded-xl bg-slate-50 space-y-sm relative">
-              <button type="button" onClick={() => removeDay(i)} title="Delete Day"
-                className="absolute top-2 right-2 w-6 h-6 rounded-full hover:bg-error-container text-error flex items-center justify-center">
-                <span className="material-symbols-outlined text-[16px]">close</span>
-              </button>
-              <div className="flex items-center gap-sm">
-                <span className="px-2 py-1 bg-primary text-on-primary rounded font-mono font-bold text-xs">DAY {d.day}</span>
-                <input type="text" value={d.title || ''} onChange={(e) => updateDay(i, 'title', e.target.value)}
-                  className="flex-1 px-md py-1 border border-outline-variant rounded-lg font-bold text-sm bg-white" placeholder="Day Title (e.g. Arrival & Greeting)" />
+        <div className="flex-1 overflow-y-auto p-xl bg-slate-50 space-y-lg custom-scrollbar">
+          {loading ? (
+            <div className="text-center py-xl text-on-surface-variant">Loading schedule blocks…</div>
+          ) : (
+            blocks.map((b, i) => (
+              <div key={b.id || i}
+                draggable
+                onDragStart={(e) => handleDragStart(e, i)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => handleDrop(e, i)}
+                className="bg-white border border-outline-variant rounded-xl shadow-sm overflow-hidden flex flex-col group cursor-grab active:cursor-grabbing"
+              >
+                <div className="bg-surface-container-low px-md py-sm border-b border-outline-variant flex items-center gap-sm">
+                  <span className="material-symbols-outlined text-on-surface-variant cursor-grab">drag_indicator</span>
+                  <span className={`px-2 py-1 text-xs font-bold rounded uppercase tracking-widest ${
+                    b.block_type === 'arrival' ? 'bg-emerald-100 text-emerald-800' :
+                    b.block_type === 'departure' ? 'bg-rose-100 text-rose-800' :
+                    'bg-primary-fixed/30 text-primary-fixed-dim'
+                  }`}>
+                    {b.block_type} {b.day_number ? b.day_number : ''}
+                  </span>
+                  <input type="text" value={b.title || ''} onChange={(e) => updateBlock(i, 'title', e.target.value)}
+                    className="flex-1 bg-transparent font-bold text-on-surface focus:outline-none focus:ring-1 focus:ring-primary/20 rounded px-1 py-0.5" placeholder="Block Title..." />
+                  <button type="button" onClick={() => setBlocks(blocks.filter((_, idx) => idx !== i))}
+                    className="w-8 h-8 rounded-full hover:bg-error-container text-on-surface-variant hover:text-error flex items-center justify-center transition-colors">
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                  </button>
+                </div>
+                
+                <div className="p-md space-y-md">
+                  <label className="block">
+                    <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-1 block">Description</span>
+                    <textarea value={b.description || ''} onChange={(e) => updateBlock(i, 'description', e.target.value)} rows={2}
+                      className="w-full px-md py-sm border border-outline-variant rounded bg-surface-container-lowest text-sm focus:border-primary outline-none" placeholder="Rich description..." />
+                  </label>
+                  
+                  {b.block_type === 'day' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+                      <label className="block">
+                        <span className="text-xs font-bold text-sky-600 uppercase tracking-widest mb-1 flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">light_mode</span> Morning</span>
+                        <textarea value={b.morning_notes || ''} onChange={(e) => updateBlock(i, 'morning_notes', e.target.value)} rows={2}
+                          className="w-full px-sm py-sm border border-outline-variant rounded bg-sky-50/50 text-xs focus:border-primary outline-none" />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold text-amber-600 uppercase tracking-widest mb-1 flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">wb_sunny</span> Afternoon</span>
+                        <textarea value={b.afternoon_notes || ''} onChange={(e) => updateBlock(i, 'afternoon_notes', e.target.value)} rows={2}
+                          className="w-full px-sm py-sm border border-outline-variant rounded bg-amber-50/50 text-xs focus:border-primary outline-none" />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-1 flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">nights_stay</span> Evening</span>
+                        <textarea value={b.evening_notes || ''} onChange={(e) => updateBlock(i, 'evening_notes', e.target.value)} rows={2}
+                          className="w-full px-sm py-sm border border-outline-variant rounded bg-indigo-50/50 text-xs focus:border-primary outline-none" />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold text-slate-700 uppercase tracking-widest mb-1 flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">bedtime</span> Night</span>
+                        <textarea value={b.night_notes || ''} onChange={(e) => updateBlock(i, 'night_notes', e.target.value)} rows={2}
+                          className="w-full px-sm py-sm border border-outline-variant rounded bg-slate-100 text-xs focus:border-primary outline-none" />
+                      </label>
+                    </div>
+                  )}
+                  
+                  <label className="block">
+                    <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-1 block">Internal Notes / Accommodations</span>
+                    <input type="text" value={b.notes || ''} onChange={(e) => updateBlock(i, 'notes', e.target.value)}
+                      className="w-full px-md py-sm border border-outline-variant rounded bg-surface-container-lowest text-sm focus:border-primary outline-none" placeholder="e.g. Flight arrives 10:00 AM, VIP transfer..." />
+                  </label>
+                </div>
               </div>
-              <textarea value={d.description || ''} onChange={(e) => updateDay(i, 'description', e.target.value)}
-                rows={3} className="w-full px-md py-md border border-outline-variant rounded-lg text-sm bg-white" placeholder="Activities description, timings, details..." />
-              
-              <div className="grid grid-cols-2 gap-sm text-xs">
-                <label className="flex flex-col gap-1">
-                  <span className="font-semibold text-on-surface-variant">Hotels (comma-sep)</span>
-                  <input type="text" value={Array.isArray(d.hotels) ? d.hotels.join(', ') : d.hotels || ''}
-                    onChange={(e) => updateDay(i, 'hotels', e.target.value.split(',').map(s => s.trim()))}
-                    className="px-md py-1 border border-outline-variant rounded bg-white" />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="font-semibold text-on-surface-variant">Activities (comma-sep)</span>
-                  <input type="text" value={Array.isArray(d.activities) ? d.activities.join(', ') : d.activities || ''}
-                    onChange={(e) => updateDay(i, 'activities', e.target.value.split(',').map(s => s.trim()))}
-                    className="px-md py-1 border border-outline-variant rounded bg-white" />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="font-semibold text-on-surface-variant">Transfers (comma-sep)</span>
-                  <input type="text" value={Array.isArray(d.transfers) ? d.transfers.join(', ') : d.transfers || ''}
-                    onChange={(e) => updateDay(i, 'transfers', e.target.value.split(',').map(s => s.trim()))}
-                    className="px-md py-1 border border-outline-variant rounded bg-white" />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="font-semibold text-on-surface-variant">Meals (e.g. Breakfast, Dinner)</span>
-                  <input type="text" value={Array.isArray(d.meals) ? d.meals.join(', ') : d.meals || ''}
-                    onChange={(e) => updateDay(i, 'meals', e.target.value.split(',').map(s => s.trim()))}
-                    className="px-md py-1 border border-outline-variant rounded bg-white" />
-                </label>
-              </div>
-              <label className="flex flex-col gap-1 text-xs">
-                <span className="font-semibold text-on-surface-variant">Notes</span>
-                <input type="text" value={d.notes || ''} onChange={(e) => updateDay(i, 'notes', e.target.value)}
-                  className="px-md py-1 border border-outline-variant rounded bg-white" placeholder="Special requirements, baggage info, attire, etc." />
-              </label>
-            </div>
-          ))}
+            ))
+          )}
 
-          <button type="button" onClick={addDay} className="w-full py-md border border-dashed border-primary text-primary hover:bg-sky-50 rounded-xl font-bold flex items-center justify-center gap-xs">
-            <span className="material-symbols-outlined">add</span> Add Next Day
-          </button>
+          <div className="flex gap-sm justify-center pt-md pb-xl">
+            <button type="button" onClick={() => addBlock('arrival')} className="px-md py-sm border border-emerald-200 bg-emerald-50 text-emerald-800 rounded-lg text-sm font-bold flex items-center gap-xs hover:bg-emerald-100 transition-colors"><span className="material-symbols-outlined text-[18px]">add</span> Arrival</button>
+            <button type="button" onClick={() => addBlock('day')} className="px-md py-sm border border-primary/30 bg-primary-fixed/20 text-primary-fixed-dim rounded-lg text-sm font-bold flex items-center gap-xs hover:bg-primary-fixed/40 transition-colors"><span className="material-symbols-outlined text-[18px]">add</span> Day Block</button>
+            <button type="button" onClick={() => addBlock('departure')} className="px-md py-sm border border-rose-200 bg-rose-50 text-rose-800 rounded-lg text-sm font-bold flex items-center gap-xs hover:bg-rose-100 transition-colors"><span className="material-symbols-outlined text-[18px]">add</span> Departure</button>
+          </div>
         </div>
 
-        <div className="flex gap-md pt-lg mt-md border-t border-outline-variant">
-          <button onClick={onClose} className="flex-1 py-md border border-outline-variant rounded-lg font-label-md hover:bg-slate-50">Cancel</button>
-          <button onClick={() => onSave(days)} disabled={saving}
-            className="flex-1 py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-60">
-            {saving ? 'Saving…' : 'Save Schedule'}
+        <div className="p-xl border-t border-outline-variant bg-white flex gap-md z-10">
+          <button onClick={onClose} className="flex-1 py-md border border-outline-variant rounded-lg font-label-md hover:bg-slate-50 transition-colors">Cancel</button>
+          <button onClick={onSave} disabled={saving} className="flex-1 py-md bg-primary text-on-primary rounded-lg font-label-md font-bold hover:opacity-90 disabled:opacity-60 transition-colors shadow-md">
+            {saving ? 'Saving Schedule…' : 'Save Schedule'}
           </button>
         </div>
       </aside>

@@ -36,12 +36,13 @@ import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashbo
 
 const STEPS = [
   { n: 1, key: 'client',    label: 'Client Info' },
-  { n: 2, key: 'hotels',    label: 'Hotels' },
-  { n: 3, key: 'flights',   label: 'Flights' },
-  { n: 4, key: 'activities',label: 'Activities' },
-  { n: 5, key: 'costing',   label: 'Costing' },
-  { n: 6, key: 'branding',  label: 'Branding' },
-  { n: 7, key: 'preview',   label: 'Preview' },
+  { n: 2, key: 'itinerary', label: 'Itinerary' },
+  { n: 3, key: 'hotels',    label: 'Hotels' },
+  { n: 4, key: 'flights',   label: 'Flights' },
+  { n: 5, key: 'activities',label: 'Activities' },
+  { n: 6, key: 'costing',   label: 'Costing' },
+  { n: 7, key: 'branding',  label: 'Branding' },
+  { n: 8, key: 'preview',   label: 'Preview' },
 ];
 
 export default function ProposalWizard() {
@@ -53,7 +54,7 @@ export default function ProposalWizard() {
   const { setActiveId } = useProposalBuilder() || {};
 
   const idParam   = params.get('id') || '';
-  const stepParam = Math.max(1, Math.min(7, parseInt(params.get('step') || '1', 10) || 1));
+  const stepParam = Math.max(1, Math.min(8, parseInt(params.get('step') || '1', 10) || 1));
 
   const [proposal, setProposal] = useState(null);
   const [items, setItems] = useState([]);
@@ -64,7 +65,12 @@ export default function ProposalWizard() {
   // Local form state — initialised from proposal when it loads
   const [client, setClient] = useState({
     customer_name: '', phone: '', country: DEFAULT_COUNTRY, email: '',
-    destination: '', start_date: '', end_date: '',
+    destination: '',
+    date_mode: 'dates', // 'dates' or 'days'
+    start_date: '', end_date: '',
+    duration_days: 1, duration_nights: 1,
+    arrival_city: '', arrival_airport: '',
+    departure_city: '', departure_airport: '',
     num_adults: 1, num_children: 0, budget: '', special_notes: '',
     itinerary_id: '',
   });
@@ -131,6 +137,13 @@ export default function ProposalWizard() {
             destination: p.destination || '',
             start_date:  p.start_date || '',
             end_date:    p.end_date   || '',
+            date_mode:   b.date_mode || 'dates',
+            duration_days: b.duration_days || 1,
+            duration_nights: b.duration_nights || 1,
+            arrival_city: p.arrival_city || '',
+            arrival_airport: p.arrival_airport || '',
+            departure_city: p.departure_city || '',
+            departure_airport: p.departure_airport || '',
             num_adults:   b.num_adults   ?? p.travelers ?? 1,
             num_children: b.num_children ?? 0,
             budget: p.budget_max ?? '',
@@ -191,13 +204,20 @@ export default function ProposalWizard() {
       name: c.destination ? `${c.destination} — ${c.customer_name || 'Trip'}` : (c.customer_name || 'Untitled Proposal'),
       client_name: c.customer_name || 'New Client',
       destination: c.destination || null,
-      start_date: c.start_date || null,
-      end_date: c.end_date || null,
+      start_date: c.date_mode === 'dates' ? (c.start_date || null) : null,
+      end_date: c.date_mode === 'dates' ? (c.end_date || null) : null,
+      arrival_city: c.arrival_city || null,
+      arrival_airport: c.arrival_airport || null,
+      departure_city: c.departure_city || null,
+      departure_airport: c.departure_airport || null,
       travelers: travelers || 1,
       budget_max: c.budget === '' ? null : Number(c.budget),
       currency: 'INR',
       brief: {
         phone: c.phone, country: c.country, email: c.email,
+        date_mode: c.date_mode,
+        duration_days: parseInt(c.duration_days, 10) || 1,
+        duration_nights: parseInt(c.duration_nights, 10) || 1,
         num_adults: parseInt(c.num_adults, 10) || 0,
         num_children: parseInt(c.num_children, 10) || 0,
         special_notes: c.special_notes,
@@ -254,7 +274,7 @@ export default function ProposalWizard() {
       catch { return; }
     }
     if (!pid && stepParam !== 1) { toast.error('Save the client info first'); return; }
-    goStep(Math.min(7, stepParam + 1), pid);
+    goStep(Math.min(8, stepParam + 1), pid);
   };
   const onPrev = () => goStep(Math.max(1, stepParam - 1));
 
@@ -264,10 +284,11 @@ export default function ProposalWizard() {
     const a = proposal?.start_date || client.start_date;
     const b = proposal?.end_date   || client.end_date;
     if (!a || !b) return 1;
+    if (client.date_mode === 'days') return parseInt(client.duration_nights, 10) || 1;
     const ms = new Date(b).getTime() - new Date(a).getTime();
     const n = Math.round(ms / (1000 * 60 * 60 * 24));
     return n > 0 ? n : 1;
-  }, [proposal?.start_date, proposal?.end_date, client.start_date, client.end_date]);
+  }, [proposal?.start_date, proposal?.end_date, client.start_date, client.end_date, client.date_mode, client.duration_nights]);
   const travelers = useMemo(() => {
     const t = (parseInt(client.num_adults, 10) || 0) + (parseInt(client.num_children, 10) || 0);
     return t > 0 ? t : (proposal?.travelers || 1);
@@ -316,21 +337,22 @@ export default function ProposalWizard() {
             <div className="glass-card p-xl rounded-xl text-center">Loading…</div>
           ) : (
             <>
-              {stepParam === 1 && <Step1 client={client} setClient={setClient} itineraries={itineraries} onApplyItinerary={onApplyItinerary} />}
-              {stepParam === 2 && <ResourceStep kind="hotel"    service={hotelsService}     resource="hotels"     items={items}
+              {stepParam === 1 && <Step1 client={client} setClient={setClient} />}
+              {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={reload} itineraries={itineraries} onApplyItinerary={onApplyItinerary} client={client} />}
+              {stepParam === 3 && <ResourceStep kind="hotel"    service={hotelsService}     resource="hotels"     items={items}
                 addItems={(rows) => addItemsToProposal('hotel',  rows, (r) => r.name, (r) => Number(r.price_per_night||0))}
                 onRemoveItem={onRemoveItem} onPatchItem={onPatchItem} />}
-              {stepParam === 3 && <ResourceStep kind="flight"   service={flightsService}    resource="flights"    items={items}
+              {stepParam === 4 && <ResourceStep kind="flight"   service={flightsService}    resource="flights"    items={items}
                 addItems={(rows) => addItemsToProposal('flight', rows, (r) => `${r.airline||'Flight'} ${r.flight_no||''} ${r.origin||''}→${r.destination||''}`.trim(), (r) => Number(r.cost||0))}
                 onRemoveItem={onRemoveItem} />}
-              {stepParam === 4 && <ResourceStep kind="activity" service={activitiesService} resource="activities" items={items}
+              {stepParam === 5 && <ResourceStep kind="activity" service={activitiesService} resource="activities" items={items}
                 addItems={(rows) => addItemsToProposal('activity', rows, (r) => r.name, (r) => Number(r.price||0))}
                 onRemoveItem={onRemoveItem} />}
-              {stepParam === 5 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
+              {stepParam === 6 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
                 onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
                 proposalCurrency={proposal?.currency || 'INR'} />}
-              {stepParam === 6 && <Step6Branding branding={branding} setBranding={setBranding} />}
-              {stepParam === 7 && <Step7Preview proposalId={proposal?.id} branding={branding} />}
+              {stepParam === 7 && <Step6Branding branding={branding} setBranding={setBranding} />}
+              {stepParam === 8 && <Step7Preview proposalId={proposal?.id} branding={branding} />}
             </>
           )}
 
@@ -343,9 +365,9 @@ export default function ProposalWizard() {
             </button>
             <span className="flex-1" />
             <span className="font-label-sm text-on-surface-variant uppercase tracking-widest mr-md">
-              Step {stepParam} / 7
+              Step {stepParam} / 8
             </span>
-            {stepParam < 7 && (
+            {stepParam < 8 && (
               <button onClick={onNext} disabled={saving} data-testid="wizard-next"
                 className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-60 flex items-center gap-xs">
                 Continue to {STEPS[stepParam].label}
@@ -386,8 +408,47 @@ function ProgressBar({ step, onJump }) {
 // ───────────────────────────────────────────────────────────────────────────
 // Step 1 — Client Information
 // ───────────────────────────────────────────────────────────────────────────
-function Step1({ client, setClient, itineraries = [], onApplyItinerary }) {
+function Step1({ client, setClient }) {
   const upd = (k) => (e) => setClient((s) => ({ ...s, [k]: e.target.value }));
+  
+  // Date auto-calc logic
+  const handleDateModeChange = (mode) => setClient((s) => ({ ...s, date_mode: mode }));
+  const handleStartChange = (e) => {
+    const val = e.target.value;
+    setClient((s) => {
+      const next = { ...s, start_date: val };
+      if (val && s.end_date) {
+        const ms = new Date(s.end_date).getTime() - new Date(val).getTime();
+        const nights = Math.max(1, Math.round(ms / 86400000));
+        next.duration_nights = nights;
+        next.duration_days = nights + 1;
+      }
+      return next;
+    });
+  };
+  const handleEndChange = (e) => {
+    const val = e.target.value;
+    setClient((s) => {
+      const next = { ...s, end_date: val };
+      if (val && s.start_date) {
+        const ms = new Date(val).getTime() - new Date(s.start_date).getTime();
+        const nights = Math.max(1, Math.round(ms / 86400000));
+        next.duration_nights = nights;
+        next.duration_days = nights + 1;
+      }
+      return next;
+    });
+  };
+  const handleDurationChange = (type) => (e) => {
+    const val = parseInt(e.target.value, 10) || 1;
+    setClient((s) => {
+      const next = { ...s, [type]: val };
+      if (type === 'duration_days') next.duration_nights = Math.max(1, val - 1);
+      if (type === 'duration_nights') next.duration_days = val + 1;
+      return next;
+    });
+  };
+
   return (
     <div className="glass-card rounded-xl p-lg space-y-md text-on-surface" data-testid="step-1">
       <h3 className="font-headline-sm text-headline-sm text-primary">Client Information</h3>
@@ -405,33 +466,89 @@ function Step1({ client, setClient, itineraries = [], onApplyItinerary }) {
         </div>
         <Field label="Email" type="email" value={client.email} onChange={upd('email')} testid="email" />
         <Field label="Destination" value={client.destination} onChange={upd('destination')} testid="destination" />
-        <Field label="Start Date" type="date" value={client.start_date} onChange={upd('start_date')} testid="start-date" />
-        <Field label="End Date"   type="date" value={client.end_date}   onChange={upd('end_date')}   testid="end-date" />
+        
+        {/* Date Options */}
+        <div className="col-span-1 md:col-span-2 border border-outline-variant p-md rounded-lg space-y-sm bg-surface-container-lowest">
+          <label className="font-label-md text-label-md text-on-surface font-semibold block">Travel Dates</label>
+          <div className="flex gap-md mb-xs">
+            <label className="flex items-center gap-xs cursor-pointer">
+              <input type="radio" checked={client.date_mode === 'dates'} onChange={() => handleDateModeChange('dates')} className="accent-primary" />
+              <span className="font-body-md">Option A: Start / End Dates</span>
+            </label>
+            <label className="flex items-center gap-xs cursor-pointer">
+              <input type="radio" checked={client.date_mode === 'days'} onChange={() => handleDateModeChange('days')} className="accent-primary" />
+              <span className="font-body-md">Option B: Number of Days</span>
+            </label>
+          </div>
+          
+          {client.date_mode === 'dates' ? (
+            <div className="flex gap-md">
+              <Field label="Start Date" type="date" value={client.start_date} onChange={handleStartChange} testid="start-date" extraClass="flex-1" />
+              <Field label="End Date"   type="date" value={client.end_date}   onChange={handleEndChange}   testid="end-date" extraClass="flex-1" />
+              <div className="flex-1 flex flex-col justify-end pb-sm">
+                <span className="font-label-md text-on-surface-variant">Auto-calculated: {client.duration_days} Days, {client.duration_nights} Nights</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-md">
+              <Field label="Number of Days" type="number" value={client.duration_days} onChange={handleDurationChange('duration_days')} testid="duration-days" extraClass="flex-1" />
+              <Field label="Number of Nights" type="number" value={client.duration_nights} onChange={handleDurationChange('duration_nights')} testid="duration-nights" extraClass="flex-1" />
+            </div>
+          )}
+        </div>
+
+        <Field label="Arrival City" value={client.arrival_city} onChange={upd('arrival_city')} testid="arrival-city" />
+        <Field label="Arrival Airport/Station" value={client.arrival_airport} onChange={upd('arrival_airport')} testid="arrival-airport" />
+        <Field label="Departure City" value={client.departure_city} onChange={upd('departure_city')} testid="departure-city" />
+        <Field label="Departure Airport/Station" value={client.departure_airport} onChange={upd('departure_airport')} testid="departure-airport" />
+
         <Field label="Adults"   type="number" value={client.num_adults}   onChange={upd('num_adults')}   testid="adults" />
         <Field label="Children" type="number" value={client.num_children} onChange={upd('num_children')} testid="children" />
         <Field label="Budget (max)" type="number" value={client.budget} onChange={upd('budget')} testid="budget" />
-        <div>
-          <label className="font-label-md text-label-md text-on-surface block mb-xs font-semibold">Reference Itinerary</label>
-          <div className="flex gap-sm">
-            <select value={client.itinerary_id || ''} onChange={upd('itinerary_id')} data-testid="ref-itinerary"
-              className="flex-1 px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
-              <option value="">— None —</option>
-              {itineraries.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.destination || 'No location'})</option>)}
-            </select>
-            {client.itinerary_id && onApplyItinerary && (
-              <button type="button" onClick={() => onApplyItinerary(client.itinerary_id)}
-                className="px-md bg-primary/10 text-primary font-bold text-xs rounded-lg border border-primary/20 hover:bg-primary/20">
-                Apply Schedule
-              </button>
-            )}
-          </div>
-        </div>
       </div>
       <div>
         <label className="font-label-md text-label-md text-on-surface block mb-xs">Special Notes</label>
         <textarea value={client.special_notes} onChange={upd('special_notes')} rows={3} data-testid="special-notes"
           className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
       </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Step 2 — Itinerary
+// ───────────────────────────────────────────────────────────────────────────
+function Step2Itinerary({ proposal, setProposal, reload, itineraries, onApplyItinerary, client }) {
+  const toast = useToast();
+  const upd = (k) => (e) => setClient((s) => ({ ...s, [k]: e.target.value }));
+  
+  return (
+    <div className="glass-card rounded-xl p-lg space-y-md text-on-surface" data-testid="step-2">
+      <h3 className="font-headline-sm text-headline-sm text-primary">Proposal Itinerary</h3>
+      <div>
+        <label className="font-label-md text-label-md text-on-surface block mb-xs font-semibold">Reference Itinerary</label>
+        <div className="flex gap-sm items-center">
+          <select value={client.itinerary_id || ''} onChange={(e) => onApplyItinerary(e.target.value)} data-testid="ref-itinerary"
+            className="flex-1 px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
+            <option value="">— None —</option>
+            {itineraries.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.destination || 'No location'})</option>)}
+          </select>
+        </div>
+        <p className="text-xs text-on-surface-variant mt-1">Select an itinerary to automatically populate days, hotels, and activities.</p>
+      </div>
+      
+      {proposal?.itinerary?.days?.length > 0 && (
+        <div className="mt-md space-y-sm">
+          <h4 className="font-label-lg text-on-surface font-semibold">Current Proposal Schedule</h4>
+          {proposal.itinerary.days.map((d, i) => (
+             <div key={i} className="p-sm border border-outline-variant rounded-lg bg-surface-container-lowest text-sm">
+               <strong>Day {d.day}: {d.title}</strong>
+               <p className="text-on-surface-variant line-clamp-2">{d.description}</p>
+             </div>
+          ))}
+          <p className="text-xs text-primary cursor-pointer hover:underline">Edit schedule (Coming soon)</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -554,11 +671,47 @@ function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem, 
         )}
       </div>
 
-      <DynamicTable
-        rows={rows} loading={loading}
-        selection={selection} onSelectionChange={setSelection}
-        emptyMessage={`No ${resource} yet — click Import to upload a supplier file.`}
-      />
+      {kind === 'hotel' ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
+          {loading ? (
+            <div className="col-span-3 text-center py-xl text-on-surface-variant">Loading hotels…</div>
+          ) : rows.length === 0 ? (
+            <div className="col-span-3 text-center py-xl text-on-surface-variant">No hotels yet — click Import to upload a supplier file.</div>
+          ) : rows.map(r => (
+            <label key={r.id} className={`cursor-pointer group flex flex-col rounded-xl border-2 transition-all overflow-hidden ${selection.has(r.id) ? 'border-primary ring-2 ring-primary/20 bg-primary-fixed/10' : 'border-outline-variant bg-white hover:border-primary/50'}`}>
+              <div className="h-32 bg-slate-100 relative">
+                {r.cover_image || r.image_url ? (
+                  <img src={r.cover_image || r.image_url} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-on-surface-variant">
+                    <span className="material-symbols-outlined text-[32px]">hotel</span>
+                  </div>
+                )}
+                <div className="absolute top-2 right-2">
+                  <input type="checkbox" checked={selection.has(r.id)} onChange={(e) => {
+                    const next = new Set(selection);
+                    if (e.target.checked) next.add(r.id); else next.delete(r.id);
+                    setSelection(next);
+                  }} className="w-5 h-5 accent-primary rounded-full border-white/50 cursor-pointer" />
+                </div>
+              </div>
+              <div className="p-md flex flex-col flex-1">
+                <span className="font-headline-sm text-primary font-bold line-clamp-1" title={r.name}>{r.name}</span>
+                <span className="text-xs text-on-surface-variant">{r.location || r.country || 'No location'} · {r.category || 'Hotel'}</span>
+                <span className="mt-auto pt-sm font-label-md font-bold text-on-surface">
+                  {formatINR(Number(r.price_per_night))} <span className="text-xs font-normal text-on-surface-variant">/ night</span>
+                </span>
+              </div>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <DynamicTable
+          rows={rows} loading={loading}
+          selection={selection} onSelectionChange={setSelection}
+          emptyMessage={`No ${resource} yet — click Import to upload a supplier file.`}
+        />
+      )}
 
       {ofKind.length > 0 && (
         <div className="glass-card rounded-xl overflow-hidden" data-testid={`${kind}-selected`}>

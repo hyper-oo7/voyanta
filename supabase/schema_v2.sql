@@ -62,7 +62,7 @@ create table if not exists public.proposal_items (
   label text not null,
   qty numeric default 1,
   unit_price numeric default 0,
-  currency text default 'USD',
+  currency text default 'INR',
   meta jsonb,
   position int default 0,
   created_at timestamptz default now()
@@ -73,24 +73,24 @@ alter table public.proposal_items disable row level security;
 -- 6) 2 SAMPLES per resource (testing only — agencies will upload their own) -
 insert into public.hotels (id, agency_id, name, location, country, category, rating, price_per_night, currency, supplier)
 values
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Hotel A','Paris','France','Boutique',4.6,420,'USD','sample'),
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Hotel B','Tokyo','Japan','Luxury',4.9,890,'USD','sample')
+  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Hotel A','Paris','France','Boutique',4.6,420,'INR','sample'),
+  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Hotel B','Tokyo','Japan','Luxury',4.9,890,'INR','sample')
 on conflict do nothing;
 
 insert into public.flights (id, agency_id, airline, class, origin, destination, depart_date, flight_no, cost, currency, supplier)
 values
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Air Sample','Business','JFK','CDG','2026-03-12','AS101',2150,'USD','sample'),
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Test Air','Economy','LHR','HND','2026-04-08','TA220', 980,'USD','sample')
+  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Air Sample','Business','JFK','CDG','2026-03-12','AS101',2150,'INR','sample'),
+  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Test Air','Economy','LHR','HND','2026-04-08','TA220', 980,'INR','sample')
 on conflict do nothing;
 
 insert into public.activities (id, agency_id, name, type, location, duration_hours, price, currency, description, supplier)
 values
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Walking Tour','tour','Paris',2,75,'USD','Sample activity for testing','sample'),
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Boat Excursion','excursion','Capri',4,180,'USD','Sample activity for testing','sample')
+  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Walking Tour','tour','Paris',2,75,'INR','Sample activity for testing','sample'),
+  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Boat Excursion','excursion','Capri',4,180,'INR','Sample activity for testing','sample')
 on conflict do nothing;
 
 insert into public.templates (id, agency_id, name, category, days, destination, price_from, currency, data)
 values
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Honeymoon Template','Romantic',7,'Bali',4500,'USD','{"days":[]}'::jsonb),
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Family Template','Family',10,'Tokyo',8200,'USD','{"days":[]}'::jsonb)
+  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Honeymoon Template','Romantic',7,'Bali',4500,'INR','{"days":[]}'::jsonb),
+  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Family Template','Family',10,'Tokyo',8200,'INR','{"days":[]}'::jsonb)
 on conflict do nothing;

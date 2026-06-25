@@ -46,37 +46,8 @@ export const flightsService    = makeResourceService('flights');
 export const activitiesService = makeResourceService('activities');
 export const templatesService  = makeResourceService('templates');
 
-export const itinerariesService = {
-  list: async () => {
-    if (!supabase) return [];
-    const { data, error } = await supabase.from('templates').select('*').eq('category', 'Standalone Itinerary').order('created_at', { ascending: false });
-    if (error) throw error;
-    return data || [];
-  },
-  get: async (id) => {
-    const { data, error } = await supabase.from('templates').select('*').eq('id', id).single();
-    if (error) throw error;
-    return data;
-  },
-  create: async (row) => {
-    const { data, error } = await supabase.from('templates').insert({
-      agency_id: DEFAULT_AGENCY_ID,
-      category: 'Standalone Itinerary',
-      ...row
-    }).select().single();
-    if (error) throw error;
-    return data;
-  },
-  update: async (id, patch) => {
-    const { data, error } = await supabase.from('templates').update(patch).eq('id', id).select().single();
-    if (error) throw error;
-    return data;
-  },
-  remove: async (id) => {
-    const { error } = await supabase.from('templates').delete().eq('id', id);
-    if (error) throw error;
-  }
-};
+export const itinerariesService = makeResourceService('itineraries');
+export const itineraryBlocksService = makeResourceService('itinerary_blocks');
 
 const DEFAULT_SETTINGS = {
   agency_name: 'Voyanta Demo Agency',
