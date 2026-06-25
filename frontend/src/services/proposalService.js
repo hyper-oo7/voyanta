@@ -44,12 +44,14 @@ export async function createProposal(payload) {
 }
 
 export async function updateProposal(id, patch) {
+  if (!supabase) throw new Error('Supabase not configured');
   const { data, error } = await supabase.from(TABLE).update(patch).eq('id', id).select().single();
   if (error) throw error;
   return normalize(data);
 }
 
 export async function deleteProposal(id) {
+  if (!supabase) throw new Error('Supabase not configured');
   const { error } = await supabase.from(TABLE).delete().eq('id', id);
   if (error) throw error;
 }

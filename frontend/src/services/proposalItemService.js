@@ -21,12 +21,14 @@ export async function addItem(proposalId, item) {
 }
 
 export async function updateItem(id, patch) {
+  if (!supabase) throw new Error('Supabase not configured');
   const { data, error } = await supabase.from('proposal_items').update(patch).eq('id', id).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function removeItem(id) {
+  if (!supabase) throw new Error('Supabase not configured');
   const { error } = await supabase.from('proposal_items').delete().eq('id', id);
   if (error) throw error;
 }
