@@ -9,6 +9,8 @@ import navMap from '../lib/navMap.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
+import LogoUploader from '../components/LogoUploader.jsx';
+import { FONT_CATALOG } from '../lib/fonts.js';
 import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
 
 export default function AgencyBrandingPage() {
@@ -20,6 +22,7 @@ export default function AgencyBrandingPage() {
     agency_name: '', logo_url: '', address: '',
     contact_email: '', contact_phone: '', website: '', primary_color: '#0b1c30',
     social_facebook: '', social_instagram: '', social_linkedin: '',
+    font_family: '',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -42,6 +45,7 @@ export default function AgencyBrandingPage() {
           social_facebook:  social.facebook  || '',
           social_instagram: social.instagram || '',
           social_linkedin:  social.linkedin  || '',
+          font_family: data.font_family || data.preferences?.font_family || '',
         });
       }
     } catch (e) { toast.error(e.message); }
@@ -71,6 +75,7 @@ export default function AgencyBrandingPage() {
           instagram: b.social_instagram,
           linkedin: b.social_linkedin,
         },
+        font_family: b.font_family || null,
       };
       // Try full update first; if columns missing, fall back to safe subset + preferences jsonb
       let { error } = await supabase.from('agencies').update(patch).eq('id', DEFAULT_AGENCY_ID);
@@ -130,7 +135,20 @@ export default function AgencyBrandingPage() {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
                 <Field label="Agency Name" value={b.agency_name} onChange={upd('agency_name')} testid="brand-name" />
-                <Field label="Logo URL"    value={b.logo_url}    onChange={upd('logo_url')}    testid="brand-logo" />
+                <div className="flex flex-col gap-xs">
+                  <span className="font-label-md text-label-md text-on-surface">Brand Font</span>
+                  <select value={b.font_family} onChange={upd('font_family')} data-testid="brand-font"
+                    className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md"
+                    style={{ fontFamily: b.font_family || undefined }}>
+                    <option value="">— Use template default —</option>
+                    {FONT_CATALOG.map((f) => (
+                      <option key={f.key} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <LogoUploader value={b.logo_url} onChange={(v) => setB((s) => ({ ...s, logo_url: v }))} label="Agency Logo" testid="brand-logo-uploader" folder="logos" />
+                </div>
                 <Field label="Address"     value={b.address}     onChange={upd('address')}     testid="brand-address" />
                 <Field label="Primary Color" type="color" value={b.primary_color} onChange={upd('primary_color')} testid="brand-color" />
                 <Field label="Contact Email" type="email" value={b.contact_email} onChange={upd('contact_email')} testid="brand-email" />

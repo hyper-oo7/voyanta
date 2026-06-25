@@ -1,9 +1,11 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Request, HTTPException
+from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import httpx
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List
@@ -65,6 +67,44 @@ async def get_status_checks():
             check['timestamp'] = datetime.fromisoformat(check['timestamp'])
     
     return status_checks
+
+
+# ── PDF proxy ─────────────────────────────────────────────────────────────
+# Forwards proposal export JSON to the Node Puppeteer service running on
+# PDF_SERVICE_URL (default http://localhost:8002) and streams the resulting
+# PDF back to the browser. Keeping this in FastAPI avoids any CORS or
+# ingress-port issues because the React app only ever talks to /api/*.
+PDF_SERVICE_URL = os.environ.get('PDF_SERVICE_URL', 'http://localhost:8002')
+
+@api_router.get("/pdf/health")
+async def pdf_health():
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as c:
+            r = await c.get(f"{PDF_SERVICE_URL}/health")
+            return {"upstream_status": r.status_code, "upstream": r.json()}
+    except Exception as e:
+        return {"upstream_status": 0, "error": str(e)}
+
+@api_router.post("/pdf/generate")
+async def pdf_generate(request: Request):
+    payload = await request.json()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as c:
+            r = await c.post(f"{PDF_SERVICE_URL}/generate", json=payload)
+        if r.status_code != 200:
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        proposal_name = (payload.get('proposal') or {}).get('name') or 'proposal'
+        safe = ''.join(ch if ch.isalnum() or ch in ('.', '_', '-') else '-' for ch in proposal_name)
+        return Response(
+            content=r.content,
+            media_type='application/pdf',
+            headers={'Content-Disposition': f'attachment; filename="{safe}.pdf"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('pdf proxy failed')
+        raise HTTPException(status_code=502, detail=f'PDF service unreachable: {e}')
 
 # Include the router in the main app
 app.include_router(api_router)

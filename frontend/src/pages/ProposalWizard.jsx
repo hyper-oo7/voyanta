@@ -28,6 +28,8 @@ import {
 } from '../services/proposalItemService.js';
 import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
 import TemplateRenderer, { ALL as ALL_SECTIONS, ExportOptionsBar } from '../components/TemplateRenderer.jsx';
+import LogoUploader from '../components/LogoUploader.jsx';
+import { FONT_CATALOG } from '../lib/fonts.js';
 import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
 
 const STEPS = [
@@ -68,7 +70,7 @@ export default function ProposalWizard() {
     social_facebook: '', social_instagram: '', social_linkedin: '',
     cover_image_url: '', highlights: '',
     inclusions: '', exclusions: '', terms_of_payment: '',
-    primary_color: '#0b1c30', template_style: 'elegant',
+    primary_color: '#0b1c30', template_style: 'elegant', font_family: '',
   });
 
   // Pre-load agency-level branding on first wizard open (only if proposal has no branding yet).
@@ -88,6 +90,7 @@ export default function ProposalWizard() {
           contact_phone: b.contact_phone || data.contact_phone || '',
           website:     b.website     || data.website || '',
           primary_color: b.primary_color || data.primary_color || '#0b1c30',
+          font_family: b.font_family || data.font_family || '',
           social_facebook:  b.social_facebook  || social.facebook  || '',
           social_instagram: b.social_instagram || social.instagram || '',
           social_linkedin:  b.social_linkedin  || social.linkedin  || '',
@@ -218,20 +221,36 @@ export default function ProposalWizard() {
   const onPrev = () => goStep(Math.max(1, stepParam - 1));
 
   // ---- Items helpers used by 2/3/4/5 -------------------------------------
-  const sanitizeCurrency = (v) => /^[A-Z]{3}$/.test(String(v || '').toUpperCase()) ? String(v).toUpperCase() : (proposal?.currency || 'USD');
+  const sanitizeCurrency = (v) => /^[A-Z]{3}$/.test(String(v || '').toUpperCase()) ? String(v).toUpperCase() : (proposal?.currency || 'INR');
+  const nights = useMemo(() => {
+    const a = proposal?.start_date || client.start_date;
+    const b = proposal?.end_date   || client.end_date;
+    if (!a || !b) return 1;
+    const ms = new Date(b).getTime() - new Date(a).getTime();
+    const n = Math.round(ms / (1000 * 60 * 60 * 24));
+    return n > 0 ? n : 1;
+  }, [proposal?.start_date, proposal?.end_date, client.start_date, client.end_date]);
+  const travelers = useMemo(() => {
+    const t = (parseInt(client.num_adults, 10) || 0) + (parseInt(client.num_children, 10) || 0);
+    return t > 0 ? t : (proposal?.travelers || 1);
+  }, [client.num_adults, client.num_children, proposal?.travelers]);
+
+  const defaultQtyFor = (kind) => kind === 'hotel' ? nights : (kind === 'flight' || kind === 'activity' ? travelers : 1);
+
   const addItemsToProposal = async (kind, rows, toLabel, toUnit) => {
     if (!proposal?.id) { toast.error('Save the client info first'); return; }
     try {
+      const qty = defaultQtyFor(kind);
       for (const r of rows) {
         await addItem(proposal.id, {
           kind, ref_id: r.id, label: toLabel(r),
-          qty: 1, unit_price: toUnit(r),
+          qty, unit_price: toUnit(r),
           currency: sanitizeCurrency(r.currency),
-          meta: { source: kind + 's' },
+          meta: { source: kind + 's', auto_qty_basis: kind === 'hotel' ? 'nights' : (kind === 'flight' || kind === 'activity' ? 'travelers' : 'one') },
         });
       }
       const its = await listItems(proposal.id); setItems(its);
-      toast.success(`Added ${rows.length} ${kind}(s)`);
+      toast.success(`Added ${rows.length} ${kind}(s) · qty ${qty}`);
     } catch (e) { toast.error(e.message); }
   };
 
@@ -273,7 +292,7 @@ export default function ProposalWizard() {
                 onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
                 proposalCurrency={proposal?.currency || 'USD'} />}
               {stepParam === 6 && <Step6Branding branding={branding} setBranding={setBranding} />}
-              {stepParam === 7 && <Step7Preview proposalId={proposal?.id} />}
+              {stepParam === 7 && <Step7Preview proposalId={proposal?.id} branding={branding} />}
             </>
           )}
 
@@ -452,23 +471,36 @@ function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem }
 // ───────────────────────────────────────────────────────────────────────────
 const KINDS = ['transfer', 'visa', 'tax', 'margin', 'custom'];
 
-function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, proposalCurrency = 'USD' }) {
+function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, proposalCurrency = 'INR' }) {
   const total = useMemo(() => items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0), [items]);
   const byKind = useMemo(() => {
     const m = {}; items.forEach((it) => { m[it.kind] = (m[it.kind]||0) + (Number(it.qty)||0)*(Number(it.unit_price)||0); });
     return m;
   }, [items]);
+  const mixedCurrency = useMemo(() => {
+    const set = new Set(items.map((it) => (it.currency || proposalCurrency).toUpperCase()).filter(Boolean));
+    set.add(proposalCurrency);
+    return set.size > 1 ? Array.from(set) : null;
+  }, [items, proposalCurrency]);
 
   const onAdd = async (kind) => {
     if (!proposalId) return;
     try {
-      const it = await addItem(proposalId, { kind, label: `New ${kind}`, qty: 1, unit_price: 0, currency: 'INR' });
+      const it = await addItem(proposalId, { kind, label: `New ${kind}`, qty: 1, unit_price: 0, currency: proposalCurrency });
       setItems((s) => [...s, it]);
-    } catch {}
+    } catch { /* surfaced upstream */ }
   };
 
   return (
     <div className="space-y-md" data-testid="step-costing">
+      {mixedCurrency && (
+        <div className="glass-card p-md rounded-xl flex items-start gap-md border-l-4 border-amber-500" data-testid="costing-currency-warning">
+          <span className="material-symbols-outlined text-amber-600">warning</span>
+          <div className="flex-1 font-label-md text-on-surface">
+            Items are in mixed currencies ({mixedCurrency.join(', ')}). The total below is a numeric sum — set every line to <strong>{proposalCurrency}</strong> for an accurate proposal total.
+          </div>
+        </div>
+      )}
       <div className="glass-card rounded-xl overflow-hidden">
         <div className="px-lg py-md border-b border-outline-variant flex items-center gap-md flex-wrap">
           <h3 className="font-headline-sm text-headline-sm text-primary flex-1">Cost Breakdown</h3>
@@ -487,7 +519,7 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, 
             ))}</tr>
           </thead>
           <tbody className="divide-y divide-surface-container">
-            {items.length === 0 && <tr><td colSpan={6} className="px-lg py-xl text-center text-on-surface-variant" data-testid="costing-empty">No items yet — add hotels / flights / activities or use "+ Add line".</td></tr>}
+            {items.length === 0 && <tr><td colSpan={6} className="px-lg py-xl text-center text-on-surface-variant" data-testid="costing-empty">No items yet — add hotels / flights / activities or use &ldquo;+ Add line&rdquo;.</td></tr>}
             {items.map((it) => (
               <tr key={it.id} data-testid={`cost-row-${it.id}`}>
                 <td className="px-lg py-md font-label-md uppercase text-label-sm tracking-widest">{it.kind}</td>
@@ -510,7 +542,7 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, 
                     className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
                 </td>
                 <td className="px-lg py-md font-label-md text-primary">
-                  {((Number(it.qty)||0) * (Number(it.unit_price)||0)).toFixed(2)} {it.currency}
+                  {((Number(it.qty)||0) * (Number(it.unit_price)||0)).toFixed(2)} {it.currency || proposalCurrency}
                 </td>
                 <td className="px-lg py-md text-right">
                   <button onClick={() => onRemoveItem(it.id)} className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
@@ -540,7 +572,12 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, 
 // Step 6 — Branding
 // ───────────────────────────────────────────────────────────────────────────
 function Step6Branding({ branding, setBranding }) {
+  const toast = useToast();
   const upd = (k) => (e) => setBranding((s) => ({ ...s, [k]: e.target.value }));
+  const aiDraft = (field, label) => () => {
+    // Stubbed AI helper — wiring to Emergent LLM is planned for a follow-up.
+    toast.info(`AI ${label} draft coming soon — for now, type your own.`);
+  };
   return (
     <div className="glass-card rounded-xl p-lg space-y-md" data-testid="step-branding">
       <h3 className="font-headline-sm text-headline-sm text-primary">Agency Branding & Template</h3>
@@ -554,12 +591,25 @@ function Step6Branding({ branding, setBranding }) {
             <option value="light">Light & Friendly</option>
           </select>
         </div>
+        <div>
+          <label className="font-label-md text-label-md text-on-surface block mb-xs">Font Family</label>
+          <select value={branding.font_family} onChange={upd('font_family')} data-testid="brand-font"
+            className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md"
+            style={{ fontFamily: branding.font_family || undefined }}>
+            <option value="">— Template default —</option>
+            {FONT_CATALOG.map((f) => (
+              <option key={f.key} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
+            ))}
+          </select>
+        </div>
         <Field label="Primary Color" type="color" value={branding.primary_color} onChange={upd('primary_color')} testid="brand-color" />
-        <Field label="Cover Image URL" value={branding.cover_image_url} onChange={upd('cover_image_url')} testid="brand-cover" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+        <LogoUploader value={branding.logo_url} onChange={(v) => setBranding((s) => ({ ...s, logo_url: v }))} label="Agency Logo" testid="brand-logo-uploader" folder="logos" />
+        <LogoUploader value={branding.cover_image_url} onChange={(v) => setBranding((s) => ({ ...s, cover_image_url: v }))} label="Cover Image" testid="brand-cover-uploader" folder="covers" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
         <Field label="Agency Name" value={branding.agency_name} onChange={upd('agency_name')} testid="brand-name" />
-        <Field label="Logo URL"    value={branding.logo_url}    onChange={upd('logo_url')}    testid="brand-logo" />
         <Field label="Address"     value={branding.address}     onChange={upd('address')}     testid="brand-address" />
         <Field label="Contact Email" type="email" value={branding.contact_email} onChange={upd('contact_email')} testid="brand-email" />
         <Field label="Contact Phone" value={branding.contact_phone} onChange={upd('contact_phone')} testid="brand-phone" />
@@ -569,11 +619,28 @@ function Step6Branding({ branding, setBranding }) {
         <Field label="LinkedIn"  value={branding.social_linkedin}  onChange={upd('social_linkedin')}  testid="brand-li" />
       </div>
       <Textarea label="Highlights" value={branding.highlights} onChange={upd('highlights')} testid="brand-highlights" placeholder="Bullet points of the trip's standout moments…" />
-      <Textarea label="What's Included (optional)" value={branding.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" />
-      <Textarea label="What's Excluded (optional)" value={branding.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" />
-      <Textarea label="Terms of Payment (optional)" value={branding.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" />
+      <TextareaWithAI label="What's Included" value={branding.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" onAI={aiDraft('inclusions', 'inclusions')} />
+      <TextareaWithAI label="What's Excluded" value={branding.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" onAI={aiDraft('exclusions', 'exclusions')} />
+      <TextareaWithAI label="Terms of Payment" value={branding.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" onAI={aiDraft('terms_of_payment', 'terms')} />
       <p className="font-label-sm text-on-surface-variant">Branding is stored on this proposal and used in the preview & export. Defaults are inherited from your Agency Branding page.</p>
     </div>
+  );
+}
+
+function TextareaWithAI({ label, value, onChange, testid, onAI }) {
+  return (
+    <label className="flex flex-col gap-xs">
+      <span className="flex items-center justify-between font-label-md text-label-md text-on-surface">
+        <span>{label}</span>
+        <button type="button" onClick={onAI} data-testid={`${testid}-ai`}
+          className="inline-flex items-center gap-xs px-md py-xs bg-primary/10 text-primary rounded-full font-label-sm hover:bg-primary/15">
+          <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+          Draft with AI
+        </button>
+      </span>
+      <textarea value={value ?? ''} onChange={onChange} rows={3} data-testid={testid}
+        className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
+    </label>
   );
 }
 
@@ -596,6 +663,7 @@ function Step7Preview({ proposalId, branding }) {
   const [include, setInclude] = useState(ALL_SECTIONS);
   const [exportOpen, setExportOpen] = useState(false);
   const [style, setStyle] = useState(branding?.template_style || 'elegant');
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => { setStyle(branding?.template_style || 'elegant'); }, [branding?.template_style]);
 
@@ -603,17 +671,45 @@ function Step7Preview({ proposalId, branding }) {
     (async () => { if (!proposalId) return; try { setJson(await buildProposalExport(proposalId)); } catch (e) { toast.error(e.message); } })();
   }, [proposalId, toast]);
 
-  const onDownload = () => {
-    if (!json) return;
-    // Embed the active branding + include map + chosen style so downstream
-    // generators have everything they need.
-    const envelope = { ...json, presentation: { style, include }, branding };
+  const buildEnvelope = useCallback(() => {
+    if (!json) return null;
+    return { ...json, presentation: { style, include }, branding };
+  }, [json, style, include, branding]);
+
+  const onDownloadJson = () => {
+    const envelope = buildEnvelope(); if (!envelope) return;
     const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
     a.download = `proposal-${json.proposal?.name || proposalId}.json`;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     toast.success('Proposal JSON exported');
+  };
+
+  const onGeneratePdf = async () => {
+    const envelope = buildEnvelope(); if (!envelope) return;
+    setGenerating(true);
+    try {
+      // Relative URL — resolves to same external host (kubernetes ingress
+      // routes /api/* to the FastAPI backend which proxies to the Node service).
+      const res = await fetch('/api/pdf/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(envelope),
+      });
+      if (!res.ok) throw new Error(`PDF service responded ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url;
+      const safe = String(json.proposal?.name || 'proposal').replace(/[^a-z0-9._-]+/gi, '-');
+      a.download = `${safe}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      toast.success('PDF generated');
+    } catch (e) { toast.error(e.message || 'PDF generation failed'); }
+    finally { setGenerating(false); }
+  };
+
+  const onPrint = () => {
+    // Trigger native print of the preview area only (print CSS targets .a4-paper).
+    window.print();
   };
 
   if (!proposalId) return <div className="glass-card p-xl rounded-xl text-center text-on-surface-variant" data-testid="preview-no-proposal">Save the client step first.</div>;
@@ -624,7 +720,7 @@ function Step7Preview({ proposalId, branding }) {
 
   return (
     <div className="space-y-md" data-testid="step-preview">
-      <div className="glass-card p-md rounded-xl flex items-center gap-md flex-wrap">
+      <div className="glass-card p-md rounded-xl flex items-center gap-md flex-wrap no-print">
         <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest">Template</span>
         <select value={style} onChange={(e) => setStyle(e.target.value)} data-testid="preview-style"
           className="px-md py-sm bg-white border border-outline-variant rounded-lg font-body-md">
@@ -635,28 +731,29 @@ function Step7Preview({ proposalId, branding }) {
         <span className="font-label-sm text-on-surface-variant flex-1" data-testid="preview-total">{Number(json.totals.subtotal||0).toFixed(2)} {json.totals.currency}</span>
         <button onClick={() => setExportOpen(true)} data-testid="open-export-modal"
           className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">tune</span> Export options
+          <span className="material-symbols-outlined text-[18px]">tune</span> Sections
         </button>
-        <button onClick={onDownload} data-testid="export-json"
-          className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">download</span> Export JSON
+        <button onClick={onDownloadJson} data-testid="export-json"
+          className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
+          <span className="material-symbols-outlined text-[18px]">code</span> Export JSON
         </button>
-        <button data-testid="generate-pdf" disabled
-          className="px-lg py-md border border-outline-variant rounded-lg font-label-md opacity-60 cursor-not-allowed">
-          <span className="material-symbols-outlined text-[18px] mr-xs">picture_as_pdf</span>PDF (soon)
+        <button onClick={onPrint} data-testid="print-preview"
+          className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
+          <span className="material-symbols-outlined text-[18px]">print</span> Print
         </button>
-        <button data-testid="generate-ppt" disabled
-          className="px-lg py-md border border-outline-variant rounded-lg font-label-md opacity-60 cursor-not-allowed">
-          <span className="material-symbols-outlined text-[18px] mr-xs">slideshow</span>PPT (soon)
+        <button onClick={onGeneratePdf} disabled={generating} data-testid="generate-pdf"
+          className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-60 flex items-center gap-xs">
+          <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
+          {generating ? 'Generating…' : 'Generate PDF'}
         </button>
       </div>
 
-      <div className="rounded-xl overflow-hidden shadow-xl" data-testid="proposal-preview">
+      <A4Preview data-testid="proposal-preview">
         <TemplateRenderer style={style} data={merged} include={include} />
-      </div>
+      </A4Preview>
 
       {exportOpen && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm"
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm no-print"
              data-testid="export-modal" onClick={(e) => e.target === e.currentTarget && setExportOpen(false)}>
           <div className="bg-surface-container-lowest w-full max-w-2xl rounded-xl shadow-2xl border border-outline-variant p-lg space-y-md">
             <div className="flex items-center justify-between">
@@ -673,6 +770,31 @@ function Step7Preview({ proposalId, branding }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// A4 paper wrapper that gives the preview visible page margins (Google-Docs feel)
+// and applies print CSS so users can ⌘P / Ctrl-P directly from the preview.
+function A4Preview({ children }) {
+  return (
+    <div className="a4-host overflow-auto py-lg" data-testid="a4-preview">
+      <div className="a4-paper mx-auto shadow-2xl rounded-md overflow-hidden bg-white">
+        {children}
+      </div>
+      <style>{`
+        .a4-host { background: linear-gradient(180deg, #e9eef5 0%, #dfe5ee 100%); border-radius: 12px; padding: 32px 0; }
+        .a4-paper { width: 210mm; min-height: 297mm; box-shadow: 0 20px 60px rgba(11,28,48,0.18); }
+        @media print {
+          @page { size: A4; margin: 0; }
+          html, body, #root { background: white !important; }
+          body * { visibility: hidden; }
+          [data-testid="a4-preview"], [data-testid="a4-preview"] * { visibility: visible; }
+          [data-testid="a4-preview"] { position: absolute; left: 0; top: 0; padding: 0; background: white; }
+          .a4-paper { box-shadow: none !important; width: 210mm; min-height: 297mm; }
+          .no-print { display: none !important; }
+        }
+      `}</style>
     </div>
   );
 }

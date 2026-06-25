@@ -1,0 +1,90 @@
+// LogoUploader — image input that uploads to Supabase Storage (bucket: agency-assets)
+// and returns a public URL. If the bucket isn't configured (RLS / 404), falls back
+// to inlining the file as a base64 data URL so branding still works in dev.
+
+import { useRef, useState } from 'react';
+import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
+
+const BUCKET = 'agency-assets';
+const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+
+export default function LogoUploader({ value, onChange, label = 'Logo', testid = 'logo-uploader', folder = 'logos' }) {
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const onPick = () => fileRef.current?.click();
+  const onClear = () => onChange('');
+
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setErr('Only image files'); return; }
+    if (file.size > MAX_BYTES)           { setErr('Max 5 MB'); return; }
+    setErr(''); setBusy(true);
+    try {
+      const url = await uploadOrEmbed(file, folder);
+      onChange(url);
+    } catch (e2) {
+      setErr(e2.message || 'Upload failed');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex flex-col gap-xs" data-testid={testid}>
+      <span className="font-label-md text-label-md text-on-surface">{label}</span>
+      <div className="flex items-center gap-md">
+        <div className="w-20 h-20 rounded-lg border border-outline-variant bg-white overflow-hidden flex items-center justify-center flex-shrink-0">
+          {value
+            ? <img src={value} alt="Logo" className="max-w-full max-h-full object-contain" data-testid={`${testid}-preview`} />
+            : <span className="material-symbols-outlined text-on-surface-variant text-[28px]">image</span>}
+        </div>
+        <div className="flex-1 flex flex-col gap-xs">
+          <div className="flex gap-xs flex-wrap">
+            <button type="button" onClick={onPick} disabled={busy} data-testid={`${testid}-pick`}
+              className="px-md py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low disabled:opacity-60">
+              {busy ? 'Uploading…' : (value ? 'Replace image' : 'Upload image')}
+            </button>
+            {value && (
+              <button type="button" onClick={onClear} data-testid={`${testid}-clear`}
+                className="px-md py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">
+                Remove
+              </button>
+            )}
+          </div>
+          <input type="text" placeholder="…or paste an image URL"
+            value={value || ''} onChange={(e) => onChange(e.target.value)}
+            data-testid={`${testid}-url`}
+            className="px-md py-sm bg-white border border-outline-variant rounded-lg font-body-sm" />
+          {err && <span className="font-label-sm text-error" data-testid={`${testid}-err`}>{err}</span>}
+        </div>
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} data-testid={`${testid}-input`} />
+    </div>
+  );
+}
+
+async function uploadOrEmbed(file, folder) {
+  if (supabase) {
+    try {
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const path = `${folder}/${DEFAULT_AGENCY_ID}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+        cacheControl: '3600', upsert: false, contentType: file.type,
+      });
+      if (!error) {
+        const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+        if (data?.publicUrl) return data.publicUrl;
+      }
+      // fallthrough on error → embed
+    } catch { /* fallthrough */ }
+  }
+  // Fallback: embed as data URL.
+  return await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ''));
+    r.onerror = () => reject(new Error('Read failed'));
+    r.readAsDataURL(file);
+  });
+}
