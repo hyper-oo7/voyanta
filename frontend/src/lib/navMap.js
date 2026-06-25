@@ -18,7 +18,7 @@ const NAV_MAP = {
   'Cost Calculator': '/cost-calculator',
   'Branding': '/branding',
   'Agency Branding': '/branding',
-  'Settings': '/branding',
+  'Settings': '/settings',
   'Voyanta': '/dashboard',
 
   // ── Cross-page nav buttons ─────────────────────────────────────────────
@@ -87,7 +87,6 @@ export const COMING_SOON_LABELS = new Set([
   'Edit Profile Preferences',
   'Explore Destination Pack',
   'Try Beta Feature',
-  'Continue with Google',
   'Clear Selection',
 ]);
 

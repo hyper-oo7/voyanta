@@ -65,6 +65,18 @@ export function AuthProvider({ children }) {
     if (error) throw error;
   }, []);
 
+  const signInWithProvider = useCallback(async (provider) => {
+    if (!supabase) throw new Error('Supabase not configured');
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`,
+      },
+    });
+    if (error) throw error;
+    return data;
+  }, []);
+
   const enterDemoMode = useCallback(() => {
     localStorage.setItem(DEMO_KEY, '1');
     setUser(DEMO_USER);
@@ -78,6 +90,7 @@ export function AuthProvider({ children }) {
     demoEnabled: DEMO_MODE,
     signUp,
     signIn,
+    signInWithProvider,
     signOut,
     resetPassword,
     enterDemoMode,

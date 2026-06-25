@@ -19,16 +19,18 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { useProposalBuilder } from '../context/ProposalBuilderContext.jsx';
 import { COUNTRY_CODES, DEFAULT_COUNTRY } from '../lib/countries.js';
+import { formatINR } from '../lib/currency.js';
 import {
   fetchProposalById, createProposal, updateProposal,
 } from '../services/proposalService.js';
-import { hotelsService, flightsService, activitiesService } from '../services/resourceService.js';
+import { hotelsService, flightsService, activitiesService, itinerariesService } from '../services/resourceService.js';
 import {
   listItems, addItem, removeItem, updateItem, buildProposalExport,
 } from '../services/proposalItemService.js';
 import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
 import TemplateRenderer, { ALL as ALL_SECTIONS, ExportOptionsBar } from '../components/TemplateRenderer.jsx';
 import LogoUploader from '../components/LogoUploader.jsx';
+import ColorPicker from '../components/ColorPicker.jsx';
 import { FONT_CATALOG } from '../lib/fonts.js';
 import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
 
@@ -57,13 +59,25 @@ export default function ProposalWizard() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [itineraries, setItineraries] = useState([]);
 
   // Local form state — initialised from proposal when it loads
   const [client, setClient] = useState({
     customer_name: '', phone: '', country: DEFAULT_COUNTRY, email: '',
     destination: '', start_date: '', end_date: '',
     num_adults: 1, num_children: 0, budget: '', special_notes: '',
+    itinerary_id: '',
   });
+
+  // Load itineraries on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await itinerariesService.list();
+        setItineraries(list);
+      } catch { /* ignore */ }
+    })();
+  }, []);
   const [branding, setBranding] = useState({
     agency_name: 'Voyanta', logo_url: '', address: '',
     contact_email: '', contact_phone: '', website: '',
@@ -121,6 +135,7 @@ export default function ProposalWizard() {
             num_children: b.num_children ?? 0,
             budget: p.budget_max ?? '',
             special_notes: b.special_notes || '',
+            itinerary_id: b.itinerary_id || '',
           });
           if (p.preferences?.branding) setBranding((s) => ({ ...s, ...p.preferences.branding }));
         }
@@ -186,11 +201,34 @@ export default function ProposalWizard() {
         num_adults: parseInt(c.num_adults, 10) || 0,
         num_children: parseInt(c.num_children, 10) || 0,
         special_notes: c.special_notes,
+        itinerary_id: c.itinerary_id || null,
       },
       preferences: { ...(proposal?.preferences || {}), branding },
       status: proposal?.status || 'Draft',
     };
   }, [client, branding, proposal]);
+
+  const onApplyItinerary = useCallback(async (itinId) => {
+    if (!itinId) return;
+    const selectedItin = itineraries.find((it) => it.id === itinId);
+    if (!selectedItin) return;
+    if (!confirm('Applying this schedule will overwrite the current proposal itinerary days. Continue?')) return;
+    if (!proposal?.id) {
+      toast.error('Save the client info first');
+      return;
+    }
+    try {
+      const updated = await updateProposal(proposal.id, {
+        itinerary: { days: selectedItin.data?.days || [] },
+        destination: proposal.destination || selectedItin.destination || null,
+      });
+      setProposal(updated);
+      toast.success('Itinerary schedule applied to proposal');
+      reload(proposal.id);
+    } catch (err) {
+      toast.error(err.message || 'Failed to apply schedule');
+    }
+  }, [itineraries, proposal, reload, toast]);
 
   const saveDraft = useCallback(async (silent = false) => {
     setSaving(true);
@@ -278,10 +316,10 @@ export default function ProposalWizard() {
             <div className="glass-card p-xl rounded-xl text-center">Loading…</div>
           ) : (
             <>
-              {stepParam === 1 && <Step1 client={client} setClient={setClient} />}
+              {stepParam === 1 && <Step1 client={client} setClient={setClient} itineraries={itineraries} onApplyItinerary={onApplyItinerary} />}
               {stepParam === 2 && <ResourceStep kind="hotel"    service={hotelsService}     resource="hotels"     items={items}
                 addItems={(rows) => addItemsToProposal('hotel',  rows, (r) => r.name, (r) => Number(r.price_per_night||0))}
-                onRemoveItem={onRemoveItem} />}
+                onRemoveItem={onRemoveItem} onPatchItem={onPatchItem} />}
               {stepParam === 3 && <ResourceStep kind="flight"   service={flightsService}    resource="flights"    items={items}
                 addItems={(rows) => addItemsToProposal('flight', rows, (r) => `${r.airline||'Flight'} ${r.flight_no||''} ${r.origin||''}→${r.destination||''}`.trim(), (r) => Number(r.cost||0))}
                 onRemoveItem={onRemoveItem} />}
@@ -290,7 +328,7 @@ export default function ProposalWizard() {
                 onRemoveItem={onRemoveItem} />}
               {stepParam === 5 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
                 onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
-                proposalCurrency={proposal?.currency || 'USD'} />}
+                proposalCurrency={proposal?.currency || 'INR'} />}
               {stepParam === 6 && <Step6Branding branding={branding} setBranding={setBranding} />}
               {stepParam === 7 && <Step7Preview proposalId={proposal?.id} branding={branding} />}
             </>
@@ -348,10 +386,10 @@ function ProgressBar({ step, onJump }) {
 // ───────────────────────────────────────────────────────────────────────────
 // Step 1 — Client Information
 // ───────────────────────────────────────────────────────────────────────────
-function Step1({ client, setClient }) {
+function Step1({ client, setClient, itineraries = [], onApplyItinerary }) {
   const upd = (k) => (e) => setClient((s) => ({ ...s, [k]: e.target.value }));
   return (
-    <div className="glass-card rounded-xl p-lg space-y-md" data-testid="step-1">
+    <div className="glass-card rounded-xl p-lg space-y-md text-on-surface" data-testid="step-1">
       <h3 className="font-headline-sm text-headline-sm text-primary">Client Information</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
         <Field label="Customer Name *" value={client.customer_name} onChange={upd('customer_name')} testid="customer-name" />
@@ -372,6 +410,22 @@ function Step1({ client, setClient }) {
         <Field label="Adults"   type="number" value={client.num_adults}   onChange={upd('num_adults')}   testid="adults" />
         <Field label="Children" type="number" value={client.num_children} onChange={upd('num_children')} testid="children" />
         <Field label="Budget (max)" type="number" value={client.budget} onChange={upd('budget')} testid="budget" />
+        <div>
+          <label className="font-label-md text-label-md text-on-surface block mb-xs font-semibold">Reference Itinerary</label>
+          <div className="flex gap-sm">
+            <select value={client.itinerary_id || ''} onChange={upd('itinerary_id')} data-testid="ref-itinerary"
+              className="flex-1 px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
+              <option value="">— None —</option>
+              {itineraries.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.destination || 'No location'})</option>)}
+            </select>
+            {client.itinerary_id && onApplyItinerary && (
+              <button type="button" onClick={() => onApplyItinerary(client.itinerary_id)}
+                className="px-md bg-primary/10 text-primary font-bold text-xs rounded-lg border border-primary/20 hover:bg-primary/20">
+                Apply Schedule
+              </button>
+            )}
+          </div>
+        </div>
       </div>
       <div>
         <label className="font-label-md text-label-md text-on-surface block mb-xs">Special Notes</label>
@@ -396,7 +450,72 @@ function Field({ label, value, onChange, type = 'text', testid, extraClass = '' 
 // Steps 2/3/4 — Resource picker (Hotels / Flights / Activities)
 // Reuses DynamicTable + ImportModal. Shows already-added items with delete.
 // ───────────────────────────────────────────────────────────────────────────
-function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem }) {
+function SelectedHotelItem({ it, onRemoveItem, onPatchItem }) {
+  const [hotelRecord, setHotelRecord] = useState(null);
+
+  useEffect(() => {
+    if (it.ref_id) {
+      hotelsService.get(it.ref_id).then(setHotelRecord).catch(() => {});
+    }
+  }, [it.ref_id]);
+
+  const images = hotelRecord?.raw?.images || (hotelRecord?.image_url ? [hotelRecord.image_url] : []);
+  const selected = it.meta?.selected_images || [];
+
+  const toggleImage = (url) => {
+    let next;
+    if (selected.includes(url)) {
+      next = selected.filter((u) => u !== url);
+    } else {
+      next = [...selected, url];
+    }
+    onPatchItem(it.id, {
+      meta: { ...(it.meta || {}), selected_images: next }
+    });
+  };
+
+  return (
+    <li className="flex flex-col px-lg py-md gap-md text-on-surface" data-testid={`selected-${it.id}`}>
+      <div className="flex items-center gap-md w-full">
+        <span className="font-body-md flex-1 truncate font-bold">{it.label}</span>
+        <span className="font-label-sm text-on-surface-variant">{it.unit_price} {it.currency}</span>
+        <button onClick={() => onRemoveItem(it.id)} title="Remove"
+          className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
+          <span className="material-symbols-outlined text-[18px]">delete</span>
+        </button>
+      </div>
+
+      {images.length > 0 && (
+        <div className="pl-6 space-y-sm">
+          <span className="text-xs font-semibold text-on-surface-variant block">Select Photos to Include in Proposal:</span>
+          <div className="flex gap-md flex-wrap">
+            {images.map((url, index) => {
+              const isChecked = selected.includes(url);
+              return (
+                <label key={index} className="relative cursor-pointer group flex flex-col items-center">
+                  <div className={`w-28 h-20 rounded-lg overflow-hidden border-2 bg-slate-100 shadow-sm relative transition-all ${isChecked ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant'}`}>
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    {/* Checkbox overlay */}
+                    <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-white border border-outline flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleImage(url)}
+                        className="rounded-full h-3 w-3 accent-primary border-none cursor-pointer focus:ring-0"
+                      />
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem, onPatchItem }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selection, setSelection] = useState(new Set());
@@ -447,16 +566,28 @@ function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem }
             <h4 className="font-headline-sm text-headline-sm text-primary flex-1">Selected for this proposal · {ofKind.length}</h4>
           </div>
           <ul className="divide-y divide-outline-variant">
-            {ofKind.map((it) => (
-              <li key={it.id} className="flex items-center px-lg py-md gap-md" data-testid={`selected-${it.id}`}>
-                <span className="font-body-md flex-1 truncate">{it.label}</span>
-                <span className="font-label-sm text-on-surface-variant">{it.unit_price} {it.currency}</span>
-                <button onClick={() => onRemoveItem(it.id)} title="Remove"
-                  className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
-                  <span className="material-symbols-outlined text-[18px]">delete</span>
-                </button>
-              </li>
-            ))}
+            {ofKind.map((it) => {
+              if (kind === 'hotel') {
+                return (
+                  <SelectedHotelItem
+                    key={it.id}
+                    it={it}
+                    onRemoveItem={onRemoveItem}
+                    onPatchItem={onPatchItem}
+                  />
+                );
+              }
+              return (
+                <li key={it.id} className="flex items-center px-lg py-md gap-md text-on-surface" data-testid={`selected-${it.id}`}>
+                  <span className="font-body-md flex-1 truncate">{it.label}</span>
+                  <span className="font-label-sm text-on-surface-variant">{it.unit_price} {it.currency}</span>
+                  <button onClick={() => onRemoveItem(it.id)} title="Remove"
+                    className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
@@ -510,7 +641,7 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, 
             <option value="">+ Add line…</option>
             {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
-          <span className="font-headline-sm text-primary" data-testid="costing-total">{total.toFixed(2)} {proposalCurrency}</span>
+          <span className="font-headline-sm text-primary" data-testid="costing-total">{formatINR(total)}</span>
         </div>
         <table className="w-full text-left">
           <thead className="bg-surface-container-low">
@@ -542,7 +673,7 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, 
                     className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
                 </td>
                 <td className="px-lg py-md font-label-md text-primary">
-                  {((Number(it.qty)||0) * (Number(it.unit_price)||0)).toFixed(2)} {it.currency || proposalCurrency}
+                  {formatINR((Number(it.qty)||0) * (Number(it.unit_price)||0))}
                 </td>
                 <td className="px-lg py-md text-right">
                   <button onClick={() => onRemoveItem(it.id)} className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
@@ -559,7 +690,7 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, 
           {Object.entries(byKind).map(([k, v]) => (
             <div key={k} className="glass-card p-md rounded-xl">
               <p className="font-label-sm uppercase tracking-widest text-on-surface-variant">{k}</p>
-              <p className="font-headline-sm text-headline-sm text-primary">{v.toFixed(2)}</p>
+              <p className="font-headline-sm text-headline-sm text-primary">{formatINR(v)}</p>
             </div>
           ))}
         </div>
@@ -602,7 +733,7 @@ function Step6Branding({ branding, setBranding }) {
             ))}
           </select>
         </div>
-        <Field label="Primary Color" type="color" value={branding.primary_color} onChange={upd('primary_color')} testid="brand-color" />
+        <ColorPicker value={branding.primary_color} onChange={upd('primary_color')} testid="brand-color" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
         <LogoUploader value={branding.logo_url} onChange={(v) => setBranding((s) => ({ ...s, logo_url: v }))} label="Agency Logo" testid="brand-logo-uploader" folder="logos" />
@@ -728,7 +859,7 @@ function Step7Preview({ proposalId, branding }) {
           <option value="dark">Dark Premium</option>
           <option value="light">Light & Friendly</option>
         </select>
-        <span className="font-label-sm text-on-surface-variant flex-1" data-testid="preview-total">{Number(json.totals.subtotal||0).toFixed(2)} {json.totals.currency}</span>
+        <span className="font-label-sm text-on-surface-variant flex-1" data-testid="preview-total">{formatINR(json.totals.subtotal||0)}</span>
         <button onClick={() => setExportOpen(true)} data-testid="open-export-modal"
           className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
           <span className="material-symbols-outlined text-[18px]">tune</span> Sections

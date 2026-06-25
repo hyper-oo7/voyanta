@@ -102,7 +102,7 @@ export default function ResourceModulePage({
       for (const r of picked) {
         await addItem(activeId, {
           kind: itemKind, ref_id: r.id, label: toLabel(r),
-          qty: 1, unit_price: toUnitPrice(r), currency: r.currency || 'USD',
+          qty: 1, unit_price: toUnitPrice(r), currency: r.currency || 'INR',
           meta: { source: resource },
         });
       }

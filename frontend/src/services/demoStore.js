@@ -3,10 +3,10 @@
 const KEY = 'voyanta_demo_proposals';
 
 const SEED = [
-  { id: 'demo-1', name: 'Alpine Escape: St. Moritz', client_name: 'Eleanor Vance', status: 'Accepted', date: 'Oct 24, 2023', total_cost: 18450, currency: 'USD' },
-  { id: 'demo-2', name: 'Tokyo Neon Nights',         client_name: 'Marcus Thorne',  status: 'Sent',     date: 'Oct 22, 2023', total_cost: 22980, currency: 'USD' },
-  { id: 'demo-3', name: 'Amalfi Coast Luxury',       client_name: 'Sophia Rossi',   status: 'Draft',    date: 'Oct 21, 2023', total_cost: 15400, currency: 'EUR' },
-  { id: 'demo-4', name: 'Safari Serenity: Kenya',    client_name: 'Jameson Blake',  status: 'Sent',     date: 'Oct 19, 2023', total_cost: 31200, currency: 'USD' },
+  { id: 'demo-1', name: 'Alpine Escape: St. Moritz', client_name: 'Eleanor Vance', status: 'Accepted', date: 'Oct 24, 2023', total_cost: 18450, currency: 'INR' },
+  { id: 'demo-2', name: 'Tokyo Neon Nights',         client_name: 'Marcus Thorne',  status: 'Sent',     date: 'Oct 22, 2023', total_cost: 22980, currency: 'INR' },
+  { id: 'demo-3', name: 'Amalfi Coast Luxury',       client_name: 'Sophia Rossi',   status: 'Draft',    date: 'Oct 21, 2023', total_cost: 15400, currency: 'INR' },
+  { id: 'demo-4', name: 'Safari Serenity: Kenya',    client_name: 'Jameson Blake',  status: 'Sent',     date: 'Oct 19, 2023', total_cost: 31200, currency: 'INR' },
 ];
 
 function load() {
@@ -26,7 +26,7 @@ export const demoStore = {
   get: (id) => load().find((p) => p.id === id) ?? null,
   insert: (row) => {
     const rows = load();
-    const r = { id: 'demo-' + Math.random().toString(36).slice(2, 10), created_at: new Date().toISOString(), date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), status: 'Draft', currency: 'USD', ...row };
+    const r = { id: 'demo-' + Math.random().toString(36).slice(2, 10), created_at: new Date().toISOString(), date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), status: 'Draft', currency: 'INR', ...row };
     rows.unshift(r);
     save(rows);
     return r;

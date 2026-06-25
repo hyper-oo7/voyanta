@@ -15,6 +15,7 @@ import { fetchProposalById, fetchProposals, updateProposal } from '../services/p
 import { listItems, removeItem, buildProposalExport } from '../services/proposalItemService.js';
 import { templatesService } from '../services/resourceService.js';
 import { addItem } from '../services/proposalItemService.js';
+import { formatINR } from '../lib/currency.js';
 import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
 
 export default function AiItineraryGeneratorPage() {
@@ -91,7 +92,7 @@ export default function AiItineraryGeneratorPage() {
     if (!activeId) { toast.error('Open a proposal first'); return; }
     const t = templates.find((x) => x.id === tplId); if (!t) return;
     try {
-      await addItem(activeId, { kind: 'custom', label: `Template: ${t.name}`, qty: 1, unit_price: Number(t.price_from || 0), currency: t.currency || 'USD', meta: { template_id: t.id, days: t.days } });
+      await addItem(activeId, { kind: 'custom', label: `Template: ${t.name}`, qty: 1, unit_price: Number(t.price_from || 0), currency: t.currency || 'INR', meta: { template_id: t.id, days: t.days } });
       toast.success('Template applied'); reload();
     } catch (e) { toast.error(e.message); }
   };
@@ -186,7 +187,7 @@ export default function AiItineraryGeneratorPage() {
                     <option value="">Apply template…</option>
                     {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
-                  <span className="font-headline-sm text-primary" data-testid="builder-total">{total.toFixed(2)} {items[0]?.currency || 'USD'}</span>
+                  <span className="font-headline-sm text-primary" data-testid="builder-total">{formatINR(total)}</span>
                 </div>
                 {Object.keys(grouped).length === 0 && (
                   <p className="px-lg py-xl text-center text-on-surface-variant" data-testid="items-empty">No items yet — pick from Hotels / Flights / Activities.</p>
@@ -197,7 +198,7 @@ export default function AiItineraryGeneratorPage() {
                     {list.map((it) => (
                       <div key={it.id} className="flex items-center px-lg py-md gap-md hover:bg-surface-container-low" data-testid={`builder-item-${it.id}`}>
                         <span className="font-body-md flex-1 truncate">{it.label}</span>
-                        <span className="font-label-sm text-on-surface-variant">×{it.qty} @ {it.unit_price} {it.currency}</span>
+                        <span className="font-label-sm text-on-surface-variant">×{it.qty} @ {formatINR(it.unit_price)}</span>
                         <button onClick={async () => { await removeItem(it.id); reload(); }} className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
                           <span className="material-symbols-outlined text-[18px]">delete</span>
                         </button>

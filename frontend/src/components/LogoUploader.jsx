@@ -65,7 +65,7 @@ export default function LogoUploader({ value, onChange, label = 'Logo', testid =
   );
 }
 
-async function uploadOrEmbed(file, folder) {
+export async function uploadOrEmbed(file, folder) {
   if (supabase) {
     try {
       const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');

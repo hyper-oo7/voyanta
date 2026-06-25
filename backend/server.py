@@ -76,6 +76,77 @@ async def get_status_checks():
     return status_checks
 
 
+class ParseItineraryInput(BaseModel):
+    text: str
+
+@api_router.post("/parse-itinerary")
+async def parse_itinerary(input: ParseItineraryInput):
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured on backend")
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert travel assistant. Parse the following travel itinerary text and extract: "
+                    "Days (with title, day number, and description), Hotels (name, location, price if any), "
+                    "Activities, Transfers, Meals, and Notes. "
+                    "Return a JSON object matching this schema: "
+                    "{\n"
+                    "  \"name\": \"Name of the tour/itinerary\",\n"
+                    "  \"destination\": \"Main destination country/city\",\n"
+                    "  \"days_count\": 7,\n"
+                    "  \"days\": [\n"
+                    "    {\n"
+                    "      \"day\": 1,\n"
+                    "      \"title\": \"Arrival in Paris\",\n"
+                    "      \"description\": \"Morning VIP transfer...\",\n"
+                    "      \"hotels\": [\"Hotel A\"],\n"
+                    "      \"activities\": [\"Louvre private tour\"],\n"
+                    "      \"transfers\": [\"Private chauffeur transfer\"],\n"
+                    "      \"meals\": [\"Breakfast\", \"Dinner\"],\n"
+                    "      \"notes\": \"Dress code is formal for dinner.\"\n"
+                    "    }\n"
+                    "  ],\n"
+                    "  \"hotels\": [\n"
+                    "    { \"name\": \"Hotel name\", \"location\": \"Hotel location\", \"price_per_night\": 420 }\n"
+                    "  ],\n"
+                    "  \"activities\": [\n"
+                    "    { \"name\": \"Activity name\", \"price\": 75, \"description\": \"description\" }\n"
+                    "  ]\n"
+                    "}"
+                )
+            },
+            {
+                "role": "user",
+                "content": input.text
+            }
+        ],
+        "response_format": { "type": "json_object" }
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers)
+            if r.status_code != 200:
+                raise HTTPException(status_code=r.status_code, detail=f"OpenAI error: {r.text}")
+            result = r.json()
+            import json
+            content = result["choices"][0]["message"]["content"]
+            return json.loads(content)
+    except Exception as e:
+        logger.exception("parse itinerary failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── PDF proxy ─────────────────────────────────────────────────────────────
 # Forwards proposal export JSON to the Node Puppeteer service running on
 # PDF_SERVICE_URL (default http://localhost:8002) and streams the resulting

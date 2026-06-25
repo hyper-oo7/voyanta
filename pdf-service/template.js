@@ -120,9 +120,24 @@ function paragraphBlock(text, font, palette) {
 
 function hotelsBlock(list, accent, font, currency, palette) {
   if (!list?.length) return `<p class="muted">No hotels selected.</p>`;
-  return `<ul class="hotels" style="font-family:${font}">${list.map((it) => `
-    <li><span>${esc(it.label || '')}</span><span class="amount">${((num(it.qty)) * (num(it.unit_price))).toFixed(2)} ${esc(currency || it.currency || '')}</span></li>
-  `).join('')}</ul>`;
+  return `<ul class="hotels" style="font-family:${font}">${list.map((it) => {
+    const imagesHtml = (it.meta && Array.isArray(it.meta.selected_images) && it.meta.selected_images.length > 0)
+      ? `<div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;">${it.meta.selected_images.map(img => `
+          <div style="width:180px;height:120px;border-radius:8px;overflow:hidden;border:1px solid ${palette.divider || '#e2e8f0'};">
+            <img src="${img}" style="width:100%;height:100%;object-fit:cover;" />
+          </div>
+        `).join('')}</div>`
+      : '';
+    return `
+      <li style="display:block;padding:12px 0;border-bottom:1px solid ${palette.divider || '#e2e8f0'};">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:11pt;font-weight:600;">${esc(it.label || '')}</span>
+          <span class="amount" style="font-size:11pt;font-weight:600;color:${accent};">${formatINR(num(it.qty) * num(it.unit_price))}</span>
+        </div>
+        ${imagesHtml}
+      </li>
+    `;
+  }).join('')}</ul>`;
 }
 
 function itineraryBlock(days, items, accent, font, palette) {
@@ -142,11 +157,11 @@ function itineraryBlock(days, items, accent, font, palette) {
 function costingBlock(items, total, currency, accent, font, palette) {
   const rows = Object.entries(items).map(([kind, list]) => {
     const sub = list.reduce((s, it) => s + num(it.qty) * num(it.unit_price), 0);
-    return `<tr><td style="text-transform:capitalize">${esc(kind)} (${list.length})</td><td style="text-align:right;color:${accent}">${sub.toFixed(2)} ${esc(currency)}</td></tr>`;
+    return `<tr><td style="text-transform:capitalize">${esc(kind)} (${list.length})</td><td style="text-align:right;color:${accent}">${formatINR(sub)}</td></tr>`;
   }).join('');
   return `<table class="cost" style="font-family:${font}"><tbody>
     ${rows}
-    <tr class="total"><td>Total</td><td style="text-align:right">${num(total).toFixed(2)} ${esc(currency)}</td></tr>
+    <tr class="total"><td>Total</td><td style="text-align:right">${formatINR(total)}</td></tr>
   </tbody></table>`;
 }
 
@@ -169,6 +184,15 @@ function socialsBlock(b, font, accent) {
 // ── helpers ───────────────────────────────────────────────────────────────
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function formatINR(amount) {
+  const n = num(amount);
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(n);
+}
 function isLightOnDark(hex) {
   const h = String(hex || '').replace('#', '');
   if (h.length !== 3 && h.length !== 6) return false;

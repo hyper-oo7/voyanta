@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
 import LogoUploader from '../components/LogoUploader.jsx';
+import ColorPicker from '../components/ColorPicker.jsx';
 import { FONT_CATALOG } from '../lib/fonts.js';
 import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
 
@@ -96,7 +97,7 @@ export default function AgencyBrandingPage() {
     root.querySelectorAll('aside a').forEach((a) => {
       const lab = a.querySelector('.font-label-md'); if (!lab) return;
       const t = lab.textContent.trim();
-      a.className = (t === 'Branding' || t === 'Settings')
+      a.className = (t === 'Branding')
         ? 'flex items-center gap-md bg-surface-container-high text-primary font-semibold border-l-4 border-primary rounded-r-lg py-md px-lg transition-transform scale-[0.98]'
         : 'flex items-center gap-md text-on-surface-variant py-md px-lg hover:bg-surface-container-low transition-all duration-200';
     });
@@ -150,7 +151,7 @@ export default function AgencyBrandingPage() {
                   <LogoUploader value={b.logo_url} onChange={(v) => setB((s) => ({ ...s, logo_url: v }))} label="Agency Logo" testid="brand-logo-uploader" folder="logos" />
                 </div>
                 <Field label="Address"     value={b.address}     onChange={upd('address')}     testid="brand-address" />
-                <Field label="Primary Color" type="color" value={b.primary_color} onChange={upd('primary_color')} testid="brand-color" />
+                <ColorPicker value={b.primary_color} onChange={upd('primary_color')} testid="brand-color" />
                 <Field label="Contact Email" type="email" value={b.contact_email} onChange={upd('contact_email')} testid="brand-email" />
                 <Field label="Contact Phone" value={b.contact_phone} onChange={upd('contact_phone')} testid="brand-phone" />
                 <Field label="Website" value={b.website} onChange={upd('website')} testid="brand-website" />

@@ -3,6 +3,7 @@
 // Font/color come from branding (primary_color); cover_image_url is the hero bg.
 
 import { resolveFont, TEMPLATE_DEFAULT_FONT } from '../lib/fonts.js';
+import { formatINR } from '../lib/currency.js';
 
 export default function TemplateRenderer({ style = 'elegant', data, include = ALL }) {
   if (!data) return null;
@@ -89,14 +90,25 @@ function Section({ title, accent, font, children }) {
 function Hotels({ items, accent, font, currency, divider }) {
   if (!items?.length) return null;
   return (
-    <ul className="space-y-sm">
+    <ul className="space-y-md">
       {items.map((it) => (
-        <li key={it.id} className="flex items-start justify-between pb-sm"
+        <li key={it.id} className="flex flex-col gap-xs pb-md"
             style={{ fontFamily: font, borderBottom: `1px solid ${divider || 'var(--md-sys-color-outline-variant, #c6c6cd)'}` }}>
-          <span>{it.label}</span>
-          <span className="font-label-md ml-md" style={{ color: accent }}>
-            {((Number(it.qty) || 0) * (Number(it.unit_price) || 0)).toFixed(2)} {currency || it.currency || ''}
-          </span>
+          <div className="flex items-start justify-between w-full">
+            <span className="font-semibold text-body-lg text-on-surface">{it.label}</span>
+            <span className="font-label-md ml-md font-bold" style={{ color: accent }}>
+              {formatINR((Number(it.qty) || 0) * (Number(it.unit_price) || 0))}
+            </span>
+          </div>
+          {it.meta?.selected_images && it.meta.selected_images.length > 0 && (
+            <div className="flex flex-wrap gap-md mt-sm">
+              {it.meta.selected_images.map((imgUrl, imgIndex) => (
+                <div key={imgIndex} className="w-48 h-32 rounded-lg border border-outline-variant overflow-hidden bg-surface-container-low shadow-sm">
+                  <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </div>
+          )}
         </li>
       ))}
     </ul>
@@ -133,12 +145,12 @@ function Costing({ items, total, currency, accent, font, divider }) {
         return (
           <div key={kind} className="flex justify-between py-xs" style={{ borderBottom: border }}>
             <span className="capitalize">{kind} ({list.length})</span>
-            <span style={{ color: accent }}>{sub.toFixed(2)} {currency}</span>
+            <span style={{ color: accent }}>{formatINR(sub)}</span>
           </div>
         );
       })}
       <div className="flex justify-between pt-md font-display text-display" style={{ color: accent }}>
-        <span>Total</span><span>{Number(total).toFixed(2)} {currency}</span>
+        <span>Total</span><span>{formatINR(total)}</span>
       </div>
     </div>
   );

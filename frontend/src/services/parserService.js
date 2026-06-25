@@ -3,11 +3,145 @@
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 
+async function loadPdfJS() {
+  if (window.pdfjsLib) return window.pdfjsLib;
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
+    script.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+      resolve(window.pdfjsLib);
+    };
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+async function extractTextFromPdf(file) {
+  const pdfjs = await loadPdfJS();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const strings = content.items.map(item => item.str);
+    text += strings.join(' ') + '\n';
+  }
+  return text;
+}
+
+function parseItineraryTextLocally(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  
+  let name = "Imported Itinerary";
+  let destination = "";
+  let days = [];
+  let currentDay = null;
+  
+  if (lines.length > 0) {
+    name = lines[0].slice(0, 80);
+  }
+  
+  const dayRegex = /^(?:Day|DAY)\s*(\d+|[a-zA-Z]+)(?::|-|\s+)?(.*)$/i;
+  
+  for (const line of lines) {
+    const dayMatch = line.match(dayRegex);
+    if (dayMatch) {
+      if (currentDay) {
+        days.push(currentDay);
+      }
+      const dayNum = parseInt(dayMatch[1], 10) || (days.length + 1);
+      const dayTitle = dayMatch[2].trim() || `Day ${dayNum}`;
+      currentDay = {
+        day: dayNum,
+        title: dayTitle,
+        description: "",
+        hotels: [],
+        activities: [],
+        transfers: [],
+        meals: [],
+        notes: ""
+      };
+      continue;
+    }
+    
+    if (!currentDay) {
+      if (line.toLowerCase().includes('destination:') || line.toLowerCase().includes('location:')) {
+        destination = line.split(':').pop().trim();
+      }
+      continue;
+    }
+    
+    const lower = line.toLowerCase();
+    
+    if (lower.includes('hotel:') || lower.includes('accommodation:') || lower.includes('stay:')) {
+      currentDay.hotels.push(line.split(':').pop().trim());
+    } else if (lower.includes('activity:') || lower.includes('sightseeing:') || lower.includes('tour:')) {
+      currentDay.activities.push(line.split(':').pop().trim());
+    } else if (lower.includes('transfer:') || lower.includes('flight:') || lower.includes('drive:')) {
+      currentDay.transfers.push(line.split(':').pop().trim());
+    } else if (lower.includes('meal:') || lower.includes('breakfast') || lower.includes('lunch') || lower.includes('dinner')) {
+      if (lower.includes('breakfast')) currentDay.meals.push('Breakfast');
+      if (lower.includes('lunch')) currentDay.meals.push('Lunch');
+      if (lower.includes('dinner')) currentDay.meals.push('Dinner');
+      if (currentDay.meals.length === 0) currentDay.meals.push(line.split(':').pop().trim());
+    } else if (lower.includes('note:') || lower.includes('notes:') || lower.includes('important:')) {
+      currentDay.notes += (currentDay.notes ? ' ' : '') + line.split(':').pop().trim();
+    } else {
+      currentDay.description += (currentDay.description ? '\n' : '') + line;
+    }
+  }
+  
+  if (currentDay) {
+    days.push(currentDay);
+  }
+  
+  for (const d of days) {
+    d.meals = Array.from(new Set(d.meals));
+  }
+  
+  const hotels = [];
+  const activities = [];
+  
+  for (const d of days) {
+    for (const h of d.hotels) {
+      if (h && !hotels.some(x => x.name.toLowerCase() === h.toLowerCase())) {
+        hotels.push({ name: h, location: destination || "Imported Location", price_per_night: 5000 });
+      }
+    }
+    for (const act of d.activities) {
+      if (act && !activities.some(x => x.name.toLowerCase() === act.toLowerCase())) {
+        activities.push({ name: act, price: 1000, description: "Imported activity" });
+      }
+    }
+  }
+  
+  return {
+    name,
+    destination,
+    days_count: days.length,
+    days,
+    hotels,
+    activities
+  };
+}
+
+export async function parsePdfFile(file) {
+  // TODO: Integrate with AI itinerary parsing service (e.g. OpenAI / Claude) to handle unstructured PDF parsing.
+  // Currently falling back to deterministic keyword/regex-based extraction.
+  const text = await extractTextFromPdf(file);
+  return parseItineraryTextLocally(text);
+}
+
 export async function parseFile(file) {
   const ext = (file.name.split('.').pop() || '').toLowerCase();
   if (ext === 'csv') return parseCsv(file);
   if (ext === 'xlsx' || ext === 'xls') return parseXlsx(file);
-  throw new Error(`Unsupported file type: .${ext} (supported: .csv, .xlsx)`);
+  if (ext === 'pdf') {
+    return parsePdfFile(file);
+  }
+  throw new Error(`Unsupported file type: .${ext} (supported: .csv, .xlsx, .pdf)`);
 }
 
 function parseCsv(file) {

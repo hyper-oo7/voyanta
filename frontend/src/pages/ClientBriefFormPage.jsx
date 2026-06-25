@@ -116,7 +116,7 @@ function harvest(root) {
     travelers,
     budget_min: budgetMin,
     budget_max: budgetMax,
-    currency: 'USD',
+    currency: 'INR',
     brief: { email, phone, raw: { destination, startDate, endDate, travelers, budgetMin, budgetMax } },
     status: 'Draft',
   };

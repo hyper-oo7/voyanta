@@ -13,7 +13,7 @@ export default function AuthenticationPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { signIn, signUp, resetPassword, user, enterDemoMode, demoEnabled } = useAuth();
+  const { signIn, signUp, resetPassword, signInWithProvider, user, enterDemoMode, demoEnabled } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const redirectTo = location.state?.from || '/dashboard';
 
@@ -121,6 +121,26 @@ export default function AuthenticationPage() {
     };
     forgot?.addEventListener('click', onForgot);
 
+    // ---- Google OAuth ----
+    const googleBtn = Array.from(root.querySelectorAll('button')).find(b => b.textContent.includes('Continue with Google'));
+    const onGoogleLogin = async (e) => {
+      e.preventDefault();
+      if (submitting) return;
+      setSubmitting(true);
+      const original = googleBtn.innerHTML;
+      googleBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-md">progress_activity</span>';
+      googleBtn.disabled = true;
+      try {
+        await signInWithProvider('google');
+      } catch (err) {
+        toast.error(err.message || 'Google sign-in failed');
+        googleBtn.innerHTML = original;
+        googleBtn.disabled = false;
+        setSubmitting(false);
+      }
+    };
+    googleBtn?.addEventListener('click', onGoogleLogin);
+
     return () => {
       form?.removeEventListener('submit', onLogin);
       toggleAuthBtn?.removeEventListener('click', openSignup);
@@ -129,8 +149,9 @@ export default function AuthenticationPage() {
       signupForm?.removeEventListener('submit', onSignup);
       signupBtn?.removeEventListener('click', onSignup);
       forgot?.removeEventListener('click', onForgot);
+      googleBtn?.removeEventListener('click', onGoogleLogin);
     };
-  }, [signIn, signUp, resetPassword, navigate, toast, redirectTo, submitting]);
+  }, [signIn, signUp, resetPassword, signInWithProvider, navigate, toast, redirectTo, submitting]);
 
   // Inject a small "Try Demo" affordance below the form (preserves all Stitch
   // styling — only adds; never restyles).

@@ -8,8 +8,8 @@ export const assets = [
     type: 'transfer',
     location: 'Paris CDG',
     duration_hours: 2,
-    price: 850,
-    currency: 'USD',
+    price: 70000,
+    currency: 'INR',
     description: 'Private concierge, fast-track customs, luxury sedan transfer.',
   },
   {
@@ -18,8 +18,8 @@ export const assets = [
     type: 'activity',
     location: 'Le Marais, Paris',
     duration_hours: 4,
-    price: 620,
-    currency: 'EUR',
+    price: 50000,
+    currency: 'INR',
     description: 'Expert-led walking tour of hidden courtyards and pastry tastings.',
   },
   {
@@ -28,8 +28,8 @@ export const assets = [
     type: 'dining',
     location: 'Place des Vosges, Paris',
     duration_hours: 3,
-    price: 980,
-    currency: 'EUR',
+    price: 80000,
+    currency: 'INR',
     description: 'Tasting menu at three-star Michelin restaurant. Formal attire.',
   },
   {
@@ -38,8 +38,8 @@ export const assets = [
     type: 'flight',
     location: 'JFK → CDG',
     duration_hours: 7,
-    price: 9800,
-    currency: 'USD',
+    price: 800000,
+    currency: 'INR',
     description: 'First-class direct flight with availability for 4 passengers.',
   },
 ];

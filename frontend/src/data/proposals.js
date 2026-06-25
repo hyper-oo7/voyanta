@@ -11,7 +11,7 @@ export const proposals = [
     status: 'Accepted',
     date: 'Oct 24, 2023',
     total_cost: 18450,
-    currency: 'USD',
+    currency: 'INR',
     created_by: 'agent-alex',
   },
   {
@@ -21,7 +21,7 @@ export const proposals = [
     status: 'Sent',
     date: 'Oct 22, 2023',
     total_cost: 22980,
-    currency: 'USD',
+    currency: 'INR',
     created_by: 'agent-alex',
   },
   {
@@ -31,7 +31,7 @@ export const proposals = [
     status: 'Draft',
     date: 'Oct 21, 2023',
     total_cost: 15400,
-    currency: 'EUR',
+    currency: 'INR',
     created_by: 'agent-alex',
   },
   {
@@ -41,7 +41,7 @@ export const proposals = [
     status: 'Sent',
     date: 'Oct 19, 2023',
     total_cost: 31200,
-    currency: 'USD',
+    currency: 'INR',
     created_by: 'agent-alex',
   },
 ];

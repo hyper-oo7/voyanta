@@ -12,6 +12,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import { useProposalBuilder } from '../context/ProposalBuilderContext.jsx';
 import { listItems, addItem, updateItem, removeItem, buildProposalExport } from '../services/proposalItemService.js';
 import { fetchProposalById, fetchProposals } from '../services/proposalService.js';
+import { formatINR } from '../lib/currency.js';
 import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
 
 const KINDS = ['hotel', 'flight', 'activity', 'transfer', 'visa', 'tax', 'margin', 'custom'];
@@ -102,7 +103,7 @@ export default function CostCalculatorPage() {
   };
   const addCustom = async (kind) => {
     if (!activeId) { toast.error('Open a proposal first'); return; }
-    try { await addItem(activeId, { kind, label: `New ${kind}`, qty: 1, unit_price: 0, currency: 'USD' }); reload(); }
+    try { await addItem(activeId, { kind, label: `New ${kind}`, qty: 1, unit_price: 0, currency: 'INR' }); reload(); }
     catch (e) { toast.error(e.message); }
   };
 
@@ -173,7 +174,7 @@ export default function CostCalculatorPage() {
                         className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
                     </td>
                     <td className="px-lg py-md font-label-md text-primary">
-                      {((Number(it.qty)||0) * (Number(it.unit_price)||0)).toFixed(2)} {proposalCurrency}
+                      {formatINR((Number(it.qty)||0) * (Number(it.unit_price)||0))}
                     </td>
                     <td className="px-lg py-md text-right">
                       <button onClick={() => onDel(it.id)} data-testid={`del-${it.id}`}
@@ -188,7 +189,7 @@ export default function CostCalculatorPage() {
                 <tfoot>
                   <tr className="bg-surface-container-low">
                     <td colSpan={4} className="px-lg py-md font-label-md text-on-surface-variant uppercase tracking-widest">Subtotal</td>
-                    <td colSpan={2} className="px-lg py-md font-headline-sm text-headline-sm text-primary" data-testid="cost-total">{totals.toFixed(2)} {proposalCurrency}</td>
+                    <td colSpan={2} className="px-lg py-md font-headline-sm text-headline-sm text-primary" data-testid="cost-total">{formatINR(totals)}</td>
                   </tr>
                 </tfoot>
               )}
@@ -200,7 +201,7 @@ export default function CostCalculatorPage() {
               {Object.entries(byKind).map(([k, v]) => (
                 <div key={k} className="glass-card p-md rounded-xl">
                   <p className="font-label-sm uppercase tracking-widest text-on-surface-variant">{k}</p>
-                  <p className="font-headline-sm text-headline-sm text-primary">{v.toFixed(2)}</p>
+                  <p className="font-headline-sm text-headline-sm text-primary">{formatINR(v)}</p>
                 </div>
               ))}
             </div>
