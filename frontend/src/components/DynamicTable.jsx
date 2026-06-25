@@ -10,7 +10,7 @@ import { useMemo, useState } from 'react';
 const HIDDEN = new Set(['id', 'agency_id', 'created_at', 'updated_at', 'raw', 'created_by']);
 
 export default function DynamicTable({
-  rows = [], loading = false, columns: explicit, onAdd, onRowAction,
+  rows = [], loading = false, columns: explicit, onAdd, onRowAction, onEditRow,
   selection, onSelectionChange, pageSize = 10, emptyMessage = 'No records yet.',
   toolbarRight,
 }) {
@@ -126,7 +126,17 @@ export default function DynamicTable({
                   </td>
                 ))}
                 {onRowAction && (
-                  <td className="px-lg py-md text-right">{onRowAction(r)}</td>
+                  <td className="px-lg py-md text-right">
+                    <div className="flex justify-end gap-xs">
+                      {onEditRow && (
+                        <button title="Edit" data-testid={`edit-${r.id}`} onClick={(e) => { e.stopPropagation(); onEditRow(r); }}
+                          className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-surface-container-high">
+                          <span className="material-symbols-outlined text-[18px]">edit</span>
+                        </button>
+                      )}
+                      {onRowAction(r)}
+                    </div>
+                  </td>
                 )}
               </tr>
             ))}

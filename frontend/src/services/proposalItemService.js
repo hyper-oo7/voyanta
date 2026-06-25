@@ -48,6 +48,6 @@ export async function buildProposalExport(proposalId) {
     proposal: proposal || null,
     items_by_kind: grouped,
     items,
-    totals: { subtotal: total, currency: proposal?.currency || 'USD' },
+    totals: { subtotal: total, currency: proposal?.currency || 'INR' },
   };
 }

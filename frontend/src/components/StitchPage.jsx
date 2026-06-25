@@ -51,10 +51,27 @@ export default function StitchPage({
     return () => { document.body.className = prev; };
   }, [bodyClass]);
 
-  // Universal click interception
+  // Universal click interception + sidebar augmentation
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
+
+    // Add an "Itinerary" sidebar entry if not already present.
+    const sidebarNav = root.querySelector('aside nav');
+    if (sidebarNav && !sidebarNav.querySelector('[data-extra-nav="itinerary"]')) {
+      const proposalsLink = Array.from(sidebarNav.querySelectorAll('a')).find((a) =>
+        a.querySelector('.font-label-md')?.textContent?.trim() === 'Proposals'
+      );
+      if (proposalsLink) {
+        const itin = document.createElement('a');
+        itin.setAttribute('href', '#');
+        itin.setAttribute('data-extra-nav', 'itinerary');
+        itin.className = 'flex items-center gap-md text-on-surface-variant py-md px-lg hover:bg-surface-container-low transition-all duration-200';
+        itin.innerHTML = '<span class="material-symbols-outlined">route</span><span class="font-label-md text-label-md">Itinerary</span>';
+        proposalsLink.parentNode.insertBefore(itin, proposalsLink.nextSibling);
+      }
+    }
+
     const handler = (e) => {
       // Anchor clicks
       const a = e.target.closest('a');

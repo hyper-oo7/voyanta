@@ -90,6 +90,7 @@ export default function CostCalculatorPage() {
   };
 
   const totals = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
+  const proposalCurrency = proposal?.currency || 'INR';
   const byKind = {};
   for (const it of items) byKind[it.kind] = (byKind[it.kind] || 0) + (Number(it.qty)||0)*(Number(it.unit_price)||0);
 
@@ -172,7 +173,7 @@ export default function CostCalculatorPage() {
                         className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
                     </td>
                     <td className="px-lg py-md font-label-md text-primary">
-                      {(Number(it.qty)||0) * (Number(it.unit_price)||0)} {it.currency}
+                      {((Number(it.qty)||0) * (Number(it.unit_price)||0)).toFixed(2)} {proposalCurrency}
                     </td>
                     <td className="px-lg py-md text-right">
                       <button onClick={() => onDel(it.id)} data-testid={`del-${it.id}`}
@@ -187,7 +188,7 @@ export default function CostCalculatorPage() {
                 <tfoot>
                   <tr className="bg-surface-container-low">
                     <td colSpan={4} className="px-lg py-md font-label-md text-on-surface-variant uppercase tracking-widest">Subtotal</td>
-                    <td colSpan={2} className="px-lg py-md font-headline-sm text-headline-sm text-primary" data-testid="cost-total">{totals.toFixed(2)} {items[0]?.currency || 'USD'}</td>
+                    <td colSpan={2} className="px-lg py-md font-headline-sm text-headline-sm text-primary" data-testid="cost-total">{totals.toFixed(2)} {proposalCurrency}</td>
                   </tr>
                 </tfoot>
               )}

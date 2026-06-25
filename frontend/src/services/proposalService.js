@@ -32,7 +32,7 @@ export async function createProposal(payload) {
     travelers: payload.travelers ?? null,
     budget_min: payload.budget_min ?? null,
     budget_max: payload.budget_max ?? null,
-    currency: payload.currency || 'USD',
+    currency: payload.currency || 'INR',
     preferences: payload.preferences || null,
     trip_details: payload.trip_details || null,
     brief: payload.brief || null,

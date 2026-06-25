@@ -14,6 +14,7 @@ import AssetsLibraryPage from './pages/AssetsLibraryPage.jsx';
 import AgencyBrandingPage from './pages/AgencyBrandingPage.jsx';
 import FlightsPage from './pages/FlightsPage.jsx';
 import TemplatesPage from './pages/TemplatesPage.jsx';
+import ItineraryRedirect from './pages/ItineraryRedirect.jsx';
 import LibrariesPage from './pages/LibrariesPage.jsx';
 import ProposalPreviewPage from './pages/ProposalPreviewPage.jsx';
 
@@ -39,6 +40,7 @@ export default function App() {
 
             {/* Inventory modules — still accessible standalone for browsing/imports */}
             <Route path="/templates"           element={<Protected><TemplatesPage /></Protected>} />
+            <Route path="/itinerary"           element={<Protected><ItineraryRedirect /></Protected>} />
             <Route path="/activities"          element={<Protected><AssetsLibraryPage /></Protected>} />
             <Route path="/flights"             element={<Protected><FlightsPage /></Protected>} />
             <Route path="/cost-calculator"     element={<Protected><CostCalculatorPage /></Protected>} />

@@ -27,6 +27,7 @@ import {
   listItems, addItem, removeItem, updateItem, buildProposalExport,
 } from '../services/proposalItemService.js';
 import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
+import TemplateRenderer, { ALL as ALL_SECTIONS, ExportOptionsBar } from '../components/TemplateRenderer.jsx';
 import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
 
 const STEPS = [
@@ -65,7 +66,35 @@ export default function ProposalWizard() {
     agency_name: 'Voyanta', logo_url: '', address: '',
     contact_email: '', contact_phone: '', website: '',
     social_facebook: '', social_instagram: '', social_linkedin: '',
+    cover_image_url: '', highlights: '',
+    inclusions: '', exclusions: '', terms_of_payment: '',
+    primary_color: '#0b1c30', template_style: 'elegant',
   });
+
+  // Pre-load agency-level branding on first wizard open (only if proposal has no branding yet).
+  useEffect(() => {
+    (async () => {
+      if (!supabase) return;
+      try {
+        const { data } = await supabase.from('agencies').select('*').eq('id', DEFAULT_AGENCY_ID).maybeSingle();
+        if (!data) return;
+        const social = data.social_links || {};
+        setBranding((b) => ({
+          ...b,
+          agency_name: b.agency_name || data.name || 'Voyanta',
+          logo_url:    b.logo_url    || data.logo_url || '',
+          address:     b.address     || data.address || '',
+          contact_email: b.contact_email || data.contact_email || '',
+          contact_phone: b.contact_phone || data.contact_phone || '',
+          website:     b.website     || data.website || '',
+          primary_color: b.primary_color || data.primary_color || '#0b1c30',
+          social_facebook:  b.social_facebook  || social.facebook  || '',
+          social_instagram: b.social_instagram || social.instagram || '',
+          social_linkedin:  b.social_linkedin  || social.linkedin  || '',
+        }));
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   // Load proposal + items when id changes
   const reload = useCallback(async (pid) => {
@@ -148,7 +177,7 @@ export default function ProposalWizard() {
       end_date: c.end_date || null,
       travelers: travelers || 1,
       budget_max: c.budget === '' ? null : Number(c.budget),
-      currency: 'USD',
+      currency: 'INR',
       brief: {
         phone: c.phone, country: c.country, email: c.email,
         num_adults: parseInt(c.num_adults, 10) || 0,
@@ -433,7 +462,7 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, 
   const onAdd = async (kind) => {
     if (!proposalId) return;
     try {
-      const it = await addItem(proposalId, { kind, label: `New ${kind}`, qty: 1, unit_price: 0, currency: 'USD' });
+      const it = await addItem(proposalId, { kind, label: `New ${kind}`, qty: 1, unit_price: 0, currency: 'INR' });
       setItems((s) => [...s, it]);
     } catch {}
   };
@@ -514,7 +543,20 @@ function Step6Branding({ branding, setBranding }) {
   const upd = (k) => (e) => setBranding((s) => ({ ...s, [k]: e.target.value }));
   return (
     <div className="glass-card rounded-xl p-lg space-y-md" data-testid="step-branding">
-      <h3 className="font-headline-sm text-headline-sm text-primary">Agency Branding</h3>
+      <h3 className="font-headline-sm text-headline-sm text-primary">Agency Branding & Template</h3>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
+        <div>
+          <label className="font-label-md text-label-md text-on-surface block mb-xs">Template Style</label>
+          <select value={branding.template_style} onChange={upd('template_style')} data-testid="brand-tpl-style"
+            className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
+            <option value="elegant">Elegant (cream, serif)</option>
+            <option value="dark">Dark Premium</option>
+            <option value="light">Light & Friendly</option>
+          </select>
+        </div>
+        <Field label="Primary Color" type="color" value={branding.primary_color} onChange={upd('primary_color')} testid="brand-color" />
+        <Field label="Cover Image URL" value={branding.cover_image_url} onChange={upd('cover_image_url')} testid="brand-cover" />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
         <Field label="Agency Name" value={branding.agency_name} onChange={upd('agency_name')} testid="brand-name" />
         <Field label="Logo URL"    value={branding.logo_url}    onChange={upd('logo_url')}    testid="brand-logo" />
@@ -522,82 +564,115 @@ function Step6Branding({ branding, setBranding }) {
         <Field label="Contact Email" type="email" value={branding.contact_email} onChange={upd('contact_email')} testid="brand-email" />
         <Field label="Contact Phone" value={branding.contact_phone} onChange={upd('contact_phone')} testid="brand-phone" />
         <Field label="Website" value={branding.website} onChange={upd('website')} testid="brand-website" />
-        <Field label="Facebook" value={branding.social_facebook}  onChange={upd('social_facebook')}  testid="brand-fb" />
+        <Field label="Facebook"  value={branding.social_facebook}  onChange={upd('social_facebook')}  testid="brand-fb" />
         <Field label="Instagram" value={branding.social_instagram} onChange={upd('social_instagram')} testid="brand-ig" />
-        <Field label="LinkedIn" value={branding.social_linkedin}  onChange={upd('social_linkedin')}  testid="brand-li" />
+        <Field label="LinkedIn"  value={branding.social_linkedin}  onChange={upd('social_linkedin')}  testid="brand-li" />
       </div>
-      <p className="font-label-sm text-on-surface-variant">Branding is stored on this proposal and used in exported documents.</p>
+      <Textarea label="Highlights" value={branding.highlights} onChange={upd('highlights')} testid="brand-highlights" placeholder="Bullet points of the trip's standout moments…" />
+      <Textarea label="What's Included (optional)" value={branding.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" />
+      <Textarea label="What's Excluded (optional)" value={branding.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" />
+      <Textarea label="Terms of Payment (optional)" value={branding.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" />
+      <p className="font-label-sm text-on-surface-variant">Branding is stored on this proposal and used in the preview & export. Defaults are inherited from your Agency Branding page.</p>
     </div>
+  );
+}
+
+function Textarea({ label, value, onChange, testid, placeholder = '' }) {
+  return (
+    <label className="flex flex-col gap-xs">
+      <span className="font-label-md text-label-md text-on-surface">{label}</span>
+      <textarea value={value ?? ''} onChange={onChange} rows={3} placeholder={placeholder} data-testid={testid}
+        className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
+    </label>
   );
 }
 
 // ───────────────────────────────────────────────────────────────────────────
 // Step 7 — Preview / Generate
 // ───────────────────────────────────────────────────────────────────────────
-function Step7Preview({ proposalId }) {
+function Step7Preview({ proposalId, branding }) {
   const toast = useToast();
   const [json, setJson] = useState(null);
-  useEffect(() => { (async () => { if (!proposalId) return; try { setJson(await buildProposalExport(proposalId)); } catch (e) { toast.error(e.message); } })(); }, [proposalId, toast]);
+  const [include, setInclude] = useState(ALL_SECTIONS);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [style, setStyle] = useState(branding?.template_style || 'elegant');
+
+  useEffect(() => { setStyle(branding?.template_style || 'elegant'); }, [branding?.template_style]);
+
+  useEffect(() => {
+    (async () => { if (!proposalId) return; try { setJson(await buildProposalExport(proposalId)); } catch (e) { toast.error(e.message); } })();
+  }, [proposalId, toast]);
 
   const onDownload = () => {
     if (!json) return;
-    const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+    // Embed the active branding + include map + chosen style so downstream
+    // generators have everything they need.
+    const envelope = { ...json, presentation: { style, include }, branding };
+    const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
     a.download = `proposal-${json.proposal?.name || proposalId}.json`;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    toast.success('Proposal JSON exported');
   };
 
   if (!proposalId) return <div className="glass-card p-xl rounded-xl text-center text-on-surface-variant" data-testid="preview-no-proposal">Save the client step first.</div>;
   if (!json) return <div className="glass-card p-xl rounded-xl text-center">Building preview…</div>;
 
-  const branding = json.proposal?.preferences?.branding || {};
+  // Merge wizard's working branding into the JSON so the preview reflects in-flight edits.
+  const merged = { ...json, proposal: { ...json.proposal, preferences: { ...(json.proposal?.preferences || {}), branding: { ...(json.proposal?.preferences?.branding || {}), ...branding } } } };
 
   return (
     <div className="space-y-md" data-testid="step-preview">
-      <div className="glass-card rounded-xl p-lg" data-testid="proposal-preview">
-        <div className="flex items-center gap-md mb-md">
-          {branding.logo_url && <img src={branding.logo_url} alt="" className="w-12 h-12 rounded-full object-cover" />}
-          <div className="flex-1">
-            <p className="font-headline-sm text-primary">{branding.agency_name || 'Voyanta'}</p>
-            <p className="font-label-sm text-on-surface-variant">{branding.website || ''}</p>
-          </div>
-        </div>
-        <hr className="my-md border-outline-variant" />
-        <h2 className="font-display text-display text-primary">{json.proposal.name}</h2>
-        <p className="font-body-md text-on-surface-variant mt-xs">For {json.proposal.client_name || '—'} · {json.proposal.destination || '—'} · {json.proposal.travelers} traveller(s)</p>
-        <div className="grid md:grid-cols-3 gap-md mt-lg">
-          {Object.entries(json.items_by_kind).map(([kind, list]) => (
-            <div key={kind} className="bg-surface-container-low rounded-lg p-md">
-              <p className="font-label-sm uppercase tracking-widest text-on-surface-variant">{kind}</p>
-              <p className="font-headline-sm text-primary">{list.length}</p>
-              <ul className="mt-xs space-y-xs text-body-sm text-on-surface-variant">
-                {list.slice(0, 3).map((it) => <li key={it.id} className="truncate">• {it.label}</li>)}
-                {list.length > 3 && <li>+ {list.length - 3} more…</li>}
-              </ul>
-            </div>
-          ))}
-        </div>
-        <hr className="my-md border-outline-variant" />
-        <div className="flex justify-between items-center">
-          <span className="font-label-md uppercase tracking-widest text-on-surface-variant">Total</span>
-          <span className="font-display text-display text-primary" data-testid="preview-total">{json.totals.subtotal.toFixed(2)} {json.totals.currency}</span>
-        </div>
-      </div>
-      <div className="flex gap-md flex-wrap">
+      <div className="glass-card p-md rounded-xl flex items-center gap-md flex-wrap">
+        <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest">Template</span>
+        <select value={style} onChange={(e) => setStyle(e.target.value)} data-testid="preview-style"
+          className="px-md py-sm bg-white border border-outline-variant rounded-lg font-body-md">
+          <option value="elegant">Elegant (cream, serif)</option>
+          <option value="dark">Dark Premium</option>
+          <option value="light">Light & Friendly</option>
+        </select>
+        <span className="font-label-sm text-on-surface-variant flex-1" data-testid="preview-total">{Number(json.totals.subtotal||0).toFixed(2)} {json.totals.currency}</span>
+        <button onClick={() => setExportOpen(true)} data-testid="open-export-modal"
+          className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
+          <span className="material-symbols-outlined text-[18px]">tune</span> Export options
+        </button>
         <button onClick={onDownload} data-testid="export-json"
           className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 flex items-center gap-xs">
           <span className="material-symbols-outlined text-[18px]">download</span> Export JSON
         </button>
         <button data-testid="generate-pdf" disabled
-          className="px-lg py-md border border-outline-variant rounded-lg font-label-md opacity-60 cursor-not-allowed flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span> Generate PDF (coming soon)
+          className="px-lg py-md border border-outline-variant rounded-lg font-label-md opacity-60 cursor-not-allowed">
+          <span className="material-symbols-outlined text-[18px] mr-xs">picture_as_pdf</span>PDF (soon)
         </button>
         <button data-testid="generate-ppt" disabled
-          className="px-lg py-md border border-outline-variant rounded-lg font-label-md opacity-60 cursor-not-allowed flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">slideshow</span> Generate PPT (coming soon)
+          className="px-lg py-md border border-outline-variant rounded-lg font-label-md opacity-60 cursor-not-allowed">
+          <span className="material-symbols-outlined text-[18px] mr-xs">slideshow</span>PPT (soon)
         </button>
       </div>
+
+      <div className="rounded-xl overflow-hidden shadow-xl" data-testid="proposal-preview">
+        <TemplateRenderer style={style} data={merged} include={include} />
+      </div>
+
+      {exportOpen && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm"
+             data-testid="export-modal" onClick={(e) => e.target === e.currentTarget && setExportOpen(false)}>
+          <div className="bg-surface-container-lowest w-full max-w-2xl rounded-xl shadow-2xl border border-outline-variant p-lg space-y-md">
+            <div className="flex items-center justify-between">
+              <h3 className="font-headline-sm text-headline-sm text-primary">Choose sections to include</h3>
+              <button onClick={() => setExportOpen(false)} className="w-9 h-9 inline-flex items-center justify-center rounded-full hover:bg-surface-container-low" data-testid="export-modal-close">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <ExportOptionsBar value={include} onChange={setInclude} />
+            <div className="flex justify-end gap-md">
+              <button onClick={() => setInclude(ALL_SECTIONS)} className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low" data-testid="export-select-all">Select all</button>
+              <button onClick={() => setExportOpen(false)} className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90" data-testid="export-apply">Apply</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

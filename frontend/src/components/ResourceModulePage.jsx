@@ -8,6 +8,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import { useProposalBuilder } from '../context/ProposalBuilderContext.jsx';
 import DynamicTable from './DynamicTable.jsx';
 import ImportModal from './ImportModal.jsx';
+import EditItemDrawer from './EditItemDrawer.jsx';
 import { addItem } from '../services/proposalItemService.js';
 import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from '../pages/_html/voyanta_dashboard.js';
 
@@ -33,6 +34,7 @@ export default function ResourceModulePage({
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [selection, setSelection] = useState(new Set());
   const [adding, setAdding] = useState(false);
 
@@ -138,6 +140,7 @@ export default function ResourceModulePage({
             rows={visibleRows} loading={loading}
             selection={selection} onSelectionChange={setSelection}
             emptyMessage={`No ${resource} yet — click Import to upload a supplier file.`}
+            onEditRow={(r) => setEditing(r)}
             onRowAction={(r) => (
               <button data-testid={`del-${r.id}`} title="Delete"
                 onClick={async () => {
@@ -155,6 +158,9 @@ export default function ResourceModulePage({
       )}
       {importOpen && (
         <ImportModal resource={resource} onClose={() => setImportOpen(false)} onImported={reload} />
+      )}
+      {editing && (
+        <EditItemDrawer record={editing} resource={resource} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} service={service} />
       )}
     </div>
   );
