@@ -520,8 +520,7 @@ function Step1({ client, setClient }) {
 // ───────────────────────────────────────────────────────────────────────────
 function Step2Itinerary({ proposal, setProposal, reload, itineraries, onApplyItinerary, client }) {
   const toast = useToast();
-  const upd = (k) => (e) => setClient((s) => ({ ...s, [k]: e.target.value }));
-  
+
   return (
     <div className="glass-card rounded-xl p-lg space-y-md text-on-surface" data-testid="step-2">
       <h3 className="font-headline-sm text-headline-sm text-primary">Proposal Itinerary</h3>
@@ -534,7 +533,7 @@ function Step2Itinerary({ proposal, setProposal, reload, itineraries, onApplyIti
             {itineraries.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.destination || 'No location'})</option>)}
           </select>
         </div>
-        <p className="text-xs text-on-surface-variant mt-1">Select an itinerary to automatically populate days, hotels, and activities.</p>
+        <p className="text-xs text-on-surface-variant mt-1">Select an itinerary from your library to automatically populate day-by-day schedule.</p>
       </div>
       
       {proposal?.itinerary?.days?.length > 0 && (
@@ -546,12 +545,20 @@ function Step2Itinerary({ proposal, setProposal, reload, itineraries, onApplyIti
                <p className="text-on-surface-variant line-clamp-2">{d.description}</p>
              </div>
           ))}
-          <p className="text-xs text-primary cursor-pointer hover:underline">Edit schedule (Coming soon)</p>
+          <span className="text-xs text-on-surface-variant italic">Full schedule editor is available in the Itinerary Library.</span>
+        </div>
+      )}
+
+      {!proposal?.itinerary?.days?.length && (
+        <div className="flex flex-col items-center justify-center py-xl text-on-surface-variant space-y-sm border border-dashed border-outline-variant rounded-xl">
+          <span className="material-symbols-outlined text-[40px]">route</span>
+          <p className="font-label-md">No schedule yet — select a reference itinerary above or continue to add hotels &amp; activities.</p>
         </div>
       )}
     </div>
   );
 }
+
 
 function Field({ label, value, onChange, type = 'text', testid, extraClass = '' }) {
   return (
@@ -947,7 +954,7 @@ function Step7Preview({ proposalId, branding }) {
   const [include, setInclude] = useState(ALL_SECTIONS);
   const [exportOpen, setExportOpen] = useState(false);
   const [style, setStyle] = useState(branding?.template_style || 'elegant');
-  const [generating, setGenerating] = useState(false);
+
 
   useEffect(() => { setStyle(branding?.template_style || 'elegant'); }, [branding?.template_style]);
 
@@ -971,25 +978,11 @@ function Step7Preview({ proposalId, branding }) {
   };
 
   const onGeneratePdf = async () => {
-    const envelope = buildEnvelope(); if (!envelope) return;
-    setGenerating(true);
-    try {
-      // Relative URL — resolves to same external host (kubernetes ingress
-      // routes /api/* to the FastAPI backend which proxies to the Node service).
-      const res = await fetch('/api/pdf/generate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(envelope),
-      });
-      if (!res.ok) throw new Error(`PDF service responded ${res.status}`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url;
-      const safe = String(json.proposal?.name || 'proposal').replace(/[^a-z0-9._-]+/gi, '-');
-      a.download = `${safe}.pdf`;
-      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      toast.success('PDF generated');
-    } catch (e) { toast.error(e.message || 'PDF generation failed'); }
-    finally { setGenerating(false); }
+    // PDF generation requires a backend Puppeteer/HTML-to-PDF service.
+    // Until that service is deployed, inform the user and offer print as alternative.
+    toast.info('PDF backend service is not yet deployed. Use Print (Ctrl+P) to save as PDF from your browser — it produces an identical A4 output.');
   };
+
 
   const onPrint = () => {
     // Trigger native print of the preview area only (print CSS targets .a4-paper).

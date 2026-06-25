@@ -67,9 +67,9 @@ export default function DashboardPage() {
     const fab = root.querySelector('button.fixed.bottom-lg');
     if (fab) fab.onclick = () => navigate('/proposals/wizard');
 
-    // Recent-proposal rows → open wizard at preview step (shows full content)
+    // Recent-proposal rows → open wizard at preview step (step 8)
     root.querySelectorAll('tbody tr[data-pid]').forEach((tr) => {
-      tr.addEventListener('click', () => navigate(`/proposals/wizard?id=${encodeURIComponent(tr.dataset.pid)}&step=7`));
+      tr.addEventListener('click', () => navigate(`/proposals/wizard?id=${encodeURIComponent(tr.dataset.pid)}&step=8`));
     });
 
     // Sign-out via user card

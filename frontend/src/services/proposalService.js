@@ -31,6 +31,10 @@ export async function createProposal(payload) {
     destination: payload.destination,
     start_date: payload.start_date || null,
     end_date: payload.end_date || null,
+    arrival_city: payload.arrival_city || null,
+    arrival_airport: payload.arrival_airport || null,
+    departure_city: payload.departure_city || null,
+    departure_airport: payload.departure_airport || null,
     travelers: payload.travelers ?? null,
     budget_min: payload.budget_min ?? null,
     budget_max: payload.budget_max ?? null,
@@ -44,6 +48,7 @@ export async function createProposal(payload) {
   if (error) throw error;
   return normalize(data);
 }
+
 
 export async function updateProposal(id, patch) {
   if (!supabase) throw new Error('Supabase not configured');
