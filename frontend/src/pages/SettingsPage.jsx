@@ -44,7 +44,8 @@ export default function SettingsPage() {
     font_family: '',
     primary_color: '#0b1c30',
     google_calendar_connected: false,
-    gmail_connected: false
+    gmail_connected: false,
+    custom_blocks: []
   });
 
   // User Profile state
@@ -314,6 +315,49 @@ export default function SettingsPage() {
                     />
                   </div>
                   
+                  <div className="pt-xl border-t border-outline-variant space-y-md">
+                    <h4 className="font-headline-sm text-headline-sm text-primary">Custom Branding Sections</h4>
+                    <p className="text-body-sm text-on-surface-variant">Add extra text or image sections that will appear on the branding page for all proposals.</p>
+                    <div className="space-y-md">
+                      {(settings.custom_blocks || []).map((block, idx) => (
+                        <div key={idx} className="flex gap-md items-end bg-surface-container-low p-md rounded-lg border border-outline-variant">
+                          <label className="flex flex-col gap-xs flex-1">
+                            <span className="font-label-md text-label-md text-on-surface">Section Name</span>
+                            <input type="text" value={block.label} onChange={(e) => {
+                              const nb = [...settings.custom_blocks];
+                              nb[idx].label = e.target.value;
+                              setSettings({ ...settings, custom_blocks: nb });
+                            }} className="px-md py-sm bg-white border border-outline-variant rounded-lg font-body-md" placeholder="e.g. Testimonials" />
+                          </label>
+                          <label className="flex flex-col gap-xs">
+                            <span className="font-label-md text-label-md text-on-surface">Type</span>
+                            <select value={block.type} onChange={(e) => {
+                              const nb = [...settings.custom_blocks];
+                              nb[idx].type = e.target.value;
+                              setSettings({ ...settings, custom_blocks: nb });
+                            }} className="px-md py-sm bg-white border border-outline-variant rounded-lg font-body-md">
+                              <option value="text">Text (Paragraph)</option>
+                              <option value="image">Image (Upload)</option>
+                            </select>
+                          </label>
+                          <button onClick={() => {
+                            const nb = [...settings.custom_blocks];
+                            nb.splice(idx, 1);
+                            setSettings({ ...settings, custom_blocks: nb });
+                          }} className="px-md py-sm text-red-600 border border-red-200 rounded-lg font-label-md hover:bg-red-50">
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      <button onClick={() => {
+                        const newId = 'custom_' + Date.now();
+                        setSettings({ ...settings, custom_blocks: [...(settings.custom_blocks || []), { id: newId, label: 'New Section', type: 'text' }] });
+                      }} className="px-md py-sm bg-surface-container-high text-on-surface rounded-lg font-label-md hover:bg-surface-variant flex items-center gap-xs">
+                        <span className="material-symbols-outlined text-[18px]">add</span> Add Custom Section
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="flex justify-end gap-md pt-md border-t border-outline-variant">
                     <button onClick={loadSettings} className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Reset</button>
                     <button onClick={onSaveSettings} disabled={saving} data-testid="settings-save-agency"

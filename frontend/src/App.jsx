@@ -21,6 +21,7 @@ const AgencyBrandingPage = lazy(() => import('./pages/AgencyBrandingPage.jsx'));
 const FlightsPage = lazy(() => import('./pages/FlightsPage.jsx'));
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage.jsx'));
 const ItineraryPage = lazy(() => import('./pages/ItineraryPage.jsx'));
+const ItineraryDetailsPage = lazy(() => import('./pages/ItineraryDetailsPage.jsx'));
 const LibrariesPage = lazy(() => import('./pages/LibrariesPage.jsx'));
 const ProposalPreviewPage = lazy(() => import('./pages/ProposalPreviewPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
@@ -60,6 +61,7 @@ export default function App() {
               {/* Inventory modules — still accessible standalone for browsing/imports */}
               <Route path="/templates"           element={<Protected><TemplatesPage /></Protected>} />
               <Route path="/itinerary"           element={<Protected><ItineraryPage /></Protected>} />
+              <Route path="/itinerary/:id"       element={<Protected><ItineraryDetailsPage /></Protected>} />
               <Route path="/activities"          element={<Protected><AssetsLibraryPage /></Protected>} />
               <Route path="/flights"             element={<Protected><FlightsPage /></Protected>} />
               <Route path="/cost-calculator"     element={<Protected><CostCalculatorPage /></Protected>} />

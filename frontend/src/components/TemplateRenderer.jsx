@@ -6,10 +6,10 @@ import { memo } from 'react';
 import { resolveFont, TEMPLATE_DEFAULT_FONT } from '../lib/fonts.js';
 import { formatINR } from '../lib/currency.js';
 
-const TemplateRenderer = memo(function TemplateRenderer({ style = 'elegant', data, include = ALL }) {
+const TemplateRenderer = memo(function TemplateRenderer({ style = 'elegant', data, include = ALL, order = SECTIONS, customBlocks = [] }) {
   if (!data) return null;
   const Tpl = STYLES[style] || STYLES.elegant;
-  return <Tpl data={data} include={include} />;
+  return <Tpl data={data} include={include} order={order} customBlocks={customBlocks} />;
 });
 export default TemplateRenderer;
 
@@ -18,18 +18,43 @@ export const ALL = {
   costing: true, inclusions: true, exclusions: true, terms: true, contacts: true, socials: true,
 };
 
-const SECTIONS = ['hero', 'highlights', 'itinerary', 'hotels', 'costing', 'inclusions', 'exclusions', 'terms', 'contacts', 'socials'];
+export const SECTIONS = ['hero', 'highlights', 'itinerary', 'hotels', 'costing', 'inclusions', 'exclusions', 'terms', 'contacts', 'socials'];
 
-export function ExportOptionsBar({ value, onChange }) {
+export function ExportOptionsBar({ value, onChange, order, setOrder, customBlocks = [] }) {
   const toggle = (k) => onChange({ ...value, [k]: !value[k] });
+  
+  const handleDragStart = (e, index) => {
+    e.dataTransfer.setData('index', index);
+  };
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+  const handleDrop = (e, index) => {
+    e.preventDefault();
+    const sourceIndex = parseInt(e.dataTransfer.getData('index'), 10);
+    if (sourceIndex === index) return;
+    const newOrder = [...order];
+    const [draggedItem] = newOrder.splice(sourceIndex, 1);
+    newOrder.splice(index, 0, draggedItem);
+    setOrder(newOrder);
+  };
+
+  const getLabel = (s) => {
+    const cb = customBlocks.find(c => c.id === s);
+    return cb ? cb.label : s;
+  };
+
   return (
-    <div className="flex flex-wrap gap-md" data-testid="export-options">
-      {SECTIONS.map((s) => (
-        <label key={s} className="flex items-center gap-xs font-label-md text-label-md text-on-surface select-none cursor-pointer">
-          <input type="checkbox" checked={!!value[s]} onChange={() => toggle(s)} data-testid={`opt-${s}`} />
-          <span className="capitalize">{s}</span>
-        </label>
+    <div className="flex flex-col gap-sm" data-testid="export-options">
+      {order.map((s, index) => (
+        <div key={s} draggable onDragStart={(e) => handleDragStart(e, index)} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, index)}
+          className="flex items-center gap-sm p-sm bg-surface-container-low border border-outline-variant rounded cursor-grab hover:bg-surface-container active:cursor-grabbing">
+          <span className="material-symbols-outlined text-on-surface-variant text-[16px]">drag_indicator</span>
+          <input type="checkbox" checked={!!value[s]} onChange={() => toggle(s)} data-testid={`opt-${s}`} className="w-4 h-4 accent-primary" />
+          <span className="capitalize font-label-md text-on-surface">{getLabel(s)}</span>
+        </div>
       ))}
+      <p className="text-xs text-on-surface-variant mt-xs">Drag and drop to reorder sections in the final output.</p>
     </div>
   );
 }
@@ -191,22 +216,42 @@ function Socials({ b, font, accent }) {
 // ───────────────────────────────────────────────────────────────────────────
 // Style 1 · Elegant (Italian Escape)
 // ───────────────────────────────────────────────────────────────────────────
-function Elegant({ data, include }) {
+function Elegant({ data, include, order = SECTIONS, customBlocks = [] }) {
   const { p, b, items, total, currency, days, adults, children, travelers } = unpack(data);
   const accent = b.primary_color || '#7a5b3b';
   const font = resolveFont(b, 'elegant');
   return (
     <article className="p-xl bg-[#f6efe3]" style={{ fontFamily: font }} data-testid="tpl-elegant">
-      {include.hero && <Hero p={p} b={b} accent={accent} font={font} adults={adults} children={children} travelers={travelers} />}
-      {include.highlights && <Section title="The Highlights" accent={accent} font={font}><Paragraph text={b.highlights} font={font} /></Section>}
-      {include.itinerary  && <Section title="The Itinerary"  accent={accent} font={font}><Itinerary days={days} items={items} accent={accent} font={font} /></Section>}
-      {include.hotels     && <Section title="Selected Hotels" accent={accent} font={font}><Hotels items={items.hotel} accent={accent} font={font} currency={currency} /></Section>}
-      {include.costing    && <Section title="Investment" accent={accent} font={font}><Costing items={items} total={total} currency={currency} accent={accent} font={font} /></Section>}
-      {include.inclusions && <Section title="What's Included" accent={accent} font={font}><Paragraph text={b.inclusions} font={font} /></Section>}
-      {include.exclusions && <Section title="What's Excluded" accent={accent} font={font}><Paragraph text={b.exclusions} font={font} /></Section>}
-      {include.terms      && <Section title="Terms of Payment" accent={accent} font={font}><Paragraph text={b.terms_of_payment} font={font} /></Section>}
-      {include.contacts   && <Section title="Contact" accent={accent} font={font}><Contacts b={b} font={font} /></Section>}
-      {include.socials    && <Socials b={b} font={font} accent={accent} />}
+      {order.map(key => {
+        if (!include[key]) return null;
+        switch(key) {
+          case 'hero': return <Hero key={key} p={p} b={b} accent={accent} font={font} adults={adults} children={children} travelers={travelers} />;
+          case 'highlights': return <Section key={key} title="The Highlights" accent={accent} font={font}><Paragraph text={b.highlights} font={font} /></Section>;
+          case 'itinerary': return <Section key={key} title="The Itinerary"  accent={accent} font={font}><Itinerary days={days} items={items} accent={accent} font={font} /></Section>;
+          case 'hotels': return <Section key={key} title="Selected Hotels" accent={accent} font={font}><Hotels items={items.hotel} accent={accent} font={font} currency={currency} /></Section>;
+          case 'costing': return <Section key={key} title="Investment" accent={accent} font={font}><Costing items={items} total={total} currency={currency} accent={accent} font={font} /></Section>;
+          case 'inclusions': return <Section key={key} title="What's Included" accent={accent} font={font}><Paragraph text={b.inclusions} font={font} /></Section>;
+          case 'exclusions': return <Section key={key} title="What's Excluded" accent={accent} font={font}><Paragraph text={b.exclusions} font={font} /></Section>;
+          case 'terms': return <Section key={key} title="Terms of Payment" accent={accent} font={font}><Paragraph text={b.terms_of_payment} font={font} /></Section>;
+          case 'contacts': return <Section key={key} title="Contact" accent={accent} font={font}><Contacts b={b} font={font} /></Section>;
+          case 'socials': return <Socials key={key} b={b} font={font} accent={accent} />;
+          default: {
+            const cb = customBlocks.find(c => c.id === key);
+            if (cb) {
+              return (
+                <Section key={key} title={cb.label} accent={accent} font={font}>
+                  {cb.type === 'text' ? (
+                     <Paragraph text={b[key]} font={font} />
+                  ) : (
+                     b[key] ? <img src={b[key]} className="w-full max-h-[400px] object-cover rounded-xl mt-sm" alt={cb.label} /> : null
+                  )}
+                </Section>
+              );
+            }
+            return null;
+          }
+        }
+      })}
     </article>
   );
 }
@@ -216,23 +261,44 @@ function Elegant({ data, include }) {
 // On dark backgrounds we force a guaranteed-readable accent so a primary_color
 // like deep navy doesn't disappear into the page.
 // ───────────────────────────────────────────────────────────────────────────
-function Dark({ data, include }) {
+function Dark({ data, include, order = SECTIONS, customBlocks = [] }) {
   const { p, b, items, total, currency, days, adults, children, travelers } = unpack(data);
   const userAccent = b.primary_color || '#c8a64b';
   const accent = isLightOnDark(userAccent) ? userAccent : '#c8a64b'; // gold fallback
   const font = resolveFont(b, 'dark');
+  const muted = "rgba(243,244,246,0.7)";
   return (
     <article className="p-xl bg-[#0d1117] text-[#f3f4f6]" style={{ fontFamily: font }} data-testid="tpl-dark">
-      {include.hero && <Hero p={p} b={b} accent={accent} dark font={font} adults={adults} children={children} travelers={travelers} />}
-      {include.highlights && <Section title="HIGHLIGHTS" accent={accent} font={font}><Paragraph text={b.highlights} font={font} muted="rgba(243,244,246,0.7)" /></Section>}
-      {include.itinerary  && <Section title="ITINERARY"  accent={accent} font={font}><Itinerary days={days} items={items} accent={accent} font={font} muted="rgba(243,244,246,0.7)" /></Section>}
-      {include.hotels     && <Section title="HOTELS"     accent={accent} font={font}><Hotels items={items.hotel} accent={accent} font={font} currency={currency} divider="rgba(255,255,255,0.15)" /></Section>}
-      {include.costing    && <Section title="INVESTMENT" accent={accent} font={font}><Costing items={items} total={total} currency={currency} accent={accent} font={font} divider="rgba(255,255,255,0.15)" /></Section>}
-      {include.inclusions && <Section title="INCLUSIONS" accent={accent} font={font}><Paragraph text={b.inclusions} font={font} muted="rgba(243,244,246,0.7)" /></Section>}
-      {include.exclusions && <Section title="EXCLUSIONS" accent={accent} font={font}><Paragraph text={b.exclusions} font={font} muted="rgba(243,244,246,0.7)" /></Section>}
-      {include.terms      && <Section title="TERMS"      accent={accent} font={font}><Paragraph text={b.terms_of_payment} font={font} muted="rgba(243,244,246,0.7)" /></Section>}
-      {include.contacts   && <Section title="CONTACT"    accent={accent} font={font}><Contacts b={b} font={font} /></Section>}
-      {include.socials    && <Socials b={b} font={font} accent={accent} />}
+      {order.map(key => {
+        if (!include[key]) return null;
+        switch(key) {
+          case 'hero': return <Hero key={key} p={p} b={b} accent={accent} dark font={font} adults={adults} children={children} travelers={travelers} />;
+          case 'highlights': return <Section key={key} title="HIGHLIGHTS" accent={accent} font={font}><Paragraph text={b.highlights} font={font} muted={muted} /></Section>;
+          case 'itinerary': return <Section key={key} title="ITINERARY"  accent={accent} font={font}><Itinerary days={days} items={items} accent={accent} font={font} muted={muted} /></Section>;
+          case 'hotels': return <Section key={key} title="HOTELS"     accent={accent} font={font}><Hotels items={items.hotel} accent={accent} font={font} currency={currency} divider="rgba(255,255,255,0.15)" /></Section>;
+          case 'costing': return <Section key={key} title="INVESTMENT" accent={accent} font={font}><Costing items={items} total={total} currency={currency} accent={accent} font={font} divider="rgba(255,255,255,0.15)" /></Section>;
+          case 'inclusions': return <Section key={key} title="INCLUSIONS" accent={accent} font={font}><Paragraph text={b.inclusions} font={font} muted={muted} /></Section>;
+          case 'exclusions': return <Section key={key} title="EXCLUSIONS" accent={accent} font={font}><Paragraph text={b.exclusions} font={font} muted={muted} /></Section>;
+          case 'terms': return <Section key={key} title="TERMS"      accent={accent} font={font}><Paragraph text={b.terms_of_payment} font={font} muted={muted} /></Section>;
+          case 'contacts': return <Section key={key} title="CONTACT"    accent={accent} font={font}><Contacts b={b} font={font} /></Section>;
+          case 'socials': return <Socials key={key} b={b} font={font} accent={accent} />;
+          default: {
+            const cb = customBlocks.find(c => c.id === key);
+            if (cb) {
+              return (
+                <Section key={key} title={cb.label.toUpperCase()} accent={accent} font={font}>
+                  {cb.type === 'text' ? (
+                     <Paragraph text={b[key]} font={font} muted={muted} />
+                  ) : (
+                     b[key] ? <img src={b[key]} className="w-full max-h-[400px] object-cover rounded-xl mt-sm" alt={cb.label} /> : null
+                  )}
+                </Section>
+              );
+            }
+            return null;
+          }
+        }
+      })}
     </article>
   );
 }
@@ -251,24 +317,46 @@ function isLightOnDark(hex) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Style 3 · Light & Friendly (Family Memories)
 // ───────────────────────────────────────────────────────────────────────────
-function Light({ data, include }) {
+// Style 3 · Light & Friendly (Beach Retreat)
+// ───────────────────────────────────────────────────────────────────────────
+function Light({ data, include, order = SECTIONS, customBlocks = [] }) {
   const { p, b, items, total, currency, days, adults, children, travelers } = unpack(data);
-  const accent = b.primary_color || '#e89c5f';
+  const accent = b.primary_color || '#007f8a';
   const font = resolveFont(b, 'light');
+  const muted = "rgba(100,116,139,1)";
   return (
-    <article className="p-xl bg-white" style={{ fontFamily: font }} data-testid="tpl-light">
-      {include.hero && <Hero p={p} b={b} accent={accent} font={font} align="center" adults={adults} children={children} travelers={travelers} />}
-      {include.highlights && <Section title="Highlights" accent={accent} font={font}><Paragraph text={b.highlights} font={font} /></Section>}
-      {include.itinerary  && <Section title="Itinerary"  accent={accent} font={font}><Itinerary days={days} items={items} accent={accent} font={font} /></Section>}
-      {include.hotels     && <Section title="Hotels"     accent={accent} font={font}><Hotels items={items.hotel} accent={accent} font={font} currency={currency} /></Section>}
-      {include.costing    && <Section title="Pricing"    accent={accent} font={font}><Costing items={items} total={total} currency={currency} accent={accent} font={font} /></Section>}
-      {include.inclusions && <Section title="What's Included" accent={accent} font={font}><Paragraph text={b.inclusions} font={font} /></Section>}
-      {include.exclusions && <Section title="What's Excluded" accent={accent} font={font}><Paragraph text={b.exclusions} font={font} /></Section>}
-      {include.terms      && <Section title="Payment Terms" accent={accent} font={font}><Paragraph text={b.terms_of_payment} font={font} /></Section>}
-      {include.contacts   && <Section title="Get in Touch" accent={accent} font={font}><Contacts b={b} font={font} /></Section>}
-      {include.socials    && <Socials b={b} font={font} accent={accent} />}
+    <article className="p-xl bg-white text-slate-800" style={{ fontFamily: font }} data-testid="tpl-light">
+      {order.map(key => {
+        if (!include[key]) return null;
+        switch(key) {
+          case 'hero': return <Hero key={key} p={p} b={b} accent={accent} align="center" font={font} adults={adults} children={children} travelers={travelers} />;
+          case 'highlights': return <Section key={key} title="Highlights" accent={accent} font={font}><Paragraph text={b.highlights} font={font} muted={muted} /></Section>;
+          case 'itinerary': return <Section key={key} title="Itinerary"  accent={accent} font={font}><Itinerary days={days} items={items} accent={accent} font={font} muted={muted} /></Section>;
+          case 'hotels': return <Section key={key} title="Hotels"     accent={accent} font={font}><Hotels items={items.hotel} accent={accent} font={font} currency={currency} divider="rgba(226,232,240,1)" /></Section>;
+          case 'costing': return <Section key={key} title="Pricing"    accent={accent} font={font}><Costing items={items} total={total} currency={currency} accent={accent} font={font} divider="rgba(226,232,240,1)" /></Section>;
+          case 'inclusions': return <Section key={key} title="Inclusions" accent={accent} font={font}><Paragraph text={b.inclusions} font={font} muted={muted} /></Section>;
+          case 'exclusions': return <Section key={key} title="Exclusions" accent={accent} font={font}><Paragraph text={b.exclusions} font={font} muted={muted} /></Section>;
+          case 'terms': return <Section key={key} title="Terms"      accent={accent} font={font}><Paragraph text={b.terms_of_payment} font={font} muted={muted} /></Section>;
+          case 'contacts': return <Section key={key} title="Contact"    accent={accent} font={font}><Contacts b={b} font={font} /></Section>;
+          case 'socials': return <Socials key={key} b={b} font={font} accent={accent} />;
+          default: {
+            const cb = customBlocks.find(c => c.id === key);
+            if (cb) {
+              return (
+                <Section key={key} title={cb.label} accent={accent} font={font}>
+                  {cb.type === 'text' ? (
+                     <Paragraph text={b[key]} font={font} muted={muted} />
+                  ) : (
+                     b[key] ? <img src={b[key]} className="w-full max-h-[400px] object-cover rounded-xl mt-sm" alt={cb.label} /> : null
+                  )}
+                </Section>
+              );
+            }
+            return null;
+          }
+        }
+      })}
     </article>
   );
 }

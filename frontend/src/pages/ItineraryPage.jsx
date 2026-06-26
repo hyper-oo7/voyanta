@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import StitchPage from '../components/StitchPage.jsx';
 import navMap from '../lib/navMap.js';
@@ -13,6 +13,7 @@ import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashbo
 export default function ItineraryPage() {
   const wrapperRef = useRef(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const { signOut, isDemo, user } = useAuth();
 
@@ -32,17 +33,29 @@ export default function ItineraryPage() {
     try {
       const list = await itinerariesService.list();
       setItineraries(list);
+      return list;
     } catch (e) {
       toast.error(e.message || 'Failed to load itineraries');
+      return [];
     } finally {
       setLoading(false);
     }
   }, [toast]);
 
-  useEffect(() => { reload(); }, [reload]);
-
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
+    const checkState = async () => {
+      const list = await reload();
+      if (location.state?.editItineraryId) {
+        const target = list.find(it => it.id === location.state.editItineraryId);
+        if (target) setEditingItinerary(target);
+        // clear the state so it doesn't reopen on refresh
+        navigate('/itinerary', { replace: true, state: {} });
+      }
+    };
+    checkState();
+  }, [reload, location.state, navigate]);
+
+  useEffect(() => {    const root = wrapperRef.current; if (!root) return;
     const canvas = root.querySelector('main .max-w-7xl'); if (!canvas) return;
 
     root.querySelectorAll('aside a').forEach((a) => {
@@ -144,7 +157,7 @@ export default function ItineraryPage() {
             ) : itineraries.length === 0 ? (
               <div className="col-span-3 text-center py-xl text-on-surface-variant">No itineraries found. Create one!</div>
             ) : itineraries.map((it) => (
-              <div key={it.id} className="glass-card rounded-xl overflow-hidden flex flex-col group hover:border-primary transition-all shadow-sm">
+              <div key={it.id} className="glass-card rounded-xl overflow-hidden flex flex-col group hover:border-primary transition-all shadow-sm cursor-pointer" onClick={() => navigate(`/itinerary/${it.id}`)}>
                 <div className="h-40 bg-slate-100 relative">
                   {it.cover_image ? (
                     <img src={it.cover_image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -154,7 +167,7 @@ export default function ItineraryPage() {
                     </div>
                   )}
                   <div className="absolute top-2 right-2 flex gap-1">
-                    <button onClick={() => handleDelete(it.id)} title="Delete" className="w-8 h-8 rounded-full bg-white/90 text-error flex items-center justify-center hover:bg-error hover:text-white transition-colors shadow-sm">
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(it.id); }} title="Delete" className="w-8 h-8 rounded-full bg-white/90 text-error flex items-center justify-center hover:bg-error hover:text-white transition-colors shadow-sm">
                       <span className="material-symbols-outlined text-[16px]">delete</span>
                     </button>
                   </div>
@@ -163,7 +176,7 @@ export default function ItineraryPage() {
                   <h4 className="font-headline-sm text-primary font-bold line-clamp-1" title={it.name}>{it.name}</h4>
                   <p className="text-xs text-on-surface-variant mb-md font-semibold">{it.destination || 'Multiple Destinations'} · {it.duration} Days</p>
                   <p className="text-sm text-on-surface line-clamp-2 mb-lg flex-1">{it.description || 'No description provided.'}</p>
-                  <button onClick={() => setEditingItinerary(it)} className="w-full py-sm bg-surface-container-low border border-outline-variant rounded-lg font-label-md text-primary font-bold hover:bg-primary/10 transition-colors">
+                  <button onClick={(e) => { e.stopPropagation(); setEditingItinerary(it); }} className="w-full py-sm bg-surface-container-low border border-outline-variant rounded-lg font-label-md text-primary font-bold hover:bg-primary/10 transition-colors">
                     Edit Schedule
                   </button>
                 </div>
@@ -293,6 +306,19 @@ function ItineraryScheduleDrawer({ itinerary, onClose }) {
     const newBlocks = [...blocks];
     const item = newBlocks.splice(draggedIdx, 1)[0];
     newBlocks.splice(targetIdx, 0, item);
+    
+    // Automatically renumber days based on new order
+    let dayCounter = 1;
+    newBlocks.forEach(b => {
+      if (b.block_type === 'day') {
+        b.day_number = dayCounter++;
+        // If title is just "Day X", update it. Otherwise keep custom titles.
+        if (b.title && b.title.match(/^Day \d+$/)) {
+          b.title = `Day ${b.day_number}`;
+        }
+      }
+    });
+    
     setBlocks(newBlocks);
   };
 
@@ -387,6 +413,11 @@ function ItineraryScheduleDrawer({ itinerary, onClose }) {
                     <input type="text" value={b.notes || ''} onChange={(e) => updateBlock(i, 'notes', e.target.value)}
                       className="w-full px-md py-sm border border-outline-variant rounded bg-surface-container-lowest text-sm focus:border-primary outline-none" placeholder="e.g. Flight arrives 10:00 AM, VIP transfer..." />
                   </label>
+                  
+                  <div className="pt-sm">
+                    <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-1 block">Day Image</span>
+                    <LogoUploader value={b.image_url || ''} onChange={(v) => updateBlock(i, 'image_url', v)} label="Upload Image" folder="itineraries" testid={`day-img-${i}`} />
+                  </div>
                 </div>
               </div>
             ))

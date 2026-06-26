@@ -93,17 +93,27 @@ export default function ProposalWizard() {
     primary_color: '#0b1c30', template_style: 'elegant', font_family: '',
   });
 
+  const [costingPrefs, setCostingPrefs] = useState({
+    fixed_markup: 0,
+    pct_markup: 0,
+    discount: 0,
+    tax: 0
+  });
+
+  const [globalCustomBlocks, setGlobalCustomBlocks] = useState([]);
+
   // Pre-load agency-level branding on first wizard open (only if proposal has no branding yet).
   useEffect(() => {
     (async () => {
-      if (!supabase) return;
       try {
-        const { data } = await supabase.from('agencies').select('*').eq('id', DEFAULT_AGENCY_ID).maybeSingle();
+        const { settingsService } = await import('../services/resourceService.js');
+        const data = await settingsService.get();
         if (!data) return;
-        const social = data.social_links || {};
+        setGlobalCustomBlocks(data.custom_blocks || []);
+        
         setBranding((b) => ({
           ...b,
-          agency_name: b.agency_name || data.name || 'Voyanta',
+          agency_name: b.agency_name || data.agency_name || 'Voyanta',
           logo_url:    b.logo_url    || data.logo_url || '',
           address:     b.address     || data.address || '',
           contact_email: b.contact_email || data.contact_email || '',
@@ -111,9 +121,9 @@ export default function ProposalWizard() {
           website:     b.website     || data.website || '',
           primary_color: b.primary_color || data.primary_color || '#0b1c30',
           font_family: b.font_family || data.font_family || '',
-          social_facebook:  b.social_facebook  || social.facebook  || '',
-          social_instagram: b.social_instagram || social.instagram || '',
-          social_linkedin:  b.social_linkedin  || social.linkedin  || '',
+          social_facebook:  b.social_facebook  || data.social_facebook  || '',
+          social_instagram: b.social_instagram || data.social_instagram || '',
+          social_linkedin:  b.social_linkedin  || data.social_linkedin  || '',
         }));
       } catch { /* ignore */ }
     })();
@@ -151,6 +161,7 @@ export default function ProposalWizard() {
             itinerary_id: b.itinerary_id || '',
           });
           if (p.preferences?.branding) setBranding((s) => ({ ...s, ...p.preferences.branding }));
+          if (p.preferences?.costing) setCostingPrefs((s) => ({ ...s, ...p.preferences.costing }));
         }
       } else { setProposal(null); setItems([]); }
     } catch (e) { toast.error(e.message || 'Failed to load proposal'); }
@@ -230,10 +241,10 @@ export default function ProposalWizard() {
         special_notes: c.special_notes,
         itinerary_id: c.itinerary_id || null,
       },
-      preferences: { ...(proposal?.preferences || {}), branding },
+      preferences: { ...(proposal?.preferences || {}), branding, costing: costingPrefs },
       status: proposal?.status || 'Draft',
     };
-  }, [client, branding, proposal]);
+  }, [client, branding, costingPrefs, proposal]);
 
   const onApplyItinerary = useCallback(async (itinId) => {
     if (!itinId) return;
@@ -245,17 +256,75 @@ export default function ProposalWizard() {
       return;
     }
     try {
+      const blocks = await import('../services/resourceService.js').then(m => m.itineraryBlocksService.list({ itinerary_id: itinId }));
+      blocks.sort((a, b) => (a.day_number || 0) - (b.day_number || 0));
+      
+      const mappedDays = blocks.map((b) => ({
+        day: b.day_number || 1,
+        title: b.title || '',
+        description: b.content || '',
+        image_url: b.image_url || null,
+        notes: b.notes || '',
+        block_type: b.block_type || 'day'
+      }));
+
       const updated = await updateProposal(proposal.id, {
-        itinerary: { days: selectedItin.data?.days || [] },
+        itinerary: { days: mappedDays },
         destination: proposal.destination || selectedItin.destination || null,
       });
       setProposal(updated);
-      toast.success('Itinerary schedule applied to proposal');
-      reload(proposal.id);
-    } catch (err) {
-      toast.error(err.message || 'Failed to apply schedule');
+      setClient((s) => ({ ...s, itinerary_id: itinId, destination: updated.destination }));
+      
+      // -- Intelligence: Auto-link frequently used items --
+      try {
+        const { data: pastProps } = await supabase.from('proposals').select('id').eq('brief->>itinerary_id', itinId);
+        if (pastProps && pastProps.length > 0) {
+          const pastIds = pastProps.map(p => p.id);
+          const { data: pastItems } = await supabase.from('proposal_items').select('ref_id, kind, label, unit_price, currency, meta').in('proposal_id', pastIds);
+          
+          if (pastItems && pastItems.length > 0) {
+            const freq = {};
+            const details = {};
+            pastItems.forEach(pi => {
+              if (!pi.ref_id) return;
+              const key = `${pi.kind}:${pi.ref_id}`;
+              freq[key] = (freq[key] || 0) + 1;
+              if (!details[key]) details[key] = pi;
+            });
+            
+            const toAdd = Object.keys(freq).filter(k => freq[k] >= 5).map(k => details[k]);
+            if (toAdd.length > 0) {
+              const currentItems = await listItems(proposal.id);
+              const currentRefIds = new Set(currentItems.map(c => c.ref_id).filter(Boolean));
+              
+              let addedCount = 0;
+              for (const item of toAdd) {
+                if (!currentRefIds.has(item.ref_id)) {
+                  await addItem(proposal.id, {
+                    kind: item.kind, ref_id: item.ref_id, label: item.label,
+                    qty: 1, unit_price: item.unit_price, currency: item.currency, meta: item.meta
+                  });
+                  addedCount++;
+                }
+              }
+              if (addedCount > 0) {
+                toast.success(`Itinerary applied, and ${addedCount} frequently used items were auto-linked.`);
+                // Refresh items silently
+                listItems(proposal.id).then(setItems);
+                return;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Intelligence auto-link failed:', err);
+      }
+
+      toast.success('Itinerary applied');
+    } catch (e) {
+      toast.error(e.message || 'Failed to apply itinerary');
     }
-  }, [itineraries, proposal, reload, toast]);
+  }, [itineraries, proposal, toast]);
 
   const saveDraft = useCallback(async (silent = false) => {
     setSaving(true);
@@ -357,9 +426,9 @@ export default function ProposalWizard() {
                 onRemoveItem={onRemoveItem} />}
               {stepParam === 6 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
                 onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
-                proposalCurrency={proposal?.currency || 'INR'} />}
-              {stepParam === 7 && <Step6Branding branding={branding} setBranding={setBranding} />}
-              {stepParam === 8 && <Step7Preview proposalId={proposal?.id} branding={branding} />}
+                proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
+              {stepParam === 7 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} />}
+              {stepParam === 8 && <Step7Preview proposalId={proposal?.id} branding={branding} customBlocks={globalCustomBlocks} />}
             </>
           )}
 
@@ -649,7 +718,6 @@ function SelectedHotelItem({ it, onRemoveItem, onPatchItem }) {
 function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem, onPatchItem }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selection, setSelection] = useState(new Set());
   const [importOpen, setImportOpen] = useState(false);
 
   const reload = useCallback(async () => {
@@ -660,14 +728,34 @@ function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem, 
 
   useEffect(() => { reload(); }, [reload]);
 
-  const onAdd = async () => {
-    const picked = rows.filter((r) => selection.has(r.id));
-    if (!picked.length) return;
-    await addItems(picked);
-    setSelection(new Set());
+  const ofKind = items.filter((it) => it.kind === kind);
+  const selectedIds = new Set(ofKind.map((it) => it.ref_id));
+
+  const handleToggleHotel = async (r, checked) => {
+    if (checked) {
+      await addItems([r]);
+    } else {
+      const addedItem = ofKind.find((it) => it.ref_id === r.id);
+      if (addedItem) onRemoveItem(addedItem.id);
+    }
   };
 
-  const ofKind = items.filter((it) => it.kind === kind);
+  const handleTableSelection = async (nextSet) => {
+    const nextArr = Array.from(nextSet);
+    const addedIds = Array.from(selectedIds);
+    // Finds newly checked
+    const newlyChecked = nextArr.filter(id => !addedIds.includes(id));
+    if (newlyChecked.length > 0) {
+      const toAdd = rows.filter(r => newlyChecked.includes(r.id));
+      await addItems(toAdd);
+    }
+    // Finds newly unchecked
+    const newlyUnchecked = addedIds.filter(id => !nextArr.includes(id));
+    for (const id of newlyUnchecked) {
+      const addedItem = ofKind.find((it) => it.ref_id === id);
+      if (addedItem) onRemoveItem(addedItem.id);
+    }
+  };
 
   return (
     <div className="space-y-md" data-testid={`step-${kind}`}>
@@ -677,12 +765,6 @@ function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem, 
           className="px-lg py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
           <span className="material-symbols-outlined text-[18px]">upload</span> Import
         </button>
-        {selection.size > 0 && (
-          <button onClick={onAdd} data-testid={`add-${kind}s-to-proposal`}
-            className="px-lg py-sm bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90">
-            Add {selection.size} to proposal
-          </button>
-        )}
       </div>
 
       {kind === 'hotel' ? (
@@ -692,7 +774,7 @@ function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem, 
           ) : rows.length === 0 ? (
             <div className="col-span-3 text-center py-xl text-on-surface-variant">No hotels yet — click Import to upload a supplier file.</div>
           ) : rows.map(r => (
-            <label key={r.id} className={`cursor-pointer group flex flex-col rounded-xl border-2 transition-all overflow-hidden ${selection.has(r.id) ? 'border-primary ring-2 ring-primary/20 bg-primary-fixed/10' : 'border-outline-variant bg-white hover:border-primary/50'}`}>
+            <label key={r.id} className={`cursor-pointer group flex flex-col rounded-xl border-2 transition-all overflow-hidden ${selectedIds.has(r.id) ? 'border-primary ring-2 ring-primary/20 bg-primary-fixed/10' : 'border-outline-variant bg-white hover:border-primary/50'}`}>
               <div className="h-32 bg-slate-100 relative">
                 {r.cover_image || r.image_url ? (
                   <img src={r.cover_image || r.image_url} alt="" className="w-full h-full object-cover" />
@@ -702,18 +784,14 @@ function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem, 
                   </div>
                 )}
                 <div className="absolute top-2 right-2">
-                  <input type="checkbox" checked={selection.has(r.id)} onChange={(e) => {
-                    const next = new Set(selection);
-                    if (e.target.checked) next.add(r.id); else next.delete(r.id);
-                    setSelection(next);
-                  }} className="w-5 h-5 accent-primary rounded-full border-white/50 cursor-pointer" />
+                  <input type="checkbox" checked={selectedIds.has(r.id)} onChange={(e) => handleToggleHotel(r, e.target.checked)} className="w-5 h-5 accent-primary rounded-full border-white/50 cursor-pointer" />
                 </div>
               </div>
               <div className="p-md flex flex-col flex-1">
                 <span className="font-headline-sm text-primary font-bold line-clamp-1" title={r.name}>{r.name}</span>
                 <span className="text-xs text-on-surface-variant">{r.location || r.country || 'No location'} · {r.category || 'Hotel'}</span>
                 <span className="mt-auto pt-sm font-label-md font-bold text-on-surface">
-                  {formatINR(Number(r.price_per_night))} <span className="text-xs font-normal text-on-surface-variant">/ night</span>
+                  {Number(r.price_per_night || 0).toLocaleString()} <span className="text-xs font-normal text-on-surface-variant">/ night</span>
                 </span>
               </div>
             </label>
@@ -722,7 +800,7 @@ function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem, 
       ) : (
         <DynamicTable
           rows={rows} loading={loading}
-          selection={selection} onSelectionChange={setSelection}
+          selection={selectedIds} onSelectionChange={handleTableSelection}
           emptyMessage={`No ${resource} yet — click Import to upload a supplier file.`}
         />
       )}
@@ -769,8 +847,18 @@ function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem, 
 // ───────────────────────────────────────────────────────────────────────────
 const KINDS = ['transfer', 'visa', 'tax', 'margin', 'custom'];
 
-function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, proposalCurrency = 'INR' }) {
-  const total = useMemo(() => items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0), [items]);
+function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, proposalCurrency = 'INR', costingPrefs, setCostingPrefs }) {
+  const rawTotal = useMemo(() => items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0), [items]);
+  
+  const grandTotal = useMemo(() => {
+    let t = rawTotal;
+    t += Number(costingPrefs?.fixed_markup || 0);
+    t += t * (Number(costingPrefs?.pct_markup || 0) / 100);
+    t -= Number(costingPrefs?.discount || 0);
+    t += t * (Number(costingPrefs?.tax || 0) / 100);
+    return t;
+  }, [rawTotal, costingPrefs]);
+
   const byKind = useMemo(() => {
     const m = {}; items.forEach((it) => { m[it.kind] = (m[it.kind]||0) + (Number(it.qty)||0)*(Number(it.unit_price)||0); });
     return m;
@@ -788,6 +876,8 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, 
       setItems((s) => [...s, it]);
     } catch { /* surfaced upstream */ }
   };
+  
+  const updPref = (k) => (e) => setCostingPrefs((s) => ({ ...s, [k]: parseFloat(e.target.value) || 0 }));
 
   return (
     <div className="space-y-md" data-testid="step-costing">
@@ -808,7 +898,6 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, 
             <option value="">+ Add line…</option>
             {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
-          <span className="font-headline-sm text-primary" data-testid="costing-total">{formatINR(total)}</span>
         </div>
         <table className="w-full text-left">
           <thead className="bg-surface-container-low">
@@ -851,6 +940,30 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, 
             ))}
           </tbody>
         </table>
+        <div className="bg-surface-container p-md border-t border-outline-variant flex flex-col md:flex-row gap-lg justify-between items-start md:items-end">
+           <div className="grid grid-cols-2 md:grid-cols-4 gap-md flex-1">
+             <label className="flex flex-col gap-xs">
+               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Fixed Markup</span>
+               <input type="number" step="0.01" value={costingPrefs?.fixed_markup || 0} onChange={updPref('fixed_markup')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
+             </label>
+             <label className="flex flex-col gap-xs">
+               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">% Markup</span>
+               <input type="number" step="0.1" value={costingPrefs?.pct_markup || 0} onChange={updPref('pct_markup')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
+             </label>
+             <label className="flex flex-col gap-xs">
+               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Discount (Flat)</span>
+               <input type="number" step="0.01" value={costingPrefs?.discount || 0} onChange={updPref('discount')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
+             </label>
+             <label className="flex flex-col gap-xs">
+               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Tax / GST (%)</span>
+               <input type="number" step="0.1" value={costingPrefs?.tax || 0} onChange={updPref('tax')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
+             </label>
+           </div>
+           <div className="text-right pl-lg">
+             <span className="text-sm font-bold text-on-surface-variant uppercase tracking-widest block mb-1">Grand Total</span>
+             <span className="font-display text-headline-lg text-primary" data-testid="costing-total">{formatINR(grandTotal)}</span>
+           </div>
+        </div>
       </div>
       {Object.keys(byKind).length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
@@ -869,7 +982,7 @@ function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, 
 // ───────────────────────────────────────────────────────────────────────────
 // Step 6 — Branding
 // ───────────────────────────────────────────────────────────────────────────
-function Step6Branding({ branding, setBranding }) {
+function Step6Branding({ branding, setBranding, customBlocks }) {
   const toast = useToast();
   const upd = (k) => (e) => setBranding((s) => ({ ...s, [k]: e.target.value }));
   const aiDraft = (field, label) => () => {
@@ -920,6 +1033,22 @@ function Step6Branding({ branding, setBranding }) {
       <TextareaWithAI label="What's Included" value={branding.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" onAI={aiDraft('inclusions', 'inclusions')} />
       <TextareaWithAI label="What's Excluded" value={branding.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" onAI={aiDraft('exclusions', 'exclusions')} />
       <TextareaWithAI label="Terms of Payment" value={branding.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" onAI={aiDraft('terms_of_payment', 'terms')} />
+      
+      {customBlocks && customBlocks.length > 0 && (
+        <div className="pt-md border-t border-outline-variant space-y-md">
+          <h4 className="font-headline-sm text-headline-sm text-primary">Custom Sections</h4>
+          {customBlocks.map(block => (
+            <div key={block.id}>
+              {block.type === 'text' ? (
+                 <Textarea label={block.label} value={branding[block.id]} onChange={upd(block.id)} testid={`brand-${block.id}`} placeholder={`Enter content for ${block.label}...`} />
+              ) : (
+                 <LogoUploader value={branding[block.id]} onChange={(v) => setBranding(s => ({ ...s, [block.id]: v }))} label={block.label} testid={`brand-${block.id}`} folder="custom" />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <p className="font-label-sm text-on-surface-variant">Branding is stored on this proposal and used in the preview & export. Defaults are inherited from your Agency Branding page.</p>
     </div>
   );
@@ -955,13 +1084,44 @@ const Textarea = memo(function Textarea({ label, value, onChange, testid, placeh
 // ───────────────────────────────────────────────────────────────────────────
 // Step 7 — Preview / Generate
 // ───────────────────────────────────────────────────────────────────────────
-function Step7Preview({ proposalId, branding }) {
+function Step7Preview({ proposalId, branding, customBlocks }) {
   const toast = useToast();
   const [json, setJson] = useState(null);
   const [include, setInclude] = useState(ALL_SECTIONS);
   const [exportOpen, setExportOpen] = useState(false);
   const [style, setStyle] = useState(branding?.template_style || 'elegant');
+  const [generating, setGenerating] = useState(false);
 
+  // We need to import SECTIONS from TemplateRenderer, let's just initialize with an array
+  // Add custom block keys to the order too
+  const [sectionOrder, setSectionOrder] = useState(() => {
+    const base = ['hero', 'highlights', 'itinerary', 'hotels', 'costing', 'inclusions', 'exclusions', 'terms', 'contacts', 'socials'];
+    if (customBlocks) {
+       customBlocks.forEach(cb => base.push(cb.id));
+    }
+    return base;
+  });
+
+  // Keep sectionOrder in sync if customBlocks changes
+  useEffect(() => {
+    if (customBlocks && customBlocks.length > 0) {
+      setSectionOrder(prev => {
+        const next = [...prev];
+        customBlocks.forEach(cb => {
+          if (!next.includes(cb.id)) next.push(cb.id);
+        });
+        return next;
+      });
+      
+      setInclude(prev => {
+        const next = { ...prev };
+        customBlocks.forEach(cb => {
+          if (next[cb.id] === undefined) next[cb.id] = true;
+        });
+        return next;
+      });
+    }
+  }, [customBlocks]);
 
   useEffect(() => { setStyle(branding?.template_style || 'elegant'); }, [branding?.template_style]);
 
@@ -985,9 +1145,32 @@ function Step7Preview({ proposalId, branding }) {
   };
 
   const onGeneratePdf = async () => {
-    // PDF generation requires a backend Puppeteer/HTML-to-PDF service.
-    // Until that service is deployed, inform the user and offer print as alternative.
-    toast.info('PDF backend service is not yet deployed. Use Print (Ctrl+P) to save as PDF from your browser — it produces an identical A4 output.');
+    if (!proposalId) return;
+    setGenerating(true);
+    try {
+      const data = buildEnvelope();
+      const res = await fetch('/api/pdf/generate', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data) 
+      });
+      if (!res.ok) throw new Error('PDF generation failed');
+      
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); 
+      a.href = url;
+      a.download = `proposal-${proposal?.name || proposalId}.pdf`;
+      document.body.appendChild(a); 
+      a.click(); 
+      a.remove(); 
+      URL.revokeObjectURL(url);
+      toast.success('PDF generated successfully');
+    } catch (e) {
+      toast.error('Failed to generate PDF');
+    } finally {
+      setGenerating(false);
+    }
   };
 
 
@@ -1033,7 +1216,7 @@ function Step7Preview({ proposalId, branding }) {
       </div>
 
       <A4Preview data-testid="proposal-preview">
-        <TemplateRenderer style={style} data={merged} include={include} />
+        <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={customBlocks} />
       </A4Preview>
 
       {exportOpen && (
@@ -1046,7 +1229,7 @@ function Step7Preview({ proposalId, branding }) {
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <ExportOptionsBar value={include} onChange={setInclude} />
+            <ExportOptionsBar value={include} onChange={setInclude} order={sectionOrder} setOrder={setSectionOrder} customBlocks={customBlocks} />
             <div className="flex justify-end gap-md">
               <button onClick={() => setInclude(ALL_SECTIONS)} className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low" data-testid="export-select-all">Select all</button>
               <button onClick={() => setExportOpen(false)} className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90" data-testid="export-apply">Apply</button>
