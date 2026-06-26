@@ -1,6 +1,8 @@
 // File parser — xlsx + csv only (per scope decision).
 // Returns { columns: string[], rows: Array<Object> }.
 import * as XLSX from 'xlsx';
+import { api } from './api.js';
+import { logger } from '../utils/logger.js';
 import Papa from 'papaparse';
 
 async function loadPdfJS() {
@@ -128,10 +130,15 @@ function parseItineraryTextLocally(text) {
 }
 
 export async function parsePdfFile(file) {
-  // TODO: Integrate with AI itinerary parsing service (e.g. OpenAI / Claude) to handle unstructured PDF parsing.
-  // Currently falling back to deterministic keyword/regex-based extraction.
   const text = await extractTextFromPdf(file);
-  return parseItineraryTextLocally(text);
+  
+  try {
+    const result = await api.post('/api/parse-itinerary', { text });
+    return result;
+  } catch (err) {
+    logger.warn('Failed to use AI parser, falling back to local extraction.', err);
+    return parseItineraryTextLocally(text);
+  }
 }
 
 export async function parseFile(file) {

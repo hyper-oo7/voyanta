@@ -69,7 +69,8 @@ export default function ItineraryPage() {
       mount.id = 'itinerary-mount';
       canvas.appendChild(mount);
     }
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const root = wrapperRef.current; if (!root) return;
@@ -105,7 +106,7 @@ export default function ItineraryPage() {
       }
       blocks.push({ itinerary_id: it.id, block_type: 'departure', title: 'Departure', position: formData.duration + 1 });
       
-      for (const b of blocks) await itineraryBlocksService.create(b);
+      await Promise.all(blocks.map((b) => itineraryBlocksService.create(b)));
       
       toast.success('Itinerary created');
       setCreateOpen(false);
@@ -259,15 +260,12 @@ function ItineraryScheduleDrawer({ itinerary, onClose }) {
   const onSave = async () => {
     setSaving(true);
     try {
-      for (let i = 0; i < blocks.length; i++) {
-        const b = blocks[i];
+      await Promise.all(blocks.map((b, i) => {
         const patch = { ...b, position: i };
-        if (b.id) {
-          await itineraryBlocksService.update(b.id, patch);
-        } else {
-          await itineraryBlocksService.create({ ...patch, itinerary_id: itinerary.id });
-        }
-      }
+        return b.id
+          ? itineraryBlocksService.update(b.id, patch)
+          : itineraryBlocksService.create({ ...patch, itinerary_id: itinerary.id });
+      }));
       toast.success('Schedule saved successfully');
       onClose();
     } catch (err) {

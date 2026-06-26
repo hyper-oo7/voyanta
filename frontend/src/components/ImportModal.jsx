@@ -3,10 +3,12 @@ import { parseFile, suggestMapping, TARGET_FIELDS } from '../services/parserServ
 import { saveImport, loadSavedMapping } from '../services/importService.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { templatesService, itinerariesService } from '../services/resourceService.js';
+import { useBackendHealth } from '../context/BackendHealthContext.jsx';
 
 // 3-step modal: Upload → Map columns / PDF Preview → Confirm.
 export default function ImportModal({ resource, onClose, onImported }) {
   const toast = useToast();
+  const { isHealthy } = useBackendHealth();
   const [stage, setStage] = useState('pick');
   const [file, setFile] = useState(null);
   const [columns, setColumns] = useState([]);
@@ -28,6 +30,9 @@ export default function ImportModal({ resource, onClose, onImported }) {
     try {
       const ext = (f.name.split('.').pop() || '').toLowerCase();
       if (ext === 'pdf') {
+        if (!isHealthy) {
+           throw new Error('AI Parsing is offline. Please try again later or use CSV/XLSX.');
+        }
         const result = await parseFile(f);
         setFile(f);
         setPdfResult(result);

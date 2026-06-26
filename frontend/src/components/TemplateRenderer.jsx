@@ -2,14 +2,16 @@
 // Sections are toggle-able via the include map (driven by the Export options modal).
 // Font/color come from branding (primary_color); cover_image_url is the hero bg.
 
+import { memo } from 'react';
 import { resolveFont, TEMPLATE_DEFAULT_FONT } from '../lib/fonts.js';
 import { formatINR } from '../lib/currency.js';
 
-export default function TemplateRenderer({ style = 'elegant', data, include = ALL }) {
+const TemplateRenderer = memo(function TemplateRenderer({ style = 'elegant', data, include = ALL }) {
   if (!data) return null;
   const Tpl = STYLES[style] || STYLES.elegant;
   return <Tpl data={data} include={include} />;
-}
+});
+export default TemplateRenderer;
 
 export const ALL = {
   hero: true, highlights: true, itinerary: true, hotels: true,

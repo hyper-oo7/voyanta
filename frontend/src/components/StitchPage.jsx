@@ -46,9 +46,7 @@ export default function StitchPage({
 
   useEffect(() => {
     if (!bodyClass) return;
-    const prev = document.body.className;
     document.body.className = bodyClass;
-    return () => { document.body.className = prev; };
   }, [bodyClass]);
 
   // Universal click interception + sidebar augmentation

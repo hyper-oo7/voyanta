@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, memo } from 'react';
 
 // Generic data table:
 //  - auto-derives columns from row keys (or accepts an explicit `columns` prop)
@@ -9,7 +9,7 @@ import { useMemo, useState } from 'react';
 
 const HIDDEN = new Set(['id', 'agency_id', 'created_at', 'updated_at', 'raw', 'created_by']);
 
-export default function DynamicTable({
+const DynamicTable = memo(function DynamicTable({
   rows = [], loading = false, columns: explicit, onAdd, onRowAction, onEditRow,
   selection, onSelectionChange, pageSize = 10, emptyMessage = 'No records yet.',
   toolbarRight,
@@ -157,7 +157,9 @@ export default function DynamicTable({
       )}
     </div>
   );
-}
+});
+
+export default DynamicTable;
 
 function formatCell(v) {
   if (v == null) return '—';

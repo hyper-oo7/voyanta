@@ -83,7 +83,8 @@ export default function ProposalsListPage() {
       mount.id = 'proposals-list-mount';
       canvas.appendChild(mount);
     }
-  }, [navigate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sign-out wiring + user-card label on the sidebar
   useEffect(() => {

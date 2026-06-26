@@ -8,7 +8,7 @@
 // Routing:  /proposals/wizard?id=<uuid>&step=<1..7>
 // Step is reflected in the URL so deep-links into a particular step Just Work.
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import StitchPage from '../components/StitchPage.jsx';
@@ -159,7 +159,7 @@ export default function ProposalWizard() {
 
   useEffect(() => { reload(idParam); }, [idParam, reload]);
 
-  // Mutate dashboard chrome
+  // Mutate dashboard chrome — heavy DOM setup runs once on mount
   useEffect(() => {
     const root = wrapperRef.current; if (!root) return;
     const canvas = root.querySelector('main .max-w-7xl'); if (!canvas) return;
@@ -170,8 +170,7 @@ export default function ProposalWizard() {
         ? 'flex items-center gap-md bg-surface-container-high text-primary font-semibold border-l-4 border-primary rounded-r-lg py-md px-lg transition-transform scale-[0.98]'
         : 'flex items-center gap-md text-on-surface-variant py-md px-lg hover:bg-surface-container-low transition-all duration-200';
     });
-    const h2 = canvas.querySelector('h2'); if (h2) h2.textContent = proposal ? proposal.name : 'New Proposal';
-    const p  = h2?.parentElement?.querySelector('p'); if (p) p.textContent = 'Guided proposal builder.';
+    const p  = canvas.querySelector('h2')?.parentElement?.querySelector('p'); if (p) p.textContent = 'Guided proposal builder.';
     const cta = canvas.querySelector('button.bg-primary');
     if (cta) {
       cta.innerHTML = '<span class="material-symbols-outlined">close</span> Exit';
@@ -180,7 +179,15 @@ export default function ProposalWizard() {
     canvas.querySelectorAll(':scope > div.grid, :scope > .bento-grid').forEach((n) => n.remove());
     let mount = canvas.querySelector('#wizard-mount');
     if (!mount) { mount = document.createElement('div'); mount.id = 'wizard-mount'; canvas.appendChild(mount); }
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Lightweight effect: update the page title when proposal name changes
+  useEffect(() => {
+    const root = wrapperRef.current; if (!root) return;
+    const h2 = root.querySelector('main .max-w-7xl h2');
+    if (h2) h2.textContent = proposal ? proposal.name : 'New Proposal';
+  }, [proposal?.name]);
 
   // Sign-out wiring + name labels
   useEffect(() => {
@@ -300,14 +307,14 @@ export default function ProposalWizard() {
     if (!proposal?.id) { toast.error('Save the client info first'); return; }
     try {
       const qty = defaultQtyFor(kind);
-      for (const r of rows) {
-        await addItem(proposal.id, {
+      await Promise.all(rows.map((r) =>
+        addItem(proposal.id, {
           kind, ref_id: r.id, label: toLabel(r),
           qty, unit_price: toUnit(r),
           currency: sanitizeCurrency(r.currency),
           meta: { source: kind + 's', auto_qty_basis: kind === 'hotel' ? 'nights' : (kind === 'flight' || kind === 'activity' ? 'travelers' : 'one') },
-        });
-      }
+        })
+      ));
       const its = await listItems(proposal.id); setItems(its);
       toast.success(`Added ${rows.length} ${kind}(s) · qty ${qty}`);
     } catch (e) { toast.error(e.message); }
@@ -385,7 +392,7 @@ export default function ProposalWizard() {
 // ───────────────────────────────────────────────────────────────────────────
 // Progress indicator
 // ───────────────────────────────────────────────────────────────────────────
-function ProgressBar({ step, onJump }) {
+const ProgressBar = memo(function ProgressBar({ step, onJump }) {
   return (
     <div className="glass-card rounded-xl p-md flex items-center gap-xs overflow-x-auto" data-testid="wizard-progress">
       {STEPS.map((s, i) => (
@@ -403,7 +410,7 @@ function ProgressBar({ step, onJump }) {
       ))}
     </div>
   );
-}
+});
 
 // ───────────────────────────────────────────────────────────────────────────
 // Step 1 — Client Information
@@ -560,7 +567,7 @@ function Step2Itinerary({ proposal, setProposal, reload, itineraries, onApplyIti
 }
 
 
-function Field({ label, value, onChange, type = 'text', testid, extraClass = '' }) {
+const Field = memo(function Field({ label, value, onChange, type = 'text', testid, extraClass = '' }) {
   return (
     <label className={'flex flex-col gap-xs ' + extraClass}>
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
@@ -568,7 +575,7 @@ function Field({ label, value, onChange, type = 'text', testid, extraClass = '' 
         className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
     </label>
   );
-}
+});
 
 // ───────────────────────────────────────────────────────────────────────────
 // Steps 2/3/4 — Resource picker (Hotels / Flights / Activities)
@@ -935,7 +942,7 @@ function TextareaWithAI({ label, value, onChange, testid, onAI }) {
   );
 }
 
-function Textarea({ label, value, onChange, testid, placeholder = '' }) {
+const Textarea = memo(function Textarea({ label, value, onChange, testid, placeholder = '' }) {
   return (
     <label className="flex flex-col gap-xs">
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
@@ -943,7 +950,7 @@ function Textarea({ label, value, onChange, testid, placeholder = '' }) {
         className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
     </label>
   );
-}
+});
 
 // ───────────────────────────────────────────────────────────────────────────
 // Step 7 — Preview / Generate
