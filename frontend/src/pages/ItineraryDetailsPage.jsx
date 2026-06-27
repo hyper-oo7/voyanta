@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { itinerariesService, itineraryBlocksService } from '../services/resourceService.js';
 import { useToast } from '../context/ToastContext.jsx';
-import navMap from '../lib/navMap.js';
-import StitchPage from '../components/StitchPage.jsx';
 
 export default function ItineraryDetailsPage() {
   const { id } = useParams();

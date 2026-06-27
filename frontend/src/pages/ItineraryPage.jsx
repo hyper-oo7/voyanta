@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import StitchPage from '../components/StitchPage.jsx';
-import navMap from '../lib/navMap.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { itinerariesService, itineraryBlocksService } from '../services/resourceService.js';
 import ImportModal from '../components/ImportModal.jsx';
 import LogoUploader from '../components/LogoUploader.jsx';
-import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
 
 export default function ItineraryPage() {
   const wrapperRef = useRef(null);
@@ -55,10 +52,12 @@ export default function ItineraryPage() {
     checkState();
   }, [reload, location.state, navigate]);
 
-  useEffect(() => {    const root = wrapperRef.current; if (!root) return;
-    const canvas = root.querySelector('main .max-w-7xl'); if (!canvas) return;
+  const [mountNode, setMountNode] = useState(null);
 
-    root.querySelectorAll('aside a').forEach((a) => {
+  useEffect(() => {
+    const canvas = document.querySelector('main .max-w-7xl'); if (!canvas) return;
+
+    document.querySelectorAll('aside a').forEach((a) => {
       const lab = a.querySelector('.font-label-md'); if (!lab) return;
       const t = lab.textContent.trim();
       a.className = (t === 'Itinerary')
@@ -71,6 +70,7 @@ export default function ItineraryPage() {
 
     const cta = canvas.querySelector('button.bg-primary');
     if (cta) {
+      cta.style.display = 'inline-flex';
       cta.innerHTML = '<span class="material-symbols-outlined text-[20px]">add</span> Create New';
       cta.onclick = () => setCreateOpen(true);
     }
@@ -82,12 +82,12 @@ export default function ItineraryPage() {
       mount.id = 'itinerary-mount';
       canvas.appendChild(mount);
     }
+    setMountNode(mount);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const card = root.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
+    const card = document.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
     card.style.cursor = 'pointer';
     const onClick = async () => { await signOut(); navigate('/login'); };
     card.addEventListener('click', onClick);
@@ -143,13 +143,9 @@ export default function ItineraryPage() {
     }
   };
 
-  const mount = wrapperRef.current?.querySelector('#itinerary-mount');
-
   return (
     <div ref={wrapperRef} style={{ display: 'contents' }}>
-      <StitchPage styleId="stitch-style-itinerary-page" bodyClass={VoyantaDashboard_bodyClass}
-        extraStyles={VoyantaDashboard_extraStyles} html={VoyantaDashboard_html} navMap={navMap} />
-      {mount && createPortal(
+      {mountNode && createPortal(
         <div className="space-y-lg">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-lg">
             {loading ? (
@@ -238,7 +234,7 @@ export default function ItineraryPage() {
             />
           )}
         </div>,
-        mount
+        mountNode
       )}
     </div>
   );

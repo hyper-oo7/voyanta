@@ -192,6 +192,60 @@ async def pdf_generate(request: Request):
         logger.exception('pdf proxy failed')
         raise HTTPException(status_code=502, detail=f'PDF service unreachable: {e}')
 
+
+# ── PPT generator ─────────────────────────────────────────────────────────
+@api_router.post("/ppt/generate")
+async def ppt_generate(request: Request):
+    payload = await request.json()
+    try:
+        from pptx import Presentation
+        from io import BytesIO
+
+        prs = Presentation()
+        proposal = payload.get("proposal", {})
+        proposal_name = proposal.get("name", "Voyanta Proposal")
+        client_name = proposal.get("client_name", "")
+
+        # Title Slide
+        title_slide_layout = prs.slide_layouts[0]
+        slide = prs.slides.add_slide(title_slide_layout)
+        title = slide.shapes.title
+        subtitle = slide.placeholders[1]
+
+        title.text = proposal_name
+        subtitle.text = f"Prepared for: {client_name}" if client_name else "Exclusive Travel Proposal"
+
+        # Overview Slide
+        bullet_slide_layout = prs.slide_layouts[1]
+        slide = prs.slides.add_slide(bullet_slide_layout)
+        shapes = slide.shapes
+        title_shape = shapes.title
+        body_shape = shapes.placeholders[1]
+
+        title_shape.text = "Itinerary Overview"
+        tf = body_shape.text_frame
+        
+        items = payload.get("items", [])
+        for item in items[:10]: # Limit to 10 for overview
+            p = tf.add_paragraph()
+            p.text = f"Day {item.get('day_number', '?')}: {item.get('title', item.get('kind', 'Item'))}"
+            p.level = 0
+
+        # Save to memory
+        ppt_stream = BytesIO()
+        prs.save(ppt_stream)
+        ppt_stream.seek(0)
+        
+        safe = ''.join(ch if ch.isalnum() or ch in ('.', '_', '-') else '-' for ch in proposal_name)
+        return Response(
+            content=ppt_stream.read(),
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={"Content-Disposition": f'attachment; filename="{safe}.pptx"'},
+        )
+    except Exception as e:
+        logger.exception("ppt generation failed")
+        raise HTTPException(status_code=500, detail=f"PPT generation failed: {e}")
+
 # Include the router in the main app
 app.include_router(api_router)
 
@@ -208,3 +262,7 @@ app.add_middleware(
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

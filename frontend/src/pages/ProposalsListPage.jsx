@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import StitchPage from '../components/StitchPage.jsx';
-import navMap from '../lib/navMap.js';
+
+
 import { useToast } from '../context/ToastContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import {
@@ -15,7 +15,7 @@ import { buildProposalExport } from '../services/proposalItemService.js';
 // Reuse the dashboard's Stitch HTML chrome (sidebar + topbar + table styling)
 // so the new Proposals list page matches the existing design language without
 // touching any styles.
-import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
+
 
 // Renders inside the dashboard shell. After the Stitch HTML mounts we strip
 // everything from the canvas area and inject our own Proposals table.
@@ -39,85 +39,60 @@ export default function ProposalsListPage() {
 
   useEffect(() => { reload(); }, [reload]);
 
+  const [mountNode, setMountNode] = useState(null);
+
   // After dashboard HTML mounts, mutate the page chrome:
   // 1) Replace the welcome header with "Proposals"
   // 2) Replace the "Create New Proposal" button to navigate to /proposals/brief
   // 3) Hide the dashboard's stat/bento/footer sections; render our own list region
   useEffect(() => {
-    const root = wrapperRef.current;
-    if (!root) return;
-    const canvas = root.querySelector('main > .max-w-7xl, main .max-w-7xl, .p-lg.lg\\:p-xxl');
-    if (!canvas) return;
+    const canvas = document.querySelector('main .max-w-7xl'); if (!canvas) return;
 
-    // Sidebar active state: highlight "Proposals"
-    root.querySelectorAll('aside a').forEach((a) => {
-      const lab = a.querySelector('.font-label-md');
-      if (lab && lab.textContent.trim() === 'Proposals') {
-        a.className = 'flex items-center gap-md bg-surface-container-high text-primary font-semibold border-l-4 border-primary rounded-r-lg py-md px-lg transition-transform scale-[0.98]';
-      } else if (lab && lab.textContent.trim() === 'Dashboard') {
-        a.className = 'flex items-center gap-md text-on-surface-variant py-md px-lg hover:bg-surface-container-low transition-all duration-200';
-      }
+    document.querySelectorAll('aside a').forEach((a) => {
+      const lab = a.querySelector('.font-label-md'); if (!lab) return;
+      const t = lab.textContent.trim();
+      a.className = (t === 'Proposals')
+        ? 'flex items-center gap-md bg-surface-container-high text-primary font-semibold border-l-4 border-primary rounded-r-lg py-md px-lg transition-transform scale-[0.98]'
+        : 'flex items-center gap-md text-on-surface-variant py-md px-lg hover:bg-surface-container-low transition-all duration-200';
     });
 
-    // Header
-    const h2 = canvas.querySelector('h2');
-    if (h2) h2.textContent = 'Proposals';
-    const sub = h2?.parentElement?.querySelector('p');
-    if (sub) sub.textContent = 'All saved proposals for your agency.';
+    const h2 = canvas.querySelector('h2'); if (h2) h2.textContent = 'Proposals';
+    const p = h2?.parentElement?.querySelector('p'); if (p) p.textContent = 'View and manage your client proposals.';
 
-    // Primary CTA: route to wizard (new proposal)
     const cta = canvas.querySelector('button.bg-primary');
     if (cta) {
-      cta.textContent = '';
-      cta.innerHTML = '<span class="material-symbols-outlined">add</span> New Proposal';
-      cta.onclick = () => navigate('/proposals/wizard');
+      cta.style.display = 'inline-flex';
+      cta.innerHTML = '<span class="material-symbols-outlined text-[20px]">add</span> New Proposal';
+      cta.onclick = () => navigate('/proposals/wizard?step=1');
     }
 
-    // Remove stat cards + bento + footer block to make room for the list
     canvas.querySelectorAll(':scope > div.grid, :scope > .bento-grid').forEach((n) => n.remove());
-
-    // Insert our list mount node once
     let mount = canvas.querySelector('#proposals-list-mount');
     if (!mount) {
       mount = document.createElement('div');
       mount.id = 'proposals-list-mount';
       canvas.appendChild(mount);
     }
+    setMountNode(mount);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [proposals]);
 
-  // Sign-out wiring + user-card label on the sidebar
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const card = root.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md');
-    if (!card) return;
-    const onClick = async () => {
-      await signOut();
-      toast.success('Signed out');
-      navigate('/login');
-    };
+    const card = document.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
     card.style.cursor = 'pointer';
-    card.title = 'Sign out';
+    const onClick = async () => { await signOut(); navigate('/login'); };
     card.addEventListener('click', onClick);
     const name = card.querySelector('p.font-label-md');
     const role = card.querySelector('p.font-label-sm');
-    if (name) name.textContent = user?.user_metadata?.full_name || (isDemo ? 'Demo User' : (user?.email || 'Voyanta Agent'));
+    if (name) name.textContent = user?.user_metadata?.full_name || (isDemo ? 'Demo User' : 'Voyanta Agent');
     if (role) role.textContent = isDemo ? 'Demo Session' : (user?.email || 'Premium Agent');
     return () => card.removeEventListener('click', onClick);
   }, [signOut, navigate, toast, user, isDemo]);
 
   // Render the list overlay into the mount node
-  const mount = wrapperRef.current?.querySelector('#proposals-list-mount');
   return (
     <div ref={wrapperRef} style={{ display: 'contents' }}>
-      <StitchPage
-        styleId="stitch-style-proposals-list"
-        bodyClass={VoyantaDashboard_bodyClass}
-        extraStyles={VoyantaDashboard_extraStyles}
-        html={VoyantaDashboard_html}
-        navMap={navMap}
-      />
-      {mount && <Portal node={mount}>
+      {mountNode && <Portal node={mountNode}>
         <ProposalsListPanel
           proposals={proposals}
           loading={loading}

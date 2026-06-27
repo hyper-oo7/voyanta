@@ -72,7 +72,7 @@ export default function ColorPicker({ value, onChange, label = 'Primary Color', 
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
       
       {/* Live Preview and Hex Input */}
-      <div className="flex items-center gap-sm">
+      <div className="flex items-center gap-sm flex-wrap">
         {/* Live color circle & Native picker clicker */}
         <label className="relative w-10 h-10 rounded-lg border border-outline-variant shadow-sm cursor-pointer overflow-hidden flex-shrink-0 flex items-center justify-center hover:scale-105 transition-transform"
           style={{ backgroundColor: value || defaultColor }}>

@@ -4,15 +4,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import StitchPage from '../components/StitchPage.jsx';
-import navMap from '../lib/navMap.js';
+
+
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
 import LogoUploader from '../components/LogoUploader.jsx';
 import ColorPicker from '../components/ColorPicker.jsx';
 import { FONT_CATALOG } from '../lib/fonts.js';
-import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
+
 
 export default function AgencyBrandingPage() {
   const wrapperRef = useRef(null);
@@ -90,11 +90,12 @@ export default function AgencyBrandingPage() {
     finally { setSaving(false); }
   };
 
+  const [mountNode, setMountNode] = useState(null);
+
   // Mutate dashboard chrome
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const canvas = root.querySelector('main .max-w-7xl'); if (!canvas) return;
-    root.querySelectorAll('aside a').forEach((a) => {
+    const canvas = document.querySelector('main .max-w-7xl'); if (!canvas) return;
+    document.querySelectorAll('aside a').forEach((a) => {
       const lab = a.querySelector('.font-label-md'); if (!lab) return;
       const t = lab.textContent.trim();
       a.className = (t === 'Branding')
@@ -104,16 +105,16 @@ export default function AgencyBrandingPage() {
     const h2 = canvas.querySelector('h2'); if (h2) h2.textContent = 'Agency Branding';
     const p  = h2?.parentElement?.querySelector('p'); if (p) p.textContent = 'These values appear on every proposal you generate.';
     const cta = canvas.querySelector('button.bg-primary');
-    if (cta) { cta.innerHTML = '<span class="material-symbols-outlined">save</span> Save Changes'; cta.onclick = onSave; }
+    if (cta) { cta.style.display = 'inline-flex'; cta.innerHTML = '<span class="material-symbols-outlined">save</span> Save Changes'; cta.onclick = onSave; }
     canvas.querySelectorAll(':scope > div.grid, :scope > .bento-grid').forEach((n) => n.remove());
     let mount = canvas.querySelector('#brand-mount');
     if (!mount) { mount = document.createElement('div'); mount.id = 'brand-mount'; canvas.appendChild(mount); }
+    setMountNode(mount);
   });
 
   // Sign-out
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const card = root.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
+    const card = document.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
     const onClick = async () => { await signOut(); navigate('/login'); };
     card.style.cursor = 'pointer'; card.addEventListener('click', onClick);
     const name = card.querySelector('p.font-label-md');
@@ -124,13 +125,10 @@ export default function AgencyBrandingPage() {
   }, [signOut, navigate, isDemo, user]);
 
   const upd = (k) => (e) => setB((s) => ({ ...s, [k]: e.target.value }));
-  const mount = wrapperRef.current?.querySelector('#brand-mount');
 
   return (
     <div ref={wrapperRef} style={{ display: 'contents' }}>
-      <StitchPage styleId="stitch-style-branding-real" bodyClass={VoyantaDashboard_bodyClass}
-        extraStyles={VoyantaDashboard_extraStyles} html={VoyantaDashboard_html} navMap={navMap} />
-      {mount && createPortal(
+      {mountNode && createPortal(
         <div className="glass-card p-lg rounded-xl space-y-md" data-testid="branding-page">
           {loading ? <p>Loading…</p> : (
             <>
@@ -168,7 +166,7 @@ export default function AgencyBrandingPage() {
               </div>
             </>
           )}
-        </div>, mount
+        </div>, mountNode
       )}
     </div>
   );

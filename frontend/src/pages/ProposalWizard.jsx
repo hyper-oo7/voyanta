@@ -1,52 +1,31 @@
-// Proposal Wizard — the canonical proposal workflow.
-//
-// Single connected flow:  Client → Hotels → Flights → Activities → Costing → Branding → Preview.
-// Reuses DynamicTable + ImportModal + proposal_items services so no UI is redesigned.
-// All wizard fields persist via the existing proposals row (extras into `brief` jsonb)
-// and proposal_items (selected hotels/flights/activities + manual lines).
-//
-// Routing:  /proposals/wizard?id=<uuid>&step=<1..7>
-// Step is reflected in the URL so deep-links into a particular step Just Work.
-
-import { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import StitchPage from '../components/StitchPage.jsx';
-import DynamicTable from '../components/DynamicTable.jsx';
+
 import ImportModal from '../components/ImportModal.jsx';
-import navMap from '../lib/navMap.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { useProposalBuilder } from '../context/ProposalBuilderContext.jsx';
-import { COUNTRY_CODES, DEFAULT_COUNTRY } from '../lib/countries.js';
-import { formatINR } from '../lib/currency.js';
 import {
   fetchProposalById, createProposal, updateProposal,
 } from '../services/proposalService.js';
 import { hotelsService, flightsService, activitiesService, itinerariesService } from '../services/resourceService.js';
-import {
-  listItems, addItem, removeItem, updateItem, buildProposalExport,
-} from '../services/proposalItemService.js';
-import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
-import TemplateRenderer, { ALL as ALL_SECTIONS, ExportOptionsBar } from '../components/TemplateRenderer.jsx';
-import LogoUploader from '../components/LogoUploader.jsx';
-import ColorPicker from '../components/ColorPicker.jsx';
-import { FONT_CATALOG } from '../lib/fonts.js';
-import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
+import { listItems, addItem, removeItem, updateItem } from '../services/proposalItemService.js';
+import { supabase } from '../lib/supabaseClient.js';
+import { DEFAULT_COUNTRY } from '../lib/countries.js';
 
-const STEPS = [
-  { n: 1, key: 'client',    label: 'Client Info' },
-  { n: 2, key: 'itinerary', label: 'Itinerary' },
-  { n: 3, key: 'hotels',    label: 'Hotels' },
-  { n: 4, key: 'flights',   label: 'Flights' },
-  { n: 5, key: 'activities',label: 'Activities' },
-  { n: 6, key: 'costing',   label: 'Costing' },
-  { n: 7, key: 'branding',  label: 'Branding' },
-  { n: 8, key: 'preview',   label: 'Preview' },
-];
+// Import Wizard Steps
+import { ProgressBar, STEPS } from './wizard/ProgressBar.jsx';
+import { Step1Client } from './wizard/Step1Client.jsx';
+import { Step2Itinerary } from './wizard/Step2Itinerary.jsx';
+import { ResourceStep } from './wizard/ResourcePicker.jsx';
+import { Step5Costing } from './wizard/Step5Costing.jsx';
+import { Step6Branding } from './wizard/Step6Branding.jsx';
+import { Step7Preview } from './wizard/Step7Preview.jsx';
 
 export default function ProposalWizard() {
   const wrapperRef = useRef(null);
+  const step1Ref = useRef(null);
   const navigate = useNavigate();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
@@ -61,8 +40,10 @@ export default function ProposalWizard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [itineraries, setItineraries] = useState([]);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importResource, setImportResource] = useState('');
 
-  // Local form state — initialised from proposal when it loads
+  // Local form state
   const [client, setClient] = useState({
     customer_name: '', phone: '', country: DEFAULT_COUNTRY, email: '',
     destination: '',
@@ -75,7 +56,6 @@ export default function ProposalWizard() {
     itinerary_id: '',
   });
 
-  // Load itineraries on mount
   useEffect(() => {
     (async () => {
       try {
@@ -84,6 +64,7 @@ export default function ProposalWizard() {
       } catch { /* ignore */ }
     })();
   }, []);
+  
   const [branding, setBranding] = useState({
     agency_name: 'Voyanta', logo_url: '', address: '',
     contact_email: '', contact_phone: '', website: '',
@@ -102,7 +83,6 @@ export default function ProposalWizard() {
 
   const [globalCustomBlocks, setGlobalCustomBlocks] = useState([]);
 
-  // Pre-load agency-level branding on first wizard open (only if proposal has no branding yet).
   useEffect(() => {
     (async () => {
       try {
@@ -129,7 +109,6 @@ export default function ProposalWizard() {
     })();
   }, []);
 
-  // Load proposal + items when id changes
   const reload = useCallback(async (pid) => {
     setLoading(true);
     try {
@@ -170,11 +149,12 @@ export default function ProposalWizard() {
 
   useEffect(() => { reload(idParam); }, [idParam, reload]);
 
+  const [mountNode, setMountNode] = useState(null);
+
   // Mutate dashboard chrome — heavy DOM setup runs once on mount
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const canvas = root.querySelector('main .max-w-7xl'); if (!canvas) return;
-    root.querySelectorAll('aside a').forEach((a) => {
+    const canvas = document.querySelector('main .max-w-7xl'); if (!canvas) return;
+    document.querySelectorAll('aside a').forEach((a) => {
       const lab = a.querySelector('.font-label-md'); if (!lab) return;
       const t = lab.textContent.trim();
       a.className = (t === 'New Proposal' || t === 'Proposals')
@@ -184,26 +164,28 @@ export default function ProposalWizard() {
     const p  = canvas.querySelector('h2')?.parentElement?.querySelector('p'); if (p) p.textContent = 'Guided proposal builder.';
     const cta = canvas.querySelector('button.bg-primary');
     if (cta) {
+      cta.style.display = 'inline-flex';
       cta.innerHTML = '<span class="material-symbols-outlined">close</span> Exit';
       cta.onclick = () => navigate('/proposals');
     }
     canvas.querySelectorAll(':scope > div.grid, :scope > .bento-grid').forEach((n) => n.remove());
     let mount = canvas.querySelector('#wizard-mount');
-    if (!mount) { mount = document.createElement('div'); mount.id = 'wizard-mount'; canvas.appendChild(mount); }
+    if (!mount) {
+      mount = document.createElement('div');
+      mount.id = 'wizard-mount';
+      canvas.appendChild(mount);
+    }
+    setMountNode(mount);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Lightweight effect: update the page title when proposal name changes
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const h2 = root.querySelector('main .max-w-7xl h2');
+    const h2 = document.querySelector('main .max-w-7xl h2');
     if (h2) h2.textContent = proposal ? proposal.name : 'New Proposal';
   }, [proposal?.name]);
 
-  // Sign-out wiring + name labels
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const card = root.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
+    const card = document.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
     card.style.cursor = 'pointer';
     const onClick = async () => { await signOut(); navigate('/login'); };
     card.addEventListener('click', onClick);
@@ -214,7 +196,6 @@ export default function ProposalWizard() {
     return () => card.removeEventListener('click', onClick);
   }, [signOut, navigate, isDemo, user]);
 
-  // ---- Persistence helpers ------------------------------------------------
   const buildPayload = useCallback(() => {
     const c = client;
     const travelers = (parseInt(c.num_adults, 10) || 0) + (parseInt(c.num_children, 10) || 0);
@@ -242,6 +223,7 @@ export default function ProposalWizard() {
         itinerary_id: c.itinerary_id || null,
       },
       preferences: { ...(proposal?.preferences || {}), branding, costing: costingPrefs },
+      itinerary: proposal?.itinerary,
       status: proposal?.status || 'Draft',
     };
   }, [client, branding, costingPrefs, proposal]);
@@ -275,7 +257,6 @@ export default function ProposalWizard() {
       setProposal(updated);
       setClient((s) => ({ ...s, itinerary_id: itinId, destination: updated.destination }));
       
-      // -- Intelligence: Auto-link frequently used items --
       try {
         const { data: pastProps } = await supabase.from('proposals').select('id').eq('brief->>itinerary_id', itinId);
         if (pastProps && pastProps.length > 0) {
@@ -309,7 +290,6 @@ export default function ProposalWizard() {
               }
               if (addedCount > 0) {
                 toast.success(`Itinerary applied, and ${addedCount} frequently used items were auto-linked.`);
-                // Refresh items silently
                 listItems(proposal.id).then(setItems);
                 return;
               }
@@ -319,7 +299,6 @@ export default function ProposalWizard() {
       } catch (err) {
         console.warn('Intelligence auto-link failed:', err);
       }
-
       toast.success('Itinerary applied');
     } catch (e) {
       toast.error(e.message || 'Failed to apply itinerary');
@@ -327,6 +306,14 @@ export default function ProposalWizard() {
   }, [itineraries, proposal, toast]);
 
   const saveDraft = useCallback(async (silent = false) => {
+    if (stepParam === 1 && step1Ref.current) {
+      const isValid = await step1Ref.current.validate();
+      if (!isValid) {
+        if (!silent) toast.error('Please fix the errors in the form before saving.');
+        throw new Error('Validation failed');
+      }
+    }
+
     setSaving(true);
     try {
       const payload = buildPayload();
@@ -340,7 +327,6 @@ export default function ProposalWizard() {
     finally { setSaving(false); }
   }, [buildPayload, proposal, setActiveId, setParams, stepParam, toast]);
 
-  // ---- Step navigation ---------------------------------------------------
   const goStep = (n, idOverride) => setParams({ id: idOverride ?? proposal?.id ?? '', step: String(n) }, { replace: false });
 
   const onNext = async () => {
@@ -354,7 +340,6 @@ export default function ProposalWizard() {
   };
   const onPrev = () => goStep(Math.max(1, stepParam - 1));
 
-  // ---- Items helpers used by 2/3/4/5 -------------------------------------
   const sanitizeCurrency = (v) => /^[A-Z]{3}$/.test(String(v || '').toUpperCase()) ? String(v).toUpperCase() : (proposal?.currency || 'INR');
   const nights = useMemo(() => {
     const a = proposal?.start_date || client.start_date;
@@ -398,14 +383,19 @@ export default function ProposalWizard() {
     try { const u = await updateItem(id, patch); setItems((s) => s.map((x) => x.id === id ? u : x)); }
     catch (e) { toast.error(e.message); }
   };
-
-  const mount = wrapperRef.current?.querySelector('#wizard-mount');
+  
+  const handleOpenImport = (resource) => {
+    setImportResource(resource);
+    setImportOpen(true);
+  };
+  
+  const handleImportSuccess = () => {
+    reload(proposal?.id); // Quick refresh after import
+  };
 
   return (
     <div ref={wrapperRef} style={{ display: 'contents' }}>
-      <StitchPage styleId="stitch-style-wizard" bodyClass={VoyantaDashboard_bodyClass}
-        extraStyles={VoyantaDashboard_extraStyles} html={VoyantaDashboard_html} navMap={navMap} />
-      {mount && createPortal(
+      {mountNode && createPortal(
         <div className="space-y-lg" data-testid="proposal-wizard">
           <ProgressBar step={stepParam} onJump={(n) => proposal?.id ? goStep(n, proposal.id) : (n === 1 ? null : toast.error('Save client info first'))} />
 
@@ -413,26 +403,26 @@ export default function ProposalWizard() {
             <div className="glass-card p-xl rounded-xl text-center">Loading…</div>
           ) : (
             <>
-              {stepParam === 1 && <Step1 client={client} setClient={setClient} />}
+              {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} />}
               {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={reload} itineraries={itineraries} onApplyItinerary={onApplyItinerary} client={client} />}
               {stepParam === 3 && <ResourceStep kind="hotel"    service={hotelsService}     resource="hotels"     items={items}
                 addItems={(rows) => addItemsToProposal('hotel',  rows, (r) => r.name, (r) => Number(r.price_per_night||0))}
-                onRemoveItem={onRemoveItem} onPatchItem={onPatchItem} />}
+                onRemoveItem={onRemoveItem} onPatchItem={onPatchItem} setImportOpen={() => handleOpenImport('hotels')} />}
               {stepParam === 4 && <ResourceStep kind="flight"   service={flightsService}    resource="flights"    items={items}
                 addItems={(rows) => addItemsToProposal('flight', rows, (r) => `${r.airline||'Flight'} ${r.flight_no||''} ${r.origin||''}→${r.destination||''}`.trim(), (r) => Number(r.cost||0))}
-                onRemoveItem={onRemoveItem} />}
+                onRemoveItem={onRemoveItem} setImportOpen={() => handleOpenImport('flights')} />}
               {stepParam === 5 && <ResourceStep kind="activity" service={activitiesService} resource="activities" items={items}
                 addItems={(rows) => addItemsToProposal('activity', rows, (r) => r.name, (r) => Number(r.price||0))}
-                onRemoveItem={onRemoveItem} />}
+                onRemoveItem={onRemoveItem} setImportOpen={() => handleOpenImport('activities')} />}
               {stepParam === 6 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
                 onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
                 proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
               {stepParam === 7 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} />}
-              {stepParam === 8 && <Step7Preview proposalId={proposal?.id} branding={branding} customBlocks={globalCustomBlocks} />}
+              {stepParam === 8 && <Step7Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} />}
             </>
           )}
 
-          <div className="glass-card p-md rounded-xl flex items-center gap-md sticky bottom-0 z-10" data-testid="wizard-footer">
+          <div className="fixed bottom-lg left-1/2 -translate-x-1/2 w-[calc(100%-4rem)] max-w-5xl z-50 glass-card p-md rounded-xl flex items-center gap-md shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-outline-variant bg-white/90 backdrop-blur-md" data-testid="wizard-footer">
             <button onClick={onPrev} disabled={stepParam === 1} data-testid="wizard-prev"
               className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low disabled:opacity-50">Previous</button>
             <button onClick={() => saveDraft(false)} disabled={saving} data-testid="wizard-save"
@@ -446,822 +436,16 @@ export default function ProposalWizard() {
             {stepParam < 8 && (
               <button onClick={onNext} disabled={saving} data-testid="wizard-next"
                 className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-60 flex items-center gap-xs">
-                Continue to {STEPS[stepParam].label}
+                Continue to {STEPS[stepParam]?.label || 'Next'}
                 <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
               </button>
             )}
           </div>
-        </div>,
-        mount
-      )}
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// Progress indicator
-// ───────────────────────────────────────────────────────────────────────────
-const ProgressBar = memo(function ProgressBar({ step, onJump }) {
-  return (
-    <div className="glass-card rounded-xl p-md flex items-center gap-xs overflow-x-auto" data-testid="wizard-progress">
-      {STEPS.map((s, i) => (
-        <div key={s.n} className="flex items-center gap-xs flex-shrink-0">
-          <button onClick={() => onJump(s.n)} data-testid={`step-${s.n}`}
-            className={'px-md py-xs rounded-full font-label-sm transition-all ' +
-              (step === s.n ? 'bg-primary text-on-primary' :
-               step > s.n  ? 'bg-surface-container-highest text-primary' :
-                             'bg-surface-container-low text-on-surface-variant')}>
-            <span className="material-symbols-outlined text-[14px] mr-xs align-middle">{step > s.n ? 'check' : 'circle'}</span>
-            {s.n}. {s.label}
-          </button>
-          {i < STEPS.length - 1 && <span className="material-symbols-outlined text-on-surface-variant text-[16px]">chevron_right</span>}
-        </div>
-      ))}
-    </div>
-  );
-});
-
-// ───────────────────────────────────────────────────────────────────────────
-// Step 1 — Client Information
-// ───────────────────────────────────────────────────────────────────────────
-function Step1({ client, setClient }) {
-  const upd = (k) => (e) => setClient((s) => ({ ...s, [k]: e.target.value }));
-  
-  // Date auto-calc logic
-  const handleDateModeChange = (mode) => setClient((s) => ({ ...s, date_mode: mode }));
-  const handleStartChange = (e) => {
-    const val = e.target.value;
-    setClient((s) => {
-      const next = { ...s, start_date: val };
-      if (val && s.end_date) {
-        const ms = new Date(s.end_date).getTime() - new Date(val).getTime();
-        const nights = Math.max(1, Math.round(ms / 86400000));
-        next.duration_nights = nights;
-        next.duration_days = nights + 1;
-      }
-      return next;
-    });
-  };
-  const handleEndChange = (e) => {
-    const val = e.target.value;
-    setClient((s) => {
-      const next = { ...s, end_date: val };
-      if (val && s.start_date) {
-        const ms = new Date(val).getTime() - new Date(s.start_date).getTime();
-        const nights = Math.max(1, Math.round(ms / 86400000));
-        next.duration_nights = nights;
-        next.duration_days = nights + 1;
-      }
-      return next;
-    });
-  };
-  const handleDurationChange = (type) => (e) => {
-    const val = parseInt(e.target.value, 10) || 1;
-    setClient((s) => {
-      const next = { ...s, [type]: val };
-      if (type === 'duration_days') next.duration_nights = Math.max(1, val - 1);
-      if (type === 'duration_nights') next.duration_days = val + 1;
-      return next;
-    });
-  };
-
-  return (
-    <div className="glass-card rounded-xl p-lg space-y-md text-on-surface" data-testid="step-1">
-      <h3 className="font-headline-sm text-headline-sm text-primary">Client Information</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-        <Field label="Customer Name *" value={client.customer_name} onChange={upd('customer_name')} testid="customer-name" />
-        <div className="flex gap-xs">
-          <div>
-            <label className="font-label-md text-label-md text-on-surface block mb-xs">Country Code</label>
-            <select value={client.country} onChange={upd('country')} data-testid="country-code"
-              className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
-              {COUNTRY_CODES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          </div>
-          <Field label="Phone Number" value={client.phone} onChange={upd('phone')} testid="phone" extraClass="flex-1" />
-        </div>
-        <Field label="Email" type="email" value={client.email} onChange={upd('email')} testid="email" />
-        <Field label="Destination" value={client.destination} onChange={upd('destination')} testid="destination" />
-        
-        {/* Date Options */}
-        <div className="col-span-1 md:col-span-2 border border-outline-variant p-md rounded-lg space-y-sm bg-surface-container-lowest">
-          <label className="font-label-md text-label-md text-on-surface font-semibold block">Travel Dates</label>
-          <div className="flex gap-md mb-xs">
-            <label className="flex items-center gap-xs cursor-pointer">
-              <input type="radio" checked={client.date_mode === 'dates'} onChange={() => handleDateModeChange('dates')} className="accent-primary" />
-              <span className="font-body-md">Option A: Start / End Dates</span>
-            </label>
-            <label className="flex items-center gap-xs cursor-pointer">
-              <input type="radio" checked={client.date_mode === 'days'} onChange={() => handleDateModeChange('days')} className="accent-primary" />
-              <span className="font-body-md">Option B: Number of Days</span>
-            </label>
-          </div>
           
-          {client.date_mode === 'dates' ? (
-            <div className="flex gap-md">
-              <Field label="Start Date" type="date" value={client.start_date} onChange={handleStartChange} testid="start-date" extraClass="flex-1" />
-              <Field label="End Date"   type="date" value={client.end_date}   onChange={handleEndChange}   testid="end-date" extraClass="flex-1" />
-              <div className="flex-1 flex flex-col justify-end pb-sm">
-                <span className="font-label-md text-on-surface-variant">Auto-calculated: {client.duration_days} Days, {client.duration_nights} Nights</span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex gap-md">
-              <Field label="Number of Days" type="number" value={client.duration_days} onChange={handleDurationChange('duration_days')} testid="duration-days" extraClass="flex-1" />
-              <Field label="Number of Nights" type="number" value={client.duration_nights} onChange={handleDurationChange('duration_nights')} testid="duration-nights" extraClass="flex-1" />
-            </div>
-          )}
-        </div>
-
-        <Field label="Arrival City" value={client.arrival_city} onChange={upd('arrival_city')} testid="arrival-city" />
-        <Field label="Arrival Airport/Station" value={client.arrival_airport} onChange={upd('arrival_airport')} testid="arrival-airport" />
-        <Field label="Departure City" value={client.departure_city} onChange={upd('departure_city')} testid="departure-city" />
-        <Field label="Departure Airport/Station" value={client.departure_airport} onChange={upd('departure_airport')} testid="departure-airport" />
-
-        <Field label="Adults"   type="number" value={client.num_adults}   onChange={upd('num_adults')}   testid="adults" />
-        <Field label="Children" type="number" value={client.num_children} onChange={upd('num_children')} testid="children" />
-        <Field label="Budget (max)" type="number" value={client.budget} onChange={upd('budget')} testid="budget" />
-      </div>
-      <div>
-        <label className="font-label-md text-label-md text-on-surface block mb-xs">Special Notes</label>
-        <textarea value={client.special_notes} onChange={upd('special_notes')} rows={3} data-testid="special-notes"
-          className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
-      </div>
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// Step 2 — Itinerary
-// ───────────────────────────────────────────────────────────────────────────
-function Step2Itinerary({ proposal, setProposal, reload, itineraries, onApplyItinerary, client }) {
-  const toast = useToast();
-
-  return (
-    <div className="glass-card rounded-xl p-lg space-y-md text-on-surface" data-testid="step-2">
-      <h3 className="font-headline-sm text-headline-sm text-primary">Proposal Itinerary</h3>
-      <div>
-        <label className="font-label-md text-label-md text-on-surface block mb-xs font-semibold">Reference Itinerary</label>
-        <div className="flex gap-sm items-center">
-          <select value={client.itinerary_id || ''} onChange={(e) => onApplyItinerary(e.target.value)} data-testid="ref-itinerary"
-            className="flex-1 px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
-            <option value="">— None —</option>
-            {itineraries.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.destination || 'No location'})</option>)}
-          </select>
-        </div>
-        <p className="text-xs text-on-surface-variant mt-1">Select an itinerary from your library to automatically populate day-by-day schedule.</p>
-      </div>
-      
-      {proposal?.itinerary?.days?.length > 0 && (
-        <div className="mt-md space-y-sm">
-          <h4 className="font-label-lg text-on-surface font-semibold">Current Proposal Schedule</h4>
-          {proposal.itinerary.days.map((d, i) => (
-             <div key={i} className="p-sm border border-outline-variant rounded-lg bg-surface-container-lowest text-sm">
-               <strong>Day {d.day}: {d.title}</strong>
-               <p className="text-on-surface-variant line-clamp-2">{d.description}</p>
-             </div>
-          ))}
-          <span className="text-xs text-on-surface-variant italic">Full schedule editor is available in the Itinerary Library.</span>
-        </div>
+          {importOpen && <ImportModal resource={importResource} onClose={() => setImportOpen(false)} onImported={handleImportSuccess} />}
+        </div>,
+        mountNode
       )}
-
-      {!proposal?.itinerary?.days?.length && (
-        <div className="flex flex-col items-center justify-center py-xl text-on-surface-variant space-y-sm border border-dashed border-outline-variant rounded-xl">
-          <span className="material-symbols-outlined text-[40px]">route</span>
-          <p className="font-label-md">No schedule yet — select a reference itinerary above or continue to add hotels &amp; activities.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-const Field = memo(function Field({ label, value, onChange, type = 'text', testid, extraClass = '' }) {
-  return (
-    <label className={'flex flex-col gap-xs ' + extraClass}>
-      <span className="font-label-md text-label-md text-on-surface">{label}</span>
-      <input type={type} value={value ?? ''} onChange={onChange} data-testid={testid}
-        className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
-    </label>
-  );
-});
-
-// ───────────────────────────────────────────────────────────────────────────
-// Steps 2/3/4 — Resource picker (Hotels / Flights / Activities)
-// Reuses DynamicTable + ImportModal. Shows already-added items with delete.
-// ───────────────────────────────────────────────────────────────────────────
-function SelectedHotelItem({ it, onRemoveItem, onPatchItem }) {
-  const [hotelRecord, setHotelRecord] = useState(null);
-
-  useEffect(() => {
-    if (it.ref_id) {
-      hotelsService.get(it.ref_id).then(setHotelRecord).catch(() => {});
-    }
-  }, [it.ref_id]);
-
-  const images = hotelRecord?.raw?.images || (hotelRecord?.image_url ? [hotelRecord.image_url] : []);
-  const selected = it.meta?.selected_images || [];
-
-  const toggleImage = (url) => {
-    let next;
-    if (selected.includes(url)) {
-      next = selected.filter((u) => u !== url);
-    } else {
-      next = [...selected, url];
-    }
-    onPatchItem(it.id, {
-      meta: { ...(it.meta || {}), selected_images: next }
-    });
-  };
-
-  return (
-    <li className="flex flex-col px-lg py-md gap-md text-on-surface" data-testid={`selected-${it.id}`}>
-      <div className="flex items-center gap-md w-full">
-        <span className="font-body-md flex-1 truncate font-bold">{it.label}</span>
-        <span className="font-label-sm text-on-surface-variant">{it.unit_price} {it.currency}</span>
-        <button onClick={() => onRemoveItem(it.id)} title="Remove"
-          className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
-          <span className="material-symbols-outlined text-[18px]">delete</span>
-        </button>
-      </div>
-
-      {images.length > 0 && (
-        <div className="pl-6 space-y-sm">
-          <span className="text-xs font-semibold text-on-surface-variant block">Select Photos to Include in Proposal:</span>
-          <div className="flex gap-md flex-wrap">
-            {images.map((url, index) => {
-              const isChecked = selected.includes(url);
-              return (
-                <label key={index} className="relative cursor-pointer group flex flex-col items-center">
-                  <div className={`w-28 h-20 rounded-lg overflow-hidden border-2 bg-slate-100 shadow-sm relative transition-all ${isChecked ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant'}`}>
-                    <img src={url} alt="" className="w-full h-full object-cover" />
-                    {/* Checkbox overlay */}
-                    <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-white border border-outline flex items-center justify-center">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleImage(url)}
-                        className="rounded-full h-3 w-3 accent-primary border-none cursor-pointer focus:ring-0"
-                      />
-                    </div>
-                  </div>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </li>
-  );
-}
-
-function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem, onPatchItem }) {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [importOpen, setImportOpen] = useState(false);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try { setRows(await service.list()); } catch { /* surfaced by caller */ }
-    finally { setLoading(false); }
-  }, [service]);
-
-  useEffect(() => { reload(); }, [reload]);
-
-  const ofKind = items.filter((it) => it.kind === kind);
-  const selectedIds = new Set(ofKind.map((it) => it.ref_id));
-
-  const handleToggleHotel = async (r, checked) => {
-    if (checked) {
-      await addItems([r]);
-    } else {
-      const addedItem = ofKind.find((it) => it.ref_id === r.id);
-      if (addedItem) onRemoveItem(addedItem.id);
-    }
-  };
-
-  const handleTableSelection = async (nextSet) => {
-    const nextArr = Array.from(nextSet);
-    const addedIds = Array.from(selectedIds);
-    // Finds newly checked
-    const newlyChecked = nextArr.filter(id => !addedIds.includes(id));
-    if (newlyChecked.length > 0) {
-      const toAdd = rows.filter(r => newlyChecked.includes(r.id));
-      await addItems(toAdd);
-    }
-    // Finds newly unchecked
-    const newlyUnchecked = addedIds.filter(id => !nextArr.includes(id));
-    for (const id of newlyUnchecked) {
-      const addedItem = ofKind.find((it) => it.ref_id === id);
-      if (addedItem) onRemoveItem(addedItem.id);
-    }
-  };
-
-  return (
-    <div className="space-y-md" data-testid={`step-${kind}`}>
-      <div className="glass-card p-md rounded-xl flex items-center gap-md flex-wrap">
-        <h3 className="font-headline-sm text-headline-sm text-primary flex-1 capitalize">{resource} inventory</h3>
-        <button onClick={() => setImportOpen(true)} data-testid={`import-${resource}-btn`}
-          className="px-lg py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">upload</span> Import
-        </button>
-      </div>
-
-      {kind === 'hotel' ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
-          {loading ? (
-            <div className="col-span-3 text-center py-xl text-on-surface-variant">Loading hotels…</div>
-          ) : rows.length === 0 ? (
-            <div className="col-span-3 text-center py-xl text-on-surface-variant">No hotels yet — click Import to upload a supplier file.</div>
-          ) : rows.map(r => (
-            <label key={r.id} className={`cursor-pointer group flex flex-col rounded-xl border-2 transition-all overflow-hidden ${selectedIds.has(r.id) ? 'border-primary ring-2 ring-primary/20 bg-primary-fixed/10' : 'border-outline-variant bg-white hover:border-primary/50'}`}>
-              <div className="h-32 bg-slate-100 relative">
-                {r.cover_image || r.image_url ? (
-                  <img src={r.cover_image || r.image_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-on-surface-variant">
-                    <span className="material-symbols-outlined text-[32px]">hotel</span>
-                  </div>
-                )}
-                <div className="absolute top-2 right-2">
-                  <input type="checkbox" checked={selectedIds.has(r.id)} onChange={(e) => handleToggleHotel(r, e.target.checked)} className="w-5 h-5 accent-primary rounded-full border-white/50 cursor-pointer" />
-                </div>
-              </div>
-              <div className="p-md flex flex-col flex-1">
-                <span className="font-headline-sm text-primary font-bold line-clamp-1" title={r.name}>{r.name}</span>
-                <span className="text-xs text-on-surface-variant">{r.location || r.country || 'No location'} · {r.category || 'Hotel'}</span>
-                <span className="mt-auto pt-sm font-label-md font-bold text-on-surface">
-                  {Number(r.price_per_night || 0).toLocaleString()} <span className="text-xs font-normal text-on-surface-variant">/ night</span>
-                </span>
-              </div>
-            </label>
-          ))}
-        </div>
-      ) : (
-        <DynamicTable
-          rows={rows} loading={loading}
-          selection={selectedIds} onSelectionChange={handleTableSelection}
-          emptyMessage={`No ${resource} yet — click Import to upload a supplier file.`}
-        />
-      )}
-
-      {ofKind.length > 0 && (
-        <div className="glass-card rounded-xl overflow-hidden" data-testid={`${kind}-selected`}>
-          <div className="px-lg py-md border-b border-outline-variant flex items-center gap-md">
-            <h4 className="font-headline-sm text-headline-sm text-primary flex-1">Selected for this proposal · {ofKind.length}</h4>
-          </div>
-          <ul className="divide-y divide-outline-variant">
-            {ofKind.map((it) => {
-              if (kind === 'hotel') {
-                return (
-                  <SelectedHotelItem
-                    key={it.id}
-                    it={it}
-                    onRemoveItem={onRemoveItem}
-                    onPatchItem={onPatchItem}
-                  />
-                );
-              }
-              return (
-                <li key={it.id} className="flex items-center px-lg py-md gap-md text-on-surface" data-testid={`selected-${it.id}`}>
-                  <span className="font-body-md flex-1 truncate">{it.label}</span>
-                  <span className="font-label-sm text-on-surface-variant">{it.unit_price} {it.currency}</span>
-                  <button onClick={() => onRemoveItem(it.id)} title="Remove"
-                    className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
-                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-
-      {importOpen && <ImportModal resource={resource} onClose={() => setImportOpen(false)} onImported={reload} />}
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// Step 5 — Costing
-// ───────────────────────────────────────────────────────────────────────────
-const KINDS = ['transfer', 'visa', 'tax', 'margin', 'custom'];
-
-function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, proposalCurrency = 'INR', costingPrefs, setCostingPrefs }) {
-  const rawTotal = useMemo(() => items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0), [items]);
-  
-  const grandTotal = useMemo(() => {
-    let t = rawTotal;
-    t += Number(costingPrefs?.fixed_markup || 0);
-    t += t * (Number(costingPrefs?.pct_markup || 0) / 100);
-    t -= Number(costingPrefs?.discount || 0);
-    t += t * (Number(costingPrefs?.tax || 0) / 100);
-    return t;
-  }, [rawTotal, costingPrefs]);
-
-  const byKind = useMemo(() => {
-    const m = {}; items.forEach((it) => { m[it.kind] = (m[it.kind]||0) + (Number(it.qty)||0)*(Number(it.unit_price)||0); });
-    return m;
-  }, [items]);
-  const mixedCurrency = useMemo(() => {
-    const set = new Set(items.map((it) => (it.currency || proposalCurrency).toUpperCase()).filter(Boolean));
-    set.add(proposalCurrency);
-    return set.size > 1 ? Array.from(set) : null;
-  }, [items, proposalCurrency]);
-
-  const onAdd = async (kind) => {
-    if (!proposalId) return;
-    try {
-      const it = await addItem(proposalId, { kind, label: `New ${kind}`, qty: 1, unit_price: 0, currency: proposalCurrency });
-      setItems((s) => [...s, it]);
-    } catch { /* surfaced upstream */ }
-  };
-  
-  const updPref = (k) => (e) => setCostingPrefs((s) => ({ ...s, [k]: parseFloat(e.target.value) || 0 }));
-
-  return (
-    <div className="space-y-md" data-testid="step-costing">
-      {mixedCurrency && (
-        <div className="glass-card p-md rounded-xl flex items-start gap-md border-l-4 border-amber-500" data-testid="costing-currency-warning">
-          <span className="material-symbols-outlined text-amber-600">warning</span>
-          <div className="flex-1 font-label-md text-on-surface">
-            Items are in mixed currencies ({mixedCurrency.join(', ')}). The total below is a numeric sum — set every line to <strong>{proposalCurrency}</strong> for an accurate proposal total.
-          </div>
-        </div>
-      )}
-      <div className="glass-card rounded-xl overflow-hidden">
-        <div className="px-lg py-md border-b border-outline-variant flex items-center gap-md flex-wrap">
-          <h3 className="font-headline-sm text-headline-sm text-primary flex-1">Cost Breakdown</h3>
-          <select onChange={(e) => { if (e.target.value) { onAdd(e.target.value); e.target.value=''; } }}
-            data-testid="add-line-select"
-            className="px-md py-sm border border-outline-variant rounded-lg font-label-md bg-white">
-            <option value="">+ Add line…</option>
-            {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
-        </div>
-        <table className="w-full text-left">
-          <thead className="bg-surface-container-low">
-            <tr>{['Kind','Label','Qty','Unit Price','Subtotal',''].map((h) => (
-              <th key={h} className="px-lg py-md font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">{h}</th>
-            ))}</tr>
-          </thead>
-          <tbody className="divide-y divide-surface-container">
-            {items.length === 0 && <tr><td colSpan={6} className="px-lg py-xl text-center text-on-surface-variant" data-testid="costing-empty">No items yet — add hotels / flights / activities or use &ldquo;+ Add line&rdquo;.</td></tr>}
-            {items.map((it) => (
-              <tr key={it.id} data-testid={`cost-row-${it.id}`}>
-                <td className="px-lg py-md font-label-md uppercase text-label-sm tracking-widest">{it.kind}</td>
-                <td className="px-lg py-md">
-                  <input value={it.label}
-                    onChange={(e) => setItems((s) => s.map((x) => x.id === it.id ? { ...x, label: e.target.value } : x))}
-                    onBlur={(e) => onPatchItem(it.id, { label: e.target.value })}
-                    className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
-                </td>
-                <td className="px-lg py-md w-[110px]">
-                  <input type="number" min="0" step="0.5" value={it.qty}
-                    onChange={(e) => setItems((s) => s.map((x) => x.id === it.id ? { ...x, qty: e.target.value } : x))}
-                    onBlur={(e) => onPatchItem(it.id, { qty: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
-                </td>
-                <td className="px-lg py-md w-[140px]">
-                  <input type="number" min="0" step="0.01" value={it.unit_price}
-                    onChange={(e) => setItems((s) => s.map((x) => x.id === it.id ? { ...x, unit_price: e.target.value } : x))}
-                    onBlur={(e) => onPatchItem(it.id, { unit_price: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
-                </td>
-                <td className="px-lg py-md font-label-md text-primary">
-                  {formatINR((Number(it.qty)||0) * (Number(it.unit_price)||0))}
-                </td>
-                <td className="px-lg py-md text-right">
-                  <button onClick={() => onRemoveItem(it.id)} className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
-                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="bg-surface-container p-md border-t border-outline-variant flex flex-col md:flex-row gap-lg justify-between items-start md:items-end">
-           <div className="grid grid-cols-2 md:grid-cols-4 gap-md flex-1">
-             <label className="flex flex-col gap-xs">
-               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Fixed Markup</span>
-               <input type="number" step="0.01" value={costingPrefs?.fixed_markup || 0} onChange={updPref('fixed_markup')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
-             </label>
-             <label className="flex flex-col gap-xs">
-               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">% Markup</span>
-               <input type="number" step="0.1" value={costingPrefs?.pct_markup || 0} onChange={updPref('pct_markup')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
-             </label>
-             <label className="flex flex-col gap-xs">
-               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Discount (Flat)</span>
-               <input type="number" step="0.01" value={costingPrefs?.discount || 0} onChange={updPref('discount')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
-             </label>
-             <label className="flex flex-col gap-xs">
-               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Tax / GST (%)</span>
-               <input type="number" step="0.1" value={costingPrefs?.tax || 0} onChange={updPref('tax')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
-             </label>
-           </div>
-           <div className="text-right pl-lg">
-             <span className="text-sm font-bold text-on-surface-variant uppercase tracking-widest block mb-1">Grand Total</span>
-             <span className="font-display text-headline-lg text-primary" data-testid="costing-total">{formatINR(grandTotal)}</span>
-           </div>
-        </div>
-      </div>
-      {Object.keys(byKind).length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
-          {Object.entries(byKind).map(([k, v]) => (
-            <div key={k} className="glass-card p-md rounded-xl">
-              <p className="font-label-sm uppercase tracking-widest text-on-surface-variant">{k}</p>
-              <p className="font-headline-sm text-headline-sm text-primary">{formatINR(v)}</p>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// Step 6 — Branding
-// ───────────────────────────────────────────────────────────────────────────
-function Step6Branding({ branding, setBranding, customBlocks }) {
-  const toast = useToast();
-  const upd = (k) => (e) => setBranding((s) => ({ ...s, [k]: e.target.value }));
-  const aiDraft = (field, label) => () => {
-    // Stubbed AI helper — wiring to Emergent LLM is planned for a follow-up.
-    toast.info(`AI ${label} draft coming soon — for now, type your own.`);
-  };
-  return (
-    <div className="glass-card rounded-xl p-lg space-y-md" data-testid="step-branding">
-      <h3 className="font-headline-sm text-headline-sm text-primary">Agency Branding & Template</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
-        <div>
-          <label className="font-label-md text-label-md text-on-surface block mb-xs">Template Style</label>
-          <select value={branding.template_style} onChange={upd('template_style')} data-testid="brand-tpl-style"
-            className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
-            <option value="elegant">Elegant (cream, serif)</option>
-            <option value="dark">Dark Premium</option>
-            <option value="light">Light & Friendly</option>
-          </select>
-        </div>
-        <div>
-          <label className="font-label-md text-label-md text-on-surface block mb-xs">Font Family</label>
-          <select value={branding.font_family} onChange={upd('font_family')} data-testid="brand-font"
-            className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md"
-            style={{ fontFamily: branding.font_family || undefined }}>
-            <option value="">— Template default —</option>
-            {FONT_CATALOG.map((f) => (
-              <option key={f.key} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
-            ))}
-          </select>
-        </div>
-        <ColorPicker value={branding.primary_color} onChange={upd('primary_color')} testid="brand-color" />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-        <LogoUploader value={branding.logo_url} onChange={(v) => setBranding((s) => ({ ...s, logo_url: v }))} label="Agency Logo" testid="brand-logo-uploader" folder="logos" />
-        <LogoUploader value={branding.cover_image_url} onChange={(v) => setBranding((s) => ({ ...s, cover_image_url: v }))} label="Cover Image" testid="brand-cover-uploader" folder="covers" />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-        <Field label="Agency Name" value={branding.agency_name} onChange={upd('agency_name')} testid="brand-name" />
-        <Field label="Address"     value={branding.address}     onChange={upd('address')}     testid="brand-address" />
-        <Field label="Contact Email" type="email" value={branding.contact_email} onChange={upd('contact_email')} testid="brand-email" />
-        <Field label="Contact Phone" value={branding.contact_phone} onChange={upd('contact_phone')} testid="brand-phone" />
-        <Field label="Website" value={branding.website} onChange={upd('website')} testid="brand-website" />
-        <Field label="Facebook"  value={branding.social_facebook}  onChange={upd('social_facebook')}  testid="brand-fb" />
-        <Field label="Instagram" value={branding.social_instagram} onChange={upd('social_instagram')} testid="brand-ig" />
-        <Field label="LinkedIn"  value={branding.social_linkedin}  onChange={upd('social_linkedin')}  testid="brand-li" />
-      </div>
-      <Textarea label="Highlights" value={branding.highlights} onChange={upd('highlights')} testid="brand-highlights" placeholder="Bullet points of the trip's standout moments…" />
-      <TextareaWithAI label="What's Included" value={branding.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" onAI={aiDraft('inclusions', 'inclusions')} />
-      <TextareaWithAI label="What's Excluded" value={branding.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" onAI={aiDraft('exclusions', 'exclusions')} />
-      <TextareaWithAI label="Terms of Payment" value={branding.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" onAI={aiDraft('terms_of_payment', 'terms')} />
-      
-      {customBlocks && customBlocks.length > 0 && (
-        <div className="pt-md border-t border-outline-variant space-y-md">
-          <h4 className="font-headline-sm text-headline-sm text-primary">Custom Sections</h4>
-          {customBlocks.map(block => (
-            <div key={block.id}>
-              {block.type === 'text' ? (
-                 <Textarea label={block.label} value={branding[block.id]} onChange={upd(block.id)} testid={`brand-${block.id}`} placeholder={`Enter content for ${block.label}...`} />
-              ) : (
-                 <LogoUploader value={branding[block.id]} onChange={(v) => setBranding(s => ({ ...s, [block.id]: v }))} label={block.label} testid={`brand-${block.id}`} folder="custom" />
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <p className="font-label-sm text-on-surface-variant">Branding is stored on this proposal and used in the preview & export. Defaults are inherited from your Agency Branding page.</p>
-    </div>
-  );
-}
-
-function TextareaWithAI({ label, value, onChange, testid, onAI }) {
-  return (
-    <label className="flex flex-col gap-xs">
-      <span className="flex items-center justify-between font-label-md text-label-md text-on-surface">
-        <span>{label}</span>
-        <button type="button" onClick={onAI} data-testid={`${testid}-ai`}
-          className="inline-flex items-center gap-xs px-md py-xs bg-primary/10 text-primary rounded-full font-label-sm hover:bg-primary/15">
-          <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
-          Draft with AI
-        </button>
-      </span>
-      <textarea value={value ?? ''} onChange={onChange} rows={3} data-testid={testid}
-        className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
-    </label>
-  );
-}
-
-const Textarea = memo(function Textarea({ label, value, onChange, testid, placeholder = '' }) {
-  return (
-    <label className="flex flex-col gap-xs">
-      <span className="font-label-md text-label-md text-on-surface">{label}</span>
-      <textarea value={value ?? ''} onChange={onChange} rows={3} placeholder={placeholder} data-testid={testid}
-        className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
-    </label>
-  );
-});
-
-// ───────────────────────────────────────────────────────────────────────────
-// Step 7 — Preview / Generate
-// ───────────────────────────────────────────────────────────────────────────
-function Step7Preview({ proposalId, branding, customBlocks }) {
-  const toast = useToast();
-  const [json, setJson] = useState(null);
-  const [include, setInclude] = useState(ALL_SECTIONS);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [style, setStyle] = useState(branding?.template_style || 'elegant');
-  const [generating, setGenerating] = useState(false);
-
-  // We need to import SECTIONS from TemplateRenderer, let's just initialize with an array
-  // Add custom block keys to the order too
-  const [sectionOrder, setSectionOrder] = useState(() => {
-    const base = ['hero', 'highlights', 'itinerary', 'hotels', 'costing', 'inclusions', 'exclusions', 'terms', 'contacts', 'socials'];
-    if (customBlocks) {
-       customBlocks.forEach(cb => base.push(cb.id));
-    }
-    return base;
-  });
-
-  // Keep sectionOrder in sync if customBlocks changes
-  useEffect(() => {
-    if (customBlocks && customBlocks.length > 0) {
-      setSectionOrder(prev => {
-        const next = [...prev];
-        customBlocks.forEach(cb => {
-          if (!next.includes(cb.id)) next.push(cb.id);
-        });
-        return next;
-      });
-      
-      setInclude(prev => {
-        const next = { ...prev };
-        customBlocks.forEach(cb => {
-          if (next[cb.id] === undefined) next[cb.id] = true;
-        });
-        return next;
-      });
-    }
-  }, [customBlocks]);
-
-  useEffect(() => { setStyle(branding?.template_style || 'elegant'); }, [branding?.template_style]);
-
-  useEffect(() => {
-    (async () => { if (!proposalId) return; try { setJson(await buildProposalExport(proposalId)); } catch (e) { toast.error(e.message); } })();
-  }, [proposalId, toast]);
-
-  const buildEnvelope = useCallback(() => {
-    if (!json) return null;
-    return { ...json, presentation: { style, include }, branding };
-  }, [json, style, include, branding]);
-
-  const onDownloadJson = () => {
-    const envelope = buildEnvelope(); if (!envelope) return;
-    const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url;
-    a.download = `proposal-${json.proposal?.name || proposalId}.json`;
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    toast.success('Proposal JSON exported');
-  };
-
-  const onGeneratePdf = async () => {
-    if (!proposalId) return;
-    setGenerating(true);
-    try {
-      const data = buildEnvelope();
-      const res = await fetch('/api/pdf/generate', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data) 
-      });
-      if (!res.ok) throw new Error('PDF generation failed');
-      
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); 
-      a.href = url;
-      a.download = `proposal-${proposal?.name || proposalId}.pdf`;
-      document.body.appendChild(a); 
-      a.click(); 
-      a.remove(); 
-      URL.revokeObjectURL(url);
-      toast.success('PDF generated successfully');
-    } catch (e) {
-      toast.error('Failed to generate PDF');
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-
-  const onPrint = () => {
-    // Trigger native print of the preview area only (print CSS targets .a4-paper).
-    window.print();
-  };
-
-  if (!proposalId) return <div className="glass-card p-xl rounded-xl text-center text-on-surface-variant" data-testid="preview-no-proposal">Save the client step first.</div>;
-  if (!json) return <div className="glass-card p-xl rounded-xl text-center">Building preview…</div>;
-
-  // Merge wizard's working branding into the JSON so the preview reflects in-flight edits.
-  const merged = { ...json, proposal: { ...json.proposal, preferences: { ...(json.proposal?.preferences || {}), branding: { ...(json.proposal?.preferences?.branding || {}), ...branding } } } };
-
-  return (
-    <div className="space-y-md" data-testid="step-preview">
-      <div className="glass-card p-md rounded-xl flex items-center gap-md flex-wrap no-print">
-        <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest">Template</span>
-        <select value={style} onChange={(e) => setStyle(e.target.value)} data-testid="preview-style"
-          className="px-md py-sm bg-white border border-outline-variant rounded-lg font-body-md">
-          <option value="elegant">Elegant (cream, serif)</option>
-          <option value="dark">Dark Premium</option>
-          <option value="light">Light & Friendly</option>
-        </select>
-        <span className="font-label-sm text-on-surface-variant flex-1" data-testid="preview-total">{formatINR(json.totals.subtotal||0)}</span>
-        <button onClick={() => setExportOpen(true)} data-testid="open-export-modal"
-          className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">tune</span> Sections
-        </button>
-        <button onClick={onDownloadJson} data-testid="export-json"
-          className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">code</span> Export JSON
-        </button>
-        <button onClick={onPrint} data-testid="print-preview"
-          className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">print</span> Print
-        </button>
-        <button onClick={onGeneratePdf} disabled={generating} data-testid="generate-pdf"
-          className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-60 flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
-          {generating ? 'Generating…' : 'Generate PDF'}
-        </button>
-      </div>
-
-      <A4Preview data-testid="proposal-preview">
-        <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={customBlocks} />
-      </A4Preview>
-
-      {exportOpen && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm no-print"
-             data-testid="export-modal" onClick={(e) => e.target === e.currentTarget && setExportOpen(false)}>
-          <div className="bg-surface-container-lowest w-full max-w-2xl rounded-xl shadow-2xl border border-outline-variant p-lg space-y-md">
-            <div className="flex items-center justify-between">
-              <h3 className="font-headline-sm text-headline-sm text-primary">Choose sections to include</h3>
-              <button onClick={() => setExportOpen(false)} className="w-9 h-9 inline-flex items-center justify-center rounded-full hover:bg-surface-container-low" data-testid="export-modal-close">
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-            <ExportOptionsBar value={include} onChange={setInclude} order={sectionOrder} setOrder={setSectionOrder} customBlocks={customBlocks} />
-            <div className="flex justify-end gap-md">
-              <button onClick={() => setInclude(ALL_SECTIONS)} className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low" data-testid="export-select-all">Select all</button>
-              <button onClick={() => setExportOpen(false)} className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90" data-testid="export-apply">Apply</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// A4 paper wrapper that gives the preview visible page margins (Google-Docs feel)
-// and applies print CSS so users can ⌘P / Ctrl-P directly from the preview.
-function A4Preview({ children }) {
-  return (
-    <div className="a4-host overflow-auto py-lg" data-testid="a4-preview">
-      <div className="a4-paper mx-auto shadow-2xl rounded-md overflow-hidden bg-white">
-        {children}
-      </div>
-      <style>{`
-        .a4-host { background: linear-gradient(180deg, #e9eef5 0%, #dfe5ee 100%); border-radius: 12px; padding: 32px 0; }
-        .a4-paper { width: 210mm; min-height: 297mm; box-shadow: 0 20px 60px rgba(11,28,48,0.18); }
-        @media print {
-          @page { size: A4; margin: 0; }
-          html, body, #root { background: white !important; }
-          body * { visibility: hidden; }
-          [data-testid="a4-preview"], [data-testid="a4-preview"] * { visibility: visible; }
-          [data-testid="a4-preview"] { position: absolute; left: 0; top: 0; padding: 0; background: white; }
-          .a4-paper { box-shadow: none !important; width: 210mm; min-height: 297mm; }
-          .no-print { display: none !important; }
-        }
-      `}</style>
     </div>
   );
 }

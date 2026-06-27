@@ -105,6 +105,7 @@ function parseItineraryTextLocally(text) {
   
   const hotels = [];
   const activities = [];
+  const flights = [];
   
   for (const d of days) {
     for (const h of d.hotels) {
@@ -117,6 +118,20 @@ function parseItineraryTextLocally(text) {
         activities.push({ name: act, price: 1000, description: "Imported activity" });
       }
     }
+    for (const t of d.transfers) {
+      if (t && (t.toLowerCase().includes('flight') || t.toLowerCase().includes('air'))) {
+        const cleanVal = t.replace(/(?:flight|transfer|drive|air)\s*/i, '').trim();
+        if (cleanVal && !flights.some(x => x.flight_no.toLowerCase() === cleanVal.toLowerCase())) {
+          const parts = cleanVal.split(/\s+/);
+          flights.push({
+            airline: parts[0] || 'Imported Airline',
+            flight_no: parts[1] || parts[0] || 'TBD',
+            cost: 1500,
+            currency: 'INR'
+          });
+        }
+      }
+    }
   }
   
   return {
@@ -125,7 +140,8 @@ function parseItineraryTextLocally(text) {
     days_count: days.length,
     days,
     hotels,
-    activities
+    activities,
+    flights
   };
 }
 

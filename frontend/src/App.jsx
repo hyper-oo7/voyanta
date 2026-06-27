@@ -5,6 +5,7 @@ import { ToastProvider } from './context/ToastContext.jsx';
 import { ProposalBuilderProvider } from './context/ProposalBuilderContext.jsx';
 import { BackendHealthProvider } from './context/BackendHealthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
+import AppLayout from './components/AppLayout.jsx';
 import DiagnosticsPanel from './components/DiagnosticsPanel.jsx';
 
 // Lazy-load all page components for route-based code splitting.
@@ -48,28 +49,33 @@ export default function App() {
               <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<AuthenticationPage />} />
-              <Route path="/dashboard"           element={<Protected><DashboardPage /></Protected>} />
-              <Route path="/proposals"           element={<Protected><ProposalsListPage /></Protected>} />
 
-              {/* Wizard is the primary proposal workflow */}
-              <Route path="/proposals/wizard"    element={<Protected><ProposalWizard /></Protected>} />
+              {/* Wrapped all authenticated routes in AppLayout */}
+              <Route element={<Protected><AppLayout /></Protected>}>
+                <Route path="/dashboard"           element={<DashboardPage />} />
+                <Route path="/proposals"           element={<ProposalsListPage />} />
+
+                {/* Wizard is the primary proposal workflow */}
+                <Route path="/proposals/wizard"    element={<ProposalWizard />} />
+                <Route path="/proposals/preview"   element={<ProposalPreviewPage />} />
+
+                {/* Inventory modules — still accessible standalone for browsing/imports */}
+                <Route path="/templates"           element={<TemplatesPage />} />
+                <Route path="/itinerary"           element={<ItineraryPage />} />
+                <Route path="/itinerary/:id"       element={<ItineraryDetailsPage />} />
+                <Route path="/activities"          element={<AssetsLibraryPage />} />
+                <Route path="/flights"             element={<FlightsPage />} />
+                <Route path="/cost-calculator"     element={<CostCalculatorPage />} />
+                <Route path="/libraries"           element={<LibrariesPage />} />
+                <Route path="/libraries/hotels"    element={<HotelLibraryPage />} />
+                <Route path="/libraries/assets"    element={<AssetsLibraryPage />} />
+                <Route path="/branding"            element={<AgencyBrandingPage />} />
+                <Route path="/settings"            element={<SettingsPage />} />
+              </Route>
+              
               {/* Legacy entry-points all funnel into the wizard */}
               <Route path="/proposals/new"       element={<Navigate to="/proposals/wizard" replace />} />
               <Route path="/proposals/brief"     element={<Navigate to="/proposals/wizard" replace />} />
-              <Route path="/proposals/preview"   element={<Protected><ProposalPreviewPage /></Protected>} />
-
-              {/* Inventory modules — still accessible standalone for browsing/imports */}
-              <Route path="/templates"           element={<Protected><TemplatesPage /></Protected>} />
-              <Route path="/itinerary"           element={<Protected><ItineraryPage /></Protected>} />
-              <Route path="/itinerary/:id"       element={<Protected><ItineraryDetailsPage /></Protected>} />
-              <Route path="/activities"          element={<Protected><AssetsLibraryPage /></Protected>} />
-              <Route path="/flights"             element={<Protected><FlightsPage /></Protected>} />
-              <Route path="/cost-calculator"     element={<Protected><CostCalculatorPage /></Protected>} />
-              <Route path="/libraries"           element={<Protected><LibrariesPage /></Protected>} />
-              <Route path="/libraries/hotels"    element={<Protected><HotelLibraryPage /></Protected>} />
-              <Route path="/libraries/assets"    element={<Protected><AssetsLibraryPage /></Protected>} />
-              <Route path="/branding"            element={<Protected><AgencyBrandingPage /></Protected>} />
-              <Route path="/settings"            element={<Protected><SettingsPage /></Protected>} />
 
               <Route path="*" element={<NotFoundPage />} />
               </Routes>

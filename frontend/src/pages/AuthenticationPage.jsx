@@ -1,189 +1,202 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import StitchPage from '../components/StitchPage.jsx';
-import navMap from '../lib/navMap.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import { VoyantaAuthentication_bodyClass, VoyantaAuthentication_extraStyles, VoyantaAuthentication_html } from './_html/voyanta_authentication.js';
 
-// Auth page: preserves Stitch's exact UI but wires the existing form fields,
-// "Forgot password?" link, and "Create an account" toggle to Supabase Auth.
 export default function AuthenticationPage() {
-  const wrapperRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { signIn, signUp, resetPassword, signInWithProvider, user, enterDemoMode, demoEnabled } = useAuth();
+  const { signIn, signUp, signInWithProvider, user, demoEnabled, enterDemoMode } = useAuth();
+  
+  const [isSignUp, setIsSignUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  
   const redirectTo = location.state?.from || '/dashboard';
 
   useEffect(() => {
     if (user) navigate(redirectTo, { replace: true });
   }, [user, navigate, redirectTo]);
 
-  useEffect(() => {
-    const root = wrapperRef.current;
-    if (!root) return;
-    const form = root.querySelector('#loginForm');
-    const signupOverlay = root.querySelector('#signupOverlay');
-    const signupModal = root.querySelector('#signupModal');
-    const toggleAuthBtn = root.querySelector('#toggleAuth');
-    const closeSignup = root.querySelector('#closeSignup');
-    const forgot = root.querySelector('a[href="#"]'); // first "Forgot password?" link
-
-    // ---- Login submit ----
-    const onLogin = async (e) => {
-      e.preventDefault();
-      if (submitting) return;
-      setSubmitting(true);
-      const email = form.querySelector('#email').value.trim();
-      const password = form.querySelector('#password').value;
-      const btn = form.querySelector('button[type="submit"]');
-      const original = btn.innerText;
-      btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-md">progress_activity</span>';
-      btn.disabled = true;
-      try {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    
+    try {
+      if (isSignUp) {
+        await signUp({ email, password, fullName });
+        toast.success('Account created! Please check your inbox.');
+        setIsSignUp(false);
+      } else {
         await signIn({ email, password });
-        btn.innerHTML = '<span class="material-symbols-outlined text-md">check</span> Signed in';
         toast.success('Welcome back!');
         setTimeout(() => navigate(redirectTo, { replace: true }), 300);
-      } catch (err) {
-        toast.error(err.message || 'Sign-in failed');
-        btn.innerText = original;
-        btn.disabled = false;
-      } finally {
-        setSubmitting(false);
       }
-    };
-    form?.addEventListener('submit', onLogin);
+    } catch (err) {
+      toast.error(err.message || 'Authentication failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
-    // ---- Open / close signup modal ----
-    const openSignup = () => {
-      signupOverlay.classList.remove('hidden');
-      requestAnimationFrame(() => {
-        signupOverlay.classList.replace('opacity-0', 'opacity-100');
-        signupModal.classList.replace('scale-95', 'scale-100');
-      });
-    };
-    const dismissSignup = () => {
-      signupOverlay.classList.replace('opacity-100', 'opacity-0');
-      signupModal.classList.replace('scale-100', 'scale-95');
-      setTimeout(() => signupOverlay.classList.add('hidden'), 300);
-    };
-    toggleAuthBtn?.addEventListener('click', openSignup);
-    closeSignup?.addEventListener('click', dismissSignup);
-    const onBackdrop = (e) => { if (e.target === signupOverlay) dismissSignup(); };
-    signupOverlay?.addEventListener('click', onBackdrop);
-
-    // ---- Signup submit ----
-    const signupForm = signupOverlay?.querySelector('form');
-    const onSignup = async (e) => {
-      e.preventDefault();
-      if (submitting) return;
-      setSubmitting(true);
-      const inputs = signupForm.querySelectorAll('input');
-      const firstName = inputs[0].value.trim();
-      const lastName = inputs[1].value.trim();
-      const email = inputs[2].value.trim();
-      const password = inputs[3].value;
-      const btn = signupForm.querySelector('button[type="button"]');
-      const original = btn.innerText;
-      btn.disabled = true;
-      btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-md">progress_activity</span>';
-      try {
-        await signUp({ email, password, fullName: `${firstName} ${lastName}`.trim() });
-        toast.success('Account created. Check your inbox to confirm.');
-        dismissSignup();
-        btn.innerText = original;
-      } catch (err) {
-        toast.error(err.message || 'Sign-up failed');
-        btn.innerText = original;
-      } finally {
-        btn.disabled = false;
-        setSubmitting(false);
-      }
-    };
-    signupForm?.addEventListener('submit', onSignup);
-    const signupBtn = signupForm?.querySelector('button[type="button"]');
-    signupBtn?.addEventListener('click', onSignup);
-
-    // ---- Forgot password ----
-    const onForgot = async (e) => {
-      e.preventDefault();
-      const email = form?.querySelector('#email').value.trim();
-      if (!email) { toast.error('Enter your email above first.'); return; }
-      try {
-        await resetPassword(email);
-        toast.success('Password reset email sent.');
-      } catch (err) {
-        toast.error(err.message || 'Could not send reset email');
-      }
-    };
-    forgot?.addEventListener('click', onForgot);
-
-    // ---- Google OAuth ----
-    const googleBtn = Array.from(root.querySelectorAll('button')).find(b => b.textContent.includes('Continue with Google'));
-    const onGoogleLogin = async (e) => {
-      e.preventDefault();
-      if (submitting) return;
-      setSubmitting(true);
-      const original = googleBtn.innerHTML;
-      googleBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-md">progress_activity</span>';
-      googleBtn.disabled = true;
-      try {
-        await signInWithProvider('google');
-      } catch (err) {
-        toast.error(err.message || 'Google sign-in failed');
-        googleBtn.innerHTML = original;
-        googleBtn.disabled = false;
-        setSubmitting(false);
-      }
-    };
-    googleBtn?.addEventListener('click', onGoogleLogin);
-
-    return () => {
-      form?.removeEventListener('submit', onLogin);
-      toggleAuthBtn?.removeEventListener('click', openSignup);
-      closeSignup?.removeEventListener('click', dismissSignup);
-      signupOverlay?.removeEventListener('click', onBackdrop);
-      signupForm?.removeEventListener('submit', onSignup);
-      signupBtn?.removeEventListener('click', onSignup);
-      forgot?.removeEventListener('click', onForgot);
-      googleBtn?.removeEventListener('click', onGoogleLogin);
-    };
-  }, [signIn, signUp, resetPassword, signInWithProvider, navigate, toast, redirectTo, submitting]);
-
-  // Inject a small "Try Demo" affordance below the form (preserves all Stitch
-  // styling — only adds; never restyles).
-  useEffect(() => {
-    if (!demoEnabled) return;
-    const root = wrapperRef.current;
-    if (!root) return;
-    const footer = root.querySelector('footer');
-    if (!footer || footer.dataset.demoInjected) return;
-    footer.dataset.demoInjected = '1';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.setAttribute('data-testid', 'demo-mode-btn');
-    btn.className = 'mt-md text-label-sm font-label-sm text-on-surface-variant hover:text-primary underline';
-    btn.textContent = 'Skip — try Demo Mode';
-    btn.addEventListener('click', () => {
-      enterDemoMode();
-      toast.info('Demo mode active');
-      navigate('/dashboard', { replace: true });
-    });
-    footer.appendChild(btn);
-  }, [demoEnabled, enterDemoMode, navigate, toast]);
+  const handleGoogle = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await signInWithProvider('google');
+    } catch (err) {
+      toast.error(err.message || 'Google sign-in failed');
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <div ref={wrapperRef} style={{ display: 'contents' }}>
-      <StitchPage
-        styleId="stitch-style-auth"
-        bodyClass={VoyantaAuthentication_bodyClass}
-        extraStyles={VoyantaAuthentication_extraStyles}
-        html={VoyantaAuthentication_html}
-        navMap={navMap}
-      />
+    <div className="min-h-screen bg-surface-container-lowest flex items-center justify-center p-xl">
+      <div className="max-w-6xl w-full bg-surface rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row h-[700px]">
+        
+        {/* Left Side: Beautiful imagery */}
+        <div className="hidden md:flex md:w-1/2 relative bg-on-surface">
+          <img 
+            src="https://images.unsplash.com/photo-1498307833015-e7b400441eb8?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" 
+            alt="Amalfi Coast" 
+            className="absolute inset-0 w-full h-full object-cover opacity-80"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/60"></div>
+          
+          <div className="relative z-10 p-xxl flex flex-col justify-between h-full text-white">
+            <div>
+              <h1 className="font-headline-lg text-headline-lg font-black text-white m-0">Voyanta</h1>
+              <p className="font-label-md text-label-md tracking-[0.2em] uppercase text-white/80 m-0 mt-xs">Travel Concierge</p>
+            </div>
+            
+            <div className="mb-xl">
+              <div className="inline-flex items-center gap-sm px-md py-sm bg-white/10 backdrop-blur-md rounded-full border border-white/20 mb-lg">
+                <span className="material-symbols-outlined text-[16px]">star</span>
+                <span className="font-label-sm text-label-sm uppercase tracking-wider">Curated Experiences</span>
+              </div>
+              <h2 className="font-display text-[42px] leading-tight mb-md text-white">Elevate your journey to an art form.</h2>
+              <p className="font-body-lg text-body-lg text-white/80 max-w-md">Access world-class itineraries and exclusive travel perks with a single login.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side: Auth Form */}
+        <div className="w-full md:w-1/2 flex flex-col justify-center px-lg py-xxl sm:px-xxl bg-surface">
+          <div className="max-w-md w-full mx-auto">
+            
+            <div className="mb-xl">
+              <h2 className="font-headline-lg text-headline-lg text-on-surface mb-xs m-0">
+                {isSignUp ? 'Create an account' : 'Welcome back'}
+              </h2>
+              <p className="font-body-md text-body-md text-on-surface-variant m-0">
+                {isSignUp ? 'Sign up to start curating proposals.' : 'Please enter your details to sign in.'}
+              </p>
+            </div>
+
+            <button 
+              onClick={handleGoogle}
+              disabled={submitting}
+              className="w-full flex items-center justify-center gap-md py-md px-lg border border-outline rounded-lg text-on-surface font-label-md hover:bg-surface-container-low transition-colors disabled:opacity-50"
+            >
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+              Continue with Google
+            </button>
+
+            <div className="flex items-center my-xl">
+              <div className="flex-1 border-t border-outline-variant"></div>
+              <span className="px-md text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Or Email</span>
+              <div className="flex-1 border-t border-outline-variant"></div>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-lg">
+              {isSignUp && (
+                <div className="space-y-xs">
+                  <label className="font-label-sm text-label-sm text-on-surface">Full Name</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={fullName}
+                    onChange={e => setFullName(e.target.value)}
+                    className="w-full px-lg py-md bg-surface border border-outline rounded-lg focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    placeholder="Alex Sterling"
+                  />
+                </div>
+              )}
+              
+              <div className="space-y-xs">
+                <label className="font-label-sm text-label-sm text-on-surface">Email address</label>
+                <input 
+                  type="email" 
+                  required 
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full px-lg py-md bg-surface border border-outline rounded-lg focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                  placeholder="alex@example.com"
+                />
+              </div>
+
+              <div className="space-y-xs">
+                <div className="flex justify-between items-center">
+                  <label className="font-label-sm text-label-sm text-on-surface">Password</label>
+                  {!isSignUp && (
+                    <a href="#" className="font-label-sm text-label-sm text-primary hover:underline">Forgot password?</a>
+                  )}
+                </div>
+                <div className="relative">
+                  <input 
+                    type="password" 
+                    required 
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full px-lg py-md bg-surface border border-outline rounded-lg focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    placeholder="••••••••"
+                  />
+                  <span className="material-symbols-outlined absolute right-md top-1/2 -translate-y-1/2 text-on-surface-variant">visibility</span>
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={submitting}
+                className="w-full bg-on-surface text-surface py-md px-lg rounded-lg font-label-md hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 mt-md border-none"
+              >
+                {submitting ? 'Please wait...' : (isSignUp ? 'Create Account' : 'Sign In')}
+              </button>
+            </form>
+
+            <p className="mt-xl text-center font-body-md text-on-surface-variant">
+              {isSignUp ? 'Already have an account? ' : 'New to Voyanta? '}
+              <button 
+                onClick={() => setIsSignUp(!isSignUp)}
+                className="text-on-surface font-semibold hover:underline border-none bg-transparent p-0"
+              >
+                {isSignUp ? 'Sign In' : 'Create an account'}
+              </button>
+            </p>
+
+            {demoEnabled && (
+              <p className="mt-md text-center">
+                <button 
+                  onClick={() => {
+                    enterDemoMode();
+                    toast.info('Demo mode active');
+                    navigate('/dashboard', { replace: true });
+                  }}
+                  className="text-label-sm font-label-sm text-on-surface-variant hover:text-primary underline border-none bg-transparent p-0"
+                >
+                  Skip — try Demo Mode
+                </button>
+              </p>
+            )}
+
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

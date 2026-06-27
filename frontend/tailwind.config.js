@@ -75,17 +75,17 @@ export default {
         gutter: "24px"
       },
       fontFamily: {
-        "headline-lg": ["Geist"],
-        "body-sm": ["Inter"],
-        "headline-lg-mobile": ["Geist"],
-        "headline-md": ["Geist"],
-        "label-sm": ["Geist"],
-        "label-md": ["Geist"],
-        "display": ["Geist"],
-        "headline-sm": ["Geist"],
-        "body-lg": ["Inter"],
-        "body-md": ["Inter"],
-        "body": ["Inter"]
+        "headline-lg": ["Inter", "sans-serif"],
+        "body-sm": ["Inter", "sans-serif"],
+        "headline-lg-mobile": ["Inter", "sans-serif"],
+        "headline-md": ["Inter", "sans-serif"],
+        "label-sm": ["Inter", "sans-serif"],
+        "label-md": ["Inter", "sans-serif"],
+        "display": ["'Playfair Display'", "serif"],
+        "headline-sm": ["Inter", "sans-serif"],
+        "body-lg": ["Inter", "sans-serif"],
+        "body-md": ["Inter", "sans-serif"],
+        "body": ["Inter", "sans-serif"]
       },
       fontSize: {
         "headline-lg": ["32px", { lineHeight: "1.2", letterSpacing: "-0.02em", fontWeight: "600" }],

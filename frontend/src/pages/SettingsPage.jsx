@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import StitchPage from '../components/StitchPage.jsx';
-import navMap from '../lib/navMap.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
 import { settingsService } from '../services/resourceService.js';
 import LogoUploader from '../components/LogoUploader.jsx';
-import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
 
 export default function SettingsPage() {
   const wrapperRef = useRef(null);
@@ -177,13 +174,14 @@ export default function SettingsPage() {
     }
   };
 
+  const [mountNode, setMountNode] = useState(null);
+
   // Mutate sidebar chrome and page headers
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const canvas = root.querySelector('main .max-w-7xl'); if (!canvas) return;
+    const canvas = document.querySelector('main .max-w-7xl'); if (!canvas) return;
     
     // Highlight "Settings" link in Sidebar
-    root.querySelectorAll('aside a').forEach((a) => {
+    document.querySelectorAll('aside a').forEach((a) => {
       const lab = a.querySelector('.font-label-md'); if (!lab) return;
       const t = lab.textContent.trim();
       a.className = (t === 'Settings')
@@ -201,12 +199,12 @@ export default function SettingsPage() {
     canvas.querySelectorAll(':scope > div.grid, :scope > .bento-grid').forEach((n) => n.remove());
     let mount = canvas.querySelector('#settings-mount');
     if (!mount) { mount = document.createElement('div'); mount.id = 'settings-mount'; canvas.appendChild(mount); }
+    setMountNode(mount);
   });
 
   // Sign-out action in sidebar card click
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const card = root.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
+    const card = document.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
     const onClick = async () => { await signOut(); navigate('/login'); };
     card.style.cursor = 'pointer'; card.addEventListener('click', onClick);
     const name = card.querySelector('p.font-label-md');
@@ -225,14 +223,9 @@ export default function SettingsPage() {
     }
   }));
 
-  const mount = wrapperRef.current?.querySelector('#settings-mount');
-
   return (
     <div ref={wrapperRef} style={{ display: 'contents' }}>
-      <StitchPage styleId="stitch-style-settings-real" bodyClass={VoyantaDashboard_bodyClass}
-        extraStyles={VoyantaDashboard_extraStyles} html={VoyantaDashboard_html} navMap={navMap} />
-      
-      {mount && createPortal(
+      {mountNode && createPortal(
         <div className="flex flex-col gap-lg" data-testid="settings-page">
           {/* Tab Navigation */}
           <div className="flex items-center gap-md border-b border-outline-variant pb-xs">
@@ -589,7 +582,7 @@ export default function SettingsPage() {
             </div>
           )}
         </div>,
-        mount
+        mountNode
       )}
     </div>
   );

@@ -92,8 +92,36 @@ export default function ImportModal({ resource, onClose, onImported }) {
           data: { days: pdfResult.days }
         });
         toast.success('Successfully imported PDF as a standalone itinerary');
-      } else {
-        throw new Error('PDF import is only supported for Templates and Itineraries');
+      } else if (resource === 'hotels') {
+        const { hotelsService } = await import('../services/resourceService.js');
+        const imported = pdfResult.hotels || [];
+        await Promise.all(imported.map(h => hotelsService.create({
+          name: h.name,
+          location: h.location || pdfResult.destination || 'Imported Location',
+          price_per_night: h.price_per_night || 5000,
+          currency: 'INR'
+        })));
+        toast.success(`Successfully imported ${imported.length} hotels from PDF`);
+      } else if (resource === 'flights') {
+        const { flightsService } = await import('../services/resourceService.js');
+        const imported = pdfResult.flights || [];
+        await Promise.all(imported.map(f => flightsService.create({
+          airline: f.airline,
+          flight_no: f.flight_no,
+          cost: f.cost || 1500,
+          currency: 'INR'
+        })));
+        toast.success(`Successfully imported ${imported.length} flights from PDF`);
+      } else if (resource === 'activities') {
+        const { activitiesService } = await import('../services/resourceService.js');
+        const imported = pdfResult.activities || [];
+        await Promise.all(imported.map(a => activitiesService.create({
+          name: a.name,
+          price: a.price || 1000,
+          description: a.description || 'Imported from PDF',
+          currency: 'INR'
+        })));
+        toast.success(`Successfully imported ${imported.length} activities from PDF`);
       }
       onImported?.();
       onClose();
@@ -122,8 +150,8 @@ export default function ImportModal({ resource, onClose, onImported }) {
               <label className="block border-2 border-dashed border-outline-variant rounded-xl p-xl text-center cursor-pointer hover:border-primary transition-colors" data-testid="import-dropzone">
                 <span className="material-symbols-outlined text-[40px] text-primary">upload_file</span>
                 <p className="font-label-md mt-sm">Click to choose a file</p>
-                <p className="font-body-sm text-on-surface-variant">.xlsx · .csv {(resource === 'templates' || resource === 'itineraries') && '· .pdf'}</p>
-                <input type="file" accept={resource === 'templates' || resource === 'itineraries' ? ".xlsx,.xls,.csv,.pdf" : ".xlsx,.xls,.csv"} onChange={onPick} className="hidden" data-testid="import-file-input" />
+                <p className="font-body-sm text-on-surface-variant">.xlsx · .csv · .pdf</p>
+                <input type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onPick} className="hidden" data-testid="import-file-input" />
               </label>
               {busy && <p className="text-on-surface-variant">Parsing…</p>}
             </div>
@@ -132,12 +160,12 @@ export default function ImportModal({ resource, onClose, onImported }) {
           {stage === 'pdf-preview' && (
             <div className="space-y-md">
               <p className="font-body-md text-on-surface-variant">
-                Successfully parsed the PDF itinerary! Below are the details extracted for the new template:
+                Successfully parsed the PDF! Below are the details extracted:
               </p>
               <div className="p-md rounded-lg border border-outline-variant bg-surface-container-low space-y-sm">
                 <div>
-                  <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block">Template Name</span>
-                  <span className="font-headline-sm text-primary font-bold">{pdfResult?.name}</span>
+                  <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block">Source File</span>
+                  <span className="font-headline-sm text-primary font-bold">{file?.name}</span>
                 </div>
                 {pdfResult?.destination && (
                   <div>
@@ -145,27 +173,52 @@ export default function ImportModal({ resource, onClose, onImported }) {
                     <span className="font-body-md font-bold">{pdfResult?.destination}</span>
                   </div>
                 )}
-                <div>
-                  <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block">Duration</span>
-                  <span className="font-body-md font-bold">{pdfResult?.days_count} Days</span>
-                </div>
-                {pdfResult?.days && pdfResult.days.length > 0 && (
-                  <div>
-                    <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block mb-1">Itinerary Days</span>
-                    <div className="max-h-40 overflow-y-auto border border-outline-variant rounded-md p-xs space-y-xs bg-white">
-                      {pdfResult.days.map((d, i) => (
-                        <div key={i} className="text-xs border-b border-outline-variant pb-xs last:border-none last:pb-none">
-                          <span className="font-bold text-primary mr-1 font-mono">Day {d.day}:</span>
-                          <span className="font-bold">{d.title}</span>
-                          <p className="text-on-surface-variant text-[11px] whitespace-pre-wrap">{d.description}</p>
-                          {(d.hotels.length > 0 || d.activities.length > 0) && (
-                            <div className="mt-1 flex flex-wrap gap-1 text-[10px]">
-                              {d.hotels.map((h, hi) => <span key={hi} className="px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded border border-sky-100">Hotel: {h}</span>)}
-                              {d.activities.map((a, ai) => <span key={ai} className="px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-100">Activity: {a}</span>)}
+                
+                {resource === 'templates' || resource === 'itineraries' ? (
+                  <>
+                    <div>
+                      <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block">Duration</span>
+                      <span className="font-body-md font-bold">{pdfResult?.days_count} Days</span>
+                    </div>
+                    {pdfResult?.days && pdfResult.days.length > 0 && (
+                      <div>
+                        <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block mb-1">Itinerary Days</span>
+                        <div className="max-h-40 overflow-y-auto border border-outline-variant rounded-md p-xs space-y-xs bg-white">
+                          {pdfResult.days.map((d, i) => (
+                            <div key={i} className="text-xs border-b border-outline-variant pb-xs last:border-none last:pb-none">
+                              <span className="font-bold text-primary mr-1 font-mono">Day {d.day}:</span>
+                              <span className="font-bold">{d.title}</span>
+                              <p className="text-on-surface-variant text-[11px] whitespace-pre-wrap">{d.description}</p>
                             </div>
-                          )}
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div>
+                    <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block mb-1">Extracted Items ({resource})</span>
+                    <div className="max-h-40 overflow-y-auto border border-outline-variant rounded-md p-xs space-y-xs bg-white">
+                      {resource === 'hotels' && (pdfResult?.hotels || []).map((h, i) => (
+                        <div key={i} className="text-xs p-xs border-b border-outline-variant last:border-none">
+                          <strong>{h.name}</strong> — {h.location || pdfResult.destination || 'Unknown Location'}
                         </div>
                       ))}
+                      {resource === 'flights' && (pdfResult?.flights || []).map((f, i) => (
+                        <div key={i} className="text-xs p-xs border-b border-outline-variant last:border-none">
+                          <strong>{f.airline}</strong> ({f.flight_no})
+                        </div>
+                      ))}
+                      {resource === 'activities' && (pdfResult?.activities || []).map((a, i) => (
+                        <div key={i} className="text-xs p-xs border-b border-outline-variant last:border-none">
+                          <strong>{a.name}</strong>
+                        </div>
+                      ))}
+                      {((resource === 'hotels' && (!pdfResult?.hotels || pdfResult.hotels.length === 0)) ||
+                        (resource === 'flights' && (!pdfResult?.flights || pdfResult.flights.length === 0)) ||
+                        (resource === 'activities' && (!pdfResult?.activities || pdfResult.activities.length === 0))) && (
+                        <p className="text-xs text-on-surface-variant p-sm">No items found matching this resource type in the PDF.</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -224,7 +277,7 @@ export default function ImportModal({ resource, onClose, onImported }) {
           {stage === 'pdf-preview' && (
             <button onClick={onConfirmPdf} disabled={busy} data-testid="import-confirm-pdf"
               className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md shadow-md hover:opacity-90 disabled:opacity-60">
-              {busy ? 'Importing…' : `Import Itinerary Template`}
+              {busy ? 'Importing…' : `Confirm PDF Import`}
             </button>
           )}
         </div>

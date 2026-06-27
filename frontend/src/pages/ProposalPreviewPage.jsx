@@ -1,6 +1,6 @@
-import StitchPage from '../components/StitchPage.jsx';
-import navMap from '../lib/navMap.js';
-import { VoyantaProposalPreview_bodyClass, VoyantaProposalPreview_extraStyles, VoyantaProposalPreview_html } from './_html/voyanta_proposal_preview.js';
+
+
+
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchProposalById } from '../services/proposalService.js';
@@ -50,12 +50,6 @@ export default function ProposalPreviewPage() {
   }, [id, showToast]);
 
   return (
-    <StitchPage
-      styleId="stitch-style-preview"
-      bodyClass={VoyantaProposalPreview_bodyClass}
-      extraStyles={VoyantaProposalPreview_extraStyles}
-      html={VoyantaProposalPreview_html}
-      navMap={navMap}
-    />
+    <div className="p-xl text-center font-body-lg">TODO: Migrate this page to new React architecture</div>
   );
 }

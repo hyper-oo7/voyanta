@@ -1,14 +1,13 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useCallback } from 'react';
 import { supabase, DEMO_MODE, DEMO_USER } from '../lib/supabaseClient.js';
+import { useAuthStore } from '../store/authStore.js';
 
 const AuthContext = createContext(null);
 
 const DEMO_KEY = 'voyanta_demo_session';
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isDemo, setIsDemo] = useState(false);
+  const { user, isDemo, isLoading: loading, setUser, setIsDemo, setLoading, clearAuth } = useAuthStore();
 
   // Restore session (Supabase or demo) on mount
   useEffect(() => {
@@ -23,15 +22,16 @@ export function AuthProvider({ children }) {
       }
       if (!supabase) { setLoading(false); return; }
       const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
+      setUser(session?.user ?? null, session);
       setLoading(false);
+      
       const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-        setUser(session?.user ?? null);
+        setUser(session?.user ?? null, session);
       });
-      unsub = () => sub.subscription.unsubscribe();
+      if (sub?.subscription) unsub = () => sub.subscription.unsubscribe();
     })();
     return () => unsub();
-  }, []);
+  }, [setUser, setIsDemo, setLoading]);
 
   const signUp = useCallback(async ({ email, password, fullName }) => {
     if (!supabase) throw new Error('Supabase not configured');
@@ -53,10 +53,9 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     localStorage.removeItem(DEMO_KEY);
-    setIsDemo(false);
+    clearAuth();
     if (supabase) await supabase.auth.signOut();
-    setUser(null);
-  }, []);
+  }, [clearAuth]);
 
   const resetPassword = useCallback(async (email) => {
     if (!supabase) throw new Error('Supabase not configured');
@@ -81,7 +80,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem(DEMO_KEY, '1');
     setUser(DEMO_USER);
     setIsDemo(true);
-  }, []);
+  }, [setUser, setIsDemo]);
 
   const value = {
     user,
@@ -103,3 +102,4 @@ export const useAuth = () => {
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
   return ctx;
 };
+

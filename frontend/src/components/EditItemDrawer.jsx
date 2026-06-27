@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, memo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { uploadOrEmbed } from './LogoUploader.jsx';
 
 const HIDDEN = new Set(['id', 'agency_id', 'created_at', 'updated_at', 'raw', 'created_by']);
 
-export default function EditItemDrawer({ record, resource, service, onClose, onSaved }) {
+export default function EditItemDrawer({ item: record, resource, service, onClose, onSaved }) {
   const toast = useToast();
   const [form, setForm] = useState({ ...record });
   const [saving, setSaving] = useState(false);
@@ -17,18 +17,164 @@ export default function EditItemDrawer({ record, resource, service, onClose, onS
     try {
       // eslint-disable-next-line no-unused-vars
       const { id, agency_id, created_at, updated_at, ...patch } = form;
-      // Coerce numeric-looking fields
-      for (const k of Object.keys(patch)) {
-        const orig = record[k];
-        if (typeof orig === 'number' && patch[k] !== null && patch[k] !== '') {
-          const n = parseFloat(patch[k]); if (!isNaN(n)) patch[k] = n;
+      
+      // Coerce fields based on resource type
+      if (resource === 'hotels') {
+        if (typeof patch.price_per_night === 'string') patch.price_per_night = parseFloat(patch.price_per_night) || 0;
+        if (typeof patch.rating === 'string') patch.rating = parseFloat(patch.rating) || 0;
+        if (typeof patch.amenities === 'string') {
+          patch.amenities = patch.amenities.split(',').map(s => s.trim()).filter(Boolean);
+        }
+      } else if (resource === 'flights') {
+        if (typeof patch.cost === 'string') patch.cost = parseFloat(patch.cost) || 0;
+      } else if (resource === 'activities') {
+        if (typeof patch.price === 'string') patch.price = parseFloat(patch.price) || 0;
+        if (typeof patch.duration_hours === 'string') patch.duration_hours = parseFloat(patch.duration_hours) || 0;
+      } else {
+        // Fallback coercion for generic resources
+        for (const k of Object.keys(patch)) {
+          const orig = record[k];
+          if (typeof orig === 'number' && patch[k] !== null && patch[k] !== '') {
+            const n = parseFloat(patch[k]); if (!isNaN(n)) patch[k] = n;
+          }
         }
       }
+      
       await service.update(record.id, patch);
       toast.success('Saved');
       onSaved?.();
-    } catch (e) { toast.error(e.message); }
+    } catch (e) { toast.error(e.message || 'Save failed'); }
     finally { setSaving(false); }
+  };
+
+  const renderFields = () => {
+    if (resource === 'hotels') {
+      return (
+        <>
+          <label className="flex flex-col gap-xs">
+            <span className="font-label-md text-label-md">Hotel Name</span>
+            <input value={form.name ?? ''} onChange={upd('name')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+          </label>
+          <label className="flex flex-col gap-xs">
+            <span className="font-label-md text-label-md">Location</span>
+            <input value={form.location ?? ''} onChange={upd('location')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+          </label>
+          <label className="flex flex-col gap-xs">
+            <span className="font-label-md text-label-md">Country</span>
+            <input value={form.country ?? ''} onChange={upd('country')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+          </label>
+          <div className="grid grid-cols-2 gap-md">
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Category</span>
+              <input value={form.category ?? ''} onChange={upd('category')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" placeholder="e.g. Luxury, Boutique" />
+            </label>
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Rating</span>
+              <input type="number" min="0" max="5" step="0.1" value={form.rating ?? ''} onChange={upd('rating')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-md">
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Price per Night</span>
+              <input type="number" min="0" value={form.price_per_night ?? ''} onChange={upd('price_per_night')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+            </label>
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Currency</span>
+              <input value={form.currency ?? 'INR'} onChange={upd('currency')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+            </label>
+          </div>
+          <label className="flex flex-col gap-xs">
+            <span className="font-label-md text-label-md">Amenities (comma-separated)</span>
+            <input 
+              value={Array.isArray(form.amenities) ? form.amenities.join(', ') : (form.amenities ?? '')} 
+              onChange={upd('amenities')} 
+              placeholder="e.g. WiFi, Pool, Spa"
+              className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" 
+            />
+          </label>
+          <HotelImagesManager
+            images={form.raw?.images || (form.image_url ? [form.image_url] : [])}
+            onChange={(newImages) => {
+              setForm((s) => ({
+                ...s,
+                image_url: newImages[0] || '',
+                raw: { ...(s.raw || {}), images: newImages }
+              }));
+            }}
+          />
+        </>
+      );
+    }
+    
+    if (resource === 'flights') {
+      return (
+        <>
+          <div className="grid grid-cols-2 gap-md">
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Airline</span>
+              <input value={form.airline ?? ''} onChange={upd('airline')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+            </label>
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Flight No</span>
+              <input value={form.flight_no ?? ''} onChange={upd('flight_no')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-md">
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Origin</span>
+              <input value={form.origin ?? ''} onChange={upd('origin')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" placeholder="e.g. JFK" />
+            </label>
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Destination</span>
+              <input value={form.destination ?? ''} onChange={upd('destination')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" placeholder="e.g. CDG" />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-md">
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Class</span>
+              <select value={form.class ?? 'Economy'} onChange={upd('class')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
+                <option value="Economy">Economy</option>
+                <option value="Premium Economy">Premium Economy</option>
+                <option value="Business">Business</option>
+                <option value="First">First</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Duration</span>
+              <input value={form.duration ?? ''} onChange={upd('duration')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" placeholder="e.g. 7h 45m" />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-md">
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Cost</span>
+              <input type="number" min="0" value={form.cost ?? ''} onChange={upd('cost')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+            </label>
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Currency</span>
+              <input value={form.currency ?? 'INR'} onChange={upd('currency')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+            </label>
+          </div>
+          <label className="flex flex-col gap-xs">
+            <span className="font-label-md text-label-md">Departure Date</span>
+            <input type="date" value={form.depart_date ? String(form.depart_date).slice(0, 10) : ''} onChange={upd('depart_date')} className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+          </label>
+        </>
+      );
+    }
+    
+    // Fallback to dynamic fields
+    return fields.map((f) => (
+      <label key={f} className="flex flex-col gap-xs">
+        <span className="font-label-md text-label-md capitalize">{f.replace(/_/g, ' ')}</span>
+        {typeof record[f] === 'string' && record[f]?.length > 80 ? (
+          <textarea value={form[f] ?? ''} onChange={upd(f)} rows={3}
+            className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+        ) : (
+          <input value={form[f] ?? ''} onChange={upd(f)} data-testid={`edit-${f}`}
+            className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+        )}
+      </label>
+    ));
   };
 
   return (
@@ -42,36 +188,7 @@ export default function EditItemDrawer({ record, resource, service, onClose, onS
           </button>
         </div>
         <div className="space-y-md">
-          {fields.map((f) => {
-            if (resource === 'hotels' && f === 'image_url') {
-              const currentImages = form.raw?.images || (form.image_url ? [form.image_url] : []);
-              return (
-                <HotelImagesManager
-                  key={f}
-                  images={currentImages}
-                  onChange={(newImages) => {
-                    setForm((s) => ({
-                      ...s,
-                      image_url: newImages[0] || '',
-                      raw: { ...(s.raw || {}), images: newImages }
-                    }));
-                  }}
-                />
-              );
-            }
-            return (
-              <label key={f} className="flex flex-col gap-xs">
-                <span className="font-label-md text-label-md capitalize">{f.replace(/_/g, ' ')}</span>
-                {typeof record[f] === 'string' && record[f]?.length > 80 ? (
-                  <textarea value={form[f] ?? ''} onChange={upd(f)} rows={3}
-                    className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
-                ) : (
-                  <input value={form[f] ?? ''} onChange={upd(f)} data-testid={`edit-${f}`}
-                    className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
-                )}
-              </label>
-            );
-          })}
+          {renderFields()}
         </div>
         <div className="flex gap-md mt-xl">
           <button onClick={onClose} className="flex-1 py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
@@ -151,17 +268,14 @@ function HotelImagesManager({ images, onChange }) {
           ))}
         </div>
       ) : (
-        <div className="text-center py-md border border-dashed border-outline-variant rounded-lg text-xs text-on-surface-variant italic">
-          No photos added yet. Upload at least one.
-        </div>
+        <p className="text-xs text-on-surface-variant italic">No images in gallery</p>
       )}
 
-      <button type="button" onClick={() => fileRef.current?.click()} disabled={busy}
-        className="py-sm border border-primary text-primary hover:bg-sky-50 rounded-lg text-xs font-bold flex items-center justify-center gap-xs">
-        <span className="material-symbols-outlined text-sm">upload</span>
-        {busy ? 'Uploading…' : 'Upload Hotel Image'}
-      </button>
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onAddImage} />
+      <label className="flex items-center justify-center gap-xs p-sm border border-dashed border-outline-variant rounded-lg cursor-pointer hover:bg-white/50 text-xs font-semibold">
+        <span className="material-symbols-outlined text-[16px]">add_a_photo</span>
+        {busy ? 'Uploading...' : 'Add image to gallery'}
+        <input type="file" ref={fileRef} accept="image/*" onChange={onAddImage} className="hidden" />
+      </label>
     </div>
   );
 }

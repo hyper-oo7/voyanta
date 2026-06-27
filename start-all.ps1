@@ -72,7 +72,7 @@ if (-not (Test-Path ".\pdf-service\node_modules")) {
 
 # --- 2. Check Ports ---
 Write-ColorMessage "Checking ports..." "Cyan"
-$ports = @(3000, 8000, 3001)
+$ports = @(3000, 8000, 8002)
 $occupied = $false
 foreach ($port in $ports) {
     if (Test-Port $port) {
@@ -86,8 +86,8 @@ if ($occupied) { exit 1 }
 Write-ColorMessage "Starting Python Backend (Port 8000)..." "Yellow"
 $backendJob = Start-Process -FilePath $pythonCmd -ArgumentList "server.py" -WorkingDirectory ".\backend" -PassThru -NoNewWindow
 
-# --- 4. Start PDF Service (Node on 3001) ---
-Write-ColorMessage "Starting PDF Service (Port 3001)..." "Yellow"
+# --- 4. Start PDF Service (Node on 8002) ---
+Write-ColorMessage "Starting PDF Service (Port 8002)..." "Yellow"
 $pdfJob = Start-Process -FilePath "node" -ArgumentList "server.js" -WorkingDirectory ".\pdf-service" -PassThru -NoNewWindow
 
 # --- 5. Wait for Python Backend Health ---

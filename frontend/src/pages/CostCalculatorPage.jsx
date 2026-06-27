@@ -5,15 +5,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import StitchPage from '../components/StitchPage.jsx';
-import navMap from '../lib/navMap.js';
+
+
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { useProposalBuilder } from '../context/ProposalBuilderContext.jsx';
 import { listItems, addItem, updateItem, removeItem, buildProposalExport } from '../services/proposalItemService.js';
 import { fetchProposalById, fetchProposals } from '../services/proposalService.js';
 import { formatINR } from '../lib/currency.js';
-import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
+
 
 const KINDS = ['hotel', 'flight', 'activity', 'transfer', 'visa', 'tax', 'margin', 'custom'];
 
@@ -44,11 +44,12 @@ export default function CostCalculatorPage() {
 
   useEffect(() => { reload(); }, [reload]);
 
+  const [mountNode, setMountNode] = useState(null);
+
   // Mutate dashboard chrome
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const canvas = root.querySelector('main .max-w-7xl'); if (!canvas) return;
-    root.querySelectorAll('aside a').forEach((a) => {
+    const canvas = document.querySelector('main .max-w-7xl'); if (!canvas) return;
+    document.querySelectorAll('aside a').forEach((a) => {
       const lab = a.querySelector('.font-label-md'); if (!lab) return;
       const t = lab.textContent.trim();
       a.className = (t === 'Cost Calculator')
@@ -58,16 +59,15 @@ export default function CostCalculatorPage() {
     const h2 = canvas.querySelector('h2'); if (h2) h2.textContent = 'Cost Calculator';
     const p  = h2?.parentElement?.querySelector('p'); if (p) p.textContent = 'Live totals — items added from Hotels / Flights / Activities appear here.';
     const cta = canvas.querySelector('button.bg-primary');
-    if (cta) { cta.innerHTML = '<span class="material-symbols-outlined">download</span> Export JSON'; cta.onclick = onExportJson; }
+    if (cta) { cta.style.display = 'inline-flex'; cta.innerHTML = '<span class="material-symbols-outlined">download</span> Export JSON'; cta.onclick = onExportJson; }
     canvas.querySelectorAll(':scope > div.grid, :scope > .bento-grid').forEach((n) => n.remove());
     let mount = canvas.querySelector('#cost-mount');
     if (!mount) { mount = document.createElement('div'); mount.id = 'cost-mount'; canvas.appendChild(mount); }
+    setMountNode(mount);
   });
-
   // Sign-out wiring
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const card = root.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
+    const card = document.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
     const onClick = async () => { await signOut(); navigate('/login'); };
     card.style.cursor = 'pointer'; card.addEventListener('click', onClick);
     const name = card.querySelector('p.font-label-md');
@@ -107,13 +107,9 @@ export default function CostCalculatorPage() {
     catch (e) { toast.error(e.message); }
   };
 
-  const mount = wrapperRef.current?.querySelector('#cost-mount');
-
   return (
     <div ref={wrapperRef} style={{ display: 'contents' }}>
-      <StitchPage styleId="stitch-style-cost-calc" bodyClass={VoyantaDashboard_bodyClass}
-        extraStyles={VoyantaDashboard_extraStyles} html={VoyantaDashboard_html} navMap={navMap} />
-      {mount && createPortal(
+      {mountNode && createPortal(
         <div className="space-y-lg" data-testid="cost-calc">
           <div className="glass-card p-lg rounded-xl flex items-center gap-md flex-wrap">
             <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest">Active Proposal</span>
@@ -207,7 +203,7 @@ export default function CostCalculatorPage() {
             </div>
           )}
         </div>,
-        mount
+        mountNode
       )}
     </div>
   );

@@ -10,13 +10,17 @@
     "preview": "vite preview --host 0.0.0.0 --port 3000"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.4.0",
     "@supabase/supabase-js": "^2.108.2",
     "dotenv": "^17.4.2",
     "papaparse": "^5.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-hook-form": "^7.80.0",
     "react-router-dom": "^6.26.2",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@tailwindcss/container-queries": "^0.1.1",

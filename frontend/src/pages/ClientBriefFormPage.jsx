@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import StitchPage from '../components/StitchPage.jsx';
-import navMap from '../lib/navMap.js';
+
+
 import { useToast } from '../context/ToastContext.jsx';
 import { useProposalBuilder } from '../context/ProposalBuilderContext.jsx';
 import { createProposal } from '../services/proposalService.js';
-import { VoyantaClientBriefForm_bodyClass, VoyantaClientBriefForm_extraStyles, VoyantaClientBriefForm_html } from './_html/voyanta_client_brief_form.js';
+
 
 // Client Brief Form → on submit, persist a new proposal record.
 // We attach a click listener on the form's final "Submit/Save" button (the
@@ -61,13 +61,7 @@ export default function ClientBriefFormPage() {
 
   return (
     <div ref={wrapperRef} style={{ display: 'contents' }}>
-      <StitchPage
-        styleId="stitch-style-brief"
-        bodyClass={VoyantaClientBriefForm_bodyClass}
-        extraStyles={VoyantaClientBriefForm_extraStyles}
-        html={VoyantaClientBriefForm_html}
-        navMap={navMap}
-      />
+      <div className="p-xl text-center font-body-lg">TODO: Migrate this page to new React architecture</div>
     </div>
   );
 }

@@ -6,8 +6,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import StitchPage from '../components/StitchPage.jsx';
-import navMap from '../lib/navMap.js';
+
+
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { useProposalBuilder } from '../context/ProposalBuilderContext.jsx';
@@ -16,7 +16,7 @@ import { listItems, removeItem, buildProposalExport } from '../services/proposal
 import { templatesService } from '../services/resourceService.js';
 import { addItem } from '../services/proposalItemService.js';
 import { formatINR } from '../lib/currency.js';
-import { VoyantaDashboard_bodyClass, VoyantaDashboard_extraStyles, VoyantaDashboard_html } from './_html/voyanta_dashboard.js';
+
 
 export default function AiItineraryGeneratorPage() {
   const wrapperRef = useRef(null);
@@ -52,11 +52,12 @@ export default function AiItineraryGeneratorPage() {
 
   useEffect(() => { reload(); }, [reload]);
 
+  const [mountNode, setMountNode] = useState(null);
+
   // Mutate dashboard chrome
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const canvas = root.querySelector('main .max-w-7xl'); if (!canvas) return;
-    root.querySelectorAll('aside a').forEach((a) => {
+    const canvas = document.querySelector('main .max-w-7xl'); if (!canvas) return;
+    document.querySelectorAll('aside a').forEach((a) => {
       const lab = a.querySelector('.font-label-md'); if (!lab) return;
       const t = lab.textContent.trim();
       a.className = (t === 'Proposals' || t === 'New Proposal')
@@ -67,18 +68,19 @@ export default function AiItineraryGeneratorPage() {
     const p  = h2?.parentElement?.querySelector('p'); if (p) p.textContent = 'Assemble your proposal from the supplier libraries.';
     const cta = canvas.querySelector('button.bg-primary');
     if (cta) {
+      cta.style.display = 'inline-flex';
       cta.innerHTML = '<span class="material-symbols-outlined">visibility</span> Preview';
       cta.onclick = () => navigate('/proposals/preview');
     }
     canvas.querySelectorAll(':scope > div.grid, :scope > .bento-grid').forEach((n) => n.remove());
     let mount = canvas.querySelector('#builder-mount');
     if (!mount) { mount = document.createElement('div'); mount.id = 'builder-mount'; canvas.appendChild(mount); }
+    setMountNode(mount);
   });
 
   // Sign-out
   useEffect(() => {
-    const root = wrapperRef.current; if (!root) return;
-    const card = root.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
+    const card = document.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
     const onClick = async () => { await signOut(); navigate('/login'); };
     card.style.cursor = 'pointer'; card.addEventListener('click', onClick);
     const name = card.querySelector('p.font-label-md');
@@ -118,13 +120,10 @@ export default function AiItineraryGeneratorPage() {
 
   const total = items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0);
   const grouped = {}; items.forEach((it) => (grouped[it.kind] ||= []).push(it));
-  const mount = wrapperRef.current?.querySelector('#builder-mount');
 
   return (
     <div ref={wrapperRef} style={{ display: 'contents' }}>
-      <StitchPage styleId="stitch-style-builder" bodyClass={VoyantaDashboard_bodyClass}
-        extraStyles={VoyantaDashboard_extraStyles} html={VoyantaDashboard_html} navMap={navMap} />
-      {mount && createPortal(
+      {mountNode && createPortal(
         <div className="space-y-lg" data-testid="builder">
           <div className="glass-card p-lg rounded-xl flex items-center gap-md flex-wrap">
             <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest">Active Proposal</span>
@@ -210,7 +209,7 @@ export default function AiItineraryGeneratorPage() {
             </>
           )}
         </div>,
-        mount
+        mountNode
       )}
     </div>
   );
