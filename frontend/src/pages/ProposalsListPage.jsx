@@ -150,62 +150,151 @@ function Portal({ node, children }) { return createPortal(children, node); }
 
 function ProposalsListPanel({ proposals, loading, error, highlightId, onView, onEdit, onDuplicate, onDelete, onArchive, onExport }) {
   return (
-    <div className="glass-card rounded-xl overflow-hidden flex flex-col" data-testid="proposals-list">
-      <div className="px-lg py-md border-b border-outline-variant flex justify-between items-center">
-        <h4 className="font-headline-sm text-headline-sm text-primary">All Proposals</h4>
-        <span className="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest" data-testid="proposals-count">
-          {loading ? 'Loading…' : `${proposals.length} total`}
-        </span>
+    <div className="flex flex-col h-full" data-testid="proposals-list">
+      <div className="px-xl py-lg flex justify-between items-center mb-md">
+        <div>
+          <h4 className="font-headline-md text-primary mb-xs">Proposal Library</h4>
+          <p className="text-on-surface-variant font-body-md">Manage and organize your client proposals in one place.</p>
+        </div>
+        <div className="flex items-center gap-md">
+          <span className="text-label-sm font-label-sm text-primary uppercase tracking-widest bg-primary-container px-md py-xs rounded-full">
+            {loading ? 'Loading…' : `${proposals.length} Active Proposals`}
+          </span>
+        </div>
       </div>
+      
       {error && (
-        <div className="px-lg py-md bg-error-container text-on-error-container font-label-md text-label-md" data-testid="proposals-error">
+        <div className="mx-xl mb-lg px-lg py-md bg-error-container text-on-error-container font-label-md rounded-xl" data-testid="proposals-error">
           {error}
         </div>
       )}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b border-surface-container">
-              <th className="px-lg py-md font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Proposal Name</th>
-              <th className="px-lg py-md font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Client</th>
-              <th className="px-lg py-md font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Status</th>
-              <th className="px-lg py-md font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Date</th>
-              <th className="px-lg py-md font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-surface-container">
-            {loading && (
-              <tr><td colSpan={5} className="px-lg py-xl text-center text-on-surface-variant font-body-md" data-testid="proposals-loading">Loading proposals…</td></tr>
+
+      {loading && (
+        <div className="px-xl py-xl text-center text-on-surface-variant font-body-md flex items-center justify-center gap-sm" data-testid="proposals-loading">
+          <span className="material-symbols-outlined animate-spin text-[24px]">progress_activity</span>
+          Loading proposals…
+        </div>
+      )}
+
+      {!loading && proposals.length === 0 && (
+        <div className="px-xl py-xl text-center flex flex-col items-center justify-center border-2 border-dashed border-outline-variant rounded-3xl mx-xl p-2xl bg-surface-container-lowest/50 backdrop-blur-sm">
+          <div className="w-20 h-20 rounded-full bg-surface-container-high flex items-center justify-center mb-lg shadow-sm">
+            <span className="material-symbols-outlined text-[40px] text-primary">description</span>
+          </div>
+          <h3 className="text-headline-sm text-on-surface mb-xs">No proposals yet</h3>
+          <p className="text-on-surface-variant font-body-lg mb-xl max-w-md">Create your first stunning client proposal using our intuitive wizard.</p>
+          <button onClick={() => window.location.href = '/proposals/wizard?step=1'} className="px-xl py-md bg-primary text-white rounded-xl font-label-md hover:bg-primary/90 transition-colors shadow-md hover:shadow-lg flex items-center gap-sm">
+            <span className="material-symbols-outlined text-[20px]">add</span>
+            Create New Proposal
+          </button>
+        </div>
+      )}
+
+      {!loading && proposals.length > 0 && (
+        <div className="px-xl pb-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-lg items-start">
+          {proposals.map((p, i) => (
+             <ProposalCard 
+               key={p.id} proposal={p} highlightId={highlightId} index={i}
+               onView={onView} onEdit={onEdit} onDuplicate={onDuplicate} 
+               onDelete={onDelete} onArchive={onArchive} onExport={onExport} 
+             />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProposalCard({ proposal: p, highlightId, onView, onEdit, onDuplicate, onDelete, onArchive, onExport, index }) {
+  const isHighlight = highlightId === p.id;
+  
+  const fallbackImages = [
+    'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&q=80&w=800', 
+    'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=800', 
+    'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&q=80&w=800', 
+    'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&q=80&w=800', 
+    'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=800'  
+  ];
+  const finalCover = p.preferences?.branding?.cover_image_url || fallbackImages[index % fallbackImages.length];
+
+  const tags = [];
+  if (p.budget_max > 5000) tags.push('LUXURY');
+  if (p.travelers > 4) tags.push('GROUP');
+  if (p.destination?.toLowerCase().match(/mountain|hike|trek|safari|camp/)) tags.push('ADVENTURE');
+  if (tags.length === 0) tags.push('LEISURE');
+
+  const avatars = [
+    `https://i.pravatar.cc/150?u=${p.id}-1`,
+    `https://i.pravatar.cc/150?u=${p.id}-2`
+  ];
+
+  return (
+    <div 
+      className={`group relative flex flex-col bg-surface rounded-[24px] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_16px_40px_rgba(0,0,0,0.08)] transition-all duration-400 border-2 ${isHighlight ? 'border-primary ring-4 ring-primary/20' : 'border-outline-variant hover:border-primary/40'} cursor-pointer hover:-translate-y-2`}
+      onClick={() => onView(p)}
+    >
+      <div className="relative h-56 w-full overflow-hidden bg-surface-container-low">
+        <img src={finalCover} alt={p.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/10" />
+        
+        <div className="absolute top-4 right-4">
+           <span className={chipClass(p.status) + ' px-3 py-1.5 text-[11px] font-bold rounded-full uppercase tracking-widest backdrop-blur-md shadow-sm border border-white/20'}>
+             {p.status || 'Draft'}
+           </span>
+        </div>
+
+        <div className="absolute top-4 left-4 flex gap-xs flex-wrap max-w-[70%]">
+          {tags.map(t => (
+            <span key={t} className="px-2.5 py-1 bg-black/40 backdrop-blur-md text-white text-[10px] font-bold rounded-md uppercase tracking-widest border border-white/20">
+              {t}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="p-xl flex flex-col flex-1 bg-white relative z-10 -mt-4 rounded-t-[24px]">
+        <div className="mb-lg">
+          <h3 className="font-headline-sm text-on-surface line-clamp-2 mb-2 group-hover:text-primary transition-colors leading-tight">{p.name}</h3>
+          <p className="text-body-md text-on-surface-variant flex flex-col gap-1">
+            <span className="flex items-center gap-xs">
+              <span className="material-symbols-outlined text-[18px]">person</span> {p.client_name || 'No Client'}
+            </span>
+            {p.destination && (
+              <span className="flex items-center gap-xs">
+                <span className="material-symbols-outlined text-[18px]">location_on</span> {p.destination}
+              </span>
             )}
-            {!loading && proposals.length === 0 && (
-              <tr><td colSpan={5} className="px-lg py-xl text-center text-on-surface-variant font-body-md" data-testid="proposals-empty">
-                No proposals yet. Create one from the Client Brief Form.
-              </td></tr>
-            )}
-            {proposals.map((p) => (
-              <tr key={p.id} data-testid={`proposal-row-${p.id}`} className={'hover:bg-surface-container-low transition-colors cursor-pointer ' + (highlightId === p.id ? 'bg-primary-fixed/30' : '')} onClick={() => onView(p)}>
-                <td className="px-lg py-md">
-                  <button onClick={(e) => { e.stopPropagation(); onView(p); }} data-testid="view-btn" className="font-label-md text-label-md text-primary hover:underline text-left">{p.name}</button>
-                </td>
-                <td className="px-lg py-md font-body-md text-body-md text-on-surface">{p.client_name || '—'}</td>
-                <td className="px-lg py-md">
-                  <span className={chipClass(p.status) + ' px-md py-xs text-[11px] font-bold rounded-full uppercase tracking-widest'}>{p.status || 'Draft'}</span>
-                </td>
-                <td className="px-lg py-md font-body-md text-body-md text-on-surface-variant">{p.date || '—'}</td>
-                <td className="px-lg py-md" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex justify-end gap-xs">
-                    <IconBtn icon="visibility" testid="view-icon"      onClick={() => onView(p)} title="Open" />
-                    <IconBtn icon="edit"       testid="edit-icon"      onClick={() => onEdit(p)} title="Edit in wizard" />
-                    <IconBtn icon="content_copy" testid="duplicate-icon" onClick={() => onDuplicate(p)} title="Duplicate" />
-                    <IconBtn icon="download"   testid="export-icon"    onClick={() => onExport(p)} title="Export JSON" />
-                    <IconBtn icon="archive"    testid="archive-icon"   onClick={() => onArchive(p)} title="Archive" />
-                    <IconBtn icon="delete"     testid="delete-icon"    onClick={() => onDelete(p)} title="Delete" className="hover:text-error" />
-                  </div>
-                </td>
-              </tr>
+          </p>
+        </div>
+
+        <div className="flex-1" />
+
+        <div className="flex items-center justify-between pt-md border-t border-outline-variant mt-sm">
+          <div className="flex -space-x-2">
+            {avatars.map((url, i) => (
+              <img key={i} src={url} alt="collaborator" className="w-8 h-8 rounded-full border-2 border-white object-cover shadow-sm relative z-10 hover:z-20 transition-transform hover:scale-110" />
             ))}
-          </tbody>
-        </table>
+            <div className="w-8 h-8 rounded-full border-2 border-white bg-surface-container-highest flex items-center justify-center shadow-sm relative z-0">
+              <span className="material-symbols-outlined text-[16px] text-on-surface-variant">add</span>
+            </div>
+          </div>
+          
+          <div className="text-label-sm text-on-surface-variant flex items-center gap-xs bg-surface-container-lowest px-2 py-1 rounded-md">
+            <span className="material-symbols-outlined text-[14px]">calendar_today</span>
+            {p.date ? new Date(p.date).toLocaleDateString() : 'Just now'}
+          </div>
+        </div>
+
+        <div className="absolute top-4 right-4 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform translate-x-4 group-hover:translate-x-0">
+           <div className="flex flex-col gap-1 bg-white/95 backdrop-blur-xl rounded-2xl p-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-outline-variant">
+             <IconBtn icon="edit"       testid="edit-icon"      onClick={(e) => { e.stopPropagation(); onEdit(p); }} title="Edit in wizard" />
+             <IconBtn icon="content_copy" testid="duplicate-icon" onClick={(e) => { e.stopPropagation(); onDuplicate(p); }} title="Duplicate" />
+             <IconBtn icon="download"   testid="export-icon"    onClick={(e) => { e.stopPropagation(); onExport(p); }} title="Export JSON" />
+             <IconBtn icon="archive"    testid="archive-icon"   onClick={(e) => { e.stopPropagation(); onArchive(p); }} title="Archive" />
+             <div className="w-full h-px bg-outline-variant my-1" />
+             <IconBtn icon="delete"     testid="delete-icon"    onClick={(e) => { e.stopPropagation(); onDelete(p); }} title="Delete" className="text-error hover:bg-error-container hover:text-error" />
+           </div>
+        </div>
       </div>
     </div>
   );
@@ -214,19 +303,19 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
 function IconBtn({ icon, onClick, title, testid, className = '' }) {
   return (
     <button onClick={onClick} title={title} data-testid={testid}
-      className={'w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-surface-container-high text-on-surface-variant transition-colors ' + className}>
-      <span className="material-symbols-outlined text-[18px]">{icon}</span>
+      className={'w-9 h-9 inline-flex items-center justify-center rounded-xl hover:bg-surface-container-high text-on-surface transition-colors ' + className}>
+      <span className="material-symbols-outlined text-[20px]">{icon}</span>
     </button>
   );
 }
 
 function chipClass(status) {
   switch ((status || '').toLowerCase()) {
-    case 'accepted': return 'bg-surface-container-highest text-primary';
-    case 'sent':     return 'bg-primary-container text-on-primary-container';
-    case 'draft':    return 'bg-surface-variant text-on-surface-variant';
-    case 'declined': return 'bg-error-container text-on-error-container';
-    default:         return 'bg-surface-container text-on-surface-variant';
+    case 'accepted': return 'bg-emerald-500/90 text-white';
+    case 'sent':     return 'bg-blue-500/90 text-white';
+    case 'draft':    return 'bg-white/20 text-white';
+    case 'declined': return 'bg-error/90 text-white';
+    default:         return 'bg-white/20 text-white';
   }
 }
 

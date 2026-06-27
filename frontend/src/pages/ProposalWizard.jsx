@@ -422,20 +422,22 @@ export default function ProposalWizard() {
             </>
           )}
 
-          <div className="fixed bottom-lg left-1/2 -translate-x-1/2 w-[calc(100%-4rem)] max-w-5xl z-50 glass-card p-md rounded-xl flex items-center gap-md shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-outline-variant bg-white/90 backdrop-blur-md" data-testid="wizard-footer">
+          <div className="sticky bottom-4 mt-xl w-full max-w-5xl mx-auto z-50 p-4 rounded-2xl flex items-center gap-md shadow-[0_8px_32px_rgba(0,0,0,0.1)] border border-white/40 bg-white/60 backdrop-blur-xl transition-all duration-300" data-testid="wizard-footer">
             <button onClick={onPrev} disabled={stepParam === 1} data-testid="wizard-prev"
-              className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low disabled:opacity-50">Previous</button>
+              className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40">
+              Previous
+            </button>
             <button onClick={() => saveDraft(false)} disabled={saving} data-testid="wizard-save"
-              className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low disabled:opacity-60">
+              className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40">
               {saving ? 'Saving…' : 'Save Draft'}
             </button>
             <span className="flex-1" />
-            <span className="font-label-sm text-on-surface-variant uppercase tracking-widest mr-md">
-              Step {stepParam} / 8
+            <span className="font-label-md text-on-surface-variant uppercase tracking-widest mr-md bg-white/50 px-lg py-2 rounded-full border border-white/40 shadow-inner backdrop-blur-sm">
+              Step {stepParam} <span className="opacity-50">/ 8</span>
             </span>
             {stepParam < 8 && (
               <button onClick={onNext} disabled={saving} data-testid="wizard-next"
-                className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-60 flex items-center gap-xs">
+                className="px-xl py-3 bg-primary/90 backdrop-blur-md text-white rounded-xl font-label-md hover:bg-primary transition-all shadow-md hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-md flex items-center gap-sm">
                 Continue to {STEPS[stepParam]?.label || 'Next'}
                 <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
               </button>

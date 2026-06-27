@@ -1,25 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../../context/ToastContext.jsx';
 import TemplateRenderer, { ALL as ALL_SECTIONS, ExportOptionsBar } from '../../components/TemplateRenderer.jsx';
 import { buildProposalExport } from '../../services/proposalItemService.js';
 import { formatINR } from '../../lib/currency.js';
 
-function A4Preview({ children }) {
+function A4Preview({ children, viewMode }) {
   return (
-    <div className="a4-host overflow-auto py-lg" data-testid="a4-preview">
-      <div className="a4-paper mx-auto shadow-2xl rounded-md overflow-hidden bg-white">
+    <div className="a4-host overflow-auto py-lg h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#e9eef5] to-[#dfe5ee]" data-testid="a4-preview">
+      <div id="pdf-render-root" className={`a4-paper shadow-2xl overflow-hidden bg-white ${viewMode === 'presentation' ? 'aspect-[210/297] h-[80vh] min-h-[auto] w-auto transition-all duration-500 rounded-xl' : 'w-[210mm] min-h-[297mm] rounded-md'}`}>
         {children}
       </div>
       <style>{`
-        .a4-host { background: linear-gradient(180deg, #e9eef5 0%, #dfe5ee 100%); border-radius: 12px; padding: 32px 0; }
-        .a4-paper { width: 210mm; min-height: 297mm; box-shadow: 0 20px 60px rgba(11,28,48,0.18); }
         @media print {
           @page { size: A4; margin: 0; }
           html, body, #root { background: white !important; }
           body * { visibility: hidden; }
-          [data-testid="a4-preview"], [data-testid="a4-preview"] * { visibility: visible; }
-          [data-testid="a4-preview"] { position: absolute; left: 0; top: 0; padding: 0; background: white; }
-          .a4-paper { box-shadow: none !important; width: 210mm; min-height: 297mm; }
+          #pdf-render-root, #pdf-render-root * { visibility: visible; }
+          #pdf-render-root { position: absolute; left: 0; top: 0; padding: 0; background: white; width: 210mm; min-height: 297mm; box-shadow: none !important; border-radius: 0 !important; }
           .no-print { display: none !important; }
         }
       `}</style>
@@ -32,50 +29,40 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
   const [json, setJson] = useState(null);
   const [include, setInclude] = useState(ALL_SECTIONS);
   const [exportOpen, setExportOpen] = useState(false);
-  const [style, setStyle] = useState(branding?.template_style || 'elegant');
+  const [style, setStyle] = useState(branding?.template_style || 'classic');
   const [generating, setGenerating] = useState(false);
+  
+  const [viewMode, setViewMode] = useState('presentation'); // 'presentation' | 'document'
+  const [activeSlide, setActiveSlide] = useState(0);
 
   const [sectionOrder, setSectionOrder] = useState(() => {
     const base = ['hero', 'highlights', 'itinerary', 'hotels', 'costing', 'inclusions', 'exclusions', 'terms', 'contacts', 'socials'];
-    if (customBlocks) {
-       customBlocks.forEach(cb => base.push(cb.id));
-    }
+    if (customBlocks) customBlocks.forEach(cb => base.push(cb.id));
     return base;
   });
 
-  useEffect(() => {
-    if (customBlocks && customBlocks.length > 0) {
-      setSectionOrder(prev => {
-        const next = [...prev];
-        customBlocks.forEach(cb => {
-          if (!next.includes(cb.id)) next.push(cb.id);
-        });
-        return next;
-      });
-      
-      setInclude(prev => {
-        const next = { ...prev };
-        customBlocks.forEach(cb => {
-          if (next[cb.id] === undefined) next[cb.id] = true;
-        });
-        return next;
-      });
-    }
-  }, [customBlocks]);
+  const activeKeys = sectionOrder.filter(k => include[k]);
+  const numSlides = activeKeys.length;
 
-  useEffect(() => { setStyle(branding?.template_style || 'elegant'); }, [branding?.template_style]);
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (viewMode !== 'presentation') return;
+      if (e.key === 'ArrowRight') setActiveSlide(s => Math.min(s + 1, numSlides - 1));
+      if (e.key === 'ArrowLeft') setActiveSlide(s => Math.max(s - 1, 0));
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewMode, numSlides]);
+
+  useEffect(() => { setStyle(branding?.template_style || 'classic'); }, [branding?.template_style]);
 
   useEffect(() => {
     (async () => { if (!proposalId) return; try { setJson(await buildProposalExport(proposalId)); } catch (e) { toast.error(e.message); } })();
   }, [proposalId, toast]);
 
-  const buildEnvelope = useCallback(() => {
-    if (!json) return null;
-    return { ...json, presentation: { style, include }, branding };
-  }, [json, style, include, branding]);
-
   const onDownloadJson = () => {
-    const envelope = buildEnvelope(); if (!envelope) return;
+    if (!json) return;
+    const envelope = { ...json, presentation: { style, include }, branding };
     const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
@@ -88,11 +75,33 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
     if (!proposalId) return;
     setGenerating(true);
     try {
-      const data = buildEnvelope();
+      // Create a document mode clone of the node to get full HTML
+      const rootHtml = document.getElementById('pdf-render-root').innerHTML;
+      const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).map(el => el.outerHTML).join('\\n');
+      
+      const fullHtml = \`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Cormorant+Garamond:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet" />
+\${styles}
+<style>
+  @page { size: A4; margin: 0; }
+  html, body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  * { box-sizing: border-box; }
+  .proposal-document section { display: block !important; break-before: page; }
+  .proposal-document section:first-child { break-before: auto; }
+</style>
+</head>
+<body>
+  \${rootHtml}
+</body>
+</html>\`;
+
       const res = await fetch('/api/pdf/generate', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data) 
+        body: JSON.stringify({ html: fullHtml, name: proposalName || proposalId }) 
       });
       if (!res.ok) throw new Error('PDF generation failed');
       
@@ -100,7 +109,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); 
       a.href = url;
-      a.download = `proposal-${proposalName || proposalId}.pdf`;
+      a.download = \`proposal-\${proposalName || proposalId}.pdf\`;
       document.body.appendChild(a); 
       a.click(); 
       a.remove(); 
@@ -113,9 +122,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
     }
   };
 
-  const onPrint = () => {
-    window.print();
-  };
+  const onPrint = () => window.print();
 
   if (!proposalId) return <div className="glass-card p-xl rounded-xl text-center text-on-surface-variant" data-testid="preview-no-proposal">Save the client step first.</div>;
   if (!json) return <div className="glass-card p-xl rounded-xl text-center">Building preview…</div>;
@@ -123,27 +130,27 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
   const merged = { ...json, proposal: { ...json.proposal, preferences: { ...(json.proposal?.preferences || {}), branding: { ...(json.proposal?.preferences?.branding || {}), ...branding } } } };
 
   return (
-    <div className="space-y-md" data-testid="step-preview">
+    <div className="h-full flex flex-col space-y-md" data-testid="step-preview">
       <div className="glass-card p-md rounded-xl flex items-center gap-md flex-wrap no-print">
-        <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest">Template</span>
+        <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest">Theme</span>
         <select value={style} onChange={(e) => setStyle(e.target.value)} data-testid="preview-style"
           className="px-md py-sm bg-white border border-outline-variant rounded-lg font-body-md">
-          <option value="elegant">Elegant (cream, serif)</option>
-          <option value="dark">Dark Premium</option>
-          <option value="light">Light & Friendly</option>
+          <option value="modern">Modern Luxury</option>
+          <option value="minimal">Minimal Editorial</option>
+          <option value="dark">Dark Luxury</option>
+          <option value="classic">Classic European</option>
+          <option value="tropical">Tropical Escape</option>
+          <option value="corporate">Corporate Executive</option>
         </select>
-        <span className="font-label-sm text-on-surface-variant flex-1" data-testid="preview-total">{formatINR(json.totals.subtotal||0)}</span>
+        
+        <div className="flex bg-surface-container rounded-lg p-1 ml-auto">
+          <button onClick={() => setViewMode('presentation')} className={\`px-4 py-1.5 rounded-md text-sm font-medium \${viewMode === 'presentation' ? 'bg-white shadow text-primary' : 'text-on-surface-variant'}\`}>Presentation</button>
+          <button onClick={() => setViewMode('document')} className={\`px-4 py-1.5 rounded-md text-sm font-medium \${viewMode === 'document' ? 'bg-white shadow text-primary' : 'text-on-surface-variant'}\`}>Document</button>
+        </div>
+
         <button onClick={() => setExportOpen(true)} data-testid="open-export-modal"
           className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
           <span className="material-symbols-outlined text-[18px]">tune</span> Sections
-        </button>
-        <button onClick={onDownloadJson} data-testid="export-json"
-          className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">code</span> Export JSON
-        </button>
-        <button onClick={onPrint} data-testid="print-preview"
-          className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">print</span> Print
         </button>
         <button onClick={onGeneratePdf} disabled={generating} data-testid="generate-pdf"
           className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-60 flex items-center gap-xs">
@@ -152,9 +159,26 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
         </button>
       </div>
 
-      <A4Preview data-testid="proposal-preview">
-        <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={customBlocks} />
-      </A4Preview>
+      <div className="flex-1 relative flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
+        <A4Preview viewMode={viewMode}>
+          <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={customBlocks} viewMode={viewMode} activeSlide={activeSlide} />
+        </A4Preview>
+        
+        {viewMode === 'presentation' && (
+          <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-6 no-print pointer-events-none">
+            <div className="bg-black/60 backdrop-blur-md rounded-full px-6 py-3 flex items-center gap-4 text-white pointer-events-auto">
+              <button onClick={() => setActiveSlide(s => Math.max(s - 1, 0))} disabled={activeSlide === 0} className="hover:text-primary-container disabled:opacity-30"><span className="material-symbols-outlined">chevron_left</span></button>
+              <div className="flex gap-2 items-center">
+                {activeKeys.map((k, i) => (
+                  <button key={k} onClick={() => setActiveSlide(i)} className={\`w-2 h-2 rounded-full transition-all \${i === activeSlide ? 'bg-white scale-125' : 'bg-white/40 hover:bg-white/60'}\`} />
+                ))}
+              </div>
+              <button onClick={() => setActiveSlide(s => Math.min(s + 1, numSlides - 1))} disabled={activeSlide === numSlides - 1} className="hover:text-primary-container disabled:opacity-30"><span className="material-symbols-outlined">chevron_right</span></button>
+              <div className="ml-4 pl-4 border-l border-white/20 text-sm font-medium">Page {activeSlide + 1} of {numSlides}</div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {exportOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm no-print"

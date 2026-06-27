@@ -4,12 +4,19 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { COUNTRY_CODES } from '../../lib/countries.js';
 
+const TOUR_TYPES = [
+  'Honeymoon', 'Family', 'Friends', 'Solo', 'Corporate', 
+  'Adventure', 'Luxury', 'Wellness', 'Pilgrimage', 
+  'Cruise', 'Wildlife', 'Custom'
+];
+
 const clientSchema = z.object({
   customer_name: z.string().min(1, 'Customer Name is required'),
   country: z.string().optional(),
   phone: z.string().optional(),
   email: z.union([z.literal(''), z.string().email('Invalid email')]).optional(),
   destination: z.string().min(1, 'Destination is required'),
+  tour_type: z.string().optional(),
   date_mode: z.enum(['dates', 'days']),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
@@ -106,7 +113,17 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient }
           <Field label="Phone Number" name="phone" register={register} error={errors.phone} testid="phone" extraClass="flex-1" />
         </div>
         <Field label="Email" name="email" type="email" register={register} error={errors.email} testid="email" />
-        <Field label="Destination *" name="destination" register={register} error={errors.destination} testid="destination" />
+        <div className="flex gap-xs">
+          <Field label="Destination *" name="destination" register={register} error={errors.destination} testid="destination" extraClass="flex-1" />
+          <div className="w-1/3">
+            <label className="font-label-md text-label-md text-on-surface block mb-xs">Tour Type</label>
+            <select {...register('tour_type')} data-testid="tour-type"
+              className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20">
+              <option value="">(Select)</option>
+              {TOUR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
         
         {/* Date Options */}
         <div className="col-span-1 md:col-span-2 border border-outline-variant p-md rounded-lg space-y-sm bg-surface-container-lowest">

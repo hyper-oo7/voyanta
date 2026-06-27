@@ -1,10 +1,10 @@
 // Voyanta PDF service — Puppeteer-based renderer that turns a proposal export
-// JSON envelope into a true A4 PDF. Designed to be called from the FastAPI
+// HTML string into a true A4 PDF. Designed to be called from the FastAPI
 // backend (which proxies /api/pdf/generate → POST /generate here).
 //
 // Contract:
 //   POST /generate
-//     body: { proposal, items, items_by_kind, totals, presentation: { style, include }, branding }
+//     body: { html: "<html>...</html>", name: "Proposal Name" }
 //     resp: application/pdf (binary)
 //
 //   GET  /health → { ok: true }
@@ -12,12 +12,11 @@
 import express from 'express';
 import cors from 'cors';
 import puppeteer from 'puppeteer';
-import { renderProposalHtml } from './template.js';
 
 const PORT = process.env.PDF_PORT || 8002;
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '50mb' })); // Increased limit for large base64 images
 
 let browserPromise = null;
 async function getBrowser() {
@@ -29,6 +28,7 @@ async function getBrowser() {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--font-render-hinting=none',
+        '--disable-web-security' // Allow local resources if needed
       ],
     });
   }
@@ -38,31 +38,31 @@ async function getBrowser() {
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'voyanta-pdf', port: PORT }));
 
 app.post('/generate', async (req, res) => {
-  const envelope = req.body || {};
-  if (!envelope.proposal) return res.status(400).json({ error: 'missing proposal' });
+  const { html, name } = req.body || {};
+  if (!html) return res.status(400).json({ error: 'missing html payload' });
 
   try {
-    const html = renderProposalHtml(envelope);
     const browser = await getBrowser();
     const page = await browser.newPage();
     await page.emulateMediaType('print');
+    
+    // Set viewport to A4 dimensions (at 96 DPI: 794x1123)
+    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+    
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
+    
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
-      preferCSSPageSize: true,
+      preferCSSPageSize: true, // Respects @page size
       margin: { top: '0', right: '0', bottom: '0', left: '0' },
-      displayHeaderFooter: true,
-      headerTemplate: '<div></div>',
-      footerTemplate: `
-        <div style="width:100%;font-size:9px;color:#888;padding:0 14mm;display:flex;justify-content:space-between;font-family:Inter, sans-serif;">
-          <span>${escapeHtml(envelope.proposal?.name || 'Proposal')}</span>
-          <span>Page <span class="pageNumber"></span> / <span class="totalPages"></span></span>
-        </div>`,
+      displayHeaderFooter: false, // Turn off default header/footer since we render everything in HTML
     });
+    
     await page.close();
     const buf = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
-    const filename = (envelope.proposal?.name || 'proposal').replace(/[^a-z0-9._-]+/gi, '-');
+    const filename = (name || 'proposal').replace(/[^a-z0-9._-]+/gi, '-');
+    
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', String(buf.length));
     res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
@@ -72,10 +72,6 @@ app.post('/generate', async (req, res) => {
     res.status(500).json({ error: String(e?.message || e) });
   }
 });
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 app.listen(PORT, '0.0.0.0', () => console.log(`[pdf-service] listening on :${PORT}`));
 
