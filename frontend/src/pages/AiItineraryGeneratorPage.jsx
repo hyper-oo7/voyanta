@@ -165,7 +165,7 @@ export default function AiItineraryGeneratorPage() {
                 {[
                   { label: 'Add Hotels',     icon: 'hotel',    route: '/libraries/hotels' },
                   { label: 'Add Flights',    icon: 'flight',   route: '/flights' },
-                  { label: 'Add Activities', icon: 'tour',     route: '/activities' },
+                  { label: 'Add Itinerary', icon: 'tour',     route: '/itinerary' },
                   { label: 'Cost Calculator',icon: 'calculate',route: '/cost-calculator' },
                 ].map((q) => (
                   <button key={q.route} onClick={() => navigate(q.route)} data-testid={`quick-${q.icon}`}
@@ -189,7 +189,7 @@ export default function AiItineraryGeneratorPage() {
                   <span className="font-headline-sm text-primary" data-testid="builder-total">{formatINR(total)}</span>
                 </div>
                 {Object.keys(grouped).length === 0 && (
-                  <p className="px-lg py-xl text-center text-on-surface-variant" data-testid="items-empty">No items yet — pick from Hotels / Flights / Activities.</p>
+                  <p className="px-lg py-xl text-center text-on-surface-variant" data-testid="items-empty">No items yet — pick from Hotels / Flights / Itinerary.</p>
                 )}
                 {Object.entries(grouped).map(([kind, list]) => (
                   <div key={kind} className="border-t border-outline-variant">

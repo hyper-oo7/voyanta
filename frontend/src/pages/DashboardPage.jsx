@@ -166,11 +166,11 @@ export default function DashboardPage() {
                    <span className="font-body-md text-sm font-medium">Upload Hotel Database</span>
                  </button>
                  <button 
-                   onClick={() => navigate('/activities')}
+                   onClick={() => navigate('/itinerary')}
                    className="w-full flex items-center gap-md p-md bg-[#1E293B] hover:bg-[#334155] border border-[#334155] rounded-xl transition-colors text-white text-left group"
                  >
                    <span className="material-symbols-outlined text-white/70 group-hover:text-white transition-colors">local_activity</span>
-                   <span className="font-body-md text-sm font-medium">Upload Activities Database</span>
+                   <span className="font-body-md text-sm font-medium">Upload Itinerary Database</span>
                  </button>
                </div>
              </div>

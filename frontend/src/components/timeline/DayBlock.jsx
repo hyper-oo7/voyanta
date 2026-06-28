@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import LogoUploader from '../LogoUploader.jsx';
 
-export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, removeDay }) {
+export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, removeDay, items = [], onRemoveItem }) {
   const upd = (key) => (e) => updateDay(index, { [key]: e.target.value });
 
   return (
@@ -48,6 +48,28 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
             />
           </div>
         </div>
+
+        {/* Nested Items */}
+        {items.length > 0 && (
+          <div className="pt-md border-t border-outline-variant/50 mt-md space-y-xs">
+            <h5 className="font-label-sm text-on-surface-variant uppercase tracking-widest mb-xs">Added to Day {dayData.day || index + 1}</h5>
+            {items.map(item => (
+              <div key={item.id} className="flex items-center justify-between bg-surface-container-lowest border border-outline-variant rounded-lg p-sm">
+                <div className="flex items-center gap-sm">
+                  <span className="material-symbols-outlined text-primary text-[18px]">
+                    {item.kind === 'hotel' ? 'hotel' : item.kind === 'flight' ? 'flight' : 'tour'}
+                  </span>
+                  <span className="font-label-md text-on-surface">{item.label}</span>
+                </div>
+                {onRemoveItem && (
+                  <button onClick={() => onRemoveItem(item.id)} className="text-on-surface-variant hover:text-error transition-colors">
+                    <span className="material-symbols-outlined text-[18px]">close</span>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

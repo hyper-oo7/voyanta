@@ -68,7 +68,7 @@ export function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemov
             ))}</tr>
           </thead>
           <tbody className="divide-y divide-surface-container">
-            {items.length === 0 && <tr><td colSpan={6} className="px-lg py-xl text-center text-on-surface-variant" data-testid="costing-empty">No items yet — add hotels / flights / activities or use &ldquo;+ Add line&rdquo;.</td></tr>}
+            {items.length === 0 && <tr><td colSpan={6} className="px-lg py-xl text-center text-on-surface-variant" data-testid="costing-empty">No items yet — add hotels / flights / itinerary or use &ldquo;+ Add line&rdquo;.</td></tr>}
             {items.map((it) => (
               <tr key={it.id} data-testid={`cost-row-${it.id}`}>
                 <td className="px-lg py-md font-label-md uppercase text-label-sm tracking-widest">{it.kind}</td>

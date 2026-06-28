@@ -79,12 +79,12 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
       const rootHtml = document.getElementById('pdf-render-root').innerHTML;
       const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).map(el => el.outerHTML).join('\\n');
       
-      const fullHtml = \`<!DOCTYPE html>
+      const fullHtml = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Cormorant+Garamond:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet" />
-\${styles}
+${styles}
 <style>
   @page { size: A4; margin: 0; }
   html, body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -94,9 +94,9 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
 </style>
 </head>
 <body>
-  \${rootHtml}
+  ${rootHtml}
 </body>
-</html>\`;
+</html>`;
 
       const res = await fetch('/api/pdf/generate', { 
         method: 'POST', 
@@ -109,7 +109,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); 
       a.href = url;
-      a.download = \`proposal-\${proposalName || proposalId}.pdf\`;
+      a.download = `proposal-${proposalName || proposalId}.pdf`;
       document.body.appendChild(a); 
       a.click(); 
       a.remove(); 
@@ -143,9 +143,32 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
           <option value="corporate">Corporate Executive</option>
         </select>
         
+        <button onClick={() => {
+          const dest = json?.proposal?.destination || 'Destination';
+          const travelers = json?.proposal?.travelers || 2;
+          const tType = json?.proposal?.preferences?.tour_type || 'Luxury';
+          
+          const prompt = `Generate a highly luxurious and captivating proposal title for a ${tType} trip to ${dest} designed for ${travelers} travelers. The title should be 3-6 words, evocative, and matching the tone of an ultra-premium travel agency. Return only the title.`;
+          console.log("AI PROMPT:", prompt);
+          toast.info("AI Prompt Generated. Hook up your API here!");
+          
+          // For now, simulate AI response
+          setJson(j => ({
+            ...j, 
+            proposal: { 
+              ...j.proposal, 
+              name: `The ${dest} Experience` 
+            } 
+          }));
+        }}
+        className="px-md py-sm bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg font-label-md flex items-center gap-2 transition-colors">
+          <span className="material-symbols-outlined text-[18px]">magic_button</span>
+          AI Auto-Title
+        </button>
+
         <div className="flex bg-surface-container rounded-lg p-1 ml-auto">
-          <button onClick={() => setViewMode('presentation')} className={\`px-4 py-1.5 rounded-md text-sm font-medium \${viewMode === 'presentation' ? 'bg-white shadow text-primary' : 'text-on-surface-variant'}\`}>Presentation</button>
-          <button onClick={() => setViewMode('document')} className={\`px-4 py-1.5 rounded-md text-sm font-medium \${viewMode === 'document' ? 'bg-white shadow text-primary' : 'text-on-surface-variant'}\`}>Document</button>
+          <button onClick={() => setViewMode('presentation')} className={`px-4 py-1.5 rounded-md text-sm font-medium ${viewMode === 'presentation' ? 'bg-white shadow text-primary' : 'text-on-surface-variant'}`}>Presentation</button>
+          <button onClick={() => setViewMode('document')} className={`px-4 py-1.5 rounded-md text-sm font-medium ${viewMode === 'document' ? 'bg-white shadow text-primary' : 'text-on-surface-variant'}`}>Document</button>
         </div>
 
         <button onClick={() => setExportOpen(true)} data-testid="open-export-modal"
@@ -170,7 +193,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
               <button onClick={() => setActiveSlide(s => Math.max(s - 1, 0))} disabled={activeSlide === 0} className="hover:text-primary-container disabled:opacity-30"><span className="material-symbols-outlined">chevron_left</span></button>
               <div className="flex gap-2 items-center">
                 {activeKeys.map((k, i) => (
-                  <button key={k} onClick={() => setActiveSlide(i)} className={\`w-2 h-2 rounded-full transition-all \${i === activeSlide ? 'bg-white scale-125' : 'bg-white/40 hover:bg-white/60'}\`} />
+                  <button key={k} onClick={() => setActiveSlide(i)} className={`w-2 h-2 rounded-full transition-all ${i === activeSlide ? 'bg-white scale-125' : 'bg-white/40 hover:bg-white/60'}`} />
                 ))}
               </div>
               <button onClick={() => setActiveSlide(s => Math.min(s + 1, numSlides - 1))} disabled={activeSlide === numSlides - 1} className="hover:text-primary-container disabled:opacity-30"><span className="material-symbols-outlined">chevron_right</span></button>

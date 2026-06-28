@@ -57,7 +57,7 @@ export default function CostCalculatorPage() {
         : 'flex items-center gap-md text-on-surface-variant py-md px-lg hover:bg-surface-container-low transition-all duration-200';
     });
     const h2 = canvas.querySelector('h2'); if (h2) h2.textContent = 'Cost Calculator';
-    const p  = h2?.parentElement?.querySelector('p'); if (p) p.textContent = 'Live totals — items added from Hotels / Flights / Activities appear here.';
+    const p  = h2?.parentElement?.querySelector('p'); if (p) p.textContent = 'Live totals — items added from Hotels / Flights / Itinerary appear here.';
     const cta = canvas.querySelector('button.bg-primary');
     if (cta) { cta.style.display = 'inline-flex'; cta.innerHTML = '<span class="material-symbols-outlined">download</span> Export JSON'; cta.onclick = onExportJson; }
     canvas.querySelectorAll(':scope > div.grid, :scope > .bento-grid').forEach((n) => n.remove());
@@ -146,7 +146,7 @@ export default function CostCalculatorPage() {
               <tbody className="divide-y divide-surface-container">
                 {loading && <tr><td colSpan={6} className="px-lg py-xl text-center text-on-surface-variant">Loading…</td></tr>}
                 {!loading && !activeId && <tr><td colSpan={6} className="px-lg py-xl text-center text-on-surface-variant" data-testid="cost-no-proposal">Select an active proposal to see line items.</td></tr>}
-                {!loading && activeId && items.length === 0 && <tr><td colSpan={6} className="px-lg py-xl text-center text-on-surface-variant" data-testid="cost-empty">No items yet — add hotels / flights / activities from their pages.</td></tr>}
+                {!loading && activeId && items.length === 0 && <tr><td colSpan={6} className="px-lg py-xl text-center text-on-surface-variant" data-testid="cost-empty">No items yet — add hotels / flights / itinerary from their pages.</td></tr>}
                 {items.map((it) => (
                   <tr key={it.id} data-testid={`item-row-${it.id}`}>
                     <td className="px-lg py-md font-label-md uppercase text-label-sm tracking-widest">{it.kind}</td>

@@ -2,13 +2,10 @@ import { memo } from 'react';
 
 export const STEPS = [
   { n: 1, key: 'client',    label: 'Client Info' },
-  { n: 2, key: 'itinerary', label: 'Schedule' },
-  { n: 3, key: 'hotels',    label: 'Hotels' },
-  { n: 4, key: 'flights',   label: 'Flights' },
-  { n: 5, key: 'activities',label: 'Itinerary' },
-  { n: 6, key: 'costing',   label: 'Costing' },
-  { n: 7, key: 'branding',  label: 'Branding' },
-  { n: 8, key: 'preview',   label: 'Preview' },
+  { n: 2, key: 'itinerary', label: 'Itinerary Builder' },
+  { n: 3, key: 'costing',   label: 'Costing' },
+  { n: 4, key: 'branding',  label: 'Branding' },
+  { n: 5, key: 'preview',   label: 'Preview' },
 ];
 
 export const ProgressBar = memo(function ProgressBar({ step, onJump }) {

@@ -31,7 +31,7 @@ export const AISidebar = memo(function AISidebar({ destination, budget }) {
       </div>
 
       <div className="space-y-sm pt-sm">
-        <h4 className="font-label-sm uppercase tracking-widest text-on-surface-variant">Popular Activities</h4>
+        <h4 className="font-label-sm uppercase tracking-widest text-on-surface-variant">Popular Itinerary</h4>
         <div className="bg-surface-container-lowest p-md rounded-xl border border-outline-variant/50 hover:border-tertiary/50 transition-colors group">
           <p className="font-label-md text-on-surface font-bold group-hover:text-tertiary transition-colors">Private Boat Tour</p>
           <p className="font-body-sm text-on-surface-variant mt-xs">Full day Capri excursion.</p>

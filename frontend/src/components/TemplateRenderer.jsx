@@ -10,12 +10,12 @@ export const ALL = {
 export const SECTIONS = ['hero', 'highlights', 'itinerary', 'hotels', 'costing', 'inclusions', 'exclusions', 'terms', 'contacts', 'socials'];
 
 const THEMES = {
-  'modern': { bg: '#ffffff', text: '#1a1a1a', accent: '#0f172a', alt: '#f1f5f9' },
+  'modern': { bg: '#ffffff', text: '#000000', accent: '#1a1a1a', alt: '#f9fafb' },
   'minimal': { bg: '#fafafa', text: '#2d3748', accent: '#4a5568', alt: '#edf2f7' },
-  'dark': { bg: '#121212', text: '#e2e8f0', accent: '#cbd5e1', alt: '#1e293b' },
-  'classic': { bg: '#fdfbf7', text: '#2c221a', accent: '#8b7355', alt: '#f5f0e6' },
+  'dark': { bg: '#050505', text: '#f9fafb', accent: '#d1d5db', alt: '#111111' },
+  'classic': { bg: '#fdfbf7', text: '#1c1917', accent: '#78716c', alt: '#f5f5f4' },
   'tropical': { bg: '#ffffff', text: '#064e3b', accent: '#059669', alt: '#ecfdf5' },
-  'corporate': { bg: '#ffffff', text: '#1e293b', accent: '#0284c7', alt: '#f0f9ff' }
+  'corporate': { bg: '#ffffff', text: '#0f172a', accent: '#0284c7', alt: '#f8fafc' }
 };
 
 const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', data, include = ALL, order = SECTIONS, customBlocks = [], viewMode = 'document', activeSlide = 0 }) {
@@ -96,19 +96,37 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
         const fallback = (items.activity || []).map((a, i) => ({ day: i + 1, title: a.label }));
         const list = days.length ? days : fallback;
         if (!list.length) return null;
+        
+        const allItems = Object.values(items).flat();
+
         return (
           <section key={key} className={sectionClass} style={sectionStyle}>
             <Title>Daily Itinerary</Title>
             <ol className="space-y-8">
-              {list.map((d, i) => (
+              {list.map((d, i) => {
+                const dayNum = d.day || i + 1;
+                const dayItems = allItems.filter(it => it.meta?.day === dayNum);
+                return (
                 <li key={i} className="flex gap-6 break-inside-avoid p-4 rounded-xl" style={{ backgroundColor: theme.alt }}>
-                  <span className="flex-shrink-0 w-20 text-2xl" style={{ color: theme.accent, fontFamily: fontSubhead }}>Day {String(d.day || i + 1).padStart(2, '0')}</span>
-                  <div>
+                  <span className="flex-shrink-0 w-20 text-2xl" style={{ color: theme.accent, fontFamily: fontSubhead }}>Day {String(dayNum).padStart(2, '0')}</span>
+                  <div className="flex-1">
                     <h3 className="text-xl mb-2 font-semibold" style={{ fontFamily: fontSubhead }}>{d.title || d.label || 'Free time'}</h3>
-                    {d.description && <p className="text-base opacity-80" style={{ fontFamily: fontBody }}>{d.description}</p>}
+                    {d.description && <p className="text-base opacity-80 whitespace-pre-wrap mb-4" style={{ fontFamily: fontBody }}>{d.description}</p>}
+                    
+                    {dayItems.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-opacity-20 space-y-2" style={{ borderColor: theme.text }}>
+                        {dayItems.map(item => (
+                          <div key={item.id} className="flex items-center gap-2 text-sm opacity-90">
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: theme.accent }}></span>
+                            <span className="font-semibold capitalize">{item.kind}:</span>
+                            <span>{item.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </li>
-              ))}
+              )})}
             </ol>
           </section>
         );

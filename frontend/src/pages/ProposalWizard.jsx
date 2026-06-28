@@ -33,7 +33,7 @@ export default function ProposalWizard() {
   const { setActiveId } = useProposalBuilder() || {};
 
   const idParam   = params.get('id') || '';
-  const stepParam = Math.max(1, Math.min(8, parseInt(params.get('step') || '1', 10) || 1));
+  const stepParam = Math.max(1, Math.min(5, parseInt(params.get('step') || '1', 10) || 1));
 
   const [proposal, setProposal] = useState(null);
   const [items, setItems] = useState([]);
@@ -43,7 +43,6 @@ export default function ProposalWizard() {
   const [importOpen, setImportOpen] = useState(false);
   const [importResource, setImportResource] = useState('');
 
-  // Local form state
   const [client, setClient] = useState({
     customer_name: '', phone: '', country: DEFAULT_COUNTRY, email: '',
     destination: '',
@@ -54,6 +53,7 @@ export default function ProposalWizard() {
     departure_city: '', departure_airport: '',
     num_adults: 1, num_children: 0, budget: '', special_notes: '',
     itinerary_id: '',
+    tour_type: params.get('tour_type') || '',
   });
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export default function ProposalWizard() {
     social_facebook: '', social_instagram: '', social_linkedin: '',
     cover_image_url: '', highlights: '',
     inclusions: '', exclusions: '', terms_of_payment: '',
-    primary_color: '#0b1c30', template_style: 'elegant', font_family: '',
+    primary_color: '#0b1c30', template_style: params.get('theme') || 'classic', font_family: '',
   });
 
   const [costingPrefs, setCostingPrefs] = useState({
@@ -138,6 +138,7 @@ export default function ProposalWizard() {
             budget: p.budget_max ?? '',
             special_notes: b.special_notes || '',
             itinerary_id: b.itinerary_id || '',
+            tour_type: b.tour_type || '',
           });
           if (p.preferences?.branding) setBranding((s) => ({ ...s, ...p.preferences.branding }));
           if (p.preferences?.costing) setCostingPrefs((s) => ({ ...s, ...p.preferences.costing }));
@@ -148,6 +149,25 @@ export default function ProposalWizard() {
   }, [setActiveId, toast]);
 
   useEffect(() => { reload(idParam); }, [idParam, reload]);
+
+  const themeParam = params.get('theme');
+  useEffect(() => {
+    if (!client.tour_type) return;
+    if (themeParam && !idParam) return; // Don't override if started from a template!
+    const styleMap = {
+      'Honeymoon': 'minimal',
+      'Corporate': 'corporate',
+      'Adventure': 'dark',
+      'Luxury': 'modern',
+      'Cruise': 'tropical',
+      'Wellness': 'minimal',
+      'Family': 'classic',
+      'Friends': 'classic',
+    };
+    if (styleMap[client.tour_type]) {
+      setBranding(b => ({ ...b, template_style: styleMap[client.tour_type] }));
+    }
+  }, [client.tour_type, idParam, themeParam]);
 
   const [mountNode, setMountNode] = useState(null);
 
@@ -221,6 +241,7 @@ export default function ProposalWizard() {
         num_children: parseInt(c.num_children, 10) || 0,
         special_notes: c.special_notes,
         itinerary_id: c.itinerary_id || null,
+        tour_type: c.tour_type || null,
       },
       preferences: { ...(proposal?.preferences || {}), branding, costing: costingPrefs },
       itinerary: proposal?.itinerary,
@@ -331,12 +352,12 @@ export default function ProposalWizard() {
 
   const onNext = async () => {
     let pid = proposal?.id;
-    if (stepParam === 1 || stepParam === 6) {
+    if (stepParam === 1 || stepParam === 3 || stepParam === 4) {
       try { const p = await saveDraft(true); pid = p?.id || pid; }
       catch { return; }
     }
     if (!pid && stepParam !== 1) { toast.error('Save the client info first'); return; }
-    goStep(Math.min(8, stepParam + 1), pid);
+    goStep(Math.min(5, stepParam + 1), pid);
   };
   const onPrev = () => goStep(Math.max(1, stepParam - 1));
 
@@ -404,21 +425,12 @@ export default function ProposalWizard() {
           ) : (
             <>
               {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} />}
-              {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={reload} itineraries={itineraries} onApplyItinerary={onApplyItinerary} client={client} />}
-              {stepParam === 3 && <ResourceStep kind="hotel"    service={hotelsService}     resource="hotels"     items={items}
-                addItems={(rows) => addItemsToProposal('hotel',  rows, (r) => r.name, (r) => Number(r.price_per_night||0))}
-                onRemoveItem={onRemoveItem} onPatchItem={onPatchItem} setImportOpen={() => handleOpenImport('hotels')} />}
-              {stepParam === 4 && <ResourceStep kind="flight"   service={flightsService}    resource="flights"    items={items}
-                addItems={(rows) => addItemsToProposal('flight', rows, (r) => `${r.airline||'Flight'} ${r.flight_no||''} ${r.origin||''}→${r.destination||''}`.trim(), (r) => Number(r.cost||0))}
-                onRemoveItem={onRemoveItem} setImportOpen={() => handleOpenImport('flights')} />}
-              {stepParam === 5 && <ResourceStep kind="activity" service={activitiesService} resource="activities" items={items}
-                addItems={(rows) => addItemsToProposal('activity', rows, (r) => r.name, (r) => Number(r.price||0))}
-                onRemoveItem={onRemoveItem} setImportOpen={() => handleOpenImport('activities')} />}
-              {stepParam === 6 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
+              {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={reload} itineraries={itineraries} onApplyItinerary={onApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} />}
+              {stepParam === 3 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
                 onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
                 proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
-              {stepParam === 7 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} />}
-              {stepParam === 8 && <Step7Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} />}
+              {stepParam === 4 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} />}
+              {stepParam === 5 && <Step7Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} />}
             </>
           )}
 
@@ -433,9 +445,9 @@ export default function ProposalWizard() {
             </button>
             <span className="flex-1" />
             <span className="font-label-md text-on-surface-variant uppercase tracking-widest mr-md bg-white/50 px-lg py-2 rounded-full border border-white/40 shadow-inner backdrop-blur-sm">
-              Step {stepParam} <span className="opacity-50">/ 8</span>
+              Step {stepParam} <span className="opacity-50">/ 5</span>
             </span>
-            {stepParam < 8 && (
+            {stepParam < 5 && (
               <button onClick={onNext} disabled={saving} data-testid="wizard-next"
                 className="px-xl py-3 bg-primary/90 backdrop-blur-md text-white rounded-xl font-label-md hover:bg-primary transition-all shadow-md hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-md flex items-center gap-sm">
                 Continue to {STEPS[stepParam]?.label || 'Next'}

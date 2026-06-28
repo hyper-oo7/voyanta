@@ -145,7 +145,7 @@ export default function LandingPage() {
                 <span className="material-symbols-outlined text-on-secondary-container text-[32px]">inventory_2</span>
               </div>
               <h3 className="font-display text-2xl font-bold text-on-surface mb-sm">Smart Library</h3>
-              <p className="text-on-surface-variant font-body-lg">Store all your hotels, flights, and activities in a central database for one-click insertion into any proposal.</p>
+              <p className="text-on-surface-variant font-body-lg">Store all your hotels, flights, and itineraries in a central database for one-click insertion into any proposal.</p>
             </div>
             
             {/* Feature 3 */}
