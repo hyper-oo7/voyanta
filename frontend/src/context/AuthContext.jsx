@@ -1,25 +1,16 @@
 import { createContext, useContext, useEffect, useCallback } from 'react';
-import { supabase, DEMO_MODE, DEMO_USER } from '../lib/supabaseClient.js';
+import { supabase } from '../lib/supabaseClient.js';
 import { useAuthStore } from '../store/authStore.js';
 
 const AuthContext = createContext(null);
 
-const DEMO_KEY = 'voyanta_demo_session';
-
 export function AuthProvider({ children }) {
-  const { user, isDemo, isLoading: loading, setUser, setIsDemo, setLoading, clearAuth } = useAuthStore();
+  const { user, isLoading: loading, setUser, setLoading, clearAuth } = useAuthStore();
 
   // Restore session (Supabase or demo) on mount
   useEffect(() => {
     let unsub = () => {};
     (async () => {
-      // Demo session restore
-      if (localStorage.getItem(DEMO_KEY) === '1') {
-        setUser(DEMO_USER);
-        setIsDemo(true);
-        setLoading(false);
-        return;
-      }
       if (!supabase) { setLoading(false); return; }
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user ?? null, session);
@@ -31,7 +22,7 @@ export function AuthProvider({ children }) {
       if (sub?.subscription) unsub = () => sub.subscription.unsubscribe();
     })();
     return () => unsub();
-  }, [setUser, setIsDemo, setLoading]);
+  }, [setUser, setLoading]);
 
   const signUp = useCallback(async ({ email, password, fullName }) => {
     if (!supabase) throw new Error('Supabase not configured');
@@ -52,7 +43,6 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    localStorage.removeItem(DEMO_KEY);
     clearAuth();
     if (supabase) await supabase.auth.signOut();
   }, [clearAuth]);
@@ -76,23 +66,14 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
-  const enterDemoMode = useCallback(() => {
-    localStorage.setItem(DEMO_KEY, '1');
-    setUser(DEMO_USER);
-    setIsDemo(true);
-  }, [setUser, setIsDemo]);
-
   const value = {
     user,
     loading,
-    isDemo,
-    demoEnabled: DEMO_MODE,
     signUp,
     signIn,
     signInWithProvider,
     signOut,
     resetPassword,
-    enterDemoMode,
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

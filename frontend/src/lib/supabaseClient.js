@@ -12,17 +12,8 @@ export const supabase = (url && key)
       },
     })
   : null;
-
 export const isSupabaseConfigured = () => Boolean(supabase);
-
-export const DEMO_MODE = String(import.meta.env.VITE_DEMO_MODE || 'false') === 'true';
 
 export const DEFAULT_AGENCY_ID = '00000000-0000-0000-0000-000000000001';
 
-// In-memory demo user (no Supabase auth call needed)
-export const DEMO_USER = {
-  id: 'demo-user',
-  email: 'demo@voyanta.app',
-  user_metadata: { full_name: 'Demo User' },
-  isDemo: true,
-};
+

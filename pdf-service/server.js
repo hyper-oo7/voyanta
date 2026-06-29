@@ -12,11 +12,23 @@
 import express from 'express';
 import cors from 'cors';
 import puppeteer from 'puppeteer';
+import rateLimit from 'express-rate-limit';
 
 const PORT = process.env.PDF_PORT || 8002;
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Increased limit for large base64 images
+
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 3, // Limit each user to 3 requests per 1 minute
+  keyGenerator: (req) => req.headers['x-user-id'] || req.ip,
+  message: { error: 'Too many PDF generation requests, please try again after a minute' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/generate', limiter);
 
 let browserPromise = null;
 async function getBrowser() {
@@ -40,10 +52,15 @@ app.get('/health', (_req, res) => res.json({ ok: true, service: 'voyanta-pdf', p
 app.post('/generate', async (req, res) => {
   const { html, name } = req.body || {};
   if (!html) return res.status(400).json({ error: 'missing html payload' });
+  
+  if (html.length > 10 * 1024 * 1024) {
+    return res.status(413).json({ error: 'HTML payload exceeds 10MB limit' });
+  }
 
+  let page = null;
   try {
     const browser = await getBrowser();
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.emulateMediaType('print');
     
     // Set viewport to A4 dimensions (at 96 DPI: 794x1123)
@@ -59,7 +76,6 @@ app.post('/generate', async (req, res) => {
       displayHeaderFooter: false, // Turn off default header/footer since we render everything in HTML
     });
     
-    await page.close();
     const buf = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
     const filename = (name || 'proposal').replace(/[^a-z0-9._-]+/gi, '-');
     
@@ -70,6 +86,10 @@ app.post('/generate', async (req, res) => {
   } catch (e) {
     console.error('[pdf-service] generate failed', e);
     res.status(500).json({ error: String(e?.message || e) });
+  } finally {
+    if (page) {
+      await page.close().catch(() => {});
+    }
   }
 });
 

@@ -4,13 +4,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useToast } from '../context/ToastContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
-import {
-  fetchProposals,
-  deleteProposal,
-  duplicateProposal,
-  updateProposal,
-  archiveProposal
-} from '../services/proposalService.js';
+import { useProposals } from '../hooks/useProposals.js';
+import { updateProposal } from '../services/proposalService.js';
 import { buildProposalExport } from '../services/proposalItemService.js';
 // Reuse the dashboard's Stitch HTML chrome (sidebar + topbar + table styling)
 // so the new Proposals list page matches the existing design language without
@@ -25,21 +20,12 @@ export default function ProposalsListPage() {
   const [params] = useSearchParams();
   const toast = useToast();
   const { signOut, isDemo, user } = useAuth();
-  const [proposals, setProposals] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  
+  const { proposals, isLoading: loading, error, deleteProposal, duplicateProposal } = useProposals();
+  
   const [editing, setEditing] = useState(null);
   const [shareProposal, setShareProposal] = useState(null);
-
-  const reload = useCallback(async () => {
-    setLoading(true); setError(null);
-    try { setProposals(await fetchProposals()); }
-    catch (e) { setError(e.message || 'Failed to load proposals'); }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { reload(); }, [reload]);
-
+  
   const [mountNode, setMountNode] = useState(null);
 
   // After dashboard HTML mounts, mutate the page chrome:
@@ -102,12 +88,12 @@ export default function ProposalsListPage() {
           onView={(p) => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=7`)}
           onEdit={(p) => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=1`)}
           onDuplicate={async (p) => {
-            try { await duplicateProposal(p.id); toast.success('Proposal duplicated'); reload(); }
+            try { await duplicateProposal(p.id); toast.success('Proposal duplicated'); }
             catch (e) { toast.error(e.message || 'Failed to duplicate'); }
           }}
           onDelete={async (p) => {
             if (!window.confirm(`Delete "${p.name}"?`)) return;
-            try { await deleteProposal(p.id); toast.success('Proposal deleted'); reload(); }
+            try { await deleteProposal(p.id); toast.success('Proposal deleted'); }
             catch (e) { toast.error(e.message || 'Failed to delete'); }
           }}
           onShare={(p) => setShareProposal(p)}
@@ -133,7 +119,6 @@ export default function ProposalsListPage() {
               await updateProposal(editing.id, patch);
               toast.success('Proposal updated');
               setEditing(null);
-              reload();
             } catch (e) { toast.error(e.message || 'Failed to update'); }
           }}
         />

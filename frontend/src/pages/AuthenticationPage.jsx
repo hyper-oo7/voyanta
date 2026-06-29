@@ -7,7 +7,7 @@ export default function AuthenticationPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { signIn, signUp, signInWithProvider, user, demoEnabled, enterDemoMode } = useAuth();
+  const { signIn, signUp, signInWithProvider, user } = useAuth();
   
   const [isSignUp, setIsSignUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -178,21 +178,6 @@ export default function AuthenticationPage() {
                 {isSignUp ? 'Sign In' : 'Create an account'}
               </button>
             </p>
-
-            {demoEnabled && (
-              <p className="mt-md text-center">
-                <button 
-                  onClick={() => {
-                    enterDemoMode();
-                    toast.info('Demo mode active');
-                    navigate('/dashboard', { replace: true });
-                  }}
-                  className="text-label-sm font-label-sm text-on-surface-variant hover:text-primary underline border-none bg-transparent p-0"
-                >
-                  Skip — try Demo Mode
-                </button>
-              </p>
-            )}
 
           </div>
         </div>

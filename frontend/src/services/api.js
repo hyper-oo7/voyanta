@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger.js';
+import { supabase } from '../lib/supabaseClient.js';
 
 class ApiError extends Error {
   constructor(message, status, data) {
@@ -29,6 +30,14 @@ async function fetchWithRetry(endpoint, options = {}, retries = 1) {
       ...options.headers,
     },
   };
+
+  // Attach auth token if available
+  if (supabase) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      config.headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+  }
 
   if (config.body && typeof config.body === 'object' && !(config.body instanceof FormData)) {
     config.body = JSON.stringify(config.body);

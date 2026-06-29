@@ -9,8 +9,9 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
     "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.5.2",
     "puppeteer": "^23.11.1"
   }
 }

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 
@@ -17,8 +17,11 @@ const navItems = [
 
 export default function AppLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const { user, isDemo, signOut } = useAuth();
+
+  const isDashboard = location.pathname === '/dashboard';
 
   const handleSignOut = async () => {
     await signOut();
@@ -109,6 +112,7 @@ export default function AppLayout() {
       {/* Main Content Wrapper */}
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top Navigation Bar */}
+        {isDashboard && (
         <header className="flex-shrink-0 flex justify-between items-center w-full px-lg py-md bg-surface shadow-sm z-40">
           <div className="flex items-center flex-1 max-w-2xl gap-lg">
             {/* Search bar removed per request */}
@@ -176,7 +180,7 @@ export default function AppLayout() {
             </div>
           </div>
         </header>
-
+        )}
 
         {/* Dashboard Canvas */}
         <div className="flex-1 overflow-y-auto px-lg lg:px-xxl pb-xxl pt-md">

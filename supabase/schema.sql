@@ -6,7 +6,8 @@ create extension if not exists "pgcrypto";
 
 -- Grant schema usage to standard roles to prevent "permission denied for schema public"
 grant usage on schema public to postgres, anon, authenticated, service_role;
-grant all privileges on all tables in schema public to postgres, anon, authenticated, service_role;
+grant all privileges on all tables in schema public to postgres, service_role;
+grant select, insert, update, delete on all tables in schema public to anon, authenticated;
 
 -- AGENCIES --------------------------------------------------------------------
 create table if not exists public.agencies (
@@ -53,6 +54,15 @@ create table if not exists public.clients (
   preferences jsonb,
   created_at timestamptz default now()
 );
+
+-- STATUS CHECKS (Replaces MongoDB) --------------------------------------------
+create table if not exists public.status_checks (
+  id uuid primary key default gen_random_uuid(),
+  client_name text not null,
+  timestamp timestamptz default now()
+);
+alter table public.status_checks enable row level security;
+create policy "status_checks_all" on public.status_checks for all using (true);
 
 -- PROPOSALS -------------------------------------------------------------------
 create table if not exists public.proposals (
@@ -335,6 +345,14 @@ create policy "Users can update agency assets" on storage.objects for update usi
 
 drop policy if exists "Users can delete agency assets" on storage.objects;
 create policy "Users can delete agency assets" on storage.objects for delete using (bucket_id = 'agency-assets' and auth.uid() is not null);
+
+-- INDEXES FOR PERFORMANCE -----------------------------------------------------
+create index if not exists clients_agency_idx on public.clients (agency_id);
+create index if not exists hotels_agency_idx on public.hotels (agency_id);
+create index if not exists flights_agency_idx on public.flights (agency_id);
+create index if not exists activities_agency_idx on public.activities (agency_id);
+create index if not exists templates_agency_idx on public.templates (agency_id);
+create index if not exists proposal_items_ref_idx on public.proposal_items (ref_id);
 
 -- SEED DATA -------------------------------------------------------------------
 -- Demo agency will act as the default agency for local dev/testing

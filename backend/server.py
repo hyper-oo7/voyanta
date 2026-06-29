@@ -3,15 +3,17 @@ from contextlib import asynccontextmanager
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import httpx
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from typing import List, Optional, Any
 import uuid
 from datetime import datetime, timezone
+from fastapi import Depends, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 
 ROOT_DIR = Path(__file__).parent
@@ -24,15 +26,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+SUPABASE_URL = os.environ.get('VITE_SUPABASE_URL') or os.environ.get('SUPABASE_URL')
+SUPABASE_KEY = os.environ.get('VITE_SUPABASE_ANON_KEY') or os.environ.get('SUPABASE_KEY')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
-    client.close()
 
 # Create the main app without a prefix
 app = FastAPI(lifespan=lifespan)
@@ -52,6 +51,41 @@ class StatusCheck(BaseModel):
 class StatusCheckCreate(BaseModel):
     client_name: str
 
+class ParseItineraryInput(BaseModel):
+    text: str
+
+class PDFGenerateRequest(BaseModel):
+    html: str
+    name: Optional[str] = "proposal"
+
+class PPTGenerateRequest(BaseModel):
+    proposal: dict = Field(default_factory=dict)
+    items: list = Field(default_factory=list)
+
+security = HTTPBearer()
+
+async def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
+    token = credentials.credentials
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+        
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {token}"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(f"{SUPABASE_URL}/auth/v1/user", headers=headers)
+            if res.status_code != 200:
+                logger.error(f"Token verification failed: {res.text}")
+                raise HTTPException(status_code=401, detail="Invalid auth token")
+            return res.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to verify token: {e}")
+        raise HTTPException(status_code=401, detail="Invalid auth token")
+
 # Add your routes to the router instead of directly to app
 @api_router.get("/")
 async def root():
@@ -70,31 +104,64 @@ async def create_status_check(input: StatusCheckCreate):
     status_dict = input.model_dump()
     status_obj = StatusCheck(**status_dict)
     
-    # Convert to dict and serialize datetime to ISO string for MongoDB
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return status_obj
+        
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal"
+    }
     doc = status_obj.model_dump()
     doc['timestamp'] = doc['timestamp'].isoformat()
     
-    _ = await db.status_checks.insert_one(doc)
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(f"{SUPABASE_URL}/rest/v1/status_checks", json=doc, headers=headers)
+    except Exception as e:
+        logger.error(f"Failed to record status check to Supabase: {e}")
+        
     return status_obj
 
 @api_router.get("/status", response_model=List[StatusCheck])
 async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return []
+        
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}"
+    }
     
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(f"{SUPABASE_URL}/rest/v1/status_checks?select=*&order=timestamp.desc", headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                for check in data:
+                    if isinstance(check.get('timestamp'), str):
+                        check['timestamp'] = datetime.fromisoformat(check['timestamp'])
+                return data
+    except Exception as e:
+        logger.error(f"Failed to fetch status checks from Supabase: {e}")
+        
+    return []
 
 
-class ParseItineraryInput(BaseModel):
-    text: str
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+async def call_openai_with_retry(payload: dict, headers: dict):
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        r = await client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers)
+        if r.status_code == 429 or r.status_code >= 500:
+            logger.warning(f"OpenAI error {r.status_code}, retrying...")
+            raise Exception(f"OpenAI error {r.status_code}: {r.text}")
+        if r.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"OpenAI API processing failed: {r.status_code}")
+        return r.json()
 
 @api_router.post("/parse-itinerary")
-async def parse_itinerary(input: ParseItineraryInput):
+async def parse_itinerary(input: ParseItineraryInput, user: Any = Depends(verify_token)):
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="OpenAI API key not configured on backend")
@@ -148,14 +215,10 @@ async def parse_itinerary(input: ParseItineraryInput):
     }
     
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            r = await client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers)
-            if r.status_code != 200:
-                raise HTTPException(status_code=r.status_code, detail=f"OpenAI error: {r.text}")
-            result = r.json()
-            import json
-            content = result["choices"][0]["message"]["content"]
-            return json.loads(content)
+        result = await call_openai_with_retry(payload, headers)
+        import json
+        content = result["choices"][0]["message"]["content"]
+        return json.loads(content)
     except Exception as e:
         logger.exception("parse itinerary failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -178,11 +241,12 @@ async def pdf_health():
         return {"upstream_status": 0, "error": str(e)}
 
 @api_router.post("/pdf/generate")
-async def pdf_generate(request: Request):
-    payload = await request.json()
+async def pdf_generate(request: PDFGenerateRequest, user: Any = Depends(verify_token)):
+    payload = request.model_dump()
+    user_id = user.get("id") or user.get("sub") or "unknown_user"
     try:
         async with httpx.AsyncClient(timeout=60.0) as c:
-            r = await c.post(f"{PDF_SERVICE_URL}/generate", json=payload)
+            r = await c.post(f"{PDF_SERVICE_URL}/generate", json=payload, headers={"X-User-ID": user_id})
         if r.status_code != 200:
             raise HTTPException(status_code=r.status_code, detail=r.text)
         proposal_name = (payload.get('proposal') or {}).get('name') or 'proposal'
@@ -201,8 +265,8 @@ async def pdf_generate(request: Request):
 
 # ── PPT generator ─────────────────────────────────────────────────────────
 @api_router.post("/ppt/generate")
-async def ppt_generate(request: Request):
-    payload = await request.json()
+async def ppt_generate(request: PPTGenerateRequest, user: Any = Depends(verify_token)):
+    payload = request.model_dump()
     try:
         from pptx import Presentation
         from io import BytesIO

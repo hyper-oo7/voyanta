@@ -7,6 +7,16 @@ import { BackendHealthProvider } from './context/BackendHealthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import AppLayout from './components/AppLayout.jsx';
 import DiagnosticsPanel from './components/DiagnosticsPanel.jsx';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60 * 1000, // 1 minute
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 // Lazy-load all page components for route-based code splitting.
 // Only the page the user navigates to is downloaded — cutting initial bundle size.
@@ -41,8 +51,9 @@ function PageLoader() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <ToastProvider>
         <BackendHealthProvider>
           <ProposalBuilderProvider>
             <Suspense fallback={<PageLoader />}>
@@ -84,5 +95,6 @@ export default function App() {
         </BackendHealthProvider>
       </ToastProvider>
     </AuthProvider>
+    </QueryClientProvider>
   );
 }
