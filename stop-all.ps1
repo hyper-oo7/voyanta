@@ -15,15 +15,15 @@ if (-not (Test-Path $pidFile)) {
     Write-ColorMessage "No .dev-pids file found. Searching for leftover node/python processes..." "Yellow"
     # Alternatively, you can kill by port if pids are missing
     $nodePids = Get-NetTCPConnection -LocalPort 3000, 3001 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
-    $pythonPids = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
+    $pythonPids = Get-NetTCPConnection -LocalPort 8001 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
     
     foreach ($p in $nodePids) {
         Write-ColorMessage "Killing Node process on port 300x (PID: $p)" "Yellow"
-        Stop-Process -Id $p -Force -ErrorAction SilentlyContinue
+        taskkill /F /T /PID $p 2>$null
     }
     foreach ($p in $pythonPids) {
-        Write-ColorMessage "Killing Python process on port 8000 (PID: $p)" "Yellow"
-        Stop-Process -Id $p -Force -ErrorAction SilentlyContinue
+        Write-ColorMessage "Killing Python process on port 8001 (PID: $p)" "Yellow"
+        taskkill /F /T /PID $p 2>$null
     }
 } else {
     $pids = Get-Content $pidFile
@@ -31,14 +31,14 @@ if (-not (Test-Path $pidFile)) {
     foreach ($p in $pidArray) {
         if ([string]::IsNullOrWhiteSpace($p)) { continue }
         Write-ColorMessage "Stopping process PID: $p" "Cyan"
-        Stop-Process -Id $p -Force -ErrorAction SilentlyContinue
+        taskkill /F /T /PID $p 2>$null
         # For npm we also need to kill child node processes
     }
     Remove-Item $pidFile -Force
     Write-ColorMessage "To ensure Vite is fully terminated, killing node..." "Cyan"
     $nodePids = Get-NetTCPConnection -LocalPort 3000, 3001 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
     foreach ($p in $nodePids) {
-        Stop-Process -Id $p -Force -ErrorAction SilentlyContinue
+        taskkill /F /T /PID $p 2>$null
     }
 }
 

@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, Request, HTTPException
+from contextlib import asynccontextmanager
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -28,8 +29,13 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    client.close()
+
 # Create the main app without a prefix
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -259,10 +265,6 @@ app.add_middleware(
 
 
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
-
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("server:app", host="0.0.0.0", port=8001, reload=True)

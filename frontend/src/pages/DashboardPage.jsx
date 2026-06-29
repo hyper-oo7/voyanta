@@ -55,8 +55,8 @@ export default function DashboardPage() {
 
       {/* Top Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-lg">
-        <StatCard title="TOTAL PROPOSALS" value={loading ? "..." : data.totalProposals} icon="folder" />
-        <StatCard title="TOTAL TEMPLATES" value={loading ? "..." : data.totalTemplates} icon="description" />
+        <StatCard title="TOTAL PROPOSALS" value={loading ? "..." : data.totalProposals} icon="folder" onClick={() => navigate('/proposals')} />
+        <StatCard title="TOTAL TEMPLATES" value={loading ? "..." : data.totalTemplates} icon="description" onClick={() => navigate('/templates')} />
         <StatCard title="ACTIVE CLIENTS" value={loading ? "..." : data.activeClients} icon="person" />
       </div>
 
@@ -197,16 +197,16 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ title, value, icon }) {
+function StatCard({ title, value, icon, onClick }) {
   return (
-    <div className="bg-surface border border-outline-variant p-xl rounded-2xl flex flex-col justify-between h-36">
-      <div className="flex items-center justify-between">
+    <div onClick={onClick} className={`bg-surface border border-outline-variant p-xl rounded-2xl flex flex-col justify-between h-36 ${onClick ? 'cursor-pointer hover:shadow-md hover:border-primary/50 transition-all hover:-translate-y-1' : ''}`}>
+      <div className="flex items-center justify-between pointer-events-none">
         <p className="font-label-sm text-[11px] font-bold text-on-surface-variant uppercase tracking-widest m-0">{title}</p>
         <div className="w-10 h-10 bg-primary-container rounded-full flex items-center justify-center text-on-primary-container">
           <span className="material-symbols-outlined text-[18px]">{icon}</span>
         </div>
       </div>
-      <h3 className="font-display text-[40px] leading-none text-on-surface m-0">{value}</h3>
+      <h3 className="font-display text-[40px] leading-none text-on-surface m-0 pointer-events-none">{value}</h3>
     </div>
   );
 }

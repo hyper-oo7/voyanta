@@ -1,8 +1,6 @@
 import { memo } from 'react';
 import { useToast } from '../../context/ToastContext.jsx';
 import LogoUploader from '../../components/LogoUploader.jsx';
-import ColorPicker from '../../components/ColorPicker.jsx';
-import { FONT_CATALOG } from '../../lib/fonts.js';
 
 const Field = memo(function Field({ label, value, onChange, type = 'text', testid, extraClass = '' }) {
   return (
@@ -51,7 +49,7 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
   return (
     <div className="glass-card rounded-xl p-lg space-y-md" data-testid="step-branding">
       <h3 className="font-headline-sm text-headline-sm text-primary">Agency Branding & Template</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
+      <div className="grid grid-cols-1 gap-md">
         <div>
           <label className="font-label-md text-label-md text-on-surface block mb-xs">Template Style</label>
           <select value={branding.template_style} onChange={upd('template_style')} data-testid="brand-tpl-style"
@@ -61,18 +59,6 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
             <option value="light">Light & Friendly</option>
           </select>
         </div>
-        <div>
-          <label className="font-label-md text-label-md text-on-surface block mb-xs">Font Family</label>
-          <select value={branding.font_family} onChange={upd('font_family')} data-testid="brand-font"
-            className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md"
-            style={{ fontFamily: branding.font_family || undefined }}>
-            <option value="">— Template default —</option>
-            {FONT_CATALOG.map((f) => (
-              <option key={f.key} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
-            ))}
-          </select>
-        </div>
-        <ColorPicker value={branding.primary_color} onChange={upd('primary_color')} testid="brand-color" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
         <LogoUploader value={branding.logo_url} onChange={(v) => setBranding((s) => ({ ...s, logo_url: v }))} label="Agency Logo" testid="brand-logo-uploader" folder="logos" />

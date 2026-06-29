@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
 import { settingsService } from '../services/resourceService.js';
 import LogoUploader from '../components/LogoUploader.jsx';
+import MobileLivePreview from '../components/MobileLivePreview.jsx';
 
 export default function SettingsPage() {
   const wrapperRef = useRef(null);
@@ -27,7 +28,7 @@ export default function SettingsPage() {
     website: '',
     gst_number: '',
     default_currency: 'INR',
-    default_proposal_validity: 30,
+    customer_email_notifications: '',
     theme_preferences: 'light',
     notification_preferences: {
       proposal_accepted: true,
@@ -261,10 +262,25 @@ export default function SettingsPage() {
             <div className="glass-card p-lg rounded-xl space-y-md">
               {/* TAB 1: AGENCY SETTINGS */}
               {activeTab === 'agency' && (
-                <div className="space-y-md">
-                  <h3 className="font-headline-sm text-headline-sm text-primary">Agency Details</h3>
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr,360px] gap-xl">
+                  <div className="space-y-md">
+                    <h3 className="font-headline-sm text-headline-sm text-primary">Agency Details</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
                     <Field label="Agency Name" value={settings.agency_name} onChange={upd('agency_name')} testid="settings-agency-name" />
+                    
+                    <div className="flex flex-col gap-xs">
+                      <span className="font-label-md text-label-md text-on-surface">Default Theme</span>
+                      <select value={settings.template_style || 'classic'} onChange={upd('template_style')}
+                        className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
+                        <option value="modern">Modern Luxury</option>
+                        <option value="minimal">Minimal Editorial</option>
+                        <option value="dark">Dark Luxury</option>
+                        <option value="classic">Classic European</option>
+                        <option value="tropical">Tropical Escape</option>
+                        <option value="corporate">Corporate Executive</option>
+                      </select>
+                    </div>
+
                     <Field label="Website" value={settings.website} onChange={upd('website')} testid="settings-website" />
                     
                     <div className="md:col-span-2">
@@ -300,12 +316,28 @@ export default function SettingsPage() {
                     </div>
 
                     <Field
-                      label="Default Proposal Validity (Days)"
-                      type="number"
-                      value={settings.default_proposal_validity}
-                      onChange={(e) => setSettings((s) => ({ ...s, default_proposal_validity: parseInt(e.target.value) || 30 }))}
-                      testid="settings-validity"
+                      label="Customer Notifications Email"
+                      type="email"
+                      value={settings.customer_email_notifications || ''}
+                      onChange={(e) => setSettings((s) => ({ ...s, customer_email_notifications: e.target.value }))}
+                      testid="settings-customer-email"
+                      placeholder="e.g. clients@myagency.com"
                     />
+
+                    <Field
+                      label="WhatsApp Number (for Sharing)"
+                      type="tel"
+                      value={settings.whatsapp_number || ''}
+                      onChange={(e) => setSettings((s) => ({ ...s, whatsapp_number: e.target.value }))}
+                      testid="settings-whatsapp-number"
+                      placeholder="e.g. +1234567890"
+                    />
+                    
+                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-md mt-sm border-t border-outline-variant pt-sm">
+                      <Field label="Facebook (URL)" value={settings.social_facebook || ''} onChange={upd('social_facebook')} testid="settings-facebook" />
+                      <Field label="Instagram (URL)" value={settings.social_instagram || ''} onChange={upd('social_instagram')} testid="settings-instagram" />
+                      <Field label="LinkedIn (URL)" value={settings.social_linkedin || ''} onChange={upd('social_linkedin')} testid="settings-linkedin" />
+                    </div>
                   </div>
                   
                   <div className="pt-xl border-t border-outline-variant space-y-md">
@@ -359,6 +391,12 @@ export default function SettingsPage() {
                     </button>
                   </div>
                 </div>
+                
+                {/* Right Side: Mobile Live Preview */}
+                <div className="hidden lg:block sticky top-6 h-[800px]">
+                  <MobileLivePreview branding={settings} />
+                </div>
+              </div>
               )}
 
               {/* TAB 2: USER PROFILE & SECURITY */}

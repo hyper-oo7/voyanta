@@ -28,7 +28,7 @@ const clientSchema = z.object({
   departure_airport: z.string().optional(),
   num_adults: z.number().min(1, 'At least 1 adult required'),
   num_children: z.number().min(0).optional(),
-  budget: z.union([z.literal(''), z.number()]).optional(),
+  budget: z.union([z.number(), z.nan(), z.string()]).optional().transform(v => Number.isNaN(v) ? undefined : v),
   special_notes: z.string().optional(),
 }).refine(data => {
   if (data.date_mode === 'dates') {

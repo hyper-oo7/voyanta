@@ -164,7 +164,7 @@ export default function ResourceModulePage({
             <select 
               value={sortBy}
               onChange={e => setSortBy(e.target.value)}
-              className="bg-surface border border-outline rounded-lg px-md py-sm font-label-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="bg-surface border border-outline rounded-lg pl-md pr-xl py-sm font-label-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none"
             >
               <option value="name-asc">Alphabetical (A-Z)</option>
               <option value="price-asc">Price (Lowest)</option>
@@ -213,7 +213,8 @@ export default function ResourceModulePage({
           {processedRows.map(item => (
             <div 
               key={item.id} 
-              className={`bg-surface border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow relative flex flex-col justify-between h-[420px] ${selection.has(item.id) ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant'}`}
+              onClick={() => toggleSelect(item.id)}
+              className={`bg-surface border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow relative flex flex-col justify-between h-[420px] cursor-pointer ${selection.has(item.id) ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant hover:border-primary/40'}`}
             >
               {/* Hotel / Activity Cover Image */}
               <div className="h-48 relative bg-surface-container-high flex-shrink-0">

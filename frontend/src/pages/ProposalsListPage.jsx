@@ -28,7 +28,8 @@ export default function ProposalsListPage() {
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [editing, setEditing] = useState(null); // proposal being edited inline
+  const [editing, setEditing] = useState(null);
+  const [shareProposal, setShareProposal] = useState(null);
 
   const reload = useCallback(async () => {
     setLoading(true); setError(null);
@@ -109,10 +110,7 @@ export default function ProposalsListPage() {
             try { await deleteProposal(p.id); toast.success('Proposal deleted'); reload(); }
             catch (e) { toast.error(e.message || 'Failed to delete'); }
           }}
-          onArchive={async (p) => {
-            try { await archiveProposal(p.id); toast.success('Proposal archived'); reload(); }
-            catch (e) { toast.error(e.message || 'Failed to archive'); }
-          }}
+          onShare={(p) => setShareProposal(p)}
           onExport={async (p) => {
             try {
               const json = await buildProposalExport(p.id);
@@ -140,15 +138,21 @@ export default function ProposalsListPage() {
           }}
         />
       )}
+      {shareProposal && (
+        <ShareModal proposal={shareProposal} onClose={() => setShareProposal(null)} />
+      )}
     </div>
   );
 }
 
 // Tiny Portal helper for rendering into a non-React node owned by Stitch HTML.
 import { createPortal } from 'react-dom';
+import { supabase } from '../lib/supabaseClient.js';
+import { settingsService } from '../services/resourceService.js'; 
+
 function Portal({ node, children }) { return createPortal(children, node); }
 
-function ProposalsListPanel({ proposals, loading, error, highlightId, onView, onEdit, onDuplicate, onDelete, onArchive, onExport }) {
+function ProposalsListPanel({ proposals, loading, error, highlightId, onView, onEdit, onDuplicate, onDelete, onShare, onExport }) {
   return (
     <div className="flex flex-col h-full" data-testid="proposals-list">
       <div className="px-xl py-lg flex justify-between items-center mb-md">
@@ -196,7 +200,7 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
              <ProposalCard 
                key={p.id} proposal={p} highlightId={highlightId} index={i}
                onView={onView} onEdit={onEdit} onDuplicate={onDuplicate} 
-               onDelete={onDelete} onArchive={onArchive} onExport={onExport} 
+               onDelete={onDelete} onShare={onShare} onExport={onExport} 
              />
           ))}
         </div>
@@ -205,7 +209,7 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
   );
 }
 
-function ProposalCard({ proposal: p, highlightId, onView, onEdit, onDuplicate, onDelete, onArchive, onExport, index }) {
+function ProposalCard({ proposal: p, highlightId, onView, onEdit, onDuplicate, onDelete, onShare, onExport, index }) {
   const isHighlight = highlightId === p.id;
   
   const fallbackImages = [
@@ -289,8 +293,8 @@ function ProposalCard({ proposal: p, highlightId, onView, onEdit, onDuplicate, o
            <div className="flex flex-col gap-1 bg-white/95 backdrop-blur-xl rounded-2xl p-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-outline-variant">
              <IconBtn icon="edit"       testid="edit-icon"      onClick={(e) => { e.stopPropagation(); onEdit(p); }} title="Edit in wizard" />
              <IconBtn icon="content_copy" testid="duplicate-icon" onClick={(e) => { e.stopPropagation(); onDuplicate(p); }} title="Duplicate" />
+             <IconBtn icon="share"      testid="share-icon"     onClick={(e) => { e.stopPropagation(); onShare(p); }} title="Share" />
              <IconBtn icon="download"   testid="export-icon"    onClick={(e) => { e.stopPropagation(); onExport(p); }} title="Export JSON" />
-             <IconBtn icon="archive"    testid="archive-icon"   onClick={(e) => { e.stopPropagation(); onArchive(p); }} title="Archive" />
              <div className="w-full h-px bg-outline-variant my-1" />
              <IconBtn icon="delete"     testid="delete-icon"    onClick={(e) => { e.stopPropagation(); onDelete(p); }} title="Delete" className="text-error hover:bg-error-container hover:text-error" />
            </div>
@@ -382,6 +386,87 @@ function Field({ label, value, onChange, readOnly, type = 'text', testid }) {
       <label className="font-label-md text-label-md text-on-surface block mb-xs">{label}</label>
       <input type={type} value={value} onChange={onChange} readOnly={readOnly} data-testid={testid}
         className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md text-body-md input-focus-ring read-only:opacity-70" />
+  );
+}
+
+function ShareModal({ proposal, onClose }) {
+  const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState(null);
+
+  useEffect(() => {
+      settingsService.get().then(s => {
+        setSettings(s);
+        setLoading(false);
+      });
+    });
+  }, []);
+  
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm">
+        <div className="bg-white p-xl rounded-2xl shadow-2xl flex items-center gap-sm">
+          <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
+          <span className="font-label-md text-on-surface">Loading sharing options...</span>
+        </div>
+      </div>
+    );
+  }
+
+  const previewUrl = `${window.location.origin}/proposals/wizard?id=${encodeURIComponent(proposal.id)}&step=7`;
+  const text = `Hi! Here is the travel proposal for ${proposal.name}. View it here: ${previewUrl}`;
+  const wpNum = settings?.whatsapp_number || '';
+  const wpClean = wpNum.replace(/[^0-9]/g, '');
+  const wpLink = wpClean ? `https://wa.me/${wpClean}?text=${encodeURIComponent(text)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+  
+  const email = settings?.customer_email_notifications || settings?.contact_email || '';
+  const emailLink = `mailto:${email}?subject=${encodeURIComponent(`Travel Proposal: ${proposal.name}`)}&body=${encodeURIComponent(text)}`;
+  
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-[24px] p-xl shadow-2xl w-full max-w-md m-4 relative animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-lg">
+          <h3 className="font-headline-sm text-primary">Share Proposal</h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-surface-container-low flex items-center justify-center">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        
+        <p className="font-body-md text-on-surface-variant mb-xl">
+          Share <strong>{proposal.name}</strong> with your client using the options below.
+        </p>
+
+        <div className="flex flex-col gap-md">
+          <a href={wpLink} target="_blank" rel="noreferrer" className="flex items-center gap-md p-md bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/30 rounded-xl transition-colors no-underline group">
+            <div className="w-10 h-10 bg-[#25D366] text-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
+              <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="css-i6dzq1"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+            </div>
+            <div>
+              <div className="font-label-md font-bold text-on-surface">WhatsApp</div>
+              <div className="font-label-sm text-on-surface-variant">Send directly to client</div>
+            </div>
+          </a>
+
+          <a href={emailLink} className="flex items-center gap-md p-md bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-xl transition-colors no-underline group">
+            <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
+              <span className="material-symbols-outlined">mail</span>
+            </div>
+            <div>
+              <div className="font-label-md font-bold text-on-surface">Email</div>
+              <div className="font-label-sm text-on-surface-variant">Compose in default mail app</div>
+            </div>
+          </a>
+          
+          <a href={previewUrl} className="flex items-center gap-md p-md bg-surface-container-low hover:bg-surface-container-high border border-outline-variant rounded-xl transition-colors no-underline group">
+            <div className="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
+              <span className="material-symbols-outlined">picture_as_pdf</span>
+            </div>
+            <div>
+              <div className="font-label-md font-bold text-on-surface">View & Export PDF</div>
+              <div className="font-label-sm text-on-surface-variant">Open preview to generate PDF</div>
+            </div>
+          </a>
+        </div>
+      </div>
     </div>
   );
 }

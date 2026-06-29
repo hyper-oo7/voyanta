@@ -29,8 +29,8 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
           </button>
         </div>
         
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-lg pt-sm">
-          <div className="lg:col-span-2">
+        <div className="flex flex-col lg:flex-row gap-lg pt-sm">
+          <div className="flex-1 min-w-0">
             <textarea 
               value={dayData.description || ''} 
               onChange={upd('description')} 
@@ -39,7 +39,7 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
               className="w-full h-full p-md bg-surface-container-lowest border border-outline-variant rounded-xl font-body-md focus:ring-2 focus:ring-primary/20 resize-none"
             />
           </div>
-          <div className="lg:col-span-1 min-w-0 flex flex-col">
+          <div className="w-full lg:w-72 flex-shrink-0 min-w-0 flex flex-col">
             <LogoUploader 
               value={dayData.image_url} 
               onChange={(url) => updateDay(index, { image_url: url })} 

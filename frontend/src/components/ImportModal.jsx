@@ -4,6 +4,7 @@ import { saveImport, loadSavedMapping } from '../services/importService.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { templatesService, itinerariesService } from '../services/resourceService.js';
 import { useBackendHealth } from '../context/BackendHealthContext.jsx';
+import { motion } from 'framer-motion';
 
 // 3-step modal: Upload → Map columns / PDF Preview → Confirm.
 export default function ImportModal({ resource, onClose, onImported }) {
@@ -130,8 +131,13 @@ export default function ImportModal({ resource, onClose, onImported }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm" data-testid="import-modal" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="bg-surface-container-lowest w-full max-w-3xl rounded-xl shadow-2xl border border-outline-variant max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center text-on-surface" data-testid="import-modal">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-on-surface/30 backdrop-blur-sm" onClick={onClose} />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        className="relative bg-surface-container-lowest w-full max-w-3xl rounded-xl shadow-2xl border border-outline-variant max-h-[90vh] flex flex-col z-10">
         <div className="flex items-center justify-between p-lg border-b border-outline-variant">
           <h3 className="font-headline-sm text-headline-sm text-primary flex items-center gap-xs">
             Import {resource} <span className="font-label-sm text-on-surface-variant uppercase tracking-widest ml-sm">{stage}</span>
@@ -281,7 +287,7 @@ export default function ImportModal({ resource, onClose, onImported }) {
             </button>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

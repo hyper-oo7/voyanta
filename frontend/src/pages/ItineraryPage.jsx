@@ -65,14 +65,12 @@ export default function ItineraryPage() {
         : 'flex items-center gap-md text-on-surface-variant py-md px-lg hover:bg-surface-container-low transition-all duration-200';
     });
 
-    const h2 = canvas.querySelector('h2'); if (h2) h2.textContent = 'Itinerary Library';
-    const p = h2?.parentElement?.querySelector('p'); if (p) p.textContent = 'Manage comprehensive travel itineraries and schedules.';
+    const h2 = canvas.querySelector('h2'); if (h2) h2.style.display = 'none';
+    const p = h2?.parentElement?.querySelector('p'); if (p) p.style.display = 'none';
 
     const cta = canvas.querySelector('button.bg-primary');
     if (cta) {
-      cta.style.display = 'inline-flex';
-      cta.innerHTML = '<span class="material-symbols-outlined text-[20px]">add</span> Create New';
-      cta.onclick = () => setCreateOpen(true);
+      cta.style.display = 'none';
     }
 
     canvas.querySelectorAll(':scope > div.grid, :scope > .bento-grid').forEach((n) => n.remove());
@@ -147,6 +145,15 @@ export default function ItineraryPage() {
     <div ref={wrapperRef} style={{ display: 'contents' }}>
       {mountNode && createPortal(
         <div className="space-y-lg">
+          <div className="flex justify-between items-center">
+             <div>
+               <h2 className="font-headline-sm text-2xl font-bold text-on-surface m-0">Itinerary Library</h2>
+               <p className="font-body-md text-on-surface-variant m-0 mt-xs">Manage comprehensive travel itineraries and schedules.</p>
+             </div>
+             <button onClick={() => setCreateOpen(true)} className="px-lg py-md bg-primary text-on-primary rounded-lg flex items-center gap-xs font-bold hover:opacity-90 transition-colors">
+                <span className="material-symbols-outlined text-[20px]">add</span> Create Itinerary
+             </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-lg">
             {loading ? (
               <div className="col-span-3 text-center py-xl text-on-surface-variant">Loading itineraries…</div>

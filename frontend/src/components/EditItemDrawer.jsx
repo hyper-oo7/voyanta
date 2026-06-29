@@ -1,6 +1,7 @@
 import { useState, useRef, memo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { uploadOrEmbed } from './LogoUploader.jsx';
+import { motion } from 'framer-motion';
 
 const HIDDEN = new Set(['id', 'agency_id', 'created_at', 'updated_at', 'raw', 'created_by']);
 
@@ -179,8 +180,13 @@ export default function EditItemDrawer({ item: record, resource, service, onClos
 
   return (
     <div className="fixed inset-0 z-[80] flex text-on-surface" data-testid="edit-item-drawer">
-      <div className="flex-1 bg-on-surface/30 backdrop-blur-sm" onClick={onClose} />
-      <aside className="w-full max-w-[480px] bg-surface-container-lowest h-full overflow-y-auto border-l border-outline-variant shadow-2xl p-xl">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-on-surface/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="flex-1" />
+      <motion.aside 
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        className="relative w-full max-w-[480px] bg-surface-container-lowest h-full overflow-y-auto border-l border-outline-variant shadow-2xl p-xl">
         <div className="flex items-center justify-between mb-lg">
           <h3 className="font-headline-sm text-headline-sm text-primary">Edit {resource.slice(0, -1)}</h3>
           <button onClick={onClose} data-testid="edit-drawer-close" className="w-9 h-9 inline-flex items-center justify-center rounded-full hover:bg-surface-container-low">
@@ -197,7 +203,7 @@ export default function EditItemDrawer({ item: record, resource, service, onClos
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
-      </aside>
+      </motion.aside>
     </div>
   );
 }

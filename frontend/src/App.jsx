@@ -18,10 +18,10 @@ const ProposalWizard = lazy(() => import('./pages/ProposalWizard.jsx'));
 const CostCalculatorPage = lazy(() => import('./pages/CostCalculatorPage.jsx'));
 const HotelLibraryPage = lazy(() => import('./pages/HotelLibraryPage.jsx'));
 const AssetsLibraryPage = lazy(() => import('./pages/AssetsLibraryPage.jsx'));
-const AgencyBrandingPage = lazy(() => import('./pages/AgencyBrandingPage.jsx'));
 const FlightsPage = lazy(() => import('./pages/FlightsPage.jsx'));
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage.jsx'));
 const TemplatePreviewPage = lazy(() => import('./pages/TemplatePreviewPage.jsx'));
+const PlanPage = lazy(() => import('./pages/PlanPage.jsx'));
 
 const LibrariesPage = lazy(() => import('./pages/LibrariesPage.jsx'));
 const ProposalPreviewPage = lazy(() => import('./pages/ProposalPreviewPage.jsx'));
@@ -68,8 +68,8 @@ export default function App() {
                 <Route path="/libraries"           element={<LibrariesPage />} />
                 <Route path="/libraries/hotels"    element={<HotelLibraryPage />} />
                 <Route path="/libraries/assets"    element={<AssetsLibraryPage />} />
-                <Route path="/branding"            element={<AgencyBrandingPage />} />
                 <Route path="/settings"            element={<SettingsPage />} />
+                <Route path="/plan"                element={<PlanPage />} />
               </Route>
               
               {/* Legacy entry-points all funnel into the wizard */}

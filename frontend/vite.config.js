@@ -8,8 +8,13 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     proxy: {
+      '/api/pdf': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/pdf/, '')
+      },
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8001',
         changeOrigin: true,
       }
     }

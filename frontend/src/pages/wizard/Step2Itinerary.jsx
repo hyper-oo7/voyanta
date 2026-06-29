@@ -8,8 +8,8 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   const toast = useToast();
   const days = proposal?.itinerary?.days || [];
   
-  const [activeTab, setActiveTab] = useState('experiences');
-  const [libraryData, setLibraryData] = useState({ hotels: [], flights: [], experiences: [] });
+  const [activeTab, setActiveTab] = useState('itinerary');
+  const [libraryData, setLibraryData] = useState({ hotels: [], flights: [], itinerary: [] });
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -18,7 +18,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       flightsService.list(),
       activitiesService.list()
     ]).then(([h, f, e]) => {
-      setLibraryData({ hotels: h, flights: f, experiences: e });
+      setLibraryData({ hotels: h, flights: f, itinerary: e });
     }).catch(err => console.error(err));
   }, []);
 
@@ -71,16 +71,13 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     else if (kind === 'activity') { label = resourceItem.name; price = Number(resourceItem.price||0); }
 
     try {
-      await addItem(proposal.id, {
+      const newItem = await addItem(proposal.id, {
         kind, ref_id: resourceItem.id, label,
         qty: defaultQtyFor(kind), unit_price: price,
         currency: resourceItem.currency || 'INR',
         meta: { source: kind + 's', day: dayIndex + 1 }
       });
-      // reload items
-      const { listItems } = await import('../../services/proposalItemService.js');
-      const its = await listItems(proposal.id);
-      setItems(its);
+      setItems(s => [...s, newItem]);
       toast.success(`Added ${label} to Day ${dayIndex + 1}`);
     } catch (e) {
       toast.error(e.message);
@@ -99,7 +96,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     const term = search.toLowerCase();
     if (activeTab === 'hotels') return item.name?.toLowerCase().includes(term) || item.location?.toLowerCase().includes(term);
     if (activeTab === 'flights') return item.airline?.toLowerCase().includes(term) || item.flight_no?.toLowerCase().includes(term);
-    if (activeTab === 'experiences') return item.name?.toLowerCase().includes(term) || item.location?.toLowerCase().includes(term);
+    if (activeTab === 'itinerary') return item.name?.toLowerCase().includes(term) || item.location?.toLowerCase().includes(term);
     return true;
   });
 
@@ -159,7 +156,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           <div className="p-md border-b border-outline-variant/50 bg-white/50 backdrop-blur-md">
             <h4 className="font-label-md text-on-surface uppercase tracking-widest mb-sm">Library</h4>
             <div className="flex bg-surface-container rounded-lg p-1">
-              <button onClick={() => setActiveTab('experiences')} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'experiences' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Experiences</button>
+              <button onClick={() => setActiveTab('itinerary')} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'itinerary' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Itinerary</button>
               <button onClick={() => setActiveTab('hotels')} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'hotels' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Hotels</button>
               <button onClick={() => setActiveTab('flights')} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'flights' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Flights</button>
             </div>
@@ -178,14 +175,14 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
                 <p className="text-xs text-on-surface-variant truncate">
                   {activeTab === 'hotels' && item.location}
                   {activeTab === 'flights' && `${item.origin} → ${item.destination}`}
-                  {activeTab === 'experiences' && item.location}
+                  {activeTab === 'itinerary' && item.location}
                 </p>
                 <div className="mt-sm pt-sm border-t border-outline-variant/50">
                   <select 
                     className="w-full text-xs py-1 px-2 bg-surface-container rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-medium"
                     onChange={(e) => {
                       if(e.target.value) {
-                        onAddItemToDay(item, activeTab === 'experiences' ? 'activity' : (activeTab === 'hotels' ? 'hotel' : 'flight'), parseInt(e.target.value));
+                        onAddItemToDay(item, activeTab === 'itinerary' ? 'activity' : (activeTab === 'hotels' ? 'hotel' : 'flight'), parseInt(e.target.value));
                         e.target.value = '';
                       }
                     }}

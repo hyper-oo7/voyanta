@@ -3,16 +3,24 @@ import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
 // Generic CRUD for the four resource tables. Always returns {data, error}-free.
 // Records keep their original supplier columns inside `raw` (jsonb).
 
+const listCache = new Map();
+
 export function makeResourceService(resource) {
   return {
-    list: async (filters = {}) => {
+    list: async (filters = {}, force = false) => {
       if (!supabase) return [];
+      const cacheKey = `${resource}:${JSON.stringify(filters)}`;
+      if (!force && listCache.has(cacheKey)) return listCache.get(cacheKey);
+
       let q = supabase.from(resource).select('*').order('created_at', { ascending: false });
       // Optional simple filters: { agency_id, supplier, etc. }
       Object.entries(filters).forEach(([k, v]) => { if (v != null && v !== '') q = q.eq(k, v); });
       const { data, error } = await q;
       if (error) throw error;
-      return data || [];
+      
+      const result = data || [];
+      listCache.set(cacheKey, result);
+      return result;
     },
     get: async (id) => {
       const { data, error } = await supabase.from(resource).select('*').eq('id', id).single();
@@ -20,21 +28,25 @@ export function makeResourceService(resource) {
       return data;
     },
     create: async (row) => {
+      listCache.clear();
       const { data, error } = await supabase.from(resource).insert({ agency_id: DEFAULT_AGENCY_ID, ...row }).select().single();
       if (error) throw error;
       return data;
     },
     update: async (id, patch) => {
+      listCache.clear();
       const { data, error } = await supabase.from(resource).update(patch).eq('id', id).select().single();
       if (error) throw error;
       return data;
     },
     remove: async (id) => {
+      listCache.clear();
       const { error } = await supabase.from(resource).delete().eq('id', id);
       if (error) throw error;
     },
     removeMany: async (ids) => {
       if (!ids?.length) return;
+      listCache.clear();
       const { error } = await supabase.from(resource).delete().in('id', ids);
       if (error) throw error;
     },
@@ -156,6 +168,7 @@ export const settingsService = {
           .select()
           .single();
         if (error) throw error;
+        cache.set('settings', data.data);
         return data.data;
       } else {
         const { data, error } = await supabase

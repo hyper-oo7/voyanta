@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { formatINR } from '../../lib/currency.js';
 import { addItem } from '../../services/proposalItemService.js';
 
-const KINDS = ['transfer', 'visa', 'tax', 'margin', 'custom'];
+const KINDS = ['Transfer', 'Visa', 'Tax', 'Margin', 'Custom'];
 
 export function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, proposalCurrency = 'INR', costingPrefs, setCostingPrefs }) {
   const rawTotal = useMemo(() => items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0), [items]);
@@ -131,7 +131,7 @@ export function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemov
         <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
           {Object.entries(byKind).map(([k, v]) => (
             <div key={k} className="glass-card p-md rounded-xl">
-              <p className="font-label-sm uppercase tracking-widest text-on-surface-variant">{k}</p>
+              <p className="font-label-sm tracking-widest text-on-surface-variant">{k}</p>
               <p className="font-headline-sm text-headline-sm text-primary">{formatINR(v)}</p>
             </div>
           ))}

@@ -34,13 +34,13 @@ export default function LogoUploader({ value, onChange, label = 'Logo', testid =
   return (
     <div className="flex flex-col gap-xs" data-testid={testid}>
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
-      <div className="flex items-center gap-md">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-md">
         <div className="w-20 h-20 rounded-lg border border-outline-variant bg-white overflow-hidden flex items-center justify-center flex-shrink-0">
           {value
             ? <img src={value} alt="Logo" className="max-w-full max-h-full object-contain" data-testid={`${testid}-preview`} />
             : <span className="material-symbols-outlined text-on-surface-variant text-[28px]">image</span>}
         </div>
-        <div className="flex-1 flex flex-col gap-xs">
+        <div className="flex-1 flex flex-col gap-xs min-w-0 w-full">
           <div className="flex gap-xs flex-wrap">
             <button type="button" onClick={onPick} disabled={busy} data-testid={`${testid}-pick`}
               className="px-md py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low disabled:opacity-60">
@@ -56,7 +56,7 @@ export default function LogoUploader({ value, onChange, label = 'Logo', testid =
           <input type="text" placeholder="…or paste an image URL"
             value={value || ''} onChange={(e) => onChange(e.target.value)}
             data-testid={`${testid}-url`}
-            className="px-md py-sm bg-white border border-outline-variant rounded-lg font-body-sm" />
+            className="w-full min-w-0 px-md py-sm bg-white border border-outline-variant rounded-lg font-body-sm" />
           {err && <span className="font-label-sm text-error" data-testid={`${testid}-err`}>{err}</span>}
         </div>
       </div>

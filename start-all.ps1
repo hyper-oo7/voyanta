@@ -72,7 +72,7 @@ if (-not (Test-Path ".\pdf-service\node_modules")) {
 
 # --- 2. Check Ports ---
 Write-ColorMessage "Checking ports..." "Cyan"
-$ports = @(3000, 8000, 8002)
+$ports = @(3000, 8001, 8002)
 $occupied = $false
 foreach ($port in $ports) {
     if (Test-Port $port) {
@@ -82,8 +82,8 @@ foreach ($port in $ports) {
 }
 if ($occupied) { exit 1 }
 
-# --- 3. Start Python Backend (FastAPI on 8000) ---
-Write-ColorMessage "Starting Python Backend (Port 8000)..." "Yellow"
+# --- 3. Start Python Backend (FastAPI on 8001) ---
+Write-ColorMessage "Starting Python Backend (Port 8001)..." "Yellow"
 $backendJob = Start-Process -FilePath $pythonCmd -ArgumentList "server.py" -WorkingDirectory ".\backend" -PassThru -NoNewWindow
 
 # --- 4. Start PDF Service (Node on 8002) ---
@@ -96,7 +96,7 @@ $retries = 15
 $healthy = $false
 while ($retries -gt 0) {
     try {
-        $response = Invoke-WebRequest -Uri "http://localhost:8000/api/health" -Method Get -ErrorAction Stop
+        $response = Invoke-WebRequest -Uri "http://localhost:8001/api/health" -Method Get -UseBasicParsing -ErrorAction Stop
         if ($response.StatusCode -eq 200) {
             $healthy = $true
             break
@@ -118,7 +118,7 @@ Write-ColorMessage "Backend is healthy!" "Green"
 
 # --- 6. Start Vite Frontend (Port 3000) ---
 Write-ColorMessage "Starting Vite Frontend (Port 3000)..." "Yellow"
-$frontendJob = Start-Process -FilePath "npm" -ArgumentList "run dev" -WorkingDirectory ".\frontend" -PassThru -NoNewWindow
+$frontendJob = Start-Process -FilePath "npm.cmd" -ArgumentList "run dev" -WorkingDirectory ".\frontend" -PassThru -NoNewWindow
 
 # Wait a moment for Vite to bind
 Start-Sleep -Seconds 3

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import ImportModal from '../components/ImportModal.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -423,38 +424,52 @@ export default function ProposalWizard() {
           {loading ? (
             <div className="glass-card p-xl rounded-xl text-center">Loading…</div>
           ) : (
-            <>
-              {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} />}
-              {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={reload} itineraries={itineraries} onApplyItinerary={onApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} />}
-              {stepParam === 3 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
-                onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
-                proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
-              {stepParam === 4 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} />}
-              {stepParam === 5 && <Step7Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} />}
-            </>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={stepParam}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                >
+                  {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} />}
+                  {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={reload} itineraries={itineraries} onApplyItinerary={onApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} />}
+                  {stepParam === 3 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
+                    onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
+                    proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
+                  {stepParam === 4 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} />}
+                  {stepParam === 5 && <Step7Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} />}
+                </motion.div>
+              </AnimatePresence>
           )}
 
-          <div className="sticky bottom-4 mt-xl w-full max-w-5xl mx-auto z-50 p-4 rounded-2xl flex items-center gap-md shadow-[0_8px_32px_rgba(0,0,0,0.1)] border border-white/40 bg-white/60 backdrop-blur-xl transition-all duration-300" data-testid="wizard-footer">
-            <button onClick={onPrev} disabled={stepParam === 1} data-testid="wizard-prev"
-              className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40">
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="fixed bottom-0 right-0 w-[calc(100%-16rem)] z-50 p-4 flex justify-center pb-0" data-testid="wizard-footer-wrapper">
+            <div className="w-full max-w-5xl flex items-center gap-md shadow-[0_-8px_32px_rgba(0,0,0,0.1)] border border-b-0 border-white/40 bg-white/70 backdrop-blur-2xl transition-all duration-300 rounded-t-3xl p-4">
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onPrev} disabled={stepParam === 1} data-testid="wizard-prev"
+              className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40 disabled:pointer-events-none">
               Previous
-            </button>
-            <button onClick={() => saveDraft(false)} disabled={saving} data-testid="wizard-save"
-              className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40">
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => saveDraft(false)} disabled={saving} data-testid="wizard-save"
+              className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40 disabled:pointer-events-none">
               {saving ? 'Saving…' : 'Save Draft'}
-            </button>
+            </motion.button>
             <span className="flex-1" />
             <span className="font-label-md text-on-surface-variant uppercase tracking-widest mr-md bg-white/50 px-lg py-2 rounded-full border border-white/40 shadow-inner backdrop-blur-sm">
               Step {stepParam} <span className="opacity-50">/ 5</span>
             </span>
             {stepParam < 5 && (
-              <button onClick={onNext} disabled={saving} data-testid="wizard-next"
-                className="px-xl py-3 bg-primary/90 backdrop-blur-md text-white rounded-xl font-label-md hover:bg-primary transition-all shadow-md hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-md flex items-center gap-sm">
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onNext} disabled={saving} data-testid="wizard-next"
+                className="px-xl py-3 bg-primary/90 backdrop-blur-md text-white rounded-xl font-label-md hover:bg-primary transition-all shadow-md flex items-center gap-sm disabled:opacity-60 disabled:pointer-events-none">
                 Continue to {STEPS[stepParam]?.label || 'Next'}
                 <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-              </button>
+              </motion.button>
             )}
-          </div>
+            </div>
+          </motion.div>
           
           {importOpen && <ImportModal resource={importResource} onClose={() => setImportOpen(false)} onImported={handleImportSuccess} />}
         </div>,

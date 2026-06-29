@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react';
 
 const PALETTE_COLORS = [
   '#0b1c30', // Navy / Default
-  '#1E3A8A', // Royal Blue
-  '#065F46', // Emerald
-  '#991B1B', // Red Ruby
-  '#374151', // Charcoal
-  '#78350F', // Ochre/Amber
-  '#581C87', // Purple/Plum
-  '#7C2D12', // Terracotta
+  '#1B263B', // Oxford Blue
+  '#1a3622', // Forest Green
+  '#2c1e16', // Deep Espresso
+  '#4a2c2a', // Burgundy
+  '#2C3E50', // Midnight
+  '#3C4A3E', // Sage Dark
+  '#181818', // Obsidian
 ];
 
 export default function ColorPicker({ value, onChange, label = 'Primary Color', testid }) {
