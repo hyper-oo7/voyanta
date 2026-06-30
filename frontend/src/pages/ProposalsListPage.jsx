@@ -371,6 +371,7 @@ function Field({ label, value, onChange, readOnly, type = 'text', testid }) {
       <label className="font-label-md text-label-md text-on-surface block mb-xs">{label}</label>
       <input type={type} value={value} onChange={onChange} readOnly={readOnly} data-testid={testid}
         className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md text-body-md input-focus-ring read-only:opacity-70" />
+    </div>
   );
 }
 
@@ -379,10 +380,9 @@ function ShareModal({ proposal, onClose }) {
   const [settings, setSettings] = useState(null);
 
   useEffect(() => {
-      settingsService.get().then(s => {
-        setSettings(s);
-        setLoading(false);
-      });
+    settingsService.get().then(s => {
+      setSettings(s);
+      setLoading(false);
     });
   }, []);
   

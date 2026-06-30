@@ -22,6 +22,7 @@ const queryClient = new QueryClient({
 // Only the page the user navigates to is downloaded — cutting initial bundle size.
 const LandingPage = lazy(() => import('./pages/LandingPage.jsx'));
 const AuthenticationPage = lazy(() => import('./pages/AuthenticationPage.jsx'));
+const ProposalPrintRoute = lazy(() => import('./pages/ProposalPrintRoute.jsx'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'));
 const ProposalsListPage = lazy(() => import('./pages/ProposalsListPage.jsx'));
 const ProposalWizard = lazy(() => import('./pages/ProposalWizard.jsx'));
@@ -56,10 +57,14 @@ export default function App() {
         <ToastProvider>
         <BackendHealthProvider>
           <ProposalBuilderProvider>
+            <ErrorBoundary FallbackComponent={ErrorFallback}>
             <Suspense fallback={<PageLoader />}>
               <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<AuthenticationPage />} />
+              
+              {/* Hidden route for headless PDF printing */}
+              <Route path="/proposals/:id/print" element={<ProposalPrintRoute />} />
 
               {/* Wrapped all authenticated routes in AppLayout */}
               <Route element={<Protected><AppLayout /></Protected>}>
@@ -90,6 +95,7 @@ export default function App() {
               <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </Suspense>
+            </ErrorBoundary>
             <DiagnosticsPanel />
           </ProposalBuilderProvider>
         </BackendHealthProvider>

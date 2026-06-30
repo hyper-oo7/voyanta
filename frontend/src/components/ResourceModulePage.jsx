@@ -1,9 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
-import { useProposalBuilder } from '../context/ProposalBuilderContext.jsx';
+import { useProposalStore } from '../store/proposalStore.js';
 import EditItemDrawer from './EditItemDrawer.jsx';
 import ImportModal from './ImportModal.jsx';
-import { addItem } from '../services/proposalItemService.js';
 
 export default function ResourceModulePage({
   resource, service, title, subtitle, sidebarLabel,
@@ -11,7 +10,7 @@ export default function ResourceModulePage({
   filterRows, renderToolbar
 }) {
   const toast = useToast();
-  const { activeId } = useProposalBuilder() || {};
+  const { activeId, addItemsOptimistic } = useProposalStore();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
@@ -48,17 +47,17 @@ export default function ResourceModulePage({
     setAdding(true);
     try {
       const picked = rows.filter((r) => selection.has(r.id));
-      for (const r of picked) {
-        await addItem(activeId, {
-          kind: itemKind,
-          ref_id: r.id,
-          label: toLabel(r),
-          qty: 1,
-          unit_price: toUnitPrice(r),
-          currency: r.currency || 'INR',
-          meta: { source: resource },
-        });
-      }
+      const itemsToInsert = picked.map((r) => ({
+        kind: itemKind,
+        ref_id: r.id,
+        label: toLabel(r),
+        qty: 1, // Defaulting to 1, user can adjust in Costing step
+        unit_price: toUnitPrice(r),
+        currency: r.currency || 'INR',
+        meta: { source: resource },
+      }));
+      
+      await addItemsOptimistic(itemsToInsert);
       toast.success(`Added ${picked.length} ${resource} to proposal`);
       setSelection(new Set());
     } catch (e) {

@@ -1,8 +1,52 @@
-import { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { formatINR } from '../../lib/currency.js';
 import { addItem } from '../../services/proposalItemService.js';
 
 const KINDS = ['Transfer', 'Visa', 'Tax', 'Margin', 'Custom'];
+
+const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveItem }) {
+  const [label, setLabel] = useState(item.label || '');
+  const [qty, setQty] = useState(item.qty ?? 1);
+  const [unitPrice, setUnitPrice] = useState(item.unit_price ?? 0);
+
+  useEffect(() => {
+    setLabel(item.label || '');
+    setQty(item.qty ?? 1);
+    setUnitPrice(item.unit_price ?? 0);
+  }, [item.label, item.qty, item.unit_price]);
+
+  return (
+    <tr data-testid={`cost-row-${item.id}`}>
+      <td className="px-lg py-md font-label-md uppercase text-label-sm tracking-widest">{item.kind}</td>
+      <td className="px-lg py-md">
+        <input value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onBlur={(e) => onPatchItem(item.id, { label: e.target.value })}
+          className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
+      </td>
+      <td className="px-lg py-md w-[110px]">
+        <input type="number" min="0" step="0.5" value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          onBlur={(e) => onPatchItem(item.id, { qty: parseFloat(e.target.value) || 0 })}
+          className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
+      </td>
+      <td className="px-lg py-md w-[140px]">
+        <input type="number" min="0" step="0.01" value={unitPrice}
+          onChange={(e) => setUnitPrice(e.target.value)}
+          onBlur={(e) => onPatchItem(item.id, { unit_price: parseFloat(e.target.value) || 0 })}
+          className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
+      </td>
+      <td className="px-lg py-md font-label-md text-primary">
+        {formatINR((Number(qty)||0) * (Number(unitPrice)||0))}
+      </td>
+      <td className="px-lg py-md text-right">
+        <button onClick={() => onRemoveItem(item.id)} className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
+          <span className="material-symbols-outlined text-[18px]">delete</span>
+        </button>
+      </td>
+    </tr>
+  );
+});
 
 export function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, proposalCurrency = 'INR', costingPrefs, setCostingPrefs }) {
   const rawTotal = useMemo(() => items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0), [items]);
@@ -70,35 +114,7 @@ export function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemov
           <tbody className="divide-y divide-surface-container">
             {items.length === 0 && <tr><td colSpan={6} className="px-lg py-xl text-center text-on-surface-variant" data-testid="costing-empty">No items yet — add hotels / flights / itinerary or use &ldquo;+ Add line&rdquo;.</td></tr>}
             {items.map((it) => (
-              <tr key={it.id} data-testid={`cost-row-${it.id}`}>
-                <td className="px-lg py-md font-label-md uppercase text-label-sm tracking-widest">{it.kind}</td>
-                <td className="px-lg py-md">
-                  <input value={it.label}
-                    onChange={(e) => setItems((s) => s.map((x) => x.id === it.id ? { ...x, label: e.target.value } : x))}
-                    onBlur={(e) => onPatchItem(it.id, { label: e.target.value })}
-                    className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
-                </td>
-                <td className="px-lg py-md w-[110px]">
-                  <input type="number" min="0" step="0.5" value={it.qty}
-                    onChange={(e) => setItems((s) => s.map((x) => x.id === it.id ? { ...x, qty: e.target.value } : x))}
-                    onBlur={(e) => onPatchItem(it.id, { qty: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
-                </td>
-                <td className="px-lg py-md w-[140px]">
-                  <input type="number" min="0" step="0.01" value={it.unit_price}
-                    onChange={(e) => setItems((s) => s.map((x) => x.id === it.id ? { ...x, unit_price: e.target.value } : x))}
-                    onBlur={(e) => onPatchItem(it.id, { unit_price: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
-                </td>
-                <td className="px-lg py-md font-label-md text-primary">
-                  {formatINR((Number(it.qty)||0) * (Number(it.unit_price)||0))}
-                </td>
-                <td className="px-lg py-md text-right">
-                  <button onClick={() => onRemoveItem(it.id)} className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
-                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                  </button>
-                </td>
-              </tr>
+              <CostingRow key={it.id} item={it} onPatchItem={onPatchItem} onRemoveItem={onRemoveItem} />
             ))}
           </tbody>
         </table>

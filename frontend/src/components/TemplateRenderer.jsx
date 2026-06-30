@@ -1,4 +1,4 @@
-import { memo, useState, useEffect } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { formatINR } from '../lib/currency.js';
 import { fetchContextualImage } from '../services/imageService.js';
 
@@ -15,7 +15,13 @@ const THEMES = {
   'dark': { bg: '#050505', text: '#f9fafb', accent: '#d1d5db', alt: '#111111' },
   'classic': { bg: '#fdfbf7', text: '#1c1917', accent: '#78716c', alt: '#f5f5f4' },
   'tropical': { bg: '#ffffff', text: '#064e3b', accent: '#059669', alt: '#ecfdf5' },
-  'corporate': { bg: '#ffffff', text: '#0f172a', accent: '#0284c7', alt: '#f8fafc' }
+  'corporate': { bg: '#ffffff', text: '#0f172a', accent: '#0284c7', alt: '#f8fafc' },
+  'honeymoon': { bg: '#101010', text: '#f8f8f8', accent: '#d4af37', alt: '#1a1a1a' },
+  'family': { bg: '#fffdf2', text: '#4a3f35', accent: '#f59e0b', alt: '#fdf6e3' },
+  'adventure': { bg: '#f1f5f9', text: '#0f172a', accent: '#ea580c', alt: '#e2e8f0' },
+  'beach': { bg: '#f0f9ff', text: '#0c4a6e', accent: '#0284c7', alt: '#e0f2fe' },
+  'cruise': { bg: '#f8fafc', text: '#1e293b', accent: '#3b82f6', alt: '#e2e8f0' },
+  'wildlife': { bg: '#fefce8', text: '#422006', accent: '#65a30d', alt: '#fef08a' }
 };
 
 const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', data, include = ALL, order = SECTIONS, customBlocks = [], viewMode = 'document', activeSlide = 0 }) {
@@ -70,15 +76,15 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
         const logo = b.logo_url || '';
         const breakdown = `${travelers} traveller${travelers === 1 ? '' : 's'}` + ((adults || children) ? ` · ${adults} adult${adults === 1 ? '' : 's'}${children ? `, ${children} child${children === 1 ? '' : 'ren'}` : ''}` : '');
         return (
-          <section key={key} className={sectionClass + " !p-0"} style={{ ...sectionStyle, minHeight: '297mm' }}>
+          <section key={key} className={sectionClass + " !p-0"} style={{ ...sectionStyle, minHeight: '35vh' }}>
             {cover && <img src={cover} alt="" className="absolute inset-0 w-full h-full object-cover" />}
             <div className="absolute inset-0 bg-black/40" />
             {logo && <img src={logo} alt="Agency logo" className="absolute top-8 left-8 z-20 h-16 max-w-[200px] object-contain bg-white/90 rounded-md p-3 shadow-xl" />}
-            <div className="relative z-10 p-[14mm] text-white flex flex-col h-full justify-end min-h-[297mm]">
+            <div className="relative z-10 p-[14mm] text-white flex flex-col h-full justify-end min-h-[35vh]">
               <p className="tracking-[0.3em] uppercase mb-4 text-sm" style={{ fontFamily: fontSubhead }}>{b.agency_name || 'Voyanta'}</p>
               <h1 className="text-6xl md:text-8xl leading-none mb-6" style={{ fontFamily: fontHeadline }}>{p.name || 'Proposal'}</h1>
               <p className="text-xl md:text-2xl max-w-2xl opacity-90" style={{ fontFamily: fontSubhead }}>
-                {p.client_name ? `Curated for ${p.client_name}` : ''} · {p.destination || ''} · {breakdown}
+                {p.destination || ''} · {breakdown}
               </p>
             </div>
           </section>
@@ -162,7 +168,7 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
         const groups = Object.entries(items);
         return (
           <section key={key} className={sectionClass} style={sectionStyle}>
-            <Title>Investment</Title>
+            <Title>Budget</Title>
             <div className="space-y-4">
               {groups.map(([kind, list]) => {
                 const sub = list.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0);

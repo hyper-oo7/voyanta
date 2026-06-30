@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useToast } from '../../context/ToastContext.jsx';
 import TemplateRenderer, { ALL as ALL_SECTIONS, ExportOptionsBar } from '../../components/TemplateRenderer.jsx';
-import { buildProposalExport } from '../../services/proposalItemService.js';
 import { formatINR } from '../../lib/currency.js';
+import { useProposalStore } from '../../store/proposalStore.js';
 
 function A4Preview({ children, viewMode }) {
   return (
@@ -26,7 +26,24 @@ function A4Preview({ children, viewMode }) {
 
 export function Step7Preview({ proposalId, branding, customBlocks, proposalName }) {
   const toast = useToast();
-  const [json, setJson] = useState(null);
+  const { proposal, items } = useProposalStore();
+  
+  const json = useMemo(() => {
+    if (!proposal) return null;
+    const grouped = {};
+    for (const it of items) (grouped[it.kind] ||= []).push(it);
+    const total = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
+    return {
+      schema_version: 1,
+      generated_at: new Date().toISOString(),
+      agency_id: proposal.agency_id || 'DEFAULT',
+      proposal,
+      items_by_kind: grouped,
+      items,
+      totals: { subtotal: total, currency: proposal.currency || 'INR' },
+    };
+  }, [proposal, items]);
+
   const [include, setInclude] = useState(ALL_SECTIONS);
   const [exportOpen, setExportOpen] = useState(false);
   const [style, setStyle] = useState(branding?.template_style || 'classic');
@@ -56,10 +73,6 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
 
   useEffect(() => { setStyle(branding?.template_style || 'classic'); }, [branding?.template_style]);
 
-  useEffect(() => {
-    (async () => { if (!proposalId) return; try { setJson(await buildProposalExport(proposalId)); } catch (e) { toast.error(e.message); } })();
-  }, [proposalId, toast]);
-
   const onDownloadJson = () => {
     if (!json) return;
     const envelope = { ...json, presentation: { style, include }, branding };
@@ -75,33 +88,10 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
     if (!proposalId) return;
     setGenerating(true);
     try {
-      // Create a document mode clone of the node to get full HTML
-      const rootHtml = document.getElementById('pdf-render-root').innerHTML;
-      const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).map(el => el.outerHTML).join('\\n');
-      
-      const fullHtml = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Cormorant+Garamond:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet" />
-${styles}
-<style>
-  @page { size: A4; margin: 0; }
-  html, body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  * { box-sizing: border-box; }
-  .proposal-document section { display: block !important; break-before: page; }
-  .proposal-document section:first-child { break-before: auto; }
-</style>
-</head>
-<body>
-  ${rootHtml}
-</body>
-</html>`;
-
       const res = await fetch('/api/pdf/generate', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: fullHtml, name: proposalName || proposalId }) 
+        body: JSON.stringify({ proposal_id: proposalId }) 
       });
       if (!res.ok) throw new Error('PDF generation failed');
       

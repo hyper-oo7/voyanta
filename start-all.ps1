@@ -84,7 +84,7 @@ if ($occupied) { exit 1 }
 
 # --- 3. Start Python Backend (FastAPI on 8001) ---
 Write-ColorMessage "Starting Python Backend (Port 8001)..." "Yellow"
-$backendJob = Start-Process -FilePath $pythonCmd -ArgumentList "server.py" -WorkingDirectory ".\backend" -PassThru -NoNewWindow
+$backendJob = Start-Process -FilePath "uvicorn" -ArgumentList "src.main:app", "--port", "8001" -WorkingDirectory ".\backend" -PassThru -NoNewWindow
 
 # --- 4. Start PDF Service (Node on 8002) ---
 Write-ColorMessage "Starting PDF Service (Port 8002)..." "Yellow"

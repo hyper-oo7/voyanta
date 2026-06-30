@@ -55,8 +55,7 @@ class ParseItineraryInput(BaseModel):
     text: str
 
 class PDFGenerateRequest(BaseModel):
-    html: str
-    name: Optional[str] = "proposal"
+    proposal_id: str
 
 class PPTGenerateRequest(BaseModel):
     proposal: dict = Field(default_factory=dict)
@@ -225,42 +224,46 @@ async def parse_itinerary(input: ParseItineraryInput, user: Any = Depends(verify
 
 
 # ── PDF proxy ─────────────────────────────────────────────────────────────
-# Forwards proposal export JSON to the Node Puppeteer service running on
-# PDF_SERVICE_URL (default http://localhost:8002) and streams the resulting
-# PDF back to the browser. Keeping this in FastAPI avoids any CORS or
-# ingress-port issues because the React app only ever talks to /api/*.
-PDF_SERVICE_URL = os.environ.get('PDF_SERVICE_URL', 'http://localhost:8002')
+from playwright.async_api import async_playwright
 
-@api_router.get("/pdf/health")
-async def pdf_health():
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as c:
-            r = await c.get(f"{PDF_SERVICE_URL}/health")
-            return {"upstream_status": r.status_code, "upstream": r.json()}
-    except Exception as e:
-        return {"upstream_status": 0, "error": str(e)}
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
 
 @api_router.post("/pdf/generate")
 async def pdf_generate(request: PDFGenerateRequest, user: Any = Depends(verify_token)):
-    payload = request.model_dump()
-    user_id = user.get("id") or user.get("sub") or "unknown_user"
+    proposal_id = request.proposal_id
+    if not proposal_id:
+        raise HTTPException(status_code=400, detail="Missing proposal ID")
+
+    url = f"{FRONTEND_URL}/proposals/{proposal_id}/print"
+    
     try:
-        async with httpx.AsyncClient(timeout=60.0) as c:
-            r = await c.post(f"{PDF_SERVICE_URL}/generate", json=payload, headers={"X-User-ID": user_id})
-        if r.status_code != 200:
-            raise HTTPException(status_code=r.status_code, detail=r.text)
-        proposal_name = (payload.get('proposal') or {}).get('name') or 'proposal'
-        safe = ''.join(ch if ch.isalnum() or ch in ('.', '_', '-') else '-' for ch in proposal_name)
-        return Response(
-            content=r.content,
-            media_type='application/pdf',
-            headers={'Content-Disposition': f'attachment; filename="{safe}.pdf"'},
-        )
-    except HTTPException:
-        raise
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            
+            # Navigate to the hidden print route and wait for network idle
+            await page.goto(url, wait_until='networkidle', timeout=60000)
+            
+            # Add a slight delay just in case some images take a second after networkidle
+            await page.wait_for_timeout(2000)
+            
+            pdf_bytes = await page.pdf(
+                format="A4",
+                print_background=True,
+                margin={"top": "0", "right": "0", "bottom": "0", "left": "0"}
+            )
+            
+            await browser.close()
+            
+            return Response(
+                content=pdf_bytes, 
+                media_type="application/pdf",
+                headers={'Content-Disposition': f'attachment; filename="proposal-{proposal_id}.pdf"'}
+            )
+            
     except Exception as e:
-        logger.exception('pdf proxy failed')
-        raise HTTPException(status_code=502, detail=f'PDF service unreachable: {e}')
+        logger.exception("Playwright PDF generation failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── PPT generator ─────────────────────────────────────────────────────────

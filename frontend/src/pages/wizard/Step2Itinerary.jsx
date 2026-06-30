@@ -4,7 +4,7 @@ import { hotelsService, flightsService, activitiesService } from '../../services
 import { addItem, removeItem } from '../../services/proposalItemService.js';
 import { useToast } from '../../context/ToastContext.jsx';
 
-export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItinerary, client, items, setItems, proposalCurrency }) {
+export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItinerary, client, items, setItems, proposalCurrency, addItemsOptimistic }) {
   const toast = useToast();
   const days = proposal?.itinerary?.days || [];
   
@@ -12,6 +12,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   const [libraryData, setLibraryData] = useState({ hotels: [], flights: [], itinerary: [] });
   const [search, setSearch] = useState('');
 
+  // Duration-Driven Builder: Prepopulate days if empty
   useEffect(() => {
     Promise.all([
       hotelsService.list(),
@@ -21,6 +22,30 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       setLibraryData({ hotels: h, flights: f, itinerary: e });
     }).catch(err => console.error(err));
   }, []);
+
+  useEffect(() => {
+    if (days.length === 0 && proposal?.id) {
+      let numDays = 1;
+      if (client.date_mode === 'days') {
+        numDays = parseInt(client.duration_days, 10) || 1;
+      } else if (client.start_date && client.end_date) {
+        const ms = new Date(client.end_date).getTime() - new Date(client.start_date).getTime();
+        const diffDays = Math.round(ms / (1000 * 60 * 60 * 24)) + 1;
+        numDays = diffDays > 0 ? diffDays : 1;
+      }
+
+      if (numDays > 0) {
+        const nextDays = Array.from({ length: numDays }, (_, i) => ({
+          day: i + 1,
+          title: '',
+          description: '',
+          image_url: null,
+          block_type: i === 0 ? 'arrival' : (i === numDays - 1 ? 'departure' : 'day')
+        }));
+        setProposal(prev => ({ ...prev, itinerary: { ...prev.itinerary, days: nextDays } }));
+      }
+    }
+  }, [days.length, proposal?.id, client.date_mode, client.duration_days, client.start_date, client.end_date, setProposal]);
 
   const updateDay = useCallback((index, patch) => {
     setProposal(prev => {
@@ -71,13 +96,15 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     else if (kind === 'activity') { label = resourceItem.name; price = Number(resourceItem.price||0); }
 
     try {
-      const newItem = await addItem(proposal.id, {
+      const newItem = {
         kind, ref_id: resourceItem.id, label,
         qty: defaultQtyFor(kind), unit_price: price,
         currency: resourceItem.currency || 'INR',
         meta: { source: kind + 's', day: dayIndex + 1 }
-      });
-      setItems(s => [...s, newItem]);
+      };
+      
+      // Optimistic save instead of blocking db call
+      await addItemsOptimistic([newItem]);
       toast.success(`Added ${label} to Day ${dayIndex + 1}`);
     } catch (e) {
       toast.error(e.message);
@@ -92,11 +119,12 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     } catch (e) { toast.error(e.message); }
   };
 
-  const filteredItems = libraryData[activeTab].filter(item => {
+  const baseItems = activeTab === 'itinerary' ? itineraries : libraryData[activeTab];
+  const filteredItems = baseItems.filter(item => {
     const term = search.toLowerCase();
     if (activeTab === 'hotels') return item.name?.toLowerCase().includes(term) || item.location?.toLowerCase().includes(term);
     if (activeTab === 'flights') return item.airline?.toLowerCase().includes(term) || item.flight_no?.toLowerCase().includes(term);
-    if (activeTab === 'itinerary') return item.name?.toLowerCase().includes(term) || item.location?.toLowerCase().includes(term);
+    if (activeTab === 'itinerary') return item.name?.toLowerCase().includes(term) || item.destination?.toLowerCase().includes(term);
     return true;
   });
 
@@ -175,23 +203,32 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
                 <p className="text-xs text-on-surface-variant truncate">
                   {activeTab === 'hotels' && item.location}
                   {activeTab === 'flights' && `${item.origin} → ${item.destination}`}
-                  {activeTab === 'itinerary' && item.location}
+                  {activeTab === 'itinerary' && `${item.destination || ''} • ${item.duration || 1} Days`}
                 </p>
                 <div className="mt-sm pt-sm border-t border-outline-variant/50">
-                  <select 
-                    className="w-full text-xs py-1 px-2 bg-surface-container rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-medium"
-                    onChange={(e) => {
-                      if(e.target.value) {
-                        onAddItemToDay(item, activeTab === 'itinerary' ? 'activity' : (activeTab === 'hotels' ? 'hotel' : 'flight'), parseInt(e.target.value));
-                        e.target.value = '';
-                      }
-                    }}
-                  >
-                    <option value="">+ Add to Day...</option>
-                    {days.map((d, i) => (
-                      <option key={i} value={i}>Day {d.day}</option>
-                    ))}
-                  </select>
+                  {activeTab === 'itinerary' ? (
+                    <button 
+                      onClick={() => onApplyItinerary(item.id)}
+                      className="w-full text-xs py-1.5 bg-primary/10 hover:bg-primary/20 text-primary font-medium rounded-lg transition-colors border-none cursor-pointer"
+                    >
+                      Import Tour
+                    </button>
+                  ) : (
+                    <select 
+                      className="w-full text-xs py-1 px-2 bg-surface-container rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-medium"
+                      onChange={(e) => {
+                        if(e.target.value) {
+                          onAddItemToDay(item, activeTab === 'hotels' ? 'hotel' : 'flight', parseInt(e.target.value));
+                          e.target.value = '';
+                        }
+                      }}
+                    >
+                      <option value="">+ Add to Day...</option>
+                      {days.map((d, i) => (
+                        <option key={i} value={i}>Day {d.day}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
             ))}

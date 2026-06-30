@@ -25,6 +25,36 @@ create table if not exists public.agencies (
   created_at timestamptz default now()
 );
 
+-- SUBSCRIPTIONS ---------------------------------------------------------------
+create table if not exists public.subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid references public.agencies(id) on delete cascade unique,
+  plan text default 'Starter' check (plan in ('Starter','Pro','Enterprise')),
+  status text default 'active',
+  created_at timestamptz default now()
+);
+
+-- TEAM INVITATIONS ------------------------------------------------------------
+create table if not exists public.team_invitations (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid references public.agencies(id) on delete cascade,
+  email text not null,
+  role text default 'agent',
+  invited_by uuid, -- points to users(id), but we'll leave it loosely coupled
+  status text default 'pending',
+  created_at timestamptz default now()
+);
+
+-- ACTIVITY LOGS (Audit Trail) -------------------------------------------------
+create table if not exists public.activity_logs (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid references public.agencies(id) on delete cascade,
+  user_id uuid, -- who performed the action
+  action text not null,
+  details jsonb,
+  created_at timestamptz default now()
+);
+
 -- USERS (mirrors auth.users for app-level metadata) ---------------------------
 create table if not exists public.users (
   id uuid primary key references auth.users(id) on delete cascade,

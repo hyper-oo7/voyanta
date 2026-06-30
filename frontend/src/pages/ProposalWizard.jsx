@@ -6,23 +6,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ImportModal from '../components/ImportModal.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import { useProposalBuilder } from '../context/ProposalBuilderContext.jsx';
-import {
-  fetchProposalById, createProposal, updateProposal,
-} from '../services/proposalService.js';
-import { hotelsService, flightsService, activitiesService, itinerariesService } from '../services/resourceService.js';
-import { listItems, addItem, removeItem, updateItem } from '../services/proposalItemService.js';
+import { useProposalStore } from '../store/proposalStore.js';
+import { itinerariesService } from '../services/resourceService.js';
 import { supabase } from '../lib/supabaseClient.js';
-import { DEFAULT_COUNTRY } from '../lib/countries.js';
 
-// Import Wizard Steps
 import { ProgressBar, STEPS } from './wizard/ProgressBar.jsx';
 import { Step1Client } from './wizard/Step1Client.jsx';
 import { Step2Itinerary } from './wizard/Step2Itinerary.jsx';
-import { ResourceStep } from './wizard/ResourcePicker.jsx';
 import { Step5Costing } from './wizard/Step5Costing.jsx';
-import { Step6Branding } from './wizard/Step6Branding.jsx';
-import { Step7Preview } from './wizard/Step7Preview.jsx';
+import { lazy, Suspense } from 'react';
+
+// Lazy load the heavier wizard steps
+const Step6Branding = lazy(() => import('./wizard/Step6Branding.jsx'));
+const Step7Preview = lazy(() => import('./wizard/Step7Preview.jsx'));
 
 export default function ProposalWizard() {
   const wrapperRef = useRef(null);
@@ -31,144 +27,98 @@ export default function ProposalWizard() {
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const { signOut, isDemo, user } = useAuth();
-  const { setActiveId } = useProposalBuilder() || {};
 
   const idParam   = params.get('id') || '';
   const stepParam = Math.max(1, Math.min(5, parseInt(params.get('step') || '1', 10) || 1));
 
-  const [proposal, setProposal] = useState(null);
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  // Zustand Store
+  const { 
+    activeId, proposal, items, client, branding, costingPrefs, status,
+    setClient, setBranding, setCostingPrefs, setProposal, setItems,
+    loadProposal, saveDraftBackground, addItemsOptimistic, 
+    removeItemOptimistic, updateItemOptimistic
+  } = useProposalStore();
+
   const [itineraries, setItineraries] = useState([]);
   const [importOpen, setImportOpen] = useState(false);
   const [importResource, setImportResource] = useState('');
+  const [globalCustomBlocks, setGlobalCustomBlocks] = useState([]);
 
-  const [client, setClient] = useState({
-    customer_name: '', phone: '', country: DEFAULT_COUNTRY, email: '',
-    destination: '',
-    date_mode: 'dates', // 'dates' or 'days'
-    start_date: '', end_date: '',
-    duration_days: 1, duration_nights: 1,
-    arrival_city: '', arrival_airport: '',
-    departure_city: '', departure_airport: '',
-    num_adults: 1, num_children: 0, budget: '', special_notes: '',
-    itinerary_id: '',
-    tour_type: params.get('tour_type') || '',
-  });
-
+  // Fetch initial data like settings and itineraries
   useEffect(() => {
     (async () => {
       try {
         const list = await itinerariesService.list();
         setItineraries(list);
-      } catch { /* ignore */ }
-    })();
-  }, []);
-  
-  const [branding, setBranding] = useState({
-    agency_name: 'Voyanta', logo_url: '', address: '',
-    contact_email: '', contact_phone: '', website: '',
-    social_facebook: '', social_instagram: '', social_linkedin: '',
-    cover_image_url: '', highlights: '',
-    inclusions: '', exclusions: '', terms_of_payment: '',
-    primary_color: '#0b1c30', template_style: params.get('theme') || 'classic', font_family: '',
-  });
-
-  const [costingPrefs, setCostingPrefs] = useState({
-    fixed_markup: 0,
-    pct_markup: 0,
-    discount: 0,
-    tax: 0
-  });
-
-  const [globalCustomBlocks, setGlobalCustomBlocks] = useState([]);
-
-  useEffect(() => {
-    (async () => {
-      try {
+        
         const { settingsService } = await import('../services/resourceService.js');
         const data = await settingsService.get();
-        if (!data) return;
-        setGlobalCustomBlocks(data.custom_blocks || []);
-        
-        setBranding((b) => ({
-          ...b,
-          agency_name: b.agency_name || data.agency_name || 'Voyanta',
-          logo_url:    b.logo_url    || data.logo_url || '',
-          address:     b.address     || data.address || '',
-          contact_email: b.contact_email || data.contact_email || '',
-          contact_phone: b.contact_phone || data.contact_phone || '',
-          website:     b.website     || data.website || '',
-          primary_color: b.primary_color || data.primary_color || '#0b1c30',
-          font_family: b.font_family || data.font_family || '',
-          social_facebook:  b.social_facebook  || data.social_facebook  || '',
-          social_instagram: b.social_instagram || data.social_instagram || '',
-          social_linkedin:  b.social_linkedin  || data.social_linkedin  || '',
-        }));
+        if (data) {
+          setGlobalCustomBlocks(data.custom_blocks || []);
+          // Only update branding if we aren't loading a saved proposal with its own branding
+          if (!activeId && !idParam) {
+            setBranding((b) => ({
+              ...b,
+              agency_name: data.agency_name || 'Voyanta',
+              logo_url:    data.logo_url || '',
+              address:     data.address || '',
+              contact_email: data.contact_email || '',
+              contact_phone: data.contact_phone || '',
+              website:     data.website || '',
+              primary_color: data.primary_color || '#0b1c30',
+              font_family: data.font_family || '',
+              social_facebook:  data.social_facebook  || '',
+              social_instagram: data.social_instagram || '',
+              social_linkedin:  data.social_linkedin  || '',
+            }));
+          }
+        }
       } catch { /* ignore */ }
     })();
-  }, []);
+  }, [setBranding, activeId, idParam]);
 
-  const reload = useCallback(async (pid) => {
-    setLoading(true);
-    try {
-      if (pid) {
-        const [p, its] = await Promise.all([fetchProposalById(pid), listItems(pid)]);
-        if (p) {
-          setProposal(p); setActiveId?.(p.id);
-          setItems(its);
-          const b = p.brief || {};
-          setClient({
-            customer_name: p.client_name || '',
-            phone:    b.phone     || '',
-            country:  b.country   || DEFAULT_COUNTRY,
-            email:    b.email     || '',
-            destination: p.destination || '',
-            start_date:  p.start_date || '',
-            end_date:    p.end_date   || '',
-            date_mode:   b.date_mode || 'dates',
-            duration_days: b.duration_days || 1,
-            duration_nights: b.duration_nights || 1,
-            arrival_city: p.arrival_city || '',
-            arrival_airport: p.arrival_airport || '',
-            departure_city: p.departure_city || '',
-            departure_airport: p.departure_airport || '',
-            num_adults:   b.num_adults   ?? p.travelers ?? 1,
-            num_children: b.num_children ?? 0,
-            budget: p.budget_max ?? '',
-            special_notes: b.special_notes || '',
-            itinerary_id: b.itinerary_id || '',
-            tour_type: b.tour_type || '',
-          });
-          if (p.preferences?.branding) setBranding((s) => ({ ...s, ...p.preferences.branding }));
-          if (p.preferences?.costing) setCostingPrefs((s) => ({ ...s, ...p.preferences.costing }));
-        }
-      } else { setProposal(null); setItems([]); }
-    } catch (e) { toast.error(e.message || 'Failed to load proposal'); }
-    finally { setLoading(false); }
-  }, [setActiveId, toast]);
-
-  useEffect(() => { reload(idParam); }, [idParam, reload]);
+  // Load proposal from DB on mount / URL change
+  useEffect(() => {
+    if (idParam && idParam !== activeId) {
+      loadProposal(idParam).catch(e => toast.error(e.message || 'Failed to load proposal'));
+    } else if (!idParam && activeId) {
+      // Clear if we navigate to /proposals/wizard without an ID but have one active
+      loadProposal(null);
+    }
+  }, [idParam, loadProposal, toast, activeId]);
 
   const themeParam = params.get('theme');
   useEffect(() => {
-    if (!client.tour_type) return;
     if (themeParam && !idParam) return; // Don't override if started from a template!
-    const styleMap = {
-      'Honeymoon': 'minimal',
-      'Corporate': 'corporate',
-      'Adventure': 'dark',
-      'Luxury': 'modern',
-      'Cruise': 'tropical',
-      'Wellness': 'minimal',
-      'Family': 'classic',
-      'Friends': 'classic',
-    };
-    if (styleMap[client.tour_type]) {
-      setBranding(b => ({ ...b, template_style: styleMap[client.tour_type] }));
+    
+    let style = 'classic';
+    const tourType = (client.tour_type || '').toLowerCase();
+    const dest = (client.destination || proposal?.destination || '').toLowerCase();
+    
+    if (tourType.includes('honeymoon')) style = 'honeymoon';
+    else if (tourType.includes('family')) style = 'family';
+    else if (tourType.includes('corporate')) style = 'corporate';
+    else if (tourType.includes('adventure')) style = 'adventure';
+    else if (tourType.includes('beach') || tourType.includes('tropical')) style = 'beach';
+    else if (tourType.includes('cruise')) style = 'cruise';
+    else if (tourType.includes('wildlife') || tourType.includes('safari')) style = 'wildlife';
+    else if (tourType.includes('luxury')) style = 'modern';
+    else {
+      // Infer from destination if no matching tour type
+      if (dest.includes('maldives') || dest.includes('bali') || dest.includes('beach') || dest.includes('goa')) style = 'beach';
+      else if (dest.includes('alps') || dest.includes('swiss') || dest.includes('himalayas') || dest.includes('mountain')) style = 'adventure';
+      else if (dest.includes('africa') || dest.includes('safari') || dest.includes('kenya')) style = 'wildlife';
+      else if (dest.includes('dubai') || dest.includes('paris') || dest.includes('london')) style = 'modern';
     }
-  }, [client.tour_type, idParam, themeParam]);
+
+    setBranding(b => ({ ...b, template_style: style }));
+  }, [client.tour_type, client.destination, proposal?.destination, idParam, themeParam, setBranding]);
+
+  // Eagerly preload heavy steps so they are instantly ready when the user reaches them
+  useEffect(() => {
+    import('./wizard/Step6Branding.jsx');
+    import('./wizard/Step7Preview.jsx');
+  }, []);
 
   const [mountNode, setMountNode] = useState(null);
 
@@ -217,50 +167,27 @@ export default function ProposalWizard() {
     return () => card.removeEventListener('click', onClick);
   }, [signOut, navigate, isDemo, user]);
 
-  const buildPayload = useCallback(() => {
-    const c = client;
-    const travelers = (parseInt(c.num_adults, 10) || 0) + (parseInt(c.num_children, 10) || 0);
-    return {
-      name: c.destination ? `${c.destination} — ${c.customer_name || 'Trip'}` : (c.customer_name || 'Untitled Proposal'),
-      client_name: c.customer_name || 'New Client',
-      destination: c.destination || null,
-      start_date: c.date_mode === 'dates' ? (c.start_date || null) : null,
-      end_date: c.date_mode === 'dates' ? (c.end_date || null) : null,
-      arrival_city: c.arrival_city || null,
-      arrival_airport: c.arrival_airport || null,
-      departure_city: c.departure_city || null,
-      departure_airport: c.departure_airport || null,
-      travelers: travelers || 1,
-      budget_max: c.budget === '' ? null : Number(c.budget),
-      currency: 'INR',
-      brief: {
-        phone: c.phone, country: c.country, email: c.email,
-        date_mode: c.date_mode,
-        duration_days: parseInt(c.duration_days, 10) || 1,
-        duration_nights: parseInt(c.duration_nights, 10) || 1,
-        num_adults: parseInt(c.num_adults, 10) || 0,
-        num_children: parseInt(c.num_children, 10) || 0,
-        special_notes: c.special_notes,
-        itinerary_id: c.itinerary_id || null,
-        tour_type: c.tour_type || null,
-      },
-      preferences: { ...(proposal?.preferences || {}), branding, costing: costingPrefs },
-      itinerary: proposal?.itinerary,
-      status: proposal?.status || 'Draft',
-    };
-  }, [client, branding, costingPrefs, proposal]);
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
+  const [pendingItinerary, setPendingItinerary] = useState(null);
 
-  const onApplyItinerary = useCallback(async (itinId) => {
+  const triggerApplyItinerary = useCallback((itinId) => {
     if (!itinId) return;
     const selectedItin = itineraries.find((it) => it.id === itinId);
     if (!selectedItin) return;
-    if (!confirm('Applying this schedule will overwrite the current proposal itinerary days. Continue?')) return;
     if (!proposal?.id) {
       toast.error('Save the client info first');
       return;
     }
+    setPendingItinerary(selectedItin);
+    setMergeModalOpen(true);
+  }, [itineraries, proposal?.id, toast]);
+
+  const onApplyItinerary = useCallback(async (strategy) => {
+    if (!pendingItinerary) return;
+    setMergeModalOpen(false);
+
     try {
-      const blocks = await import('../services/resourceService.js').then(m => m.itineraryBlocksService.list({ itinerary_id: itinId }));
+      const blocks = await import('../services/resourceService.js').then(m => m.itineraryBlocksService.list({ itinerary_id: pendingItinerary.id }));
       blocks.sort((a, b) => (a.day_number || 0) - (b.day_number || 0));
       
       const mappedDays = blocks.map((b) => ({
@@ -272,60 +199,87 @@ export default function ProposalWizard() {
         block_type: b.block_type || 'day'
       }));
 
-      const updated = await updateProposal(proposal.id, {
-        itinerary: { days: mappedDays },
-        destination: proposal.destination || selectedItin.destination || null,
+      setProposal((p) => {
+        const currentDays = [...(p?.itinerary?.days || [])];
+        let nextDays = [];
+
+        if (strategy === 'replace') {
+          nextDays = mappedDays;
+        } else if (strategy === 'append') {
+          nextDays = [...currentDays];
+          const startDay = nextDays.length;
+          mappedDays.forEach((md, i) => {
+            nextDays.push({ ...md, day: startDay + i + 1 });
+          });
+        } else if (strategy === 'merge') {
+          // Option A: Overwrite text, keep items.
+          // Since items are separate (in global store, linked by meta.day),
+          // overwriting the day object here keeps the items attached!
+          nextDays = [...currentDays];
+          mappedDays.forEach((md, i) => {
+            if (i < nextDays.length) {
+              nextDays[i] = { ...nextDays[i], title: md.title, description: md.description, image_url: md.image_url, block_type: md.block_type };
+            } else {
+              nextDays.push({ ...md, day: i + 1 });
+            }
+          });
+        }
+
+        return { ...p, itinerary: { days: nextDays }, destination: p?.destination || pendingItinerary.destination || null };
       });
-      setProposal(updated);
-      setClient((s) => ({ ...s, itinerary_id: itinId, destination: updated.destination }));
+
+      setClient((c) => ({ ...c, itinerary_id: pendingItinerary.id, destination: proposal?.destination || pendingItinerary.destination || null }));
       
-      try {
-        const { data: pastProps } = await supabase.from('proposals').select('id').eq('brief->>itinerary_id', itinId);
-        if (pastProps && pastProps.length > 0) {
-          const pastIds = pastProps.map(p => p.id);
-          const { data: pastItems } = await supabase.from('proposal_items').select('ref_id, kind, label, unit_price, currency, meta').in('proposal_id', pastIds);
-          
-          if (pastItems && pastItems.length > 0) {
-            const freq = {};
-            const details = {};
-            pastItems.forEach(pi => {
-              if (!pi.ref_id) return;
-              const key = `${pi.kind}:${pi.ref_id}`;
-              freq[key] = (freq[key] || 0) + 1;
-              if (!details[key]) details[key] = pi;
-            });
+      // Fire background sync
+      saveDraftBackground().catch(e => toast.error('Failed to sync itinerary to database: ' + e.message));
+      toast.success('Itinerary applied');
+
+      // AI auto-link intelligence (async)
+      (async () => {
+        try {
+          const { data: pastProps } = await supabase.from('proposals').select('id').eq('brief->>itinerary_id', pendingItinerary.id);
+          if (pastProps && pastProps.length > 0) {
+            const pastIds = pastProps.map(p => p.id);
+            const { data: pastItems } = await supabase.from('proposal_items').select('ref_id, kind, label, unit_price, currency, meta').in('proposal_id', pastIds);
             
-            const toAdd = Object.keys(freq).filter(k => freq[k] >= 5).map(k => details[k]);
-            if (toAdd.length > 0) {
-              const currentItems = await listItems(proposal.id);
-              const currentRefIds = new Set(currentItems.map(c => c.ref_id).filter(Boolean));
+            if (pastItems && pastItems.length > 0) {
+              const freq = {}; const details = {};
+              pastItems.forEach(pi => {
+                if (!pi.ref_id) return;
+                const key = `${pi.kind}:${pi.ref_id}`;
+                freq[key] = (freq[key] || 0) + 1;
+                if (!details[key]) details[key] = pi;
+              });
               
-              let addedCount = 0;
-              for (const item of toAdd) {
-                if (!currentRefIds.has(item.ref_id)) {
-                  await addItem(proposal.id, {
-                    kind: item.kind, ref_id: item.ref_id, label: item.label,
-                    qty: 1, unit_price: item.unit_price, currency: item.currency, meta: item.meta
-                  });
-                  addedCount++;
+              const toAdd = Object.keys(freq).filter(k => freq[k] >= 5).map(k => details[k]);
+              if (toAdd.length > 0) {
+                const currentRefIds = new Set(items.map(c => c.ref_id).filter(Boolean));
+                const itemsToInsert = [];
+                for (const item of toAdd) {
+                  if (!currentRefIds.has(item.ref_id)) {
+                    // For merged items, append them to day 1 for now (intelligence can be refined later)
+                    let targetDay = item.meta?.day || 1;
+                    if (strategy === 'append') targetDay += (proposal?.itinerary?.days?.length || 0);
+
+                    itemsToInsert.push({
+                      kind: item.kind, ref_id: item.ref_id, label: item.label,
+                      qty: 1, unit_price: item.unit_price, currency: item.currency, meta: { ...item.meta, day: targetDay }
+                    });
+                  }
                 }
-              }
-              if (addedCount > 0) {
-                toast.success(`Itinerary applied, and ${addedCount} frequently used items were auto-linked.`);
-                listItems(proposal.id).then(setItems);
-                return;
+                if (itemsToInsert.length > 0) {
+                  await addItemsOptimistic(itemsToInsert);
+                  toast.success(`Auto-linked ${itemsToInsert.length} frequently used items.`);
+                }
               }
             }
           }
-        }
-      } catch (err) {
-        console.warn('Intelligence auto-link failed:', err);
-      }
-      toast.success('Itinerary applied');
+        } catch (err) { console.warn('Intelligence auto-link failed:', err); }
+      })();
     } catch (e) {
       toast.error(e.message || 'Failed to apply itinerary');
     }
-  }, [itineraries, proposal, toast]);
+  }, [pendingItinerary, proposal, toast, setProposal, setClient, saveDraftBackground, addItemsOptimistic, items]);
 
   const saveDraft = useCallback(async (silent = false) => {
     if (stepParam === 1 && step1Ref.current) {
@@ -336,28 +290,37 @@ export default function ProposalWizard() {
       }
     }
 
-    setSaving(true);
     try {
-      const payload = buildPayload();
-      let p;
-      if (proposal?.id) p = await updateProposal(proposal.id, payload);
-      else { p = await createProposal(payload); setActiveId?.(p.id); setParams({ id: p.id, step: String(stepParam) }, { replace: true }); }
-      setProposal((prev) => ({ ...(prev || {}), ...p }));
+      // Fire and forget (it sets the status to 'saving' internally)
+      const p = await saveDraftBackground();
       if (!silent) toast.success('Draft saved');
+      if (p.id && p.id !== idParam) {
+        setParams({ id: p.id, step: String(stepParam) }, { replace: true });
+      }
       return p;
-    } catch (e) { if (!silent) toast.error(e.message || 'Save failed'); throw e; }
-    finally { setSaving(false); }
-  }, [buildPayload, proposal, setActiveId, setParams, stepParam, toast]);
+    } catch (e) { 
+      if (!silent) toast.error(e.message || 'Save failed'); 
+      throw e; 
+    }
+  }, [saveDraftBackground, setParams, stepParam, toast, idParam]);
 
   const goStep = (n, idOverride) => setParams({ id: idOverride ?? proposal?.id ?? '', step: String(n) }, { replace: false });
 
   const onNext = async () => {
     let pid = proposal?.id;
     if (stepParam === 1 || stepParam === 3 || stepParam === 4) {
-      try { const p = await saveDraft(true); pid = p?.id || pid; }
-      catch { return; }
+      if (!pid && stepParam === 1) {
+         try {
+           const p = await saveDraft(false); // Wait for the save to get the ID
+           pid = p.id;
+         } catch {
+           return;
+         }
+      } else {
+        // Background sync on next, don't await blocking
+        saveDraft(true).catch(() => {});
+      }
     }
-    if (!pid && stepParam !== 1) { toast.error('Save the client info first'); return; }
     goStep(Math.min(5, stepParam + 1), pid);
   };
   const onPrev = () => goStep(Math.max(1, stepParam - 1));
@@ -379,30 +342,29 @@ export default function ProposalWizard() {
 
   const defaultQtyFor = (kind) => kind === 'hotel' ? nights : (kind === 'flight' || kind === 'activity' ? travelers : 1);
 
-  const addItemsToProposal = async (kind, rows, toLabel, toUnit) => {
+  const handleAddItems = async (kind, rows, toLabel, toUnit) => {
     if (!proposal?.id) { toast.error('Save the client info first'); return; }
     try {
       const qty = defaultQtyFor(kind);
-      await Promise.all(rows.map((r) =>
-        addItem(proposal.id, {
-          kind, ref_id: r.id, label: toLabel(r),
-          qty, unit_price: toUnit(r),
-          currency: sanitizeCurrency(r.currency),
-          meta: { source: kind + 's', auto_qty_basis: kind === 'hotel' ? 'nights' : (kind === 'flight' || kind === 'activity' ? 'travelers' : 'one') },
-        })
-      ));
-      const its = await listItems(proposal.id); setItems(its);
+      const newItems = rows.map((r) => ({
+        kind, ref_id: r.id, label: toLabel(r),
+        qty, unit_price: toUnit(r),
+        currency: sanitizeCurrency(r.currency),
+        meta: { source: kind + 's', auto_qty_basis: kind === 'hotel' ? 'nights' : (kind === 'flight' || kind === 'activity' ? 'travelers' : 'one') },
+      }));
+      
+      await addItemsOptimistic(newItems);
       toast.success(`Added ${rows.length} ${kind}(s) · qty ${qty}`);
     } catch (e) { toast.error(e.message); }
   };
 
   const onRemoveItem = async (id) => {
-    try { await removeItem(id); setItems((s) => s.filter((x) => x.id !== id)); toast.success('Removed'); }
+    try { await removeItemOptimistic(id); toast.success('Removed'); }
     catch (e) { toast.error(e.message); }
   };
 
   const onPatchItem = async (id, patch) => {
-    try { const u = await updateItem(id, patch); setItems((s) => s.map((x) => x.id === id ? u : x)); }
+    try { await updateItemOptimistic(id, patch); }
     catch (e) { toast.error(e.message); }
   };
   
@@ -412,7 +374,7 @@ export default function ProposalWizard() {
   };
   
   const handleImportSuccess = () => {
-    reload(proposal?.id); // Quick refresh after import
+    loadProposal(proposal?.id);
   };
 
   return (
@@ -421,8 +383,8 @@ export default function ProposalWizard() {
         <div className="space-y-lg" data-testid="proposal-wizard">
           <ProgressBar step={stepParam} onJump={(n) => proposal?.id ? goStep(n, proposal.id) : (n === 1 ? null : toast.error('Save client info first'))} />
 
-          {loading ? (
-            <div className="glass-card p-xl rounded-xl text-center">Loading…</div>
+          {status === 'loading' && !proposal ? (
+            <div className="glass-card p-xl rounded-xl text-center">Loading Proposal…</div>
           ) : (
               <AnimatePresence mode="wait">
                 <motion.div
@@ -430,15 +392,17 @@ export default function ProposalWizard() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
                 >
-                  {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} />}
-                  {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={reload} itineraries={itineraries} onApplyItinerary={onApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} />}
-                  {stepParam === 3 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
-                    onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
-                    proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
-                  {stepParam === 4 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} />}
-                  {stepParam === 5 && <Step7Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} />}
+                  <Suspense fallback={<div className="p-xl text-center"><span className="material-symbols-outlined animate-spin text-2xl">progress_activity</span></div>}>
+                    {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} />}
+                    {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={() => loadProposal(proposal?.id)} itineraries={itineraries} onApplyItinerary={triggerApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} addItemsOptimistic={addItemsOptimistic} />}
+                    {stepParam === 3 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
+                      onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
+                      proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
+                    {stepParam === 4 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} />}
+                    {stepParam === 5 && <Step7Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} />}
+                  </Suspense>
                 </motion.div>
               </AnimatePresence>
           )}
@@ -446,23 +410,24 @@ export default function ProposalWizard() {
           <motion.div 
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.1 }}
             className="fixed bottom-0 right-0 w-[calc(100%-16rem)] z-50 p-4 flex justify-center pb-0" data-testid="wizard-footer-wrapper">
             <div className="w-full max-w-5xl flex items-center gap-md shadow-[0_-8px_32px_rgba(0,0,0,0.1)] border border-b-0 border-white/40 bg-white/70 backdrop-blur-2xl transition-all duration-300 rounded-t-3xl p-4">
             <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onPrev} disabled={stepParam === 1} data-testid="wizard-prev"
               className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40 disabled:pointer-events-none">
               Previous
             </motion.button>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => saveDraft(false)} disabled={saving} data-testid="wizard-save"
-              className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40 disabled:pointer-events-none">
-              {saving ? 'Saving…' : 'Save Draft'}
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => saveDraft(false)} disabled={status === 'saving'} data-testid="wizard-save"
+              className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40 disabled:pointer-events-none flex gap-2 items-center">
+              {status === 'saving' ? <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span> : null}
+              {status === 'saving' ? 'Saving…' : 'Save Draft'}
             </motion.button>
             <span className="flex-1" />
             <span className="font-label-md text-on-surface-variant uppercase tracking-widest mr-md bg-white/50 px-lg py-2 rounded-full border border-white/40 shadow-inner backdrop-blur-sm">
               Step {stepParam} <span className="opacity-50">/ 5</span>
             </span>
             {stepParam < 5 && (
-              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onNext} disabled={saving} data-testid="wizard-next"
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onNext} disabled={status === 'saving' && !proposal?.id} data-testid="wizard-next"
                 className="px-xl py-3 bg-primary/90 backdrop-blur-md text-white rounded-xl font-label-md hover:bg-primary transition-all shadow-md flex items-center gap-sm disabled:opacity-60 disabled:pointer-events-none">
                 Continue to {STEPS[stepParam]?.label || 'Next'}
                 <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
@@ -472,6 +437,33 @@ export default function ProposalWizard() {
           </motion.div>
           
           {importOpen && <ImportModal resource={importResource} onClose={() => setImportOpen(false)} onImported={handleImportSuccess} />}
+          {mergeModalOpen && pendingItinerary && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm" onClick={() => setMergeModalOpen(false)}>
+              <div className="bg-white rounded-2xl p-xl shadow-2xl max-w-md w-full m-4" onClick={e => e.stopPropagation()}>
+                <h3 className="font-headline-sm text-primary mb-md">Import Itinerary</h3>
+                <p className="font-body-md text-on-surface-variant mb-lg">
+                  How would you like to apply the <strong>{pendingItinerary.name}</strong> itinerary to your proposal?
+                </p>
+                <div className="space-y-sm">
+                  <button onClick={() => onApplyItinerary('replace')} className="w-full text-left p-md border border-outline-variant rounded-xl hover:border-primary hover:bg-primary/5 transition-colors">
+                    <span className="block font-label-md text-on-surface">Replace</span>
+                    <span className="block font-body-sm text-on-surface-variant">Overwrite all existing days with this new itinerary.</span>
+                  </button>
+                  <button onClick={() => onApplyItinerary('merge')} className="w-full text-left p-md border border-outline-variant rounded-xl hover:border-primary hover:bg-primary/5 transition-colors">
+                    <span className="block font-label-md text-on-surface">Merge</span>
+                    <span className="block font-body-sm text-on-surface-variant">Update the titles and descriptions of existing days, and append any remaining new days.</span>
+                  </button>
+                  <button onClick={() => onApplyItinerary('append')} className="w-full text-left p-md border border-outline-variant rounded-xl hover:border-primary hover:bg-primary/5 transition-colors">
+                    <span className="block font-label-md text-on-surface">Append</span>
+                    <span className="block font-body-sm text-on-surface-variant">Add these days to the end of your current itinerary.</span>
+                  </button>
+                </div>
+                <div className="mt-xl flex justify-end">
+                  <button onClick={() => setMergeModalOpen(false)} className="px-lg py-sm text-on-surface-variant font-label-md hover:bg-surface-container-low rounded-lg transition-colors">Cancel</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>,
         mountNode
       )}
