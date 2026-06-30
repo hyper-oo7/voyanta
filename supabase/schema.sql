@@ -92,6 +92,7 @@ create table if not exists public.status_checks (
   timestamp timestamptz default now()
 );
 alter table public.status_checks enable row level security;
+drop policy if exists "status_checks_all" on public.status_checks;
 create policy "status_checks_all" on public.status_checks for all using (true);
 
 -- PROPOSALS -------------------------------------------------------------------
@@ -227,6 +228,12 @@ create table if not exists public.itineraries (
   country text,
   state text,
   city text,
+  theme text,
+  included_items jsonb default '[]'::jsonb,
+  excluded_items jsonb default '[]'::jsonb,
+  terms_conditions text,
+  cancellation_policy text,
+  important_notes text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -239,12 +246,7 @@ create table if not exists public.itinerary_blocks (
   day_number int,
   title text,
   description text,
-  morning_notes text,
-  afternoon_notes text,
-  evening_notes text,
-  night_notes text,
-  photos jsonb,
-  notes text,
+  content jsonb default '[]'::jsonb,
   position int default 0,
   created_at timestamptz default now(),
   updated_at timestamptz default now()

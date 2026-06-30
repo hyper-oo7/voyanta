@@ -117,7 +117,7 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
                   <span className="flex-shrink-0 w-20 text-2xl" style={{ color: theme.accent, fontFamily: fontSubhead }}>Day {String(dayNum).padStart(2, '0')}</span>
                   <div className="flex-1">
                     <h3 className="text-xl mb-2 font-semibold" style={{ fontFamily: fontSubhead }}>{d.title || d.label || 'Free time'}</h3>
-                    {d.description && <p className="text-base opacity-80 whitespace-pre-wrap mb-4" style={{ fontFamily: fontBody }}>{d.description}</p>}
+                    {d.description && typeof d.description === 'string' && <p className="text-base opacity-80 whitespace-pre-wrap mb-4" style={{ fontFamily: fontBody }}>{d.description}</p>}
                     
                     {dayItems.length > 0 && (
                       <div className="mt-4 pt-4 border-t border-opacity-20 space-y-2" style={{ borderColor: theme.text }}>

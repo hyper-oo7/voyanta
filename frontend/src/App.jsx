@@ -35,6 +35,9 @@ const TemplatePreviewPage = lazy(() => import('./pages/TemplatePreviewPage.jsx')
 const PlanPage = lazy(() => import('./pages/PlanPage.jsx'));
 
 const LibrariesPage = lazy(() => import('./pages/LibrariesPage.jsx'));
+const ItineraryLibraryPage = lazy(() => import('./pages/ItineraryLibraryPage.jsx'));
+const NewItineraryPage = lazy(() => import('./pages/NewItineraryPage.jsx'));
+const ItineraryEditorPage = lazy(() => import('./pages/ItineraryEditorPage.jsx'));
 const ProposalPreviewPage = lazy(() => import('./pages/ProposalPreviewPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage.jsx'));
@@ -57,7 +60,6 @@ export default function App() {
         <ToastProvider>
         <BackendHealthProvider>
           <ProposalBuilderProvider>
-            <ErrorBoundary FallbackComponent={ErrorFallback}>
             <Suspense fallback={<PageLoader />}>
               <Routes>
               <Route path="/" element={<LandingPage />} />
@@ -78,7 +80,9 @@ export default function App() {
                 {/* Inventory modules — still accessible standalone for browsing/imports */}
                 <Route path="/templates"           element={<TemplatesPage />} />
                 <Route path="/templates/:id"       element={<TemplatePreviewPage />} />
-                <Route path="/itinerary"           element={<AssetsLibraryPage />} />
+                <Route path="/itinerary"           element={<ItineraryLibraryPage />} />
+                <Route path="/itinerary/new"       element={<NewItineraryPage />} />
+                <Route path="/itinerary/:id"       element={<ItineraryEditorPage />} />
                 <Route path="/flights"             element={<FlightsPage />} />
                 <Route path="/cost-calculator"     element={<CostCalculatorPage />} />
                 <Route path="/libraries"           element={<LibrariesPage />} />
@@ -95,7 +99,6 @@ export default function App() {
               <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </Suspense>
-            </ErrorBoundary>
             <DiagnosticsPanel />
           </ProposalBuilderProvider>
         </BackendHealthProvider>

@@ -24,14 +24,16 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   }, []);
 
   useEffect(() => {
-    if (days.length === 0 && proposal?.id) {
-      let numDays = 1;
-      if (client.date_mode === 'days') {
+    if (days.length === 0) {
+      let numDays = 0;
+      if (client.date_mode === 'days' && client.duration_days) {
         numDays = parseInt(client.duration_days, 10) || 1;
-      } else if (client.start_date && client.end_date) {
+      } else if (client.date_mode === 'dates' && client.start_date && client.end_date) {
         const ms = new Date(client.end_date).getTime() - new Date(client.start_date).getTime();
         const diffDays = Math.round(ms / (1000 * 60 * 60 * 24)) + 1;
         numDays = diffDays > 0 ? diffDays : 1;
+      } else if (proposal?.id) {
+        numDays = 1; // Fallback if saved but no dates
       }
 
       if (numDays > 0) {
@@ -42,39 +44,39 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           image_url: null,
           block_type: i === 0 ? 'arrival' : (i === numDays - 1 ? 'departure' : 'day')
         }));
-        setProposal(prev => ({ ...prev, itinerary: { ...prev.itinerary, days: nextDays } }));
+        setProposal(prev => ({ ...(prev || {}), itinerary: { ...(prev?.itinerary || {}), days: nextDays } }));
       }
     }
   }, [days.length, proposal?.id, client.date_mode, client.duration_days, client.start_date, client.end_date, setProposal]);
 
   const updateDay = useCallback((index, patch) => {
     setProposal(prev => {
-      const nextDays = [...(prev.itinerary?.days || [])];
+      const nextDays = [...(prev?.itinerary?.days || [])];
       nextDays[index] = { ...nextDays[index], ...patch };
-      return { ...prev, itinerary: { ...prev.itinerary, days: nextDays } };
+      return { ...(prev || {}), itinerary: { ...(prev?.itinerary || {}), days: nextDays } };
     });
   }, [setProposal]);
 
   const removeDay = useCallback((index) => {
     if (!window.confirm('Are you sure you want to remove this day?')) return;
     setProposal(prev => {
-      const nextDays = [...(prev.itinerary?.days || [])];
+      const nextDays = [...(prev?.itinerary?.days || [])];
       nextDays.splice(index, 1);
       nextDays.forEach((d, i) => d.day = i + 1);
-      return { ...prev, itinerary: { ...prev.itinerary, days: nextDays } };
+      return { ...(prev || {}), itinerary: { ...(prev?.itinerary || {}), days: nextDays } };
     });
   }, [setProposal]);
 
   const addDay = useCallback(() => {
     setProposal(prev => {
-      const nextDays = [...(prev.itinerary?.days || [])];
+      const nextDays = [...(prev?.itinerary?.days || [])];
       nextDays.push({
         day: nextDays.length + 1,
         title: '',
         description: '',
         image_url: null
       });
-      return { ...prev, itinerary: { ...prev.itinerary, days: nextDays } };
+      return { ...(prev || {}), itinerary: { ...(prev?.itinerary || {}), days: nextDays } };
     });
   }, [setProposal]);
 

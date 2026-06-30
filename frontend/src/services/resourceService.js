@@ -60,15 +60,7 @@ export const templatesService  = makeResourceService('templates');
 
 export const itinerariesService = makeResourceService('itineraries');
 
-// Custom service for itinerary_blocks to omit agency_id insertion (since it's not in the DB schema)
-export const itineraryBlocksService = {
-  ...makeResourceService('itinerary_blocks'),
-  create: async (row) => {
-    const { data, error } = await supabase.from('itinerary_blocks').insert({ ...row }).select().single();
-    if (error) throw error;
-    return data;
-  }
-};
+export const itineraryBlocksService = makeResourceService('itinerary_blocks');
 
 const DEFAULT_SETTINGS = {
   agency_name: 'Voyanta Demo Agency',

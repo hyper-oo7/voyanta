@@ -182,6 +182,35 @@ export default function ProposalWizard() {
     setMergeModalOpen(true);
   }, [itineraries, proposal?.id, toast]);
 
+  const flattenBlocksToText = (content) => {
+    if (!content) return '';
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+
+    return content.map(block => {
+      if (!block || !block.data) return '';
+      const { type, data } = block;
+      if (type === 'heading') return `## ${data.text || ''}`;
+      if (type === 'text') return data.text || '';
+      if (type === 'hotel') return `🏨 Hotel: ${data.name || ''}\n${data.details || ''}`;
+      if (type === 'flight') return `✈️ Flight: ${data.name || ''}\n${data.details || ''}`;
+      if (type === 'transfer') return `🚗 Transfer: ${data.name || ''}\n${data.details || ''}`;
+      if (type === 'activity') return `🎫 Activity: ${data.name || ''}\n${data.details || ''}`;
+      if (type === 'meals') return `🍽️ Meals: ${data.name || ''}\n${data.details || ''}`;
+      return '';
+    }).filter(text => text.trim()).join('\n\n');
+  };
+
+  const extractImageFromBlocks = (content) => {
+    if (!Array.isArray(content)) return null;
+    const imgBlock = content.find(b => b.type === 'image' || b.type === 'gallery');
+    if (!imgBlock || !imgBlock.data) return null;
+    if (imgBlock.data.url) return imgBlock.data.url;
+    if (Array.isArray(imgBlock.data.urls) && imgBlock.data.urls.length > 0) return imgBlock.data.urls[0];
+    if (Array.isArray(imgBlock.data.images) && imgBlock.data.images.length > 0) return imgBlock.data.images[0];
+    return null;
+  };
+
   const onApplyItinerary = useCallback(async (strategy) => {
     if (!pendingItinerary) return;
     setMergeModalOpen(false);
@@ -193,8 +222,8 @@ export default function ProposalWizard() {
       const mappedDays = blocks.map((b) => ({
         day: b.day_number || 1,
         title: b.title || '',
-        description: b.content || '',
-        image_url: b.image_url || null,
+        description: [b.description, flattenBlocksToText(b.content)].filter(x => x).join('\n\n').trim() || '',
+        image_url: b.image_url || extractImageFromBlocks(b.content) || null,
         notes: b.notes || '',
         block_type: b.block_type || 'day'
       }));

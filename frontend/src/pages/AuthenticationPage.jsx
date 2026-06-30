@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+import { useAuthStore } from '../store/authStore.js';
 
 export default function AuthenticationPage() {
   const navigate = useNavigate();
@@ -17,6 +18,16 @@ export default function AuthenticationPage() {
   const [fullName, setFullName] = useState('');
   
   const redirectTo = location.state?.from || '/dashboard';
+
+  const handleDemoBypass = () => {
+    useAuthStore.getState().setUser({
+      id: '00000000-0000-0000-0000-000000000001',
+      email: 'demo@voyanta.com',
+      user_metadata: { full_name: 'Demo User' }
+    });
+    toast.success('Welcome to Demo Mode!');
+    navigate(redirectTo, { replace: true });
+  };
 
   useEffect(() => {
     if (user) navigate(redirectTo, { replace: true });
@@ -91,12 +102,37 @@ export default function AuthenticationPage() {
             
             <div className="mb-xl">
               <h2 className="font-headline-lg text-headline-lg text-on-surface mb-xs m-0">
-                {isSignUp ? 'Create an account' : 'Welcome back'}
+                Voyanta Travel Concierge
               </h2>
               <p className="font-body-md text-body-md text-on-surface-variant m-0">
-                {isSignUp ? 'Sign up to start curating proposals.' : 'Please enter your details to sign in.'}
+                Please enter your credentials or create a new account to continue.
               </p>
             </div>
+
+            {/* Tab switcher */}
+            <div className="flex border-b border-outline-variant mb-lg select-none">
+              <button 
+                onClick={() => setIsSignUp(false)}
+                className={`flex-1 pb-3 text-center font-bold text-sm border-b-2 transition-all cursor-pointer ${!isSignUp ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'}`}
+              >
+                Sign In
+              </button>
+              <button 
+                onClick={() => setIsSignUp(true)}
+                className={`flex-1 pb-3 text-center font-bold text-sm border-b-2 transition-all cursor-pointer ${isSignUp ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'}`}
+              >
+                Create Account
+              </button>
+            </div>
+
+            {import.meta.env.VITE_DEMO_MODE === 'true' && (
+              <button 
+                onClick={handleDemoBypass}
+                className="w-full mb-4 py-md px-lg bg-primary/10 text-primary border border-primary/20 rounded-lg font-label-md hover:bg-primary/20 transition-all font-bold cursor-pointer"
+              >
+                Skip — try Demo Mode
+              </button>
+            )}
 
             <button 
               onClick={handleGoogle}

@@ -65,13 +65,51 @@ export default function LogoUploader({ value, onChange, label = 'Logo', testid =
   );
 }
 
+export async function resizeImage(file, maxWidth = 1000, maxHeight = 1000) {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/') || file.type === 'image/svg+xml' || file.type === 'image/gif') {
+      return resolve(file);
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width <= maxWidth && height <= maxHeight) return resolve(file);
+        
+        const ratio = Math.min(maxWidth / width, maxHeight / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        canvas.toBlob((blob) => {
+          if (!blob) return resolve(file);
+          resolve(new File([blob], file.name, { type: mimeType, lastModified: Date.now() }));
+        }, mimeType, 0.85);
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function uploadOrEmbed(file, folder) {
+  const processedFile = await resizeImage(file);
+  
   if (supabase) {
     try {
-      const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const ext = (processedFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
       const path = `${folder}/${DEFAULT_AGENCY_ID}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-        cacheControl: '3600', upsert: false, contentType: file.type,
+      const { error } = await supabase.storage.from(BUCKET).upload(path, processedFile, {
+        cacheControl: '3600', upsert: false, contentType: processedFile.type,
       });
       if (!error) {
         const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
@@ -85,6 +123,6 @@ export async function uploadOrEmbed(file, folder) {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result || ''));
     r.onerror = () => reject(new Error('Read failed'));
-    r.readAsDataURL(file);
+    r.readAsDataURL(processedFile);
   });
 }
