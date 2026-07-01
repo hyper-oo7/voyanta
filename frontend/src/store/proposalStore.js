@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { fetchProposalById, updateProposal, createProposal } from '../services/proposalService.js';
 import { listItems, addItem, removeItem, updateItem } from '../services/proposalItemService.js';
 import { DEFAULT_COUNTRY } from '../lib/countries.js';
+import { sanitizeBrandingObject } from '../services/resourceService.js';
 
 export const useProposalStore = create((set, get) => ({
   // State
@@ -21,7 +22,7 @@ export const useProposalStore = create((set, get) => ({
     tour_type: '',
   },
   branding: {
-    agency_name: 'Voyanta', logo_url: '', address: '',
+    agency_name: '', logo_url: '', address: '',
     contact_email: '', contact_phone: '', website: '',
     social_facebook: '', social_instagram: '', social_linkedin: '',
     cover_image_url: '', highlights: '',
@@ -51,7 +52,7 @@ export const useProposalStore = create((set, get) => ({
   })),
 
   setBranding: (partialBranding) => set((state) => ({ 
-    branding: typeof partialBranding === 'function' ? partialBranding(state.branding) : { ...state.branding, ...partialBranding } 
+    branding: sanitizeBrandingObject(typeof partialBranding === 'function' ? partialBranding(state.branding) : { ...state.branding, ...partialBranding }) 
   })),
 
   setCostingPrefs: (partialCosting) => set((state) => ({ 
@@ -80,17 +81,7 @@ export const useProposalStore = create((set, get) => ({
         const b = p.brief || {};
         
         const rawBranding = { ...get().branding, ...(p.preferences?.branding || {}) };
-        const cleanBranding = {};
-        for (const k in rawBranding) {
-          const val = rawBranding[k];
-          if (Array.isArray(val)) {
-            cleanBranding[k] = val.map(item => typeof item === 'object' ? JSON.stringify(item) : String(item)).join('\n');
-          } else if (val && typeof val === 'object' && !Array.isArray(val)) {
-            cleanBranding[k] = JSON.stringify(val);
-          } else {
-            cleanBranding[k] = val ?? '';
-          }
-        }
+        const cleanBranding = sanitizeBrandingObject(rawBranding);
 
         set({
           proposal: p,

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
@@ -34,12 +34,11 @@ const TemplatesPage = lazy(() => import('./pages/TemplatesPage.jsx'));
 const TemplatePreviewPage = lazy(() => import('./pages/TemplatePreviewPage.jsx'));
 const PlanPage = lazy(() => import('./pages/PlanPage.jsx'));
 
-const LibrariesPage = lazy(() => import('./pages/LibrariesPage.jsx'));
 const ItineraryLibraryPage = lazy(() => import('./pages/ItineraryLibraryPage.jsx'));
 const NewItineraryPage = lazy(() => import('./pages/NewItineraryPage.jsx'));
 const ItineraryEditorPage = lazy(() => import('./pages/ItineraryEditorPage.jsx'));
-const ProposalPreviewPage = lazy(() => import('./pages/ProposalPreviewPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
+const ResourceModulePage = lazy(() => import('./pages/ResourceModulePage.jsx'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage.jsx'));
 
 const Protected = ({ children }) => <ProtectedRoute>{children}</ProtectedRoute>;
@@ -54,6 +53,11 @@ function PageLoader() {
 }
 
 export default function App() {
+  useEffect(() => {
+    if (localStorage.getItem('theme') === 'dark') {
+      document.documentElement.classList.add('dark');
+    }
+  }, []);
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
@@ -75,7 +79,7 @@ export default function App() {
 
                 {/* Wizard is the primary proposal workflow */}
                 <Route path="/proposals/wizard"    element={<ProposalWizard />} />
-                <Route path="/proposals/preview"   element={<ProposalPreviewPage />} />
+                <Route path="/proposals/preview"   element={<Navigate to="/proposals/wizard" replace />} />
 
                 {/* Inventory modules — still accessible standalone for browsing/imports */}
                 <Route path="/templates"           element={<TemplatesPage />} />
@@ -85,7 +89,7 @@ export default function App() {
                 <Route path="/itinerary/:id"       element={<ItineraryEditorPage />} />
                 <Route path="/flights"             element={<FlightsPage />} />
                 <Route path="/cost-calculator"     element={<CostCalculatorPage />} />
-                <Route path="/libraries"           element={<LibrariesPage />} />
+                <Route path="/libraries"           element={<Navigate to="/templates" replace />} />
                 <Route path="/libraries/hotels"    element={<HotelLibraryPage />} />
                 <Route path="/libraries/assets"    element={<AssetsLibraryPage />} />
                 <Route path="/settings"            element={<SettingsPage />} />

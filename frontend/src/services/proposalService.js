@@ -4,22 +4,47 @@
 import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
 
 const TABLE = 'proposals';
+const CACHE_KEY = 'voyanta_proposals_list_cache';
+
+// Lightweight projection: Exclude heavy JSONB columns (itinerary, trip_details, brief)
+const LIST_COLUMNS = 'id, agency_id, created_by, client_id, name, client_name, status, destination, start_date, end_date, travelers, budget_min, budget_max, currency, total_cost, is_archived, arrival_city, arrival_airport, departure_city, departure_airport, created_at, updated_at, preferences';
 
 export async function fetchProposals() {
-  if (!supabase) return [];
-  const { data, error } = await supabase.from(TABLE).select('*')
+  if (!supabase) {
+    try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '[]'); } catch { return []; }
+  }
+  const { data, error } = await supabase.from(TABLE).select(LIST_COLUMNS)
     .eq('agency_id', DEFAULT_AGENCY_ID)
     .neq('is_archived', true)
     .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data || []).map(normalize);
+  if (error) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+      if (cached) return cached;
+    } catch {}
+    throw error;
+  }
+  const result = (data || []).map(normalize);
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(result)); } catch {}
+  return result;
 }
 
 export async function fetchProposalById(id) {
   if (!supabase || !id) return null;
   const { data, error } = await supabase.from(TABLE).select('*').eq('id', id).maybeSingle();
-  if (error) throw error;
-  return data ? normalize(data) : null;
+  if (error) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(`voyanta_proposal_${id}`) || 'null');
+      if (cached) return cached;
+    } catch {}
+    throw error;
+  }
+  if (data) {
+    const norm = normalize(data);
+    try { localStorage.setItem(`voyanta_proposal_${id}`, JSON.stringify(norm)); } catch {}
+    return norm;
+  }
+  return null;
 }
 
 export async function createProposal(payload) {

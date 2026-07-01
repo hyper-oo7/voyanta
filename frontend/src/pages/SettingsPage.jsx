@@ -220,6 +220,7 @@ function BrandingSettings() {
 
   const current = form || settings || {};
   const upd = (k) => (e) => setForm((s) => ({ ...(s || settings || {}), [k]: e.target.value }));
+  const safeStr = (v) => Array.isArray(v) ? v.join('\n') : (v && typeof v === 'object' ? String(v.url || v.src || v.text || v.label || JSON.stringify(v)) : String(v ?? ''));
 
   const mutation = useMutation({
     mutationFn: (newSettings) => settingsService.update(newSettings),
@@ -239,51 +240,51 @@ function BrandingSettings() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-on-surface-variant mb-1">Agency Name</label>
-            <input type="text" value={current.agency_name || ''} onChange={upd('agency_name')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+            <input type="text" value={safeStr(current.agency_name)} onChange={upd('agency_name')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
           </div>
           <div>
             <label className="block text-sm font-medium text-on-surface-variant mb-1">Primary Color (Hex)</label>
             <div className="flex gap-4">
-              <input type="color" value={current.primary_color || '#0b1c30'} onChange={upd('primary_color')} className="h-10 w-10 p-1 rounded border border-outline cursor-pointer bg-white" />
-              <input type="text" value={current.primary_color || '#0b1c30'} onChange={upd('primary_color')} className="flex-1 px-4 py-2 border border-outline rounded-lg font-mono bg-white" />
+              <input type="color" value={safeStr(current.primary_color) || '#0b1c30'} onChange={upd('primary_color')} className="h-10 w-10 p-1 rounded border border-outline cursor-pointer bg-white" />
+              <input type="text" value={safeStr(current.primary_color) || '#0b1c30'} onChange={upd('primary_color')} className="flex-1 px-4 py-2 border border-outline rounded-lg font-mono bg-white" />
             </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-on-surface-variant mb-1">Logo URL</label>
-            <input type="text" value={current.logo_url || ''} onChange={upd('logo_url')} placeholder="https://..." className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+            <input type="text" value={safeStr(current.logo_url)} onChange={upd('logo_url')} placeholder="https://..." className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
           </div>
           <div>
             <label className="block text-sm font-medium text-on-surface-variant mb-1">Cover Image URL</label>
-            <input type="text" value={current.cover_image_url || ''} onChange={upd('cover_image_url')} placeholder="https://..." className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+            <input type="text" value={safeStr(current.cover_image_url)} onChange={upd('cover_image_url')} placeholder="https://..." className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
           </div>
           <div>
             <label className="block text-sm font-medium text-on-surface-variant mb-1">Contact Email</label>
-            <input type="email" value={current.contact_email || ''} onChange={upd('contact_email')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+            <input type="email" value={safeStr(current.contact_email)} onChange={upd('contact_email')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
           </div>
           <div>
             <label className="block text-sm font-medium text-on-surface-variant mb-1">Contact Phone</label>
-            <input type="text" value={current.contact_phone || ''} onChange={upd('contact_phone')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+            <input type="text" value={safeStr(current.contact_phone)} onChange={upd('contact_phone')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
           </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-on-surface-variant mb-1">Website</label>
-          <input type="text" value={current.website || ''} onChange={upd('website')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+          <input type="text" value={safeStr(current.website)} onChange={upd('website')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
         </div>
         <div>
           <label className="block text-sm font-medium text-on-surface-variant mb-1">Address</label>
-          <input type="text" value={current.address || ''} onChange={upd('address')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+          <input type="text" value={safeStr(current.address)} onChange={upd('address')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
         </div>
         <div>
           <label className="block text-sm font-medium text-on-surface-variant mb-1">Default Inclusions</label>
-          <textarea rows="3" value={current.inclusions || ''} onChange={upd('inclusions')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+          <textarea rows="3" value={safeStr(current.inclusions)} onChange={upd('inclusions')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
         </div>
         <div>
           <label className="block text-sm font-medium text-on-surface-variant mb-1">Default Exclusions</label>
-          <textarea rows="3" value={current.exclusions || ''} onChange={upd('exclusions')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+          <textarea rows="3" value={safeStr(current.exclusions)} onChange={upd('exclusions')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
         </div>
         <div>
           <label className="block text-sm font-medium text-on-surface-variant mb-1">Default Terms of Payment</label>
-          <textarea rows="3" value={current.terms_of_payment || ''} onChange={upd('terms_of_payment')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+          <textarea rows="3" value={safeStr(current.terms_of_payment)} onChange={upd('terms_of_payment')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
         </div>
         <div className="pt-4">
           <button onClick={() => mutation.mutate(current)} disabled={mutation.isPending} className="px-6 py-2 bg-primary text-on-primary rounded-lg font-medium shadow-md hover:bg-primary/90 transition-colors disabled:opacity-50">

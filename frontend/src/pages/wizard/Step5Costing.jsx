@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { formatINR } from '../../lib/currency.js';
 import { addItem } from '../../services/proposalItemService.js';
 
@@ -49,11 +49,15 @@ const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveI
 });
 
 export function Step5Costing({ proposal, proposalId, items, setItems, onPatchItem, onRemoveItem, addItemsOptimistic, saveDraft, proposalCurrency = 'INR', costingPrefs, setCostingPrefs }) {
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+
   useEffect(() => {
     const days = proposal?.itinerary?.days;
     if (!Array.isArray(days) || !addItemsOptimistic) return;
-    const currentRefIds = new Set(items.map(it => String(it.ref_id || '')).filter(Boolean));
-    const currentLabels = new Set(items.map(it => String(it.label || '').toLowerCase().trim()).filter(Boolean));
+    const currentItems = itemsRef.current || [];
+    const currentRefIds = new Set(currentItems.map(it => String(it.ref_id || '')).filter(Boolean));
+    const currentLabels = new Set(currentItems.map(it => String(it.label || '').toLowerCase().trim()).filter(Boolean));
     const harvested = [];
 
     days.forEach((dayObj, idx) => {
@@ -68,7 +72,7 @@ export function Step5Costing({ proposal, proposalId, items, setItems, onPatchIte
             const label = String(block.data.name || raw.name || `${raw.airline || 'Flight'} ${raw.flight_no || ''}`.trim() || `${k.toUpperCase()} Item`).trim();
             const lowerLabel = label.toLowerCase();
 
-            if ((!refId || !currentRefIds.has(refId)) && (!lowerLabel || !currentLabels.has(lowerLabel))) {
+            if (refId ? !currentRefIds.has(refId) : !currentLabels.has(lowerLabel)) {
               if (refId) currentRefIds.add(refId);
               if (lowerLabel) currentLabels.add(lowerLabel);
               const price = Number(raw.price_per_night || raw.price || raw.cost || block.data.price || 0);
@@ -90,7 +94,7 @@ export function Step5Costing({ proposal, proposalId, items, setItems, onPatchIte
     if (harvested.length > 0) {
       addItemsOptimistic(harvested).catch(() => {});
     }
-  }, [proposal?.itinerary?.days, items, addItemsOptimistic, proposal?.travelers, proposalCurrency]);
+  }, [proposal?.itinerary?.days, addItemsOptimistic, proposal?.travelers, proposalCurrency]);
 
   const rawTotal = useMemo(() => items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0), [items]);
   
@@ -121,12 +125,17 @@ export function Step5Costing({ proposal, proposalId, items, setItems, onPatchIte
   const onAdd = async (kind) => {
     let pid = proposalId;
     if (!pid && typeof saveDraft === 'function') {
-      try { const p = await saveDraft(false); pid = p?.id; } catch {}
+      try { const p = await saveDraft(true); pid = p?.id; } catch {}
     }
     if (!pid) return;
     try {
-      const it = await addItem(pid, { kind: kind.toLowerCase(), label: `New ${kind}`, qty: 1, unit_price: 0, currency: proposalCurrency });
-      setItems((s) => [...s, it]);
+      const newItem = { kind: kind.toLowerCase(), label: `New ${kind}`, qty: 1, unit_price: 0, currency: proposalCurrency };
+      if (addItemsOptimistic) {
+        await addItemsOptimistic([newItem]);
+      } else {
+        const it = await addItem(pid, newItem);
+        setItems((s) => [...s, it]);
+      }
     } catch { /* surfaced upstream */ }
   };
   

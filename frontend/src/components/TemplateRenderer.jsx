@@ -60,10 +60,10 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
     const displayStyle = isActive ? 'block' : 'none';
     
     // Add page-break CSS classes
-    const sectionClass = `editorial-section relative overflow-hidden bg-[${theme.bg}] text-[${theme.text}] p-[14mm]`;
+    const sectionClass = `editorial-section relative overflow-hidden bg-[${theme.bg}] text-[${theme.text}] ${viewMode === 'document' ? 'py-[8mm] px-[12mm]' : 'p-[14mm]'}`;
     const sectionStyle = { 
       display: displayStyle, 
-      breakBefore: index === 0 ? 'auto' : 'page', // Force new page for PDF
+      breakBefore: 'auto', // Allow natural flow according to page fit
       minHeight: viewMode === 'presentation' ? '100%' : 'auto',
       backgroundColor: theme.bg,
       color: theme.text,
@@ -74,20 +74,42 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
 
     switch(key) {
       case 'hero':
-        const cover = b.cover_image_url || bgImage;
-        const logo = b.logo_url || '';
+        const cover = safeText(b.cover_image_url || bgImage);
+        const logo = safeText(b.logo_url || '');
         const breakdown = `${travelers} traveller${travelers === 1 ? '' : 's'}` + ((adults || children) ? ` · ${adults} adult${adults === 1 ? '' : 's'}${children ? `, ${children} child${children === 1 ? '' : 'ren'}` : ''}` : '');
+        const agencyName = safeText(b.agency_name || '');
         return (
           <section key={key} className={sectionClass + " !p-0"} style={{ ...sectionStyle, minHeight: '35vh' }}>
             {cover && <img src={cover} alt="" className="absolute inset-0 w-full h-full object-cover" />}
             <div className="absolute inset-0 bg-black/40" />
-            {logo && <img src={logo} alt="Agency logo" className="absolute top-8 left-8 z-20 h-16 max-w-[200px] object-contain bg-white/90 rounded-md p-3 shadow-xl" />}
-            <div className="relative z-10 p-[14mm] text-white flex flex-col h-full justify-end min-h-[35vh]">
-              <p className="tracking-[0.3em] uppercase mb-4 text-sm" style={{ fontFamily: fontSubhead }}>{b.agency_name || 'Voyanta'}</p>
-              <h1 className="text-6xl md:text-8xl leading-none mb-6" style={{ fontFamily: fontHeadline }}>{p.name || 'Proposal'}</h1>
-              <p className="text-xl md:text-2xl max-w-2xl opacity-90" style={{ fontFamily: fontSubhead }}>
-                {p.destination || ''} · {breakdown}
-              </p>
+            <div className="relative z-10 p-[14mm] text-white flex flex-col justify-between h-full min-h-[35vh]">
+              {/* Dedicated Top Header Bar so logo and text never coincide */}
+              <div className="flex items-center justify-between gap-4 mb-12">
+                {logo ? (
+                  <img src={logo} alt="Agency logo" className="h-16 max-w-[220px] object-contain bg-white/95 rounded-lg p-2.5 shadow-xl shrink-0" />
+                ) : (
+                  agencyName ? (
+                    <span className="tracking-[0.3em] uppercase text-sm font-semibold text-white/95 drop-shadow-md" style={{ fontFamily: fontSubhead }}>
+                      {agencyName}
+                    </span>
+                  ) : <span />
+                )}
+              </div>
+              
+              {/* Bottom Content for Title & Breakdown */}
+              <div className="mt-auto">
+                {logo && agencyName ? (
+                  <p className="tracking-[0.3em] uppercase mb-3 text-sm text-white/80 drop-shadow" style={{ fontFamily: fontSubhead }}>
+                    {agencyName}
+                  </p>
+                ) : null}
+                <h1 className="text-6xl md:text-8xl leading-none mb-6 font-medium drop-shadow-lg" style={{ fontFamily: fontHeadline }}>
+                  {safeText(p.name || 'Proposal')}
+                </h1>
+                <p className="text-xl md:text-2xl max-w-2xl text-white/90 font-light drop-shadow" style={{ fontFamily: fontSubhead }}>
+                  {safeText(p.destination || '')}{p.destination && breakdown ? ' · ' : ''}{breakdown}
+                </p>
+              </div>
             </div>
           </section>
         );

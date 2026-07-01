@@ -26,7 +26,13 @@ function A4Preview({ children, viewMode }) {
 
 export function Step7Preview({ proposalId, branding, customBlocks, proposalName }) {
   const toast = useToast();
-  const { proposal, items } = useProposalStore();
+  const { proposal, items, saveDraftBackground } = useProposalStore();
+
+  useEffect(() => {
+    if (!proposalId && typeof saveDraftBackground === 'function') {
+      saveDraftBackground().catch(() => {});
+    }
+  }, [proposalId, saveDraftBackground]);
   
   const json = useMemo(() => {
     if (!proposal) return null;
@@ -94,7 +100,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
       const res = await fetch('/api/pdf/generate', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposal_id: proposalId }) 
+        body: JSON.stringify({ proposal_id: proposalId, name: proposalName || 'proposal', style: style }) 
       });
       if (!res.ok) throw new Error('PDF generation failed');
       
@@ -117,7 +123,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
 
   const onPrint = () => window.print();
 
-  if (!proposalId) return <div className="glass-card p-xl rounded-xl text-center text-on-surface-variant" data-testid="preview-no-proposal">Save the client step first.</div>;
+  if (!proposalId) return <div className="glass-card p-xl rounded-xl text-center text-on-surface-variant" data-testid="preview-no-proposal"><span className="material-symbols-outlined animate-spin text-xl inline-block mr-2 align-middle">progress_activity</span>Auto-saving draft & preparing preview…</div>;
   if (!json) return <div className="glass-card p-xl rounded-xl text-center">Building preview…</div>;
 
   const merged = { ...json, proposal: { ...json.proposal, preferences: { ...(json.proposal?.preferences || {}), branding: { ...(json.proposal?.preferences?.branding || {}), ...branding } } } };
@@ -217,3 +223,5 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
     </div>
   );
 }
+
+export default Step7Preview;

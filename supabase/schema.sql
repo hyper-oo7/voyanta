@@ -385,6 +385,33 @@ create index if not exists flights_agency_idx on public.flights (agency_id);
 create index if not exists activities_agency_idx on public.activities (agency_id);
 create index if not exists templates_agency_idx on public.templates (agency_id);
 create index if not exists proposal_items_ref_idx on public.proposal_items (ref_id);
+create index if not exists proposals_agency_archived_created_idx on public.proposals (agency_id, is_archived, created_at desc);
+create index if not exists proposal_items_proposal_position_idx on public.proposal_items (proposal_id, position asc);
+
+-- HIGH PERFORMANCE RPC FOR DASHBOARD ANALYTICS --------------------------------
+create or replace function public.get_dashboard_summary(p_agency_id uuid)
+returns jsonb as $$
+declare
+  v_total_proposals int;
+  v_total_templates int;
+  v_active_clients int;
+begin
+  select count(*) into v_total_proposals 
+  from public.proposals where agency_id = p_agency_id and coalesce(is_archived, false) = false;
+
+  select count(*) into v_total_templates 
+  from public.templates where agency_id = p_agency_id;
+
+  select count(distinct client_name) into v_active_clients 
+  from public.proposals where agency_id = p_agency_id and client_name is not null and client_name != '';
+
+  return jsonb_build_object(
+    'totalProposals', v_total_proposals,
+    'totalTemplates', v_total_templates,
+    'activeClients', v_active_clients
+  );
+end;
+$$ language plpgsql stable security definer;
 
 -- SEED DATA -------------------------------------------------------------------
 -- Demo agency will act as the default agency for local dev/testing

@@ -17,8 +17,8 @@ import { Step5Costing } from './wizard/Step5Costing.jsx';
 import { lazy, Suspense } from 'react';
 
 // Lazy load the heavier wizard steps
-const Step6Branding = lazy(() => import('./wizard/Step6Branding.jsx'));
-const Step7Preview = lazy(() => import('./wizard/Step7Preview.jsx'));
+const Step6Branding = lazy(() => import('./wizard/Step6Branding.jsx').then(m => ({ default: m.default || m.Step6Branding })));
+const Step7Preview = lazy(() => import('./wizard/Step7Preview.jsx').then(m => ({ default: m.default || m.Step7Preview })));
 
 export default function ProposalWizard() {
   const wrapperRef = useRef(null);
@@ -59,7 +59,7 @@ export default function ProposalWizard() {
           if (!activeId && !idParam) {
             setBranding((b) => ({
               ...b,
-              agency_name: data.agency_name || 'Voyanta',
+              agency_name: data.agency_name || '',
               logo_url:    data.logo_url || '',
               address:     data.address || '',
               contact_email: data.contact_email || '',
@@ -401,38 +401,70 @@ export default function ProposalWizard() {
     }
   }, [saveDraftBackground, setParams, stepParam, toast, idParam]);
 
+  // Automatic background saving (auto-save debounced)
+  useEffect(() => {
+    if (!client?.customer_name && !client?.destination) return;
+    const timer = setTimeout(() => {
+      saveDraftBackground().catch(() => {});
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [client, branding, costingPrefs, items, saveDraftBackground]);
+
   const goStep = (n, idOverride) => setParams({ id: idOverride ?? proposal?.id ?? '', step: String(n) }, { replace: false });
+
+  const handleJump = async (n) => {
+    let pid = proposal?.id;
+    if (!pid) {
+      try {
+        const p = await saveDraftBackground();
+        pid = p?.id;
+        if (pid && pid !== idParam) {
+          setParams({ id: pid, step: String(n) }, { replace: false });
+          return;
+        }
+      } catch { /* ignore */ }
+    } else {
+      saveDraftBackground().catch(() => {});
+    }
+    goStep(n, pid);
+  };
 
   const onNext = async () => {
     let pid = proposal?.id;
-    if (!pid && stepParam === 1) {
+    if (!pid) {
       try {
-        const p = await saveDraft(false); // Wait for the save to get the ID
-        pid = p.id;
+        const p = await saveDraftBackground();
+        pid = p?.id;
       } catch {
         return;
       }
-    } else if (pid) {
-      // Background sync on next, don't await blocking
-      saveDraft(true).catch(() => {});
+    } else {
+      saveDraftBackground().catch(() => {});
     }
     goStep(Math.min(5, stepParam + 1), pid);
   };
-  const onPrev = () => {
-    if (proposal?.id) {
-      saveDraft(true).catch(() => {});
+
+  const onPrev = async () => {
+    let pid = proposal?.id;
+    if (!pid) {
+      try {
+        const p = await saveDraftBackground();
+        pid = p?.id;
+      } catch { /* ignore */ }
+    } else {
+      saveDraftBackground().catch(() => {});
     }
-    goStep(Math.max(1, stepParam - 1));
+    goStep(Math.max(1, stepParam - 1), pid);
   };
 
   const handleAddItems = async (kind, rows, toLabel, toUnit) => {
     let pid = proposal?.id;
     if (!pid) {
       try {
-        const p = await saveDraft(false);
+        const p = await saveDraftBackground();
         pid = p?.id;
       } catch {
-        toast.error('Save the client info first');
+        toast.error('Could not auto-save draft');
         return;
       }
     }
@@ -473,7 +505,7 @@ export default function ProposalWizard() {
     <div ref={wrapperRef} style={{ display: 'contents' }}>
       {mountNode && createPortal(
         <div className="space-y-lg" data-testid="proposal-wizard">
-          <ProgressBar step={stepParam} onJump={(n) => proposal?.id ? goStep(n, proposal.id) : (n === 1 ? null : toast.error('Save client info first'))} />
+          <ProgressBar step={stepParam} onJump={handleJump} />
 
           {status === 'loading' && !proposal ? (
             <div className="glass-card p-xl rounded-xl text-center">Loading Proposal…</div>

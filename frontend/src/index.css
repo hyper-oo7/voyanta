@@ -62,3 +62,30 @@
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   vertical-align: middle;
 }
+
+/* Elegant Dark Mode Palette */
+html.dark {
+  color-scheme: dark;
+}
+html.dark body, html.dark .bg-surface, html.dark .bg-background {
+  background-color: #0b0f17 !important;
+  color: #f0f6fc !important;
+}
+html.dark .bg-white, html.dark .bg-surface-container-lowest, html.dark .bg-surface-container-low, html.dark .bg-surface-container {
+  background-color: #141b28 !important;
+  color: #f0f6fc !important;
+  border-color: #2a3447 !important;
+}
+html.dark .bg-surface-container-high, html.dark .bg-surface-container-highest {
+  background-color: #1e293b !important;
+  color: #f0f6fc !important;
+}
+html.dark .text-on-surface, html.dark .text-on-surface-variant {
+  color: #e2e8f0 !important;
+}
+html.dark .border-outline-variant, html.dark .border-outline {
+  border-color: #2a3447 !important;
+}
+html.dark .shadow-sm, html.dark .shadow-md, html.dark .shadow-lg, html.dark .shadow-xl, html.dark .shadow-2xl {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
+}

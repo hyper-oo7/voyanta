@@ -11,6 +11,14 @@ function createResourceHook(resourceName, service) {
     const listQuery = useQuery({
       queryKey,
       queryFn: () => service.list(filters),
+      staleTime: 30000,
+      initialData: () => {
+        try {
+          const localKey = `voyanta_res_cache_${resourceName}:${JSON.stringify(filters)}`;
+          const cached = JSON.parse(localStorage.getItem(localKey) || 'null');
+          return cached || undefined;
+        } catch { return undefined; }
+      },
     });
 
     useEffect(() => {

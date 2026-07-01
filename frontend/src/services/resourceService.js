@@ -8,18 +8,28 @@ const listCache = new Map();
 export function makeResourceService(resource) {
   return {
     list: async (filters = {}, force = false) => {
-      if (!supabase) return [];
       const cacheKey = `${resource}:${JSON.stringify(filters)}`;
+      const localKey = `voyanta_res_cache_${cacheKey}`;
       if (!force && listCache.has(cacheKey)) return listCache.get(cacheKey);
 
+      if (!supabase) {
+        try { return JSON.parse(localStorage.getItem(localKey) || '[]'); } catch { return []; }
+      }
+
       let q = supabase.from(resource).select('*').order('created_at', { ascending: false });
-      // Optional simple filters: { agency_id, supplier, etc. }
       Object.entries(filters).forEach(([k, v]) => { if (v != null && v !== '') q = q.eq(k, v); });
       const { data, error } = await q;
-      if (error) throw error;
+      if (error) {
+        try {
+          const cached = JSON.parse(localStorage.getItem(localKey) || 'null');
+          if (cached) return cached;
+        } catch {}
+        throw error;
+      }
       
       const result = data || [];
       listCache.set(cacheKey, result);
+      try { localStorage.setItem(localKey, JSON.stringify(result)); } catch {}
       return result;
     },
     get: async (id) => {
@@ -86,26 +96,49 @@ const DEFAULT_SETTINGS = {
   primary_color: '#0b1c30'
 };
 
+export function sanitizeBrandingObject(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  const cleaned = {};
+  for (const k in raw) {
+    const val = raw[k];
+    if (k === 'notification_preferences' || k === 'custom_blocks' || k === 'itinerary' || k === 'preferences' || k === 'computed_totals' || k === 'items' || typeof val === 'boolean' || typeof val === 'number') {
+      cleaned[k] = val;
+      continue;
+    }
+    if (Array.isArray(val)) {
+      cleaned[k] = val.map(item => typeof item === 'object' && item !== null ? (item.url || item.src || item.text || item.label || JSON.stringify(item)) : String(item ?? '')).join('\n');
+    } else if (val && typeof val === 'object') {
+      cleaned[k] = String(val.url || val.src || val.image_url || val.text || val.content || val.label || JSON.stringify(val) || '');
+    } else {
+      cleaned[k] = val ?? '';
+    }
+  }
+  return cleaned;
+}
+
 export const settingsService = {
   get: async () => {
-    if (!supabase) return DEFAULT_SETTINGS;
+    if (!supabase) return sanitizeBrandingObject(DEFAULT_SETTINGS);
     try {
       const { data, error } = await supabase
         .from('templates')
         .select('*')
         .eq('category', 'AgencySettings')
-        .maybeSingle();
+        .limit(1);
 
       if (error) throw error;
       
+      const row = data && data.length > 0 ? data[0] : null;
+
       // If it doesn't exist, try loading from agencies as fallback, and create the row
-      if (!data) {
-        const { data: agencyData } = await supabase
+      if (!row) {
+        const { data: agencyRows } = await supabase
           .from('agencies')
           .select('*')
           .eq('id', DEFAULT_AGENCY_ID)
-          .maybeSingle();
+          .limit(1);
 
+        const agencyData = agencyRows && agencyRows.length > 0 ? agencyRows[0] : null;
         const initial = { ...DEFAULT_SETTINGS };
         if (agencyData) {
           initial.agency_name = agencyData.name || initial.agency_name;
@@ -113,68 +146,77 @@ export const settingsService = {
           initial.primary_color = agencyData.primary_color || initial.primary_color;
         }
 
+        const sanitizedInitial = sanitizeBrandingObject(initial);
+
         // Create the settings row
-        const { data: created } = await supabase
+        const { data: createdRows } = await supabase
           .from('templates')
           .insert({
             agency_id: DEFAULT_AGENCY_ID,
             name: 'Agency Settings',
             category: 'AgencySettings',
-            data: initial
+            data: sanitizedInitial
           })
           .select()
-          .single();
+          .limit(1);
 
-        return created ? { ...initial, ...created.data } : initial;
+        const created = createdRows && createdRows.length > 0 ? createdRows[0] : null;
+        return created ? sanitizeBrandingObject({ ...sanitizedInitial, ...created.data }) : sanitizedInitial;
       }
 
-      return { ...DEFAULT_SETTINGS, ...data.data };
+      return sanitizeBrandingObject({ ...DEFAULT_SETTINGS, ...row.data });
     } catch (e) {
       console.error('Failed to load settings:', e);
-      return DEFAULT_SETTINGS;
+      return sanitizeBrandingObject(DEFAULT_SETTINGS);
     }
   },
   update: async (settings) => {
-    if (!supabase) return settings;
+    const cleanSettings = sanitizeBrandingObject(settings);
+    if (!supabase) return cleanSettings;
     try {
       // 1. Try to update agencies table for standard fields so other parts can query it
       const agencyPatch = {
-        name: settings.agency_name,
-        logo_url: settings.logo_url || null,
-        primary_color: settings.primary_color || null,
+        name: cleanSettings.agency_name,
+        logo_url: cleanSettings.logo_url || null,
+        primary_color: cleanSettings.primary_color || null,
       };
       await supabase.from('agencies').update(agencyPatch).eq('id', DEFAULT_AGENCY_ID);
 
-      // 2. Fetch the AgencySettings template row
-      const { data: existing } = await supabase
+      // 2. Fetch the AgencySettings template row using limit(1) to avoid duplicate row errors
+      const { data: existingRows } = await supabase
         .from('templates')
         .select('*')
         .eq('category', 'AgencySettings')
-        .maybeSingle();
+        .limit(1);
+
+      const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
 
       if (existing) {
-        const { data, error } = await supabase
+        const { data: updatedRows, error } = await supabase
           .from('templates')
-          .update({ data: settings })
+          .update({ data: cleanSettings })
           .eq('id', existing.id)
           .select()
-          .single();
+          .limit(1);
         if (error) throw error;
-        cache.set('settings', data.data);
-        return data.data;
+        const updated = updatedRows && updatedRows.length > 0 ? updatedRows[0] : null;
+        if (updated) cache.set('settings', updated.data);
+        return updated ? sanitizeBrandingObject(updated.data) : cleanSettings;
       } else {
-        const { data, error } = await supabase
+        const { data: insertedRows, error } = await supabase
           .from('templates')
           .insert({
             agency_id: DEFAULT_AGENCY_ID,
             name: 'Agency Settings',
             category: 'AgencySettings',
-            data: settings
+            data: cleanSettings
           })
           .select()
-          .single();
+          .limit(1);
         if (error) throw error;
-        return data.data;
+        const inserted = insertedRows && insertedRows.length > 0 ? insertedRows[0] : null;
+        if (inserted) cache.set('settings', inserted.data);
+        return inserted ? sanitizeBrandingObject(inserted.data) : cleanSettings;
       }
     } catch (e) {
       console.error('Failed to update settings:', e);

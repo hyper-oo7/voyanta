@@ -99,14 +99,21 @@ export default function ProposalsListPage() {
           onShare={(p) => setShareProposal(p)}
           onExport={async (p) => {
             try {
-              const json = await buildProposalExport(p.id);
-              const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+              toast.info('Generating PDF...');
+              const style = p.preferences?.branding?.template_style || 'classic';
+              const res = await fetch('/api/pdf/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ proposal_id: p.id, name: p.name || 'proposal', style })
+              });
+              if (!res.ok) throw new Error('Failed to generate PDF');
+              const blob = await res.blob();
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a'); a.href = url;
-              a.download = `proposal-${p.name || p.id}.json`;
+              a.download = `${(p.name || 'proposal').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
               document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-              toast.success('Proposal Exported');
-            } catch (e) { toast.error(e.message || 'Export failed'); }
+              toast.success('PDF downloaded successfully');
+            } catch (e) { toast.error(e.message || 'PDF download failed'); }
           }}
         />
       </Portal>}
@@ -273,17 +280,17 @@ function ProposalCard({ proposal: p, highlightId, onView, onEdit, onDuplicate, o
             {p.date ? new Date(p.date).toLocaleDateString() : 'Just now'}
           </div>
         </div>
+      </div>
 
-        <div className="absolute top-4 right-4 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform translate-x-4 group-hover:translate-x-0">
-           <div className="flex flex-col gap-1 bg-white/95 backdrop-blur-xl rounded-2xl p-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-outline-variant">
-             <IconBtn icon="edit"       testid="edit-icon"      onClick={(e) => { e.stopPropagation(); onEdit(p); }} title="Edit in wizard" />
-             <IconBtn icon="content_copy" testid="duplicate-icon" onClick={(e) => { e.stopPropagation(); onDuplicate(p); }} title="Duplicate" />
-             <IconBtn icon="share"      testid="share-icon"     onClick={(e) => { e.stopPropagation(); onShare(p); }} title="Share" />
-             <IconBtn icon="download"   testid="export-icon"    onClick={(e) => { e.stopPropagation(); onExport(p); }} title="Export JSON" />
-             <div className="w-full h-px bg-outline-variant my-1" />
-             <IconBtn icon="delete"     testid="delete-icon"    onClick={(e) => { e.stopPropagation(); onDelete(p); }} title="Delete" className="text-error hover:bg-error-container hover:text-error" />
-           </div>
-        </div>
+      <div className="absolute top-4 right-4 z-30 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform translate-x-4 group-hover:translate-x-0">
+         <div className="flex flex-col gap-1 bg-white/95 backdrop-blur-xl rounded-2xl p-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-outline-variant">
+           <IconBtn icon="edit"       testid="edit-icon"      onClick={(e) => { e.stopPropagation(); onEdit(p); }} title="Edit in wizard" />
+           <IconBtn icon="content_copy" testid="duplicate-icon" onClick={(e) => { e.stopPropagation(); onDuplicate(p); }} title="Duplicate" />
+           <IconBtn icon="share"      testid="share-icon"     onClick={(e) => { e.stopPropagation(); onShare(p); }} title="Share" />
+           <IconBtn icon="download"   testid="export-icon"    onClick={(e) => { e.stopPropagation(); onExport(p); }} title="Download PDF" />
+           <div className="w-full h-px bg-outline-variant my-1" />
+           <IconBtn icon="delete"     testid="delete-icon"    onClick={(e) => { e.stopPropagation(); onDelete(p); }} title="Delete" className="text-error hover:bg-error-container hover:text-error" />
+         </div>
       </div>
     </div>
   );
@@ -376,26 +383,12 @@ function Field({ label, value, onChange, readOnly, type = 'text', testid }) {
 }
 
 function ShareModal({ proposal, onClose }) {
-  const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    settingsService.get().then(s => {
-      setSettings(s);
-      setLoading(false);
-    });
+    settingsService.get().then(s => setSettings(s)).catch(() => {});
   }, []);
-  
-  if (loading) {
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm">
-        <div className="bg-white p-xl rounded-2xl shadow-2xl flex items-center gap-sm">
-          <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
-          <span className="font-label-md text-on-surface">Loading sharing options...</span>
-        </div>
-      </div>
-    );
-  }
 
   const previewUrl = `${window.location.origin}/proposals/wizard?id=${encodeURIComponent(proposal.id)}&step=7`;
   const text = `Hi! Here is the travel proposal for ${proposal.name}. View it here: ${previewUrl}`;
@@ -421,6 +414,23 @@ function ShareModal({ proposal, onClose }) {
         </p>
 
         <div className="flex flex-col gap-md">
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(previewUrl);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}
+            className="flex items-center gap-md p-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-xl transition-colors w-full text-left cursor-pointer group"
+          >
+            <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
+              <span className="material-symbols-outlined">{copied ? 'check' : 'link'}</span>
+            </div>
+            <div>
+              <div className="font-label-md font-bold text-on-surface">{copied ? 'Link Copied!' : 'Copy Client Link'}</div>
+              <div className="font-label-sm text-on-surface-variant">Copy direct link to send anywhere</div>
+            </div>
+          </button>
+
           <a href={wpLink} target="_blank" rel="noreferrer" className="flex items-center gap-md p-md bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/30 rounded-xl transition-colors no-underline group">
             <div className="w-10 h-10 bg-[#25D366] text-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
               <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="css-i6dzq1"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>

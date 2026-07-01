@@ -28,13 +28,26 @@ export default function DashboardPage() {
           <h2 className="font-headline-lg text-[32px] font-bold text-on-surface m-0 tracking-tight">Agent Dashboard</h2>
           <p className="font-body-lg text-on-surface-variant m-0 mt-xs">Your concierge operations at a glance.</p>
         </div>
-        <button 
-          onClick={() => navigate('/proposals/wizard')}
-          className="flex items-center gap-sm px-xl py-md bg-on-surface text-surface rounded-lg font-label-md hover:opacity-90 active:scale-[0.98] transition-all border-none"
-        >
-          <span className="material-symbols-outlined text-[20px]">add</span>
-          Create New Proposal
-        </button>
+        <div className="flex items-center gap-md">
+          <button 
+            onClick={() => {
+              const isDark = document.documentElement.classList.toggle('dark');
+              localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            }}
+            className="flex items-center gap-sm px-lg py-md bg-surface-container text-on-surface rounded-lg font-label-md hover:bg-surface-container-high transition-all border border-outline-variant shadow-sm cursor-pointer"
+            title="Toggle Dark Mode"
+          >
+            <span className="material-symbols-outlined text-[20px]">dark_mode</span>
+            Theme
+          </button>
+          <button 
+            onClick={() => navigate('/proposals/wizard')}
+            className="flex items-center gap-sm px-xl py-md bg-on-surface text-surface rounded-lg font-label-md hover:opacity-90 active:scale-[0.98] transition-all border-none shadow-md cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[20px]">add</span>
+            Create New Proposal
+          </button>
+        </div>
       </div>
 
       {/* Top Stat Cards */}

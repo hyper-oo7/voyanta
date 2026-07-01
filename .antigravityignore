@@ -1,0 +1,5 @@
+# Ignore rules for search tools
+node_modules/
+dist/
+build/
+.git/

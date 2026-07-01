@@ -9,6 +9,13 @@ export function useProposals() {
   const proposalsQuery = useQuery({
     queryKey: ['proposals'],
     queryFn: fetchProposals,
+    staleTime: 30000,
+    initialData: () => {
+      try {
+        const cached = JSON.parse(localStorage.getItem('voyanta_proposals_list_cache') || 'null');
+        return cached || undefined;
+      } catch { return undefined; }
+    },
   });
 
   useEffect(() => {

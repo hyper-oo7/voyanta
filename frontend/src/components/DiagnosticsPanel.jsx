@@ -28,12 +28,12 @@ export default function DiagnosticsPanel() {
     return () => { isActive = false; clearInterval(interval); };
   }, [open]);
 
-  if (import.meta.env.MODE !== 'development') {
+  if (import.meta.env.MODE !== 'development' || (typeof window !== 'undefined' && window.location.pathname.includes('/print'))) {
     return null;
   }
 
   return (
-    <div className="fixed bottom-4 left-4 z-50">
+    <div className="fixed bottom-4 left-4 z-50 print:hidden no-print">
       {!open ? (
         <button 
           onClick={() => setOpen(true)}

@@ -13,6 +13,7 @@ import express from 'express';
 import cors from 'cors';
 import puppeteer from 'puppeteer';
 import rateLimit from 'express-rate-limit';
+import fs from 'fs';
 
 const PORT = process.env.PDF_PORT || 8002;
 const app = express();
@@ -21,8 +22,7 @@ app.use(express.json({ limit: '50mb' })); // Increased limit for large base64 im
 
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 3, // Limit each user to 3 requests per 1 minute
-  keyGenerator: (req) => req.headers['x-user-id'] || req.ip,
+  max: 30, // Increased limit for normal usage and testing
   message: { error: 'Too many PDF generation requests, please try again after a minute' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -33,8 +33,34 @@ app.use('/generate', limiter);
 let browserPromise = null;
 async function getBrowser() {
   if (!browserPromise) {
+    let execPath = undefined;
+    try {
+      const p = puppeteer.executablePath();
+      if (p && fs.existsSync(p)) execPath = p;
+    } catch {}
+
+    if (!execPath) {
+      const candidates = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+      ];
+      for (const c of candidates) {
+        if (fs.existsSync(c)) {
+          execPath = c;
+          break;
+        }
+      }
+    }
+
+    console.log(`[pdf-service] Launching browser with executablePath: ${execPath || 'default (bundled)'}`);
+
     browserPromise = puppeteer.launch({
       headless: 'new',
+      executablePath: execPath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -50,10 +76,10 @@ async function getBrowser() {
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'voyanta-pdf', port: PORT }));
 
 app.post('/generate', async (req, res) => {
-  const { html, name } = req.body || {};
-  if (!html) return res.status(400).json({ error: 'missing html payload' });
+  const { html, name, proposal_id, style } = req.body || {};
+  if (!html && !proposal_id) return res.status(400).json({ error: 'missing html or proposal_id payload' });
   
-  if (html.length > 10 * 1024 * 1024) {
+  if (html && html.length > 10 * 1024 * 1024) {
     return res.status(413).json({ error: 'HTML payload exceeds 10MB limit' });
   }
 
@@ -66,7 +92,18 @@ app.post('/generate', async (req, res) => {
     // Set viewport to A4 dimensions (at 96 DPI: 794x1123)
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
     
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
+    if (proposal_id) {
+      const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const styleParam = style ? `?style=${encodeURIComponent(style)}` : '';
+      const targetUrl = `${FRONTEND_URL}/proposals/${proposal_id}/print${styleParam}`;
+      console.log(`[pdf-service] Navigating to ${targetUrl}`);
+      await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      await page.waitForSelector('#pdf-render-root', { timeout: 10000 }).catch(() => {});
+      await new Promise(r => setTimeout(r, 500));
+    } else {
+      await page.setContent(html, { waitUntil: 'networkidle2', timeout: 30000 });
+      await new Promise(r => setTimeout(r, 300));
+    }
     
     const pdf = await page.pdf({
       format: 'A4',
@@ -77,7 +114,7 @@ app.post('/generate', async (req, res) => {
     });
     
     const buf = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
-    const filename = (name || 'proposal').replace(/[^a-z0-9._-]+/gi, '-');
+    const filename = (name || proposal_id || 'proposal').replace(/[^a-z0-9._-]+/gi, '-');
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', String(buf.length));

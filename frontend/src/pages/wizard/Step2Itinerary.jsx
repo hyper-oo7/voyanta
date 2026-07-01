@@ -3,9 +3,11 @@ import { DayBlock } from '../../components/timeline/DayBlock.jsx';
 import { hotelsService, flightsService, activitiesService } from '../../services/resourceService.js';
 import { addItem, removeItem } from '../../services/proposalItemService.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import { useProposalStore } from '../../store/proposalStore.js';
 
 export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItinerary, client, items, setItems, proposalCurrency, addItemsOptimistic, saveDraft }) {
   const toast = useToast();
+  const { saveDraftBackground } = useProposalStore();
   const days = proposal?.itinerary?.days || [];
   
   const [activeTab, setActiveTab] = useState('itinerary');
@@ -89,17 +91,14 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
   const onAddItemToDay = async (resourceItem, kind, dayIndex) => {
     let pid = proposal?.id;
-    if (!pid && typeof saveDraft === 'function') {
+    if (!pid) {
       try {
-        const p = await saveDraft(false);
+        const p = typeof saveDraft === 'function' ? await saveDraft(true) : await saveDraftBackground();
         pid = p?.id;
       } catch {
-        toast.error('Please save client details first');
+        toast.error('Could not auto-save draft');
         return;
       }
-    } else if (!pid) {
-      toast.error('Save the client info first');
-      return;
     }
     
     let label = '';
@@ -121,11 +120,17 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       await addItemsOptimistic([newItem]);
 
       let blockData = null;
+      const baseMeta = {
+        id: resourceItem.id,
+        rawItem: resourceItem,
+        price: Number(resourceItem.price || resourceItem.price_per_night || resourceItem.cost || 0)
+      };
       if (kind === 'hotel') {
         blockData = {
           id: crypto.randomUUID(),
           type: 'hotel',
           data: {
+            ...baseMeta,
             name: resourceItem.name,
             details: `${resourceItem.location || ''} ${resourceItem.category ? `· ${resourceItem.category}` : ''}`.trim(),
             image_url: resourceItem.cover_image || resourceItem.image_url || ''
@@ -136,6 +141,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           id: crypto.randomUUID(),
           type: 'flight',
           data: {
+            ...baseMeta,
             name: `${resourceItem.airline || ''} ${resourceItem.flight_no || ''}`.trim(),
             details: `${resourceItem.origin || ''} to ${resourceItem.destination || ''} · ${resourceItem.class || ''}`.trim(),
             image_url: resourceItem.image_url || ''
@@ -146,6 +152,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           id: crypto.randomUUID(),
           type: 'activity',
           data: {
+            ...baseMeta,
             name: resourceItem.name,
             details: `${resourceItem.location || ''} ${resourceItem.duration_hours ? `· ${resourceItem.duration_hours}h` : ''}`.trim(),
             image_url: resourceItem.image_url || ''

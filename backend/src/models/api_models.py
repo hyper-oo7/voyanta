@@ -16,7 +16,10 @@ class ParseItineraryInput(BaseModel):
     text: str
 
 class PDFGenerateRequest(BaseModel):
-    proposal_id: str
+    proposal_id: Optional[str] = None
+    html: Optional[str] = None
+    name: Optional[str] = None
+    style: Optional[str] = None
 
 class PPTGenerateRequest(BaseModel):
     proposal: dict = Field(default_factory=dict)

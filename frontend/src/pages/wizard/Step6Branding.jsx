@@ -54,7 +54,7 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
       <div className="grid grid-cols-1 gap-md">
         <div>
           <label className="font-label-md text-label-md text-on-surface block mb-xs">Template Style</label>
-          <select value={branding.template_style} onChange={upd('template_style')} data-testid="brand-tpl-style"
+          <select value={safeStr(branding?.template_style || 'elegant')} onChange={upd('template_style')} data-testid="brand-tpl-style"
             className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
             <option value="elegant">Elegant (cream, serif)</option>
             <option value="dark">Dark Premium</option>
@@ -63,36 +63,39 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-        <LogoUploader value={branding.logo_url} onChange={(v) => setBranding((s) => ({ ...s, logo_url: v }))} label="Agency Logo" testid="brand-logo-uploader" folder="logos" />
-        <LogoUploader value={branding.cover_image_url} onChange={(v) => setBranding((s) => ({ ...s, cover_image_url: v }))} label="Cover Image" testid="brand-cover-uploader" folder="covers" />
+        <LogoUploader value={branding?.logo_url} onChange={(v) => setBranding((s) => ({ ...s, logo_url: v }))} label="Agency Logo" testid="brand-logo-uploader" folder="logos" />
+        <LogoUploader value={branding?.cover_image_url} onChange={(v) => setBranding((s) => ({ ...s, cover_image_url: v }))} label="Cover Image" testid="brand-cover-uploader" folder="covers" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-        <Field label="Agency Name" value={branding.agency_name} onChange={upd('agency_name')} testid="brand-name" />
-        <Field label="Address"     value={branding.address}     onChange={upd('address')}     testid="brand-address" />
-        <Field label="Contact Email" type="email" value={branding.contact_email} onChange={upd('contact_email')} testid="brand-email" />
-        <Field label="Contact Phone" value={branding.contact_phone} onChange={upd('contact_phone')} testid="brand-phone" />
-        <Field label="Website" value={branding.website} onChange={upd('website')} testid="brand-website" />
-        <Field label="Facebook"  value={branding.social_facebook}  onChange={upd('social_facebook')}  testid="brand-fb" />
-        <Field label="Instagram" value={branding.social_instagram} onChange={upd('social_instagram')} testid="brand-ig" />
-        <Field label="LinkedIn"  value={branding.social_linkedin}  onChange={upd('social_linkedin')}  testid="brand-li" />
+        <Field label="Agency Name" value={branding?.agency_name} onChange={upd('agency_name')} testid="brand-name" />
+        <Field label="Address"     value={branding?.address}     onChange={upd('address')}     testid="brand-address" />
+        <Field label="Contact Email" type="email" value={branding?.contact_email} onChange={upd('contact_email')} testid="brand-email" />
+        <Field label="Contact Phone" value={branding?.contact_phone} onChange={upd('contact_phone')} testid="brand-phone" />
+        <Field label="Website" value={branding?.website} onChange={upd('website')} testid="brand-website" />
+        <Field label="Facebook"  value={branding?.social_facebook}  onChange={upd('social_facebook')}  testid="brand-fb" />
+        <Field label="Instagram" value={branding?.social_instagram} onChange={upd('social_instagram')} testid="brand-ig" />
+        <Field label="LinkedIn"  value={branding?.social_linkedin}  onChange={upd('social_linkedin')}  testid="brand-li" />
       </div>
-      <Textarea label="Highlights" value={branding.highlights} onChange={upd('highlights')} testid="brand-highlights" placeholder="Bullet points of the trip's standout moments…" />
-      <TextareaWithAI label="What's Included" value={branding.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" onAI={aiDraft('inclusions', 'inclusions')} />
-      <TextareaWithAI label="What's Excluded" value={branding.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" onAI={aiDraft('exclusions', 'exclusions')} />
-      <TextareaWithAI label="Terms of Payment" value={branding.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" onAI={aiDraft('terms_of_payment', 'terms')} />
+      <Textarea label="Highlights" value={branding?.highlights} onChange={upd('highlights')} testid="brand-highlights" placeholder="Bullet points of the trip's standout moments…" />
+      <TextareaWithAI label="What's Included" value={branding?.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" onAI={aiDraft('inclusions', 'inclusions')} />
+      <TextareaWithAI label="What's Excluded" value={branding?.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" onAI={aiDraft('exclusions', 'exclusions')} />
+      <TextareaWithAI label="Terms of Payment" value={branding?.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" onAI={aiDraft('terms_of_payment', 'terms')} />
       
       {customBlocks && customBlocks.length > 0 && (
         <div className="pt-md border-t border-outline-variant space-y-md">
           <h4 className="font-headline-sm text-headline-sm text-primary">Custom Sections</h4>
-          {customBlocks.map(block => (
-            <div key={block.id}>
-              {block.type === 'text' ? (
-                 <Textarea label={block.label} value={branding[block.id]} onChange={upd(block.id)} testid={`brand-${block.id}`} placeholder={`Enter content for ${block.label}...`} />
-              ) : (
-                 <LogoUploader value={branding[block.id]} onChange={(v) => setBranding(s => ({ ...s, [block.id]: v }))} label={block.label} testid={`brand-${block.id}`} folder="custom" />
-              )}
-            </div>
-          ))}
+          {customBlocks.map((block, idx) => {
+            const bId = String(block?.id || block?.label || idx);
+            return (
+              <div key={bId}>
+                {block?.type === 'text' ? (
+                   <Textarea label={block?.label || 'Custom'} value={branding?.[bId]} onChange={upd(bId)} testid={`brand-${bId}`} placeholder={`Enter content for ${block?.label || 'Custom'}...`} />
+                ) : (
+                   <LogoUploader value={branding?.[bId]} onChange={(v) => setBranding(s => ({ ...s, [bId]: v }))} label={block?.label || 'Custom Logo'} testid={`brand-${bId}`} folder="custom" />
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -100,3 +103,5 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
     </div>
   );
 }
+
+export default Step6Branding;
