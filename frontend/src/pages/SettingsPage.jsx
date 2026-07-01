@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext.jsx';
 import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
 import { useToast } from '../context/ToastContext.jsx';
+import { settingsService } from '../services/resourceService.js';
 
 // ---- Fetch Functions ----
 const fetchAgency = async () => {
@@ -45,26 +46,20 @@ export default function SettingsPage() {
         <h2 className="text-xl font-serif font-bold text-on-surface mb-6">Settings</h2>
         
         <NavButton active={activeTab === 'plan'} onClick={() => setActiveTab('plan')} icon="⭐">
-          Plan & Billing
+          My Plan & Billing
         </NavButton>
         <NavButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon="👤">
           My Profile
         </NavButton>
-
-        {isEnterprise && (
-          <>
-            <div className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mt-6 mb-2">Enterprise</div>
-            <NavButton active={activeTab === 'team'} onClick={() => setActiveTab('team')} icon="👥">
-              Team Management
-            </NavButton>
-            <NavButton active={activeTab === 'branding'} onClick={() => setActiveTab('branding')} icon="🎨">
-              White-label Branding
-            </NavButton>
-            <NavButton active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} icon="📋">
-              Activity Logs
-            </NavButton>
-          </>
-        )}
+        <NavButton active={activeTab === 'branding'} onClick={() => setActiveTab('branding')} icon="🎨">
+          Agency Branding
+        </NavButton>
+        <NavButton active={activeTab === 'team'} onClick={() => setActiveTab('team')} icon="👥">
+          Team Management
+        </NavButton>
+        <NavButton active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} icon="📋">
+          Activity Logs
+        </NavButton>
       </div>
 
       {/* Main Content Area */}
@@ -80,9 +75,9 @@ export default function SettingsPage() {
           >
             {activeTab === 'plan' && <PlanSettings subscription={subscription} />}
             {activeTab === 'profile' && <ProfileSettings user={user} signOut={signOut} isDemo={isDemo} />}
-            {activeTab === 'team' && isEnterprise && <TeamSettings />}
-            {activeTab === 'branding' && isEnterprise && <BrandingSettings />}
-            {activeTab === 'logs' && isEnterprise && <ActivityLogs />}
+            {activeTab === 'branding' && <BrandingSettings />}
+            {activeTab === 'team' && <TeamSettings />}
+            {activeTab === 'logs' && <ActivityLogs />}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -218,26 +213,81 @@ function TeamSettings() {
 }
 
 function BrandingSettings() {
-  const { data: agency } = useQuery({ queryKey: ['agency'], queryFn: fetchAgency });
-  
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const { data: settings, isLoading } = useQuery({ queryKey: ['agency_settings'], queryFn: () => settingsService.get() });
+  const [form, setForm] = useState(null);
+
+  const current = form || settings || {};
+  const upd = (k) => (e) => setForm((s) => ({ ...(s || settings || {}), [k]: e.target.value }));
+
+  const mutation = useMutation({
+    mutationFn: (newSettings) => settingsService.update(newSettings),
+    onSuccess: () => {
+      toast.success('Agency branding updated successfully!');
+      queryClient.invalidateQueries({ queryKey: ['agency_settings'] });
+    },
+    onError: (err) => toast.error('Failed to save branding: ' + err.message)
+  });
+
+  if (isLoading) return <div>Loading agency branding...</div>;
+
   return (
     <div className="space-y-6">
-      <h3 className="text-2xl font-serif font-bold">White-label Branding</h3>
+      <h3 className="text-2xl font-serif font-bold">Agency Branding & Default Template</h3>
       <div className="p-6 bg-surface-container rounded-xl border border-outline-variant space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-on-surface-variant mb-1">Agency Name</label>
-          <input type="text" defaultValue={agency?.name || ''} className="w-full px-4 py-2 border border-outline rounded-lg" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-on-surface-variant mb-1">Primary Color (Hex)</label>
-          <div className="flex gap-4">
-            <input type="color" defaultValue={agency?.primary_color || '#000000'} className="h-10 w-10 p-1 rounded border border-outline cursor-pointer" />
-            <input type="text" defaultValue={agency?.primary_color || '#000000'} className="flex-1 px-4 py-2 border border-outline rounded-lg font-mono" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-on-surface-variant mb-1">Agency Name</label>
+            <input type="text" value={current.agency_name || ''} onChange={upd('agency_name')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-on-surface-variant mb-1">Primary Color (Hex)</label>
+            <div className="flex gap-4">
+              <input type="color" value={current.primary_color || '#0b1c30'} onChange={upd('primary_color')} className="h-10 w-10 p-1 rounded border border-outline cursor-pointer bg-white" />
+              <input type="text" value={current.primary_color || '#0b1c30'} onChange={upd('primary_color')} className="flex-1 px-4 py-2 border border-outline rounded-lg font-mono bg-white" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-on-surface-variant mb-1">Logo URL</label>
+            <input type="text" value={current.logo_url || ''} onChange={upd('logo_url')} placeholder="https://..." className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-on-surface-variant mb-1">Cover Image URL</label>
+            <input type="text" value={current.cover_image_url || ''} onChange={upd('cover_image_url')} placeholder="https://..." className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-on-surface-variant mb-1">Contact Email</label>
+            <input type="email" value={current.contact_email || ''} onChange={upd('contact_email')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-on-surface-variant mb-1">Contact Phone</label>
+            <input type="text" value={current.contact_phone || ''} onChange={upd('contact_phone')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
           </div>
         </div>
+        <div>
+          <label className="block text-sm font-medium text-on-surface-variant mb-1">Website</label>
+          <input type="text" value={current.website || ''} onChange={upd('website')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-on-surface-variant mb-1">Address</label>
+          <input type="text" value={current.address || ''} onChange={upd('address')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-on-surface-variant mb-1">Default Inclusions</label>
+          <textarea rows="3" value={current.inclusions || ''} onChange={upd('inclusions')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-on-surface-variant mb-1">Default Exclusions</label>
+          <textarea rows="3" value={current.exclusions || ''} onChange={upd('exclusions')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-on-surface-variant mb-1">Default Terms of Payment</label>
+          <textarea rows="3" value={current.terms_of_payment || ''} onChange={upd('terms_of_payment')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+        </div>
         <div className="pt-4">
-          <button className="px-6 py-2 bg-primary text-on-primary rounded-lg font-medium shadow-md hover:bg-primary/90 transition-colors">
-            Save Brand Guidelines
+          <button onClick={() => mutation.mutate(current)} disabled={mutation.isPending} className="px-6 py-2 bg-primary text-on-primary rounded-lg font-medium shadow-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+            {mutation.isPending ? 'Saving...' : 'Save Brand Guidelines'}
           </button>
         </div>
       </div>

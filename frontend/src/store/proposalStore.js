@@ -79,6 +79,19 @@ export const useProposalStore = create((set, get) => ({
         get().setActiveId(p.id);
         const b = p.brief || {};
         
+        const rawBranding = { ...get().branding, ...(p.preferences?.branding || {}) };
+        const cleanBranding = {};
+        for (const k in rawBranding) {
+          const val = rawBranding[k];
+          if (Array.isArray(val)) {
+            cleanBranding[k] = val.map(item => typeof item === 'object' ? JSON.stringify(item) : String(item)).join('\n');
+          } else if (val && typeof val === 'object' && !Array.isArray(val)) {
+            cleanBranding[k] = JSON.stringify(val);
+          } else {
+            cleanBranding[k] = val ?? '';
+          }
+        }
+
         set({
           proposal: p,
           items: its,
@@ -104,7 +117,7 @@ export const useProposalStore = create((set, get) => ({
             itinerary_id: b.itinerary_id || '',
             tour_type: b.tour_type || '',
           },
-          branding: { ...get().branding, ...(p.preferences?.branding || {}) },
+          branding: cleanBranding,
           costingPrefs: { ...get().costingPrefs, ...(p.preferences?.costing || {}) },
           status: 'idle'
         });

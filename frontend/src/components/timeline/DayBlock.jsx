@@ -1,8 +1,70 @@
-import { memo } from 'react';
-import LogoUploader from '../LogoUploader.jsx';
+import { useState, memo } from 'react';
+import { 
+  DndContext, 
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import SortableContentBlock from '../itinerary/SortableContentBlock.jsx';
+import ResourcePickerModal from '../itinerary/ResourcePickerModal.jsx';
 
-export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, removeDay, items = [], onRemoveItem }) {
+export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, removeDay, items = [], onRemoveItem, onAddResourceItem }) {
   const upd = (key) => (e) => updateDay(index, { [key]: e.target.value });
+  const [showBlockMenu, setShowBlockMenu] = useState(false);
+  const [pickerType, setPickerType] = useState(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const addContentBlock = (type, presetData = {}) => {
+    let defaultData = { ...presetData };
+    if (type === 'heading') defaultData = { text: 'New Heading', ...presetData };
+    if (type === 'text') defaultData = { text: '', ...presetData };
+    if (type === 'image') defaultData = { url: '', ...presetData };
+    if (type === 'gallery') defaultData = { urls: '', ...presetData };
+    if (type === 'hotel') defaultData = { name: '', details: '', image_url: '', ...presetData };
+    if (type === 'activity') defaultData = { name: '', details: '', image_url: '', ...presetData };
+    if (type === 'flight') defaultData = { name: '', details: '', image_url: '', ...presetData };
+    if (type === 'transfer') defaultData = { name: '', details: '', image_url: '', ...presetData };
+    if (type === 'meals') defaultData = { name: '', details: '', image_url: '', ...presetData };
+
+    const newBlock = { id: crypto.randomUUID(), type, data: defaultData };
+    const currentContent = Array.isArray(dayData.content) ? [...dayData.content] : [];
+    updateDay(index, { content: [...currentContent, newBlock] });
+    setShowBlockMenu(false);
+  };
+
+  const updateContentBlock = (blockId, newData) => {
+    const currentContent = Array.isArray(dayData.content) ? [...dayData.content] : [];
+    const nextContent = currentContent.map(b => b.id === blockId ? { ...b, data: newData } : b);
+    updateDay(index, { content: nextContent });
+  };
+
+  const removeContentBlock = (blockId) => {
+    const currentContent = Array.isArray(dayData.content) ? [...dayData.content] : [];
+    const nextContent = currentContent.filter(b => b.id !== blockId);
+    updateDay(index, { content: nextContent });
+  };
+
+  const handleDragEndContent = (event) => {
+    const { active, over } = event;
+    if (active && over && active.id !== over.id) {
+      const currentContent = Array.isArray(dayData.content) ? [...dayData.content] : [];
+      const oldIndex = currentContent.findIndex((item) => item.id === active.id);
+      const newIndex = currentContent.findIndex((item) => item.id === over.id);
+      updateDay(index, { content: arrayMove(currentContent, oldIndex, newIndex) });
+    }
+  };
 
   return (
     <div className="relative pl-xl py-md group" data-testid={`day-block-${index}`}>
@@ -29,24 +91,59 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
           </button>
         </div>
         
-        <div className="flex flex-col lg:flex-row gap-lg pt-sm">
-          <div className="flex-1 min-w-0">
-            <textarea 
-              value={dayData.description || ''} 
-              onChange={upd('description')} 
-              placeholder="Describe the magical experiences planned for this day in an editorial style..."
-              rows={5}
-              className="w-full h-full p-md bg-surface-container-lowest border border-outline-variant rounded-xl font-body-md focus:ring-2 focus:ring-primary/20 resize-none"
-            />
+        {/* Rich Content Blocks */}
+        <div className="pt-md border-t border-outline-variant/50 space-y-3">
+          <div className="flex justify-between items-center">
+            <h5 className="font-label-sm text-on-surface-variant uppercase tracking-widest">Rich Content Blocks</h5>
+            <div className="relative">
+              <button 
+                onClick={() => setShowBlockMenu(!showBlockMenu)}
+                className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-lg transition-colors font-semibold"
+              >
+                <span className="material-symbols-outlined text-[16px]">add</span> Add Block
+              </button>
+
+              {showBlockMenu && (
+                <div className="absolute bottom-full right-0 mb-1 w-56 bg-white border border-outline-variant rounded-xl shadow-xl z-[200] max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+                  <div className="p-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-lowest border-b border-outline-variant/50">Basic Blocks</div>
+                  <div className="p-1">
+                    <BlockMenuItem icon="title" label="Heading" onClick={() => addContentBlock('heading')} />
+                    <BlockMenuItem icon="notes" label="Text" onClick={() => addContentBlock('text')} />
+                    <BlockMenuItem icon="image" label="Image" onClick={() => addContentBlock('image')} />
+                    <BlockMenuItem icon="photo_library" label="Gallery" onClick={() => addContentBlock('gallery')} />
+                  </div>
+                  <div className="p-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-lowest border-b border-t border-outline-variant/50">Travel Elements</div>
+                  <div className="p-1">
+                    <BlockMenuItem icon="hotel" label="Hotel" onClick={() => { setPickerType('hotel'); setShowBlockMenu(false); }} />
+                    <BlockMenuItem icon="local_activity" label="Activity" onClick={() => { setPickerType('activity'); setShowBlockMenu(false); }} />
+                    <BlockMenuItem icon="flight" label="Flight" onClick={() => { setPickerType('flight'); setShowBlockMenu(false); }} />
+                    <BlockMenuItem icon="directions_car" label="Transfer" onClick={() => addContentBlock('transfer')} />
+                    <BlockMenuItem icon="restaurant" label="Meals" onClick={() => addContentBlock('meals')} />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="w-full lg:w-72 flex-shrink-0 min-w-0 flex flex-col">
-            <LogoUploader 
-              value={dayData.image_url} 
-              onChange={(url) => updateDay(index, { image_url: url })} 
-              label="Day Cover Photo" 
-              folder="itineraries" 
-            />
-          </div>
+
+          {(dayData.content || []).length > 0 ? (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndContent}>
+              <SortableContext items={(dayData.content || []).map(c => c.id)} strategy={verticalListSortingStrategy}>
+                {(dayData.content || []).map(item => (
+                  <SortableContentBlock 
+                    key={item.id} 
+                    id={item.id} 
+                    item={item} 
+                    onChange={updateContentBlock}
+                    onRemove={removeContentBlock}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          ) : (
+            <div className="text-center py-4 border border-dashed border-outline-variant/60 rounded-xl text-on-surface-variant/60 text-xs">
+              No rich content blocks added yet. Click "+ Add Block" above or use the library sidebar.
+            </div>
+          )}
         </div>
 
         {/* Nested Items */}
@@ -71,6 +168,33 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
           </div>
         )}
       </div>
+
+      {pickerType && (
+        <ResourcePickerModal 
+          type={pickerType} 
+          onSelect={(data) => {
+            if (onAddResourceItem && data.rawItem) {
+              onAddResourceItem(data.rawItem, pickerType, index);
+            } else {
+              addContentBlock(pickerType, data);
+            }
+            setPickerType(null);
+          }} 
+          onClose={() => setPickerType(null)} 
+        />
+      )}
     </div>
   );
 });
+
+function BlockMenuItem({ icon, label, onClick }) {
+  return (
+    <button 
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-surface-container-low text-on-surface transition-colors text-left"
+    >
+      <span className="material-symbols-outlined text-on-surface-variant text-[18px]">{icon}</span>
+      <span className="font-semibold text-xs">{label}</span>
+    </button>
+  );
+}

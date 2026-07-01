@@ -4,7 +4,7 @@ import { hotelsService, flightsService, activitiesService } from '../../services
 import { addItem, removeItem } from '../../services/proposalItemService.js';
 import { useToast } from '../../context/ToastContext.jsx';
 
-export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItinerary, client, items, setItems, proposalCurrency, addItemsOptimistic }) {
+export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItinerary, client, items, setItems, proposalCurrency, addItemsOptimistic, saveDraft }) {
   const toast = useToast();
   const days = proposal?.itinerary?.days || [];
   
@@ -88,7 +88,19 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   };
 
   const onAddItemToDay = async (resourceItem, kind, dayIndex) => {
-    if (!proposal?.id) { toast.error('Save the client info first'); return; }
+    let pid = proposal?.id;
+    if (!pid && typeof saveDraft === 'function') {
+      try {
+        const p = await saveDraft(false);
+        pid = p?.id;
+      } catch {
+        toast.error('Please save client details first');
+        return;
+      }
+    } else if (!pid) {
+      toast.error('Save the client info first');
+      return;
+    }
     
     let label = '';
     let price = 0;
@@ -107,6 +119,45 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       
       // Optimistic save instead of blocking db call
       await addItemsOptimistic([newItem]);
+
+      let blockData = null;
+      if (kind === 'hotel') {
+        blockData = {
+          id: crypto.randomUUID(),
+          type: 'hotel',
+          data: {
+            name: resourceItem.name,
+            details: `${resourceItem.location || ''} ${resourceItem.category ? `· ${resourceItem.category}` : ''}`.trim(),
+            image_url: resourceItem.cover_image || resourceItem.image_url || ''
+          }
+        };
+      } else if (kind === 'flight') {
+        blockData = {
+          id: crypto.randomUUID(),
+          type: 'flight',
+          data: {
+            name: `${resourceItem.airline || ''} ${resourceItem.flight_no || ''}`.trim(),
+            details: `${resourceItem.origin || ''} to ${resourceItem.destination || ''} · ${resourceItem.class || ''}`.trim(),
+            image_url: resourceItem.image_url || ''
+          }
+        };
+      } else if (kind === 'activity') {
+        blockData = {
+          id: crypto.randomUUID(),
+          type: 'activity',
+          data: {
+            name: resourceItem.name,
+            details: `${resourceItem.location || ''} ${resourceItem.duration_hours ? `· ${resourceItem.duration_hours}h` : ''}`.trim(),
+            image_url: resourceItem.image_url || ''
+          }
+        };
+      }
+      if (blockData) {
+        const currentDay = days[dayIndex] || {};
+        const currentContent = Array.isArray(currentDay.content) ? [...currentDay.content] : [];
+        updateDay(dayIndex, { content: [...currentContent, blockData] });
+      }
+
       toast.success(`Added ${label} to Day ${dayIndex + 1}`);
     } catch (e) {
       toast.error(e.message);
@@ -167,11 +218,12 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
                 removeDay={removeDay}
                 items={dayItems}
                 onRemoveItem={onRemoveProposalItem}
+                onAddResourceItem={onAddItemToDay}
               />
             );
           })}
 
-          <div className="pl-xl pt-lg pb-xl">
+          <div className="pl-xl pt-lg pb-36">
              <button onClick={addDay} className="flex items-center gap-xs px-xl py-md bg-surface-container-highest text-primary font-label-md rounded-full hover:bg-primary hover:text-on-primary transition-colors shadow-sm">
                 <span className="material-symbols-outlined text-[20px]">add</span>
                 Add Day {days.length + 1}

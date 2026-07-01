@@ -51,6 +51,8 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
   const fontSubhead = '"Cormorant Garamond", serif';
   const fontBody = '"Inter", sans-serif';
 
+  const safeText = (val) => Array.isArray(val) ? val.join('\n') : (val && typeof val === 'object' ? JSON.stringify(val) : (val ?? ''));
+
   const renderSection = (key, index) => {
     if (!include[key]) return null;
     
@@ -112,22 +114,101 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
               {list.map((d, i) => {
                 const dayNum = d.day || i + 1;
                 const dayItems = allItems.filter(it => it.meta?.day === dayNum);
+                const contentBlocks = Array.isArray(d.content) ? d.content : [];
+                
+                // Track item IDs or names already rendered in content blocks so we don't duplicate
+                const renderedNames = new Set(contentBlocks.map(b => (b.data?.name || '').toLowerCase().trim()));
+
                 return (
-                <li key={i} className="flex gap-6 break-inside-avoid p-4 rounded-xl" style={{ backgroundColor: theme.alt }}>
-                  <span className="flex-shrink-0 w-20 text-2xl" style={{ color: theme.accent, fontFamily: fontSubhead }}>Day {String(dayNum).padStart(2, '0')}</span>
-                  <div className="flex-1">
-                    <h3 className="text-xl mb-2 font-semibold" style={{ fontFamily: fontSubhead }}>{d.title || d.label || 'Free time'}</h3>
-                    {d.description && typeof d.description === 'string' && <p className="text-base opacity-80 whitespace-pre-wrap mb-4" style={{ fontFamily: fontBody }}>{d.description}</p>}
+                <li key={i} className="flex flex-col md:flex-row gap-6 break-inside-avoid p-6 rounded-2xl mb-8 shadow-sm" style={{ backgroundColor: theme.alt }}>
+                  <span className="flex-shrink-0 w-24 text-2xl font-bold" style={{ color: theme.accent, fontFamily: fontSubhead }}>Day {String(dayNum).padStart(2, '0')}</span>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-2xl mb-3 font-bold" style={{ fontFamily: fontSubhead }}>{d.title || d.label || 'Free time'}</h3>
+                    {d.description && typeof d.description === 'string' && contentBlocks.length === 0 && (
+                      <p className="text-base opacity-80 whitespace-pre-wrap mb-4 leading-relaxed" style={{ fontFamily: fontBody }}>{d.description}</p>
+                    )}
                     
-                    {dayItems.length > 0 && (
-                      <div className="mt-4 pt-4 border-t border-opacity-20 space-y-2" style={{ borderColor: theme.text }}>
-                        {dayItems.map(item => (
-                          <div key={item.id} className="flex items-center gap-2 text-sm opacity-90">
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: theme.accent }}></span>
-                            <span className="font-semibold capitalize">{item.kind}:</span>
-                            <span>{item.label}</span>
-                          </div>
-                        ))}
+                    {/* Render Rich Content Blocks */}
+                    {contentBlocks.length > 0 && (
+                      <div className="space-y-4 my-4">
+                        {contentBlocks.map(block => {
+                          if (block.type === 'heading') {
+                            return <h4 key={block.id} className="text-xl font-bold pt-2" style={{ fontFamily: fontSubhead }}>{block.data.text}</h4>;
+                          }
+                          if (block.type === 'text') {
+                            return <p key={block.id} className="text-base opacity-80 whitespace-pre-wrap leading-relaxed" style={{ fontFamily: fontBody }}>{block.data.text}</p>;
+                          }
+                          if (block.type === 'image' && block.data.url) {
+                            return (
+                              <div key={block.id} className="rounded-xl overflow-hidden my-3 shadow-sm border border-opacity-10 max-h-80" style={{ borderColor: theme.text }}>
+                                <img src={block.data.url} alt="" className="w-full h-full object-cover" />
+                              </div>
+                            );
+                          }
+                          if (block.type === 'gallery' && block.data.urls) {
+                            const urls = block.data.urls.split('\n').map(u => u.trim()).filter(Boolean);
+                            if (urls.length === 0) return null;
+                            return (
+                              <div key={block.id} className="grid grid-cols-2 sm:grid-cols-3 gap-3 my-3">
+                                {urls.map((u, idx) => (
+                                  <div key={idx} className="aspect-[4/3] rounded-lg overflow-hidden shadow-xs">
+                                    <img src={u} alt="" className="w-full h-full object-cover" />
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          }
+                          if (['hotel', 'activity', 'flight', 'transfer', 'meals', 'custom'].includes(block.type)) {
+                            return (
+                              <div key={block.id} className="flex items-stretch gap-4 p-4 rounded-xl my-3 break-inside-avoid page-break-inside-avoid shadow-xs border border-opacity-15" style={{ backgroundColor: theme.bg, borderColor: theme.text }}>
+                                <div className="flex-1 min-w-0 flex flex-col justify-center py-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ backgroundColor: theme.alt, color: theme.accent }}>
+                                      {block.type}
+                                    </span>
+                                  </div>
+                                  <h4 className="text-lg font-bold mb-1" style={{ fontFamily: fontSubhead }}>{block.data.name || 'Untitled element'}</h4>
+                                  {block.data.details && <p className="text-sm opacity-80" style={{ fontFamily: fontBody }}>{block.data.details}</p>}
+                                </div>
+                                {block.data.image_url && (
+                                  <div className="w-24 md:w-32 flex-shrink-0 rounded-lg overflow-hidden border border-opacity-20 flex" style={{ borderColor: theme.text }}>
+                                    <img src={block.data.image_url} alt="" className="w-full h-full object-cover" />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })}
+                      </div>
+                    )}
+
+                    {/* Render Any Attached Inventory Items Not Already Shown In Blocks */}
+                    {dayItems.filter(it => !renderedNames.has((it.label || '').toLowerCase().trim())).length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-opacity-20 space-y-3" style={{ borderColor: theme.text }}>
+                        <div className="text-xs uppercase tracking-wider font-bold opacity-60">Attached Reservations & Services</div>
+                        {dayItems.filter(it => !renderedNames.has((it.label || '').toLowerCase().trim())).map(item => {
+                          const imgUrl = item.meta?.image_url || (item.meta?.selected_images && item.meta.selected_images[0]) || '';
+                          const priceStr = (Number(item.qty) || 0) * (Number(item.unit_price) || 0) > 0 ? formatINR((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) : '';
+                          return (
+                            <div key={item.id} className="flex items-stretch gap-4 p-3 rounded-xl break-inside-avoid page-break-inside-avoid shadow-xs border border-opacity-15" style={{ backgroundColor: theme.bg, borderColor: theme.text }}>
+                              <div className="flex-1 min-w-0 flex flex-col justify-center py-0.5">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ backgroundColor: theme.alt, color: theme.accent }}>
+                                    {item.kind}
+                                  </span>
+                                </div>
+                                <h4 className="text-base font-bold" style={{ fontFamily: fontSubhead }}>{item.label}</h4>
+                                {priceStr && <p className="text-xs font-semibold mt-1" style={{ color: theme.accent }}>{priceStr}</p>}
+                              </div>
+                              {imgUrl && (
+                                <div className="w-20 md:w-28 flex-shrink-0 rounded-md overflow-hidden border border-opacity-20 flex" style={{ borderColor: theme.text }}>
+                                  <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -143,23 +224,24 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
           <section key={key} className={sectionClass} style={sectionStyle}>
             <Title>Luxury Accommodation</Title>
             <ul className="space-y-8">
-              {items.hotel.map((it) => (
-                <li key={it.id} className="flex flex-col gap-4 pb-6 break-inside-avoid border-b border-opacity-10" style={{ borderColor: theme.text }}>
-                  <div className="flex items-start justify-between w-full">
-                    <span className="text-xl font-semibold" style={{ fontFamily: fontSubhead }}>{it.label}</span>
-                    <span className="text-lg font-bold" style={{ color: theme.accent }}>{formatINR((Number(it.qty) || 0) * (Number(it.unit_price) || 0))}</span>
+              {items.hotel.map((it) => {
+                const imgUrl = it.meta?.image_url || (it.meta?.selected_images && it.meta.selected_images[0]) || '';
+                const priceStr = formatINR((Number(it.qty) || 0) * (Number(it.unit_price) || 0));
+                return (
+                <li key={it.id} className="flex items-stretch gap-6 pb-6 break-inside-avoid page-break-inside-avoid border-b border-opacity-10" style={{ borderColor: theme.text }}>
+                  <div className="flex-1 min-w-0 flex flex-col justify-center py-1">
+                    <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded w-max mb-2" style={{ backgroundColor: theme.alt, color: theme.accent }}>Hotel Reservation</span>
+                    <span className="text-2xl font-bold mb-1" style={{ fontFamily: fontSubhead }}>{it.label}</span>
+                    {it.meta?.details && <p className="text-sm opacity-80 mb-2" style={{ fontFamily: fontBody }}>{it.meta.details}</p>}
+                    <span className="text-lg font-bold mt-auto" style={{ color: theme.accent }}>{priceStr}</span>
                   </div>
-                  {it.meta?.selected_images && it.meta.selected_images.length > 0 && (
-                    <div className="flex gap-4 overflow-hidden">
-                      {it.meta.selected_images.map((imgUrl, imgIndex) => (
-                        <div key={imgIndex} className="w-1/3 aspect-[4/3] rounded-lg overflow-hidden shadow-md">
-                          <img src={imgUrl} alt="" className="w-full h-full object-cover" />
-                        </div>
-                      ))}
+                  {imgUrl && (
+                    <div className="w-32 md:w-48 flex-shrink-0 rounded-xl overflow-hidden shadow-md border border-opacity-20 flex" style={{ borderColor: theme.text }}>
+                      <img src={imgUrl} alt="" className="w-full h-full object-cover" />
                     </div>
                   )}
                 </li>
-              ))}
+              )})}
             </ul>
           </section>
         );
@@ -187,21 +269,21 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
         );
 
       case 'inclusions':
-        return <section key={key} className={sectionClass} style={sectionStyle}><Title>What's Included</Title><div className="whitespace-pre-wrap">{b.inclusions || '—'}</div></section>;
+        return <section key={key} className={sectionClass} style={sectionStyle}><Title>What's Included</Title><div className="whitespace-pre-wrap">{safeText(b.inclusions) || '—'}</div></section>;
       case 'exclusions':
-        return <section key={key} className={sectionClass} style={sectionStyle}><Title>What's Excluded</Title><div className="whitespace-pre-wrap">{b.exclusions || '—'}</div></section>;
+        return <section key={key} className={sectionClass} style={sectionStyle}><Title>What's Excluded</Title><div className="whitespace-pre-wrap">{safeText(b.exclusions) || '—'}</div></section>;
       case 'terms':
-        return <section key={key} className={sectionClass} style={sectionStyle}><Title>Terms of Payment</Title><div className="whitespace-pre-wrap">{b.terms_of_payment || '—'}</div></section>;
+        return <section key={key} className={sectionClass} style={sectionStyle}><Title>Terms of Payment</Title><div className="whitespace-pre-wrap">{safeText(b.terms_of_payment) || '—'}</div></section>;
       
       case 'contacts':
         return (
           <section key={key} className={sectionClass} style={sectionStyle}>
             <Title>Contact</Title>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-lg">
-              {b.contact_email && <div className="break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Email</span>{b.contact_email}</div>}
-              {b.contact_phone && <div className="break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Phone</span>{b.contact_phone}</div>}
-              {b.website       && <div className="break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Website</span>{b.website}</div>}
-              {b.address       && <div className="md:col-span-2 break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Address</span>{b.address}</div>}
+              {b.contact_email && <div className="break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Email</span>{safeText(b.contact_email)}</div>}
+              {b.contact_phone && <div className="break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Phone</span>{safeText(b.contact_phone)}</div>}
+              {b.website       && <div className="break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Website</span>{safeText(b.website)}</div>}
+              {b.address       && <div className="md:col-span-2 break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Address</span>{safeText(b.address)}</div>}
             </div>
           </section>
         );
@@ -224,9 +306,9 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
             <section key={key} className={sectionClass} style={sectionStyle}>
               <Title>{cb.label}</Title>
               {cb.type === 'text' ? (
-                 <div className="whitespace-pre-wrap">{b[key]}</div>
+                 <div className="whitespace-pre-wrap">{safeText(b[key])}</div>
               ) : (
-                 b[key] ? <img src={b[key]} className="w-full max-h-[600px] object-cover rounded-xl mt-4 shadow-lg break-inside-avoid" alt={cb.label} /> : null
+                 b[key] ? <img src={safeText(b[key])} className="w-full max-h-[600px] object-cover rounded-xl mt-4 shadow-lg break-inside-avoid" alt={cb.label} /> : null
               )}
             </section>
           );

@@ -2,11 +2,13 @@ import { memo } from 'react';
 import { useToast } from '../../context/ToastContext.jsx';
 import LogoUploader from '../../components/LogoUploader.jsx';
 
+const safeStr = (v) => Array.isArray(v) ? v.join('\n') : (v && typeof v === 'object' ? JSON.stringify(v) : (v ?? ''));
+
 const Field = memo(function Field({ label, value, onChange, type = 'text', testid, extraClass = '' }) {
   return (
     <label className={'flex flex-col gap-xs ' + extraClass}>
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
-      <input type={type} value={value ?? ''} onChange={onChange} data-testid={testid}
+      <input type={type} value={safeStr(value)} onChange={onChange} data-testid={testid}
         className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
     </label>
   );
@@ -16,7 +18,7 @@ const Textarea = memo(function Textarea({ label, value, onChange, testid, placeh
   return (
     <label className="flex flex-col gap-xs">
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
-      <textarea value={value ?? ''} onChange={onChange} rows={3} placeholder={placeholder} data-testid={testid}
+      <textarea value={safeStr(value)} onChange={onChange} rows={3} placeholder={placeholder} data-testid={testid}
         className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
     </label>
   );
@@ -33,7 +35,7 @@ function TextareaWithAI({ label, value, onChange, testid, onAI }) {
           Draft with AI
         </button>
       </span>
-      <textarea value={value ?? ''} onChange={onChange} rows={3} data-testid={testid}
+      <textarea value={safeStr(value)} onChange={onChange} rows={3} data-testid={testid}
         className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
     </label>
   );

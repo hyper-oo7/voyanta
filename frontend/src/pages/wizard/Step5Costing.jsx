@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { formatINR } from '../../lib/currency.js';
 import { addItem } from '../../services/proposalItemService.js';
 
-const KINDS = ['Transfer', 'Visa', 'Tax', 'Margin', 'Custom'];
+const KINDS = ['Hotel', 'Flight', 'Activity', 'Transfer', 'Meals', 'Custom', 'Visa', 'Tax', 'Margin', 'Fee', 'Discount'];
 
 const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveItem }) {
   const [label, setLabel] = useState(item.label || '');
@@ -48,7 +48,50 @@ const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveI
   );
 });
 
-export function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemoveItem, proposalCurrency = 'INR', costingPrefs, setCostingPrefs }) {
+export function Step5Costing({ proposal, proposalId, items, setItems, onPatchItem, onRemoveItem, addItemsOptimistic, saveDraft, proposalCurrency = 'INR', costingPrefs, setCostingPrefs }) {
+  useEffect(() => {
+    const days = proposal?.itinerary?.days;
+    if (!Array.isArray(days) || !addItemsOptimistic) return;
+    const currentRefIds = new Set(items.map(it => String(it.ref_id || '')).filter(Boolean));
+    const currentLabels = new Set(items.map(it => String(it.label || '').toLowerCase().trim()).filter(Boolean));
+    const harvested = [];
+
+    days.forEach((dayObj, idx) => {
+      const dayNum = dayObj.day || idx + 1;
+      if (Array.isArray(dayObj.content)) {
+        dayObj.content.forEach((block) => {
+          if (!block || !block.type || !block.data) return;
+          const k = block.type.toLowerCase();
+          if (['hotel', 'flight', 'activity', 'transfer', 'meals', 'custom'].includes(k)) {
+            const raw = block.data.rawItem || {};
+            const refId = String(raw.id || block.data.id || block.id || '');
+            const label = String(block.data.name || raw.name || `${raw.airline || 'Flight'} ${raw.flight_no || ''}`.trim() || `${k.toUpperCase()} Item`).trim();
+            const lowerLabel = label.toLowerCase();
+
+            if ((!refId || !currentRefIds.has(refId)) && (!lowerLabel || !currentLabels.has(lowerLabel))) {
+              if (refId) currentRefIds.add(refId);
+              if (lowerLabel) currentLabels.add(lowerLabel);
+              const price = Number(raw.price_per_night || raw.price || raw.cost || block.data.price || 0);
+              harvested.push({
+                kind: k,
+                ref_id: refId || crypto.randomUUID(),
+                label: label,
+                qty: k === 'hotel' ? 1 : ((proposal?.travelers || 1)),
+                unit_price: price,
+                currency: raw.currency || proposalCurrency || 'INR',
+                meta: { source: `${k}s`, day: dayNum, details: block.data.details || '' }
+              });
+            }
+          }
+        });
+      }
+    });
+
+    if (harvested.length > 0) {
+      addItemsOptimistic(harvested).catch(() => {});
+    }
+  }, [proposal?.itinerary?.days, items, addItemsOptimistic, proposal?.travelers, proposalCurrency]);
+
   const rawTotal = useMemo(() => items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0), [items]);
   
   const grandTotal = useMemo(() => {
@@ -61,7 +104,12 @@ export function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemov
   }, [rawTotal, costingPrefs]);
 
   const byKind = useMemo(() => {
-    const m = {}; items.forEach((it) => { m[it.kind] = (m[it.kind]||0) + (Number(it.qty)||0)*(Number(it.unit_price)||0); });
+    const m = {};
+    items.forEach((it) => {
+      const rawK = String(it.kind || 'other').trim();
+      const k = rawK.charAt(0).toUpperCase() + rawK.slice(1).toLowerCase();
+      m[k] = (m[k]||0) + (Number(it.qty)||0)*(Number(it.unit_price)||0);
+    });
     return m;
   }, [items]);
   const mixedCurrency = useMemo(() => {
@@ -71,9 +119,13 @@ export function Step5Costing({ proposalId, items, setItems, onPatchItem, onRemov
   }, [items, proposalCurrency]);
 
   const onAdd = async (kind) => {
-    if (!proposalId) return;
+    let pid = proposalId;
+    if (!pid && typeof saveDraft === 'function') {
+      try { const p = await saveDraft(false); pid = p?.id; } catch {}
+    }
+    if (!pid) return;
     try {
-      const it = await addItem(proposalId, { kind, label: `New ${kind}`, qty: 1, unit_price: 0, currency: proposalCurrency });
+      const it = await addItem(pid, { kind: kind.toLowerCase(), label: `New ${kind}`, qty: 1, unit_price: 0, currency: proposalCurrency });
       setItems((s) => [...s, it]);
     } catch { /* surfaced upstream */ }
   };

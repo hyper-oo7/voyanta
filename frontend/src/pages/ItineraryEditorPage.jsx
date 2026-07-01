@@ -20,6 +20,8 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import ResourcePickerModal from '../components/itinerary/ResourcePickerModal.jsx';
 import LogoUploader, { uploadOrEmbed } from '../components/LogoUploader.jsx';
+import SortableContentBlock from '../components/itinerary/SortableContentBlock.jsx';
+
 function SortableDayItem({ id, block, isActive, onClick }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   
@@ -63,211 +65,6 @@ function SortableDayItem({ id, block, isActive, onClick }) {
       {block.block_type === 'day' && (
         <span className="text-xs bg-surface-variant text-on-surface-variant px-1.5 py-0.5 rounded font-mono">D{block.day_number}</span>
       )}
-    </div>
-  );
-}
-
-function SortableContentBlock({ id, item, onChange, onRemove }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const fileRef = useRef(null);
-  const [uploading, setUploading] = useState(false);
-
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    setUploading(true);
-    try {
-      const url = await uploadOrEmbed(file, 'itinerary-blocks');
-      if (item.type === 'image') {
-        onChange(id, { url });
-      } else {
-        onChange(id, { ...item.data, image_url: url });
-      }
-    } catch (err) {
-      console.error('Upload failed:', err);
-    } finally {
-      setUploading(false);
-    }
-  };
-  
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 50 : 'auto',
-  };
-
-  const getIconAndLabel = () => {
-    switch (item.type) {
-      case 'heading':
-        return { icon: 'title', label: 'Heading', color: 'text-blue-600 bg-blue-50 border-blue-200' };
-      case 'text':
-        return { icon: 'notes', label: 'Text Block', color: 'text-gray-600 bg-gray-50 border-gray-200' };
-      case 'image':
-        return { icon: 'image', label: 'Image', color: 'text-green-600 bg-green-50 border-green-200' };
-      case 'gallery':
-        return { icon: 'photo_library', label: 'Gallery', color: 'text-purple-600 bg-purple-50 border-purple-200' };
-      case 'hotel':
-        return { icon: 'hotel', label: 'Hotel', color: 'text-amber-600 bg-amber-50 border-amber-200' };
-      case 'activity':
-        return { icon: 'local_activity', label: 'Activity', color: 'text-rose-600 bg-rose-50 border-rose-200' };
-      case 'flight':
-        return { icon: 'flight', label: 'Flight', color: 'text-sky-600 bg-sky-50 border-sky-200' };
-      case 'transfer':
-        return { icon: 'directions_car', label: 'Transfer', color: 'text-indigo-600 bg-indigo-50 border-indigo-200' };
-      case 'meals':
-        return { icon: 'restaurant', label: 'Meals', color: 'text-orange-600 bg-orange-50 border-orange-200' };
-      default:
-        return { icon: 'widgets', label: 'Block', color: 'text-gray-600 bg-gray-50 border-gray-200' };
-    }
-  };
-
-  const info = getIconAndLabel();
-
-  return (
-    <div 
-      ref={setNodeRef} 
-      style={style} 
-      className={`group relative flex gap-4 p-4 rounded-xl border border-outline-variant bg-white hover:border-primary/30 hover:shadow-sm transition-all duration-200 mb-3 ${isDragging ? 'opacity-50 shadow-lg border-primary bg-primary/5' : ''}`}
-    >
-      {/* Drag Handle & Icon Container */}
-      <div className="flex flex-col items-center gap-1.5 flex-shrink-0 select-none">
-        <div 
-          {...attributes} 
-          {...listeners}
-          className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-on-surface-variant/40 hover:text-on-surface-variant transition-opacity"
-        >
-          <span className="material-symbols-outlined text-[20px]">drag_indicator</span>
-        </div>
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${info.color} shadow-sm border`}>
-          <span className="material-symbols-outlined text-[18px]">{info.icon}</span>
-        </div>
-      </div>
-      
-      {/* Block Content */}
-      <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-bold text-on-surface-variant/50 uppercase tracking-widest mb-1.5 select-none">{info.label}</div>
-        
-        {item.type === 'heading' && (
-          <input 
-            type="text" 
-            value={item.data.text || ''} 
-            onChange={(e) => onChange(id, { text: e.target.value })}
-            placeholder="Heading..."
-            className="w-full text-2xl font-bold bg-transparent border-none outline-none focus:ring-0 p-0 text-on-surface placeholder:text-on-surface-variant/30"
-          />
-        )}
-        
-        {item.type === 'text' && (
-          <textarea 
-            value={item.data.text || ''} 
-            onChange={(e) => onChange(id, { text: e.target.value })}
-            placeholder="Type text here..."
-            className="w-full text-base bg-transparent border-none outline-none focus:ring-0 p-0 text-on-surface resize-none min-h-[1.5em] placeholder:text-on-surface-variant/30"
-            onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
-            style={{ height: item.data.text ? 'auto' : '1.5em' }}
-          />
-        )}
-        
-        {(item.type === 'hotel' || item.type === 'activity' || item.type === 'flight' || item.type === 'transfer' || item.type === 'meals') && (
-          <div className="flex gap-md items-center mt-1 group/travel">
-            <div className="relative w-16 h-16 rounded-lg bg-surface-variant flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm border border-outline-variant">
-              {item.data.image_url ? (
-                <img src={item.data.image_url} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <span className="material-symbols-outlined text-on-surface-variant/50 text-[24px]">image</span>
-              )}
-              <div 
-                onClick={() => fileRef.current?.click()}
-                className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/travel:opacity-100 cursor-pointer transition-opacity"
-              >
-                <span className="material-symbols-outlined text-white text-[20px]">{uploading ? 'hourglass_empty' : 'upload'}</span>
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <input 
-                type="text" 
-                value={item.data.name || ''} 
-                onChange={(e) => onChange(id, { ...item.data, name: e.target.value })}
-                placeholder={`${info.label} name...`}
-                className="w-full text-lg font-bold bg-transparent border-none outline-none focus:ring-0 p-0 text-on-surface"
-              />
-              <input 
-                type="text" 
-                value={item.data.details || ''} 
-                onChange={(e) => onChange(id, { ...item.data, details: e.target.value })}
-                placeholder="Details (e.g. check-in time, flight number)..."
-                className="w-full text-sm text-on-surface-variant bg-transparent border-none outline-none focus:ring-0 p-0 mt-0.5"
-              />
-            </div>
-          </div>
-        )}
-        
-        {item.type === 'image' && (
-          <div className="border border-outline-variant rounded-xl overflow-hidden bg-surface-variant relative group/img mt-1">
-            {item.data.url ? (
-              <img src={item.data.url} alt="" className="w-full max-h-96 object-cover" />
-            ) : (
-              <div className="w-full h-32 flex flex-col gap-2 items-center justify-center text-on-surface-variant font-semibold">
-                <span>Image Placeholder</span>
-                <button 
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                  className="px-3 py-1 bg-primary text-white rounded text-sm hover:bg-primary/90 transition-colors"
-                >
-                  {uploading ? 'Uploading...' : 'Upload Image'}
-                </button>
-              </div>
-            )}
-            <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-2 backdrop-blur-sm opacity-0 group-hover/img:opacity-100 transition-opacity flex gap-2">
-              <input 
-                type="text" 
-                value={item.data.url || ''} 
-                onChange={(e) => onChange(id, { url: e.target.value })}
-                placeholder="Paste Image URL..."
-                className="flex-1 text-sm bg-transparent border-none outline-none text-white placeholder:text-white/50 p-1"
-              />
-              <button 
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-xs whitespace-nowrap"
-              >
-                {uploading ? 'Uploading...' : 'Upload'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {item.type === 'gallery' && (
-          <div className="border border-outline-variant rounded-xl p-sm bg-surface-variant group/img mt-1">
-            <div className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2 px-1">Gallery (Paste URLs below, one per line)</div>
-            <textarea 
-                value={item.data.urls || ''} 
-                onChange={(e) => onChange(id, { urls: e.target.value })}
-                placeholder="https://image1.jpg&#10;https://image2.jpg"
-                className="w-full text-xs bg-white border border-outline-variant rounded-lg p-2 outline-none mb-2 resize-none"
-                rows={3}
-            />
-            {item.data.urls && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {item.data.urls.split('\n').map((url, i) => url.trim() ? (
-                  <img key={i} src={url.trim()} alt="" className="w-full h-24 object-cover rounded-lg shadow-sm" />
-                ) : null)}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Remove Button */}
-      <button 
-        onClick={() => onRemove(id)}
-        className="opacity-0 group-hover:opacity-100 mt-2 w-6 h-6 rounded-md hover:bg-error/10 text-on-surface-variant/60 hover:text-error flex items-center justify-center transition-all flex-shrink-0"
-        title="Remove block"
-      >
-        <span className="material-symbols-outlined text-[16px]">close</span>
-      </button>
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
     </div>
   );
 }
@@ -521,7 +318,7 @@ export default function ItineraryEditorPage() {
 
       {/* Main Content: Editor */}
       <div className="flex-1 overflow-y-auto flex justify-center custom-scrollbar">
-        <div className="w-full max-w-3xl p-xl pb-32">
+        <div className="w-full max-w-3xl p-xl pb-48">
           {viewMode === 'checklists' ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
               <h2 className="text-4xl font-bold text-on-surface mb-xl">Included & Excluded</h2>
@@ -590,7 +387,7 @@ export default function ItineraryEditorPage() {
                 </button>
 
                 {showBlockMenu && (
-                  <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-outline-variant rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                  <div className="absolute bottom-full left-0 mb-2 w-64 bg-white border border-outline-variant rounded-xl shadow-xl z-[200] max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
                     <div className="p-2 text-xs font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-lowest border-b border-outline-variant/50">Basic Blocks</div>
                     <div className="p-1">
                       <BlockMenuItem icon="title" label="Heading" onClick={() => addContentBlock('heading')} />

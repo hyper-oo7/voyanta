@@ -167,20 +167,24 @@ export default function ProposalWizard() {
     return () => card.removeEventListener('click', onClick);
   }, [signOut, navigate, isDemo, user]);
 
-  const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [pendingItinerary, setPendingItinerary] = useState(null);
 
-  const triggerApplyItinerary = useCallback((itinId) => {
-    if (!itinId) return;
-    const selectedItin = itineraries.find((it) => it.id === itinId);
-    if (!selectedItin) return;
-    if (!proposal?.id) {
-      toast.error('Save the client info first');
-      return;
-    }
-    setPendingItinerary(selectedItin);
-    setMergeModalOpen(true);
-  }, [itineraries, proposal?.id, toast]);
+  const sanitizeCurrency = (v) => /^[A-Z]{3}$/.test(String(v || '').toUpperCase()) ? String(v).toUpperCase() : (proposal?.currency || 'INR');
+  const nights = useMemo(() => {
+    const a = proposal?.start_date || client.start_date;
+    const b = proposal?.end_date   || client.end_date;
+    if (!a || !b) return 1;
+    if (client.date_mode === 'days') return parseInt(client.duration_nights, 10) || 1;
+    const ms = new Date(b).getTime() - new Date(a).getTime();
+    const n = Math.round(ms / (1000 * 60 * 60 * 24));
+    return n > 0 ? n : 1;
+  }, [proposal?.start_date, proposal?.end_date, client.start_date, client.end_date, client.date_mode, client.duration_nights]);
+  const travelers = useMemo(() => {
+    const t = (parseInt(client.num_adults, 10) || 0) + (parseInt(client.num_children, 10) || 0);
+    return t > 0 ? t : (proposal?.travelers || 1);
+  }, [client.num_adults, client.num_children, proposal?.travelers]);
+
+  const defaultQtyFor = useCallback((kind) => kind === 'hotel' ? nights : (kind === 'flight' || kind === 'activity' ? travelers : 1), [nights, travelers]);
 
   const flattenBlocksToText = (content) => {
     if (!content) return '';
@@ -211,22 +215,28 @@ export default function ProposalWizard() {
     return null;
   };
 
-  const onApplyItinerary = useCallback(async (strategy) => {
-    if (!pendingItinerary) return;
-    setMergeModalOpen(false);
+  const onApplyItinerary = useCallback(async (strategy, itinOverride) => {
+    const targetItin = itinOverride || pendingItinerary;
+    if (!targetItin) return;
 
     try {
-      const blocks = await import('../services/resourceService.js').then(m => m.itineraryBlocksService.list({ itinerary_id: pendingItinerary.id }));
+      const blocks = await import('../services/resourceService.js').then(m => m.itineraryBlocksService.list({ itinerary_id: targetItin.id }));
       blocks.sort((a, b) => (a.day_number || 0) - (b.day_number || 0));
       
-      const mappedDays = blocks.map((b) => ({
-        day: b.day_number || 1,
-        title: b.title || '',
-        description: [b.description, flattenBlocksToText(b.content)].filter(x => x).join('\n\n').trim() || '',
-        image_url: b.image_url || extractImageFromBlocks(b.content) || null,
-        notes: b.notes || '',
-        block_type: b.block_type || 'day'
-      }));
+      const mappedDays = blocks.map((b) => {
+        const rawContent = typeof b.content === 'string' ? JSON.parse(b.content) : (b.content || []);
+        const cleanContent = Array.isArray(rawContent) ? rawContent.map(item => ({ ...item, id: item.id || crypto.randomUUID() })) : [];
+        return {
+          id: crypto.randomUUID(),
+          day: b.day_number || 1,
+          title: b.title || '',
+          description: b.description || flattenBlocksToText(rawContent) || '',
+          image_url: b.image_url || extractImageFromBlocks(rawContent) || null,
+          notes: b.notes || '',
+          block_type: b.block_type || 'day',
+          content: cleanContent
+        };
+      });
 
       setProposal((p) => {
         const currentDays = [...(p?.itinerary?.days || [])];
@@ -241,24 +251,61 @@ export default function ProposalWizard() {
             nextDays.push({ ...md, day: startDay + i + 1 });
           });
         } else if (strategy === 'merge') {
-          // Option A: Overwrite text, keep items.
-          // Since items are separate (in global store, linked by meta.day),
-          // overwriting the day object here keeps the items attached!
           nextDays = [...currentDays];
           mappedDays.forEach((md, i) => {
             if (i < nextDays.length) {
-              nextDays[i] = { ...nextDays[i], title: md.title, description: md.description, image_url: md.image_url, block_type: md.block_type };
+              nextDays[i] = { ...nextDays[i], title: md.title, description: md.description, image_url: md.image_url, block_type: md.block_type, content: md.content };
             } else {
               nextDays.push({ ...md, day: i + 1 });
             }
           });
         }
 
-        return { ...p, itinerary: { days: nextDays }, destination: p?.destination || pendingItinerary.destination || null };
+        return { ...p, itinerary: { days: nextDays }, destination: p?.destination || targetItin.destination || null };
       });
 
-      setClient((c) => ({ ...c, itinerary_id: pendingItinerary.id, destination: proposal?.destination || pendingItinerary.destination || null }));
+      setClient((c) => ({ ...c, itinerary_id: targetItin.id, destination: proposal?.destination || targetItin.destination || null }));
       
+      // Harvest inventory items (Hotels, Flights, Activities, Transfers, Meals, Custom) from the imported rich content blocks
+      const currentRefIds = new Set(items.map(it => String(it.ref_id || '')).filter(Boolean));
+      const currentLabels = new Set(items.map(it => String(it.label || '').toLowerCase().trim()).filter(Boolean));
+      const harvestedItems = [];
+      
+      mappedDays.forEach((dayObj, idx) => {
+        const dayNum = dayObj.day || idx + 1;
+        if (Array.isArray(dayObj.content)) {
+          dayObj.content.forEach((block) => {
+            if (!block || !block.type || !block.data) return;
+            const k = block.type.toLowerCase();
+            if (['hotel', 'flight', 'activity', 'transfer', 'meals', 'custom'].includes(k)) {
+              const raw = block.data.rawItem || {};
+              const refId = String(raw.id || block.data.id || block.id || '');
+              const label = String(block.data.name || raw.name || `${raw.airline || 'Flight'} ${raw.flight_no || ''}`.trim() || `${k.toUpperCase()} Item`).trim();
+              const lowerLabel = label.toLowerCase();
+              
+              if ((!refId || !currentRefIds.has(refId)) && (!lowerLabel || !currentLabels.has(lowerLabel))) {
+                if (refId) currentRefIds.add(refId);
+                if (lowerLabel) currentLabels.add(lowerLabel);
+                const price = Number(raw.price_per_night || raw.price || raw.cost || block.data.price || 0);
+                harvestedItems.push({
+                  kind: k,
+                  ref_id: refId || crypto.randomUUID(),
+                  label: label,
+                  qty: defaultQtyFor(k),
+                  unit_price: price,
+                  currency: raw.currency || proposal?.currency || 'INR',
+                  meta: { source: `${k}s`, day: dayNum, details: block.data.details || '' }
+                });
+              }
+            }
+          });
+        }
+      });
+
+      if (harvestedItems.length > 0) {
+        await addItemsOptimistic(harvestedItems);
+      }
+
       // Fire background sync
       saveDraftBackground().catch(e => toast.error('Failed to sync itinerary to database: ' + e.message));
       toast.success('Itinerary applied');
@@ -266,7 +313,7 @@ export default function ProposalWizard() {
       // AI auto-link intelligence (async)
       (async () => {
         try {
-          const { data: pastProps } = await supabase.from('proposals').select('id').eq('brief->>itinerary_id', pendingItinerary.id);
+          const { data: pastProps } = await supabase.from('proposals').select('id').eq('brief->>itinerary_id', targetItin.id);
           if (pastProps && pastProps.length > 0) {
             const pastIds = pastProps.map(p => p.id);
             const { data: pastItems } = await supabase.from('proposal_items').select('ref_id, kind, label, unit_price, currency, meta').in('proposal_id', pastIds);
@@ -308,7 +355,28 @@ export default function ProposalWizard() {
     } catch (e) {
       toast.error(e.message || 'Failed to apply itinerary');
     }
-  }, [pendingItinerary, proposal, toast, setProposal, setClient, saveDraftBackground, addItemsOptimistic, items]);
+  }, [pendingItinerary, proposal, toast, setProposal, setClient, saveDraftBackground, addItemsOptimistic, items, defaultQtyFor]);
+
+  const triggerApplyItinerary = useCallback(async (itinId) => {
+    if (!itinId) return;
+    const selectedItin = itineraries.find((it) => it.id === itinId);
+    if (!selectedItin) return;
+    
+    let pid = proposal?.id;
+    if (!pid) {
+      try {
+        const p = await saveDraftBackground();
+        pid = p?.id;
+      } catch {
+        toast.error('Save the client info first');
+        return;
+      }
+    }
+    setPendingItinerary(selectedItin);
+    setTimeout(() => {
+      onApplyItinerary('replace', selectedItin);
+    }, 0);
+  }, [itineraries, proposal?.id, saveDraftBackground, toast, onApplyItinerary]);
 
   const saveDraft = useCallback(async (silent = false) => {
     if (stepParam === 1 && step1Ref.current) {
@@ -337,42 +405,37 @@ export default function ProposalWizard() {
 
   const onNext = async () => {
     let pid = proposal?.id;
-    if (stepParam === 1 || stepParam === 3 || stepParam === 4) {
-      if (!pid && stepParam === 1) {
-         try {
-           const p = await saveDraft(false); // Wait for the save to get the ID
-           pid = p.id;
-         } catch {
-           return;
-         }
-      } else {
-        // Background sync on next, don't await blocking
-        saveDraft(true).catch(() => {});
+    if (!pid && stepParam === 1) {
+      try {
+        const p = await saveDraft(false); // Wait for the save to get the ID
+        pid = p.id;
+      } catch {
+        return;
       }
+    } else if (pid) {
+      // Background sync on next, don't await blocking
+      saveDraft(true).catch(() => {});
     }
     goStep(Math.min(5, stepParam + 1), pid);
   };
-  const onPrev = () => goStep(Math.max(1, stepParam - 1));
-
-  const sanitizeCurrency = (v) => /^[A-Z]{3}$/.test(String(v || '').toUpperCase()) ? String(v).toUpperCase() : (proposal?.currency || 'INR');
-  const nights = useMemo(() => {
-    const a = proposal?.start_date || client.start_date;
-    const b = proposal?.end_date   || client.end_date;
-    if (!a || !b) return 1;
-    if (client.date_mode === 'days') return parseInt(client.duration_nights, 10) || 1;
-    const ms = new Date(b).getTime() - new Date(a).getTime();
-    const n = Math.round(ms / (1000 * 60 * 60 * 24));
-    return n > 0 ? n : 1;
-  }, [proposal?.start_date, proposal?.end_date, client.start_date, client.end_date, client.date_mode, client.duration_nights]);
-  const travelers = useMemo(() => {
-    const t = (parseInt(client.num_adults, 10) || 0) + (parseInt(client.num_children, 10) || 0);
-    return t > 0 ? t : (proposal?.travelers || 1);
-  }, [client.num_adults, client.num_children, proposal?.travelers]);
-
-  const defaultQtyFor = (kind) => kind === 'hotel' ? nights : (kind === 'flight' || kind === 'activity' ? travelers : 1);
+  const onPrev = () => {
+    if (proposal?.id) {
+      saveDraft(true).catch(() => {});
+    }
+    goStep(Math.max(1, stepParam - 1));
+  };
 
   const handleAddItems = async (kind, rows, toLabel, toUnit) => {
-    if (!proposal?.id) { toast.error('Save the client info first'); return; }
+    let pid = proposal?.id;
+    if (!pid) {
+      try {
+        const p = await saveDraft(false);
+        pid = p?.id;
+      } catch {
+        toast.error('Save the client info first');
+        return;
+      }
+    }
     try {
       const qty = defaultQtyFor(kind);
       const newItems = rows.map((r) => ({
@@ -425,9 +488,9 @@ export default function ProposalWizard() {
                 >
                   <Suspense fallback={<div className="p-xl text-center"><span className="material-symbols-outlined animate-spin text-2xl">progress_activity</span></div>}>
                     {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} />}
-                    {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={() => loadProposal(proposal?.id)} itineraries={itineraries} onApplyItinerary={triggerApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} addItemsOptimistic={addItemsOptimistic} />}
-                    {stepParam === 3 && <Step5Costing proposalId={proposal?.id} items={items} setItems={setItems}
-                      onPatchItem={onPatchItem} onRemoveItem={onRemoveItem}
+                    {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={() => loadProposal(proposal?.id)} itineraries={itineraries} onApplyItinerary={triggerApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft} />}
+                    {stepParam === 3 && <Step5Costing proposal={proposal} proposalId={proposal?.id} items={items} setItems={setItems}
+                      onPatchItem={onPatchItem} onRemoveItem={onRemoveItem} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft}
                       proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
                     {stepParam === 4 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} />}
                     {stepParam === 5 && <Step7Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} />}
@@ -466,33 +529,6 @@ export default function ProposalWizard() {
           </motion.div>
           
           {importOpen && <ImportModal resource={importResource} onClose={() => setImportOpen(false)} onImported={handleImportSuccess} />}
-          {mergeModalOpen && pendingItinerary && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm" onClick={() => setMergeModalOpen(false)}>
-              <div className="bg-white rounded-2xl p-xl shadow-2xl max-w-md w-full m-4" onClick={e => e.stopPropagation()}>
-                <h3 className="font-headline-sm text-primary mb-md">Import Itinerary</h3>
-                <p className="font-body-md text-on-surface-variant mb-lg">
-                  How would you like to apply the <strong>{pendingItinerary.name}</strong> itinerary to your proposal?
-                </p>
-                <div className="space-y-sm">
-                  <button onClick={() => onApplyItinerary('replace')} className="w-full text-left p-md border border-outline-variant rounded-xl hover:border-primary hover:bg-primary/5 transition-colors">
-                    <span className="block font-label-md text-on-surface">Replace</span>
-                    <span className="block font-body-sm text-on-surface-variant">Overwrite all existing days with this new itinerary.</span>
-                  </button>
-                  <button onClick={() => onApplyItinerary('merge')} className="w-full text-left p-md border border-outline-variant rounded-xl hover:border-primary hover:bg-primary/5 transition-colors">
-                    <span className="block font-label-md text-on-surface">Merge</span>
-                    <span className="block font-body-sm text-on-surface-variant">Update the titles and descriptions of existing days, and append any remaining new days.</span>
-                  </button>
-                  <button onClick={() => onApplyItinerary('append')} className="w-full text-left p-md border border-outline-variant rounded-xl hover:border-primary hover:bg-primary/5 transition-colors">
-                    <span className="block font-label-md text-on-surface">Append</span>
-                    <span className="block font-body-sm text-on-surface-variant">Add these days to the end of your current itinerary.</span>
-                  </button>
-                </div>
-                <div className="mt-xl flex justify-end">
-                  <button onClick={() => setMergeModalOpen(false)} className="px-lg py-sm text-on-surface-variant font-label-md hover:bg-surface-container-low rounded-lg transition-colors">Cancel</button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>,
         mountNode
       )}

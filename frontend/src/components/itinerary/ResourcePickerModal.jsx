@@ -34,19 +34,22 @@ export default function ResourcePickerModal({ type, onSelect, onClose }) {
       blockData = {
         name: item.name,
         details: `${item.location || ''} ${item.category ? `· ${item.category}` : ''}`,
-        image_url: item.cover_image || item.image_url || ''
+        image_url: item.cover_image || item.image_url || '',
+        rawItem: item
       };
     } else if (type === 'activity') {
       blockData = {
         name: item.name,
         details: `${item.location || ''} ${item.duration_hours ? `· ${item.duration_hours}h` : ''}`,
-        image_url: item.image_url || ''
+        image_url: item.image_url || '',
+        rawItem: item
       };
     } else if (type === 'flight') {
       blockData = {
         name: `${item.airline} ${item.flight_no || ''}`,
         details: `${item.origin || ''} to ${item.destination || ''} · ${item.class || ''}`,
-        image_url: ''
+        image_url: '',
+        rawItem: item
       };
     }
     onSelect(blockData);

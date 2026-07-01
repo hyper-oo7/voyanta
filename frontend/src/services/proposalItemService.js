@@ -41,7 +41,10 @@ export async function buildProposalExport(proposalId) {
     listItems(proposalId),
   ]);
   const grouped = {};
-  for (const it of items) (grouped[it.kind] ||= []).push(it);
+  for (const it of items) {
+    const k = (it.kind || 'custom').toLowerCase();
+    (grouped[k] ||= []).push(it);
+  }
   const total = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
   return {
     schema_version: 1,
