@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabaseClient.js';
-import { fetchProposals, createProposal, deleteProposal, duplicateProposal } from '../services/proposalService.js';
+import { fetchProposalsFlat as fetchProposals, createProposal, deleteProposal, deleteAllProposals, duplicateProposal } from '../services/proposalService.js';
 
 export function useProposals() {
   const queryClient = useQueryClient();
@@ -50,6 +50,13 @@ export function useProposals() {
     },
   });
 
+  const deleteAllMutation = useMutation({
+    mutationFn: deleteAllProposals,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['proposals'] });
+    },
+  });
+
   const duplicateMutation = useMutation({
     mutationFn: duplicateProposal,
     onSuccess: () => {
@@ -64,8 +71,9 @@ export function useProposals() {
     error: proposalsQuery.error,
     createProposal: createMutation.mutateAsync,
     deleteProposal: deleteMutation.mutateAsync,
+    deleteAllProposals: deleteAllMutation.mutateAsync,
     duplicateProposal: duplicateMutation.mutateAsync,
     isCreating: createMutation.isPending,
-    isDeleting: deleteMutation.isPending,
+    isDeleting: deleteMutation.isPending || deleteAllMutation.isPending,
   };
 }

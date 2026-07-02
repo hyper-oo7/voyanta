@@ -7,6 +7,7 @@ import { useProposalStore } from '../../store/proposalStore.js';
 import { incrementAnalytics } from '../../services/analyticsService.js';
 import ImageUploadInput from '../../components/common/ImageUploadInput.jsx';
 import { logActivity } from '../../services/activityLogService.js';
+import { useBackendHealth } from '../../context/BackendHealthContext.jsx';
 
 function A4Preview({ children, viewMode, style = 'classic' }) {
   const themeBg = THEMES[style]?.bg || '#ffffff';
@@ -31,6 +32,7 @@ function A4Preview({ children, viewMode, style = 'classic' }) {
 
 export function Step7Preview({ proposalId, branding, customBlocks, proposalName, onAddCustomBlock }) {
   const toast = useToast();
+  const { isHealthy } = useBackendHealth();
   const { proposal, items, saveDraftBackground } = useProposalStore();
   const [localCustomBlocks, setLocalCustomBlocks] = useState(() => {
     try {
@@ -335,10 +337,11 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           <span className="material-symbols-outlined text-[18px]">bookmark_add</span>
           Save Template
         </button>
-        <button onClick={onGeneratePdf} disabled={generating} data-testid="generate-pdf"
-          className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-60 flex items-center gap-xs">
+        <button onClick={onGeneratePdf} disabled={generating || !isHealthy} data-testid="generate-pdf"
+          title={!isHealthy ? 'Backend API or PDF service unreachable' : 'Generate and download A4 PDF'}
+          className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-50 flex items-center gap-xs">
           <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
-          {generating ? 'Generating…' : 'Generate PDF'}
+          {generating ? 'Generating…' : !isHealthy ? 'PDF Offline' : 'Generate PDF'}
         </button>
       </div>
 

@@ -1,6 +1,6 @@
 -- Voyanta — Master Supabase Schema
--- Consolidates v1, v2, v3, v4, v5 into a single multi-tenant deployment script.
--- Includes Row Level Security (RLS) scoped to agency_id.
+-- Consolidates v1–v6 into a single multi-tenant deployment script.
+-- All RLS is agency-scoped (Enterprise plan only — all agents in an agency see everything).
 
 create extension if not exists "pgcrypto";
 
@@ -29,7 +29,7 @@ create table if not exists public.agencies (
 create table if not exists public.subscriptions (
   id uuid primary key default gen_random_uuid(),
   agency_id uuid references public.agencies(id) on delete cascade unique,
-  plan text default 'Starter' check (plan in ('Starter','Pro','Enterprise')),
+  plan text default 'Enterprise' check (plan in ('Enterprise')),
   status text default 'active',
   created_at timestamptz default now()
 );
@@ -40,18 +40,8 @@ create table if not exists public.team_invitations (
   agency_id uuid references public.agencies(id) on delete cascade,
   email text not null,
   role text default 'agent',
-  invited_by uuid, -- points to users(id), but we'll leave it loosely coupled
+  invited_by uuid,
   status text default 'pending',
-  created_at timestamptz default now()
-);
-
--- ACTIVITY LOGS (Audit Trail) -------------------------------------------------
-create table if not exists public.activity_logs (
-  id uuid primary key default gen_random_uuid(),
-  agency_id uuid references public.agencies(id) on delete cascade,
-  user_id uuid, -- who performed the action
-  action text not null,
-  details jsonb,
   created_at timestamptz default now()
 );
 
@@ -126,6 +116,7 @@ create table if not exists public.proposals (
 );
 create index if not exists proposals_created_at_idx on public.proposals (created_at desc);
 create index if not exists proposals_status_idx on public.proposals (status);
+create index if not exists proposals_created_by_idx on public.proposals (created_by);
 
 -- PROPOSAL ITEMS (v2) ---------------------------------------------------------
 create table if not exists public.proposal_items (
@@ -279,6 +270,48 @@ create table if not exists public.field_mappings (
   unique (agency_id, resource, name)
 );
 
+-- ANALYTICS EVENTS (v6) — Replaces localStorage analytics --------------------
+create table if not exists public.analytics_events (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid references public.agencies(id) on delete cascade,
+  user_id uuid,
+  proposal_id uuid references public.proposals(id) on delete set null,
+  event_type text not null check (event_type in ('download','whatsapp','email','approval','modification')),
+  destination text,
+  client_name text,
+  meta jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+create index if not exists analytics_events_agency_idx on public.analytics_events (agency_id, created_at desc);
+create index if not exists analytics_events_type_idx on public.analytics_events (agency_id, event_type);
+create index if not exists analytics_events_dest_idx on public.analytics_events (agency_id, destination);
+
+-- ACTIVITY LOGS v2 (v6) — Replaces localStorage activity logs ----------------
+create table if not exists public.activity_logs (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid references public.agencies(id) on delete cascade,
+  user_id uuid,
+  action text not null,
+  details jsonb,
+  entity_type text,
+  entity_id uuid,
+  created_at timestamptz default now()
+);
+create index if not exists activity_logs_agency_idx on public.activity_logs (agency_id, created_at desc);
+
+-- NOTIFICATIONS (v6) — Replaces localStorage notifications -------------------
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid references public.agencies(id) on delete cascade,
+  user_id uuid,
+  icon text default 'notifications',
+  title text not null,
+  description text,
+  is_read boolean default false,
+  created_at timestamptz default now()
+);
+create index if not exists notifications_agency_idx on public.notifications (agency_id, is_read, created_at desc);
+
 -- updated_at triggers ---------------------------------------------------------
 create or replace function public.touch_updated_at() returns trigger as $$
 begin new.updated_at = now(); return new; end;
@@ -293,7 +326,7 @@ create trigger itineraries_touch before update on public.itineraries for each ro
 drop trigger if exists itinerary_blocks_touch on public.itinerary_blocks;
 create trigger itinerary_blocks_touch before update on public.itinerary_blocks for each row execute function public.touch_updated_at();
 
--- RLS & POLICIES (Multi-tenancy) ----------------------------------------------
+-- RLS & POLICIES (Agency-Level — Enterprise Only) ----------------------------
 
 -- Enable RLS on all tables
 alter table public.agencies enable row level security;
@@ -309,8 +342,10 @@ alter table public.itineraries enable row level security;
 alter table public.itinerary_blocks enable row level security;
 alter table public.imports enable row level security;
 alter table public.field_mappings enable row level security;
+alter table public.analytics_events enable row level security;
+alter table public.activity_logs enable row level security;
+alter table public.notifications enable row level security;
 
--- Agency policy: Users can only see their own agency
 -- Agency policy: Users can only see their own agency
 drop policy if exists "users_agency_select" on public.agencies;
 create policy "users_agency_select" on public.agencies for select using (id = public.current_agency_id());
@@ -329,7 +364,7 @@ create policy "users_update" on public.users for update using (id = auth.uid());
 drop policy if exists "clients_agency" on public.clients;
 create policy "clients_agency" on public.clients for all using (agency_id = public.current_agency_id());
 
--- Proposals policy
+-- Proposals policy (Agency-level: all agents see all proposals in their agency)
 drop policy if exists "proposals_agency" on public.proposals;
 create policy "proposals_agency" on public.proposals for all using (agency_id = public.current_agency_id());
 
@@ -362,8 +397,17 @@ create policy "imports_agency" on public.imports for all using (agency_id = publ
 drop policy if exists "field_mappings_agency" on public.field_mappings;
 create policy "field_mappings_agency" on public.field_mappings for all using (agency_id = public.current_agency_id());
 
+-- Analytics, Activity Logs, Notifications policies
+drop policy if exists "analytics_events_agency" on public.analytics_events;
+create policy "analytics_events_agency" on public.analytics_events for all using (agency_id = public.current_agency_id());
+
+drop policy if exists "activity_logs_agency" on public.activity_logs;
+create policy "activity_logs_agency" on public.activity_logs for all using (agency_id = public.current_agency_id());
+
+drop policy if exists "notifications_agency" on public.notifications;
+create policy "notifications_agency" on public.notifications for all using (agency_id = public.current_agency_id());
+
 -- STORAGE BUCKET (v3) ---------------------------------------------------------
--- Note: Buckets are typically created in the Supabase Dashboard, but here is the raw SQL for reference.
 insert into storage.buckets (id, name, public) values ('agency-assets', 'agency-assets', true) on conflict (id) do nothing;
 
 drop policy if exists "Public read agency assets" on storage.objects;
@@ -395,6 +439,10 @@ declare
   v_total_proposals int;
   v_total_templates int;
   v_active_clients int;
+  v_total_downloads int;
+  v_total_shares int;
+  v_total_approvals int;
+  v_total_modifications int;
 begin
   select count(*) into v_total_proposals 
   from public.proposals where agency_id = p_agency_id and coalesce(is_archived, false) = false;
@@ -405,33 +453,55 @@ begin
   select count(distinct client_name) into v_active_clients 
   from public.proposals where agency_id = p_agency_id and client_name is not null and client_name != '';
 
+  select coalesce(count(*), 0) into v_total_downloads
+  from public.analytics_events where agency_id = p_agency_id and event_type = 'download';
+
+  select coalesce(count(*), 0) into v_total_shares
+  from public.analytics_events where agency_id = p_agency_id and event_type in ('whatsapp', 'email');
+
+  select coalesce(count(*), 0) into v_total_approvals
+  from public.analytics_events where agency_id = p_agency_id and event_type = 'approval';
+
+  select coalesce(count(*), 0) into v_total_modifications
+  from public.analytics_events where agency_id = p_agency_id and event_type = 'modification';
+
   return jsonb_build_object(
     'totalProposals', v_total_proposals,
     'totalTemplates', v_total_templates,
-    'activeClients', v_active_clients
+    'activeClients', v_active_clients,
+    'totalDownloads', v_total_downloads,
+    'totalShares', v_total_shares,
+    'totalApprovals', v_total_approvals,
+    'totalModifications', v_total_modifications
+  );
+end;
+$$ language plpgsql stable security definer;
+
+-- RPC: Destination analytics breakdown
+create or replace function public.get_destination_analytics(p_agency_id uuid)
+returns jsonb as $$
+begin
+  return (
+    select coalesce(jsonb_agg(row_to_json(t)), '[]'::jsonb)
+    from (
+      select
+        destination as name,
+        count(*) filter (where event_type = 'download') as pdf,
+        count(*) filter (where event_type = 'whatsapp') as whatsapp,
+        count(*) filter (where event_type = 'email') as email,
+        count(*) filter (where event_type = 'approval') as approvals,
+        count(*) filter (where event_type = 'modification') as modifications,
+        count(*) as "totalGenerated"
+      from public.analytics_events
+      where agency_id = p_agency_id and destination is not null and destination != ''
+      group by destination
+      order by count(*) desc
+      limit 50
+    ) t
   );
 end;
 $$ language plpgsql stable security definer;
 
 -- SEED DATA -------------------------------------------------------------------
--- Demo agency will act as the default agency for local dev/testing
+-- Demo agency acts as default agency for local dev/testing
 insert into public.agencies (id, name, slug) values ('00000000-0000-0000-0000-000000000001', 'Voyanta Demo Agency', 'voyanta-demo') on conflict do nothing;
-
--- Add demo data scoped to the demo agency
-insert into public.hotels (id, agency_id, name, location, country, category, rating, price_per_night, currency, supplier)
-values
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Hotel A','Paris','France','Boutique',4.6,420,'INR','sample'),
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Hotel B','Tokyo','Japan','Luxury',4.9,890,'INR','sample')
-on conflict do nothing;
-
-insert into public.flights (id, agency_id, airline, class, origin, destination, depart_date, flight_no, cost, currency, supplier)
-values
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Air Sample','Business','JFK','CDG','2026-03-12','AS101',2150,'INR','sample'),
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Test Air','Economy','LHR','HND','2026-04-08','TA220', 980,'INR','sample')
-on conflict do nothing;
-
-insert into public.activities (id, agency_id, name, type, location, duration_hours, price, currency, description, supplier)
-values
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Walking Tour','tour','Paris',2,75,'INR','Sample activity for testing','sample'),
-  (gen_random_uuid(),'00000000-0000-0000-0000-000000000001','Sample Boat Excursion','excursion','Capri',4,180,'INR','Sample activity for testing','sample')
-on conflict do nothing;

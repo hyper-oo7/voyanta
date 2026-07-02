@@ -7,7 +7,7 @@
 // non-image files (PDFs, docs) the helper throws — the caller MUST
 // handle a real upload error in that case.
 
-import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
+import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 
 export const BUCKET = 'agency-assets';
 
@@ -73,7 +73,7 @@ export async function uploadBlob(blob, filename, folder) {
 
 function buildPath(folder, filename) {
   const ext = (String(filename).split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
-  return `${folder}/${DEFAULT_AGENCY_ID}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  return `${folder}/${getAgencyId()}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 }
 
 function readAsDataURL(file) {

@@ -1,24 +1,27 @@
-import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
+import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 
-// Generic CRUD for the four resource tables. Always returns {data, error}-free.
+// Generic CRUD for resource tables with pagination support.
 // Records keep their original supplier columns inside `raw` (jsonb).
 
-const listCache = new Map();
+const DEFAULT_PAGE_SIZE = 100;
 
 export function makeResourceService(resource) {
   return {
-    list: async (filters = {}, force = false) => {
-      const cacheKey = `${resource}:${JSON.stringify(filters)}`;
-      const localKey = `voyanta_res_cache_${cacheKey}`;
-      if (!force && listCache.has(cacheKey)) return listCache.get(cacheKey);
+    list: async (filters = {}, force = false, { page = 0, pageSize = DEFAULT_PAGE_SIZE } = {}) => {
+      const localKey = `voyanta_res_cache_${resource}:${JSON.stringify(filters)}`;
 
       if (!supabase) {
         try { return JSON.parse(localStorage.getItem(localKey) || '[]'); } catch { return []; }
       }
 
-      let q = supabase.from(resource).select('*').order('created_at', { ascending: false });
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+
+      let q = supabase.from(resource).select('*', { count: 'exact' }).order('created_at', { ascending: false });
       Object.entries(filters).forEach(([k, v]) => { if (v != null && v !== '') q = q.eq(k, v); });
-      const { data, error } = await q;
+      q = q.range(from, to);
+
+      const { data, error, count } = await q;
       if (error) {
         try {
           const cached = JSON.parse(localStorage.getItem(localKey) || 'null');
@@ -28,9 +31,16 @@ export function makeResourceService(resource) {
       }
       
       const result = data || [];
-      listCache.set(cacheKey, result);
       try { localStorage.setItem(localKey, JSON.stringify(result)); } catch {}
       return result;
+    },
+    count: async (filters = {}) => {
+      if (!supabase) return 0;
+      let q = supabase.from(resource).select('id', { count: 'exact', head: true });
+      Object.entries(filters).forEach(([k, v]) => { if (v != null && v !== '') q = q.eq(k, v); });
+      const { count, error } = await q;
+      if (error) return 0;
+      return count || 0;
     },
     get: async (id) => {
       const { data, error } = await supabase.from(resource).select('*').eq('id', id).single();
@@ -38,25 +48,22 @@ export function makeResourceService(resource) {
       return data;
     },
     create: async (row) => {
-      listCache.clear();
-      const { data, error } = await supabase.from(resource).insert({ agency_id: DEFAULT_AGENCY_ID, ...row }).select().single();
+      const agencyId = getAgencyId();
+      const { data, error } = await supabase.from(resource).insert({ agency_id: agencyId, ...row }).select().single();
       if (error) throw error;
       return data;
     },
     update: async (id, patch) => {
-      listCache.clear();
       const { data, error } = await supabase.from(resource).update(patch).eq('id', id).select().single();
       if (error) throw error;
       return data;
     },
     remove: async (id) => {
-      listCache.clear();
       const { error } = await supabase.from(resource).delete().eq('id', id);
       if (error) throw error;
     },
     removeMany: async (ids) => {
       if (!ids?.length) return;
-      listCache.clear();
       const { error } = await supabase.from(resource).delete().in('id', ids);
       if (error) throw error;
     },
@@ -118,28 +125,32 @@ export function sanitizeBrandingObject(raw) {
 
 export const settingsService = {
   get: async () => {
-    if (!supabase) return sanitizeBrandingObject(DEFAULT_SETTINGS);
+    const agencyId = getAgencyId();
+    const cacheKey = `voyanta_settings_cache_${agencyId}`;
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem(cacheKey)); } catch {}
+    if (!supabase) return sanitizeBrandingObject(cached || DEFAULT_SETTINGS);
     try {
       const { data, error } = await supabase
         .from('templates')
         .select('*')
         .eq('category', 'AgencySettings')
+        .eq('agency_id', agencyId)
         .limit(1);
 
       if (error) throw error;
       
       const row = data && data.length > 0 ? data[0] : null;
 
-      // If it doesn't exist, try loading from agencies as fallback, and create the row
       if (!row) {
         const { data: agencyRows } = await supabase
           .from('agencies')
           .select('*')
-          .eq('id', DEFAULT_AGENCY_ID)
+          .eq('id', agencyId)
           .limit(1);
 
         const agencyData = agencyRows && agencyRows.length > 0 ? agencyRows[0] : null;
-        const initial = { ...DEFAULT_SETTINGS };
+        const initial = { ...(cached || DEFAULT_SETTINGS) };
         if (agencyData) {
           initial.agency_name = agencyData.name || initial.agency_name;
           initial.logo_url = agencyData.logo_url || initial.logo_url;
@@ -147,12 +158,12 @@ export const settingsService = {
         }
 
         const sanitizedInitial = sanitizeBrandingObject(initial);
+        try { localStorage.setItem(cacheKey, JSON.stringify(sanitizedInitial)); } catch {}
 
-        // Create the settings row
         const { data: createdRows } = await supabase
           .from('templates')
           .insert({
-            agency_id: DEFAULT_AGENCY_ID,
+            agency_id: agencyId,
             name: 'Agency Settings',
             category: 'AgencySettings',
             data: sanitizedInitial
@@ -161,32 +172,38 @@ export const settingsService = {
           .limit(1);
 
         const created = createdRows && createdRows.length > 0 ? createdRows[0] : null;
-        return created ? sanitizeBrandingObject({ ...sanitizedInitial, ...created.data }) : sanitizedInitial;
+        const finalRes = created ? sanitizeBrandingObject({ ...sanitizedInitial, ...created.data }) : sanitizedInitial;
+        try { localStorage.setItem(cacheKey, JSON.stringify(finalRes)); } catch {}
+        return finalRes;
       }
 
-      return sanitizeBrandingObject({ ...DEFAULT_SETTINGS, ...row.data });
+      const finalRes = sanitizeBrandingObject({ ...DEFAULT_SETTINGS, ...row.data });
+      try { localStorage.setItem(cacheKey, JSON.stringify(finalRes)); } catch {}
+      return finalRes;
     } catch (e) {
       console.error('Failed to load settings:', e);
-      return sanitizeBrandingObject(DEFAULT_SETTINGS);
+      return sanitizeBrandingObject(cached || DEFAULT_SETTINGS);
     }
   },
   update: async (settings) => {
+    const agencyId = getAgencyId();
+    const cacheKey = `voyanta_settings_cache_${agencyId}`;
     const cleanSettings = sanitizeBrandingObject(settings);
+    try { localStorage.setItem(cacheKey, JSON.stringify(cleanSettings)); } catch {}
     if (!supabase) return cleanSettings;
     try {
-      // 1. Try to update agencies table for standard fields so other parts can query it
       const agencyPatch = {
         name: cleanSettings.agency_name,
         logo_url: cleanSettings.logo_url || null,
         primary_color: cleanSettings.primary_color || null,
       };
-      await supabase.from('agencies').update(agencyPatch).eq('id', DEFAULT_AGENCY_ID);
+      await supabase.from('agencies').update(agencyPatch).eq('id', agencyId);
 
-      // 2. Fetch the AgencySettings template row using limit(1) to avoid duplicate row errors
       const { data: existingRows } = await supabase
         .from('templates')
         .select('*')
         .eq('category', 'AgencySettings')
+        .eq('agency_id', agencyId)
         .limit(1);
 
       const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
@@ -200,13 +217,14 @@ export const settingsService = {
           .limit(1);
         if (error) throw error;
         const updated = updatedRows && updatedRows.length > 0 ? updatedRows[0] : null;
-        if (updated) cache.set('settings', updated.data);
-        return updated ? sanitizeBrandingObject(updated.data) : cleanSettings;
+        const finalRes = updated ? sanitizeBrandingObject(updated.data) : cleanSettings;
+        try { localStorage.setItem(cacheKey, JSON.stringify(finalRes)); } catch {}
+        return finalRes;
       } else {
         const { data: insertedRows, error } = await supabase
           .from('templates')
           .insert({
-            agency_id: DEFAULT_AGENCY_ID,
+            agency_id: agencyId,
             name: 'Agency Settings',
             category: 'AgencySettings',
             data: cleanSettings
@@ -215,14 +233,13 @@ export const settingsService = {
           .limit(1);
         if (error) throw error;
         const inserted = insertedRows && insertedRows.length > 0 ? insertedRows[0] : null;
-        if (inserted) cache.set('settings', inserted.data);
-        return inserted ? sanitizeBrandingObject(inserted.data) : cleanSettings;
+        const finalRes = inserted ? sanitizeBrandingObject(inserted.data) : cleanSettings;
+        try { localStorage.setItem(cacheKey, JSON.stringify(finalRes)); } catch {}
+        return finalRes;
       }
     } catch (e) {
       console.error('Failed to update settings:', e);
-      throw e;
+      return cleanSettings;
     }
   }
 };
-
-

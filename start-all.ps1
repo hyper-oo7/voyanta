@@ -96,19 +96,19 @@ $retries = 15
 $backendHealthy = $false
 $pdfHealthy = $false
 while ($retries -gt 0) {
-    try {
-        if (-not $backendHealthy) {
+    if (-not $backendHealthy) {
+        try {
             $res1 = Invoke-WebRequest -Uri "http://127.0.0.1:8001/api/health" -Method Get -UseBasicParsing -ErrorAction Stop
             if ($res1.StatusCode -eq 200) { $backendHealthy = $true }
-        }
-        if (-not $pdfHealthy) {
+        } catch {}
+    }
+    if (-not $pdfHealthy) {
+        try {
             $res2 = Invoke-WebRequest -Uri "http://127.0.0.1:8002/health" -Method Get -UseBasicParsing -ErrorAction Stop
             if ($res2.StatusCode -eq 200) { $pdfHealthy = $true }
-        }
-        if ($backendHealthy -and $pdfHealthy) { break }
-    } catch {
-        # ignore
+        } catch {}
     }
+    if ($backendHealthy -and $pdfHealthy) { break }
     Start-Sleep -Seconds 2
     $retries--
 }

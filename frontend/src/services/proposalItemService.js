@@ -1,4 +1,4 @@
-import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
+import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 
 // Proposal items (junction): hotels/flights/activities/transfers/etc on a proposal.
 // Pricing fields (qty * unit_price) are summed by the cost calculator.
@@ -70,7 +70,7 @@ export async function buildProposalExport(proposalId) {
   return {
     schema_version: 1,
     generated_at: new Date().toISOString(),
-    agency_id: DEFAULT_AGENCY_ID,
+    agency_id: getAgencyId(),
     proposal: proposal || null,
     items_by_kind: grouped,
     items,

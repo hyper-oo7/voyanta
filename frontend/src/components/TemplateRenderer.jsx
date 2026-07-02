@@ -1,4 +1,5 @@
-import React, { memo, useState, useEffect } from 'react';
+import React, { memo, useState, useEffect, Suspense } from 'react';
+import { TEMPLATE_REGISTRY } from '../templates/registry.js';
 import { formatINR } from '../lib/currency.js';
 import { fetchContextualImage } from '../services/imageService.js';
 import { incrementAnalytics } from '../services/analyticsService.js';
@@ -25,7 +26,7 @@ export const THEMES = {
   'wildlife': { bg: '#fefce8', text: '#422006', accent: '#65a30d', alt: '#fef08a' }
 };
 
-const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', data, include = ALL, order = SECTIONS, customBlocks = [], viewMode = 'document', activeSlide = 0 }) {
+const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 'classic', data, include = ALL, order = SECTIONS, customBlocks = [], viewMode = 'document', activeSlide = 0 }) {
   if (!data) return null;
   const theme = THEMES[style] || THEMES.classic;
   
@@ -444,6 +445,22 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
     </article>
   );
 });
+const TemplateRenderer = memo(function TemplateRenderer(props) {
+  const { style = 'classic' } = props;
+  const registryEntry = TEMPLATE_REGISTRY[style];
+  
+  if (registryEntry && registryEntry.component) {
+    const RegistryComponent = registryEntry.component;
+    return (
+      <Suspense fallback={<div className="p-12 text-center text-on-surface-variant font-body-md animate-pulse">Loading {registryEntry.name} layout...</div>}>
+        <RegistryComponent {...props} />
+      </Suspense>
+    );
+  }
+  
+  return <ClassicTemplateRenderer {...props} />;
+});
+
 export default TemplateRenderer;
 
 export function ExportOptionsBar({ value, onChange, order, setOrder, customBlocks = [] }) {

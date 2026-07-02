@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -229,12 +229,12 @@ function TeamSettings() {
   const [team, setTeam] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('voyanta_team_members'));
-      if (saved && Array.isArray(saved)) return saved;
+      if (saved && Array.isArray(saved) && saved.length > 0) {
+        const filtered = saved.filter(m => !m.email.includes('raman@voyanta.com') && !m.email.includes('priya@voyanta.com'));
+        if (filtered.length > 0) return filtered;
+      }
     } catch {}
-    return [
-      { id: 'u_1', name: 'Raman (Lead Agency Concierge)', email: 'raman@voyanta.com', role: 'Admin', status: 'Active' },
-      { id: 'u_2', name: 'Priya Sharma (Senior Travel Designer)', email: 'priya@voyanta.com', role: 'Editor', status: 'Active' },
-    ];
+    return [];
   });
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
@@ -276,28 +276,70 @@ function TeamSettings() {
 
   if (!isEnterprise) {
     return (
-      <div className="space-y-6">
-        <h3 className="text-2xl font-serif font-bold">Team Management</h3>
-        <div className="p-8 bg-surface-container rounded-2xl border border-outline-variant text-center max-w-xl mx-auto my-8">
-          <div className="w-16 h-16 rounded-full bg-error/10 text-error flex items-center justify-center mx-auto mb-4">
-            <span className="material-symbols-outlined text-[32px]">lock</span>
+      <div className="relative space-y-6 animate-fade-in">
+        <div className="filter blur-[6px] pointer-events-none opacity-40 select-none transition-all duration-500">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h3 className="text-2xl font-serif font-bold text-primary">Team Management & RBAC</h3>
+              <p className="text-xs text-on-surface-variant">Assign Admin or Editor roles to control proposal management and deletion permissions.</p>
+            </div>
+            <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+              <span className="material-symbols-outlined text-[14px]">lock</span> Enterprise Feature
+            </span>
           </div>
-          <h4 className="text-xl font-bold font-serif mb-2">Enterprise Feature Locked</h4>
-          <p className="text-sm text-on-surface-variant mb-6">
-            Team Management & Role-Based Access Control (RBAC) is exclusively available on the Enterprise plan. Your current active tier is <strong className="text-primary">{activePlan}</strong>.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              localStorage.setItem('voyanta_active_plan', 'Enterprise');
-              setActivePlan('Enterprise');
-              window.dispatchEvent(new CustomEvent('voyanta:plan-updated'));
-              toast.success('Upgraded to Enterprise Plan! Team Management is now unlocked.');
-            }}
-            className="px-6 py-3 bg-primary text-on-primary font-bold rounded-xl shadow-lg hover:bg-primary/90 transition-all"
-          >
-            Upgrade to Enterprise Plan Now
-          </button>
+
+          <div className="p-6 bg-surface-container rounded-xl border border-outline-variant mb-6">
+            <h4 className="text-base font-bold mb-3">Invite New Travel Designer</h4>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div className="h-10 bg-surface rounded-lg border border-outline-variant"></div>
+              <div className="h-10 bg-surface rounded-lg border border-outline-variant"></div>
+              <div className="h-10 bg-surface rounded-lg border border-outline-variant"></div>
+              <div className="h-10 bg-primary/30 rounded-lg"></div>
+            </div>
+          </div>
+
+          <div className="bg-surface-container rounded-xl border border-outline-variant p-6 space-y-4">
+            <h4 className="text-base font-bold mb-2">Active Team Members</h4>
+            <div className="h-16 bg-surface rounded-xl border border-outline-variant flex items-center justify-between p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/20"></div>
+                <div className="space-y-1"><div className="w-32 h-4 bg-on-surface/20 rounded"></div><div className="w-48 h-3 bg-on-surface/10 rounded"></div></div>
+              </div>
+            </div>
+            <div className="h-16 bg-surface rounded-xl border border-outline-variant flex items-center justify-between p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/20"></div>
+                <div className="space-y-1"><div className="w-40 h-4 bg-on-surface/20 rounded"></div><div className="w-56 h-3 bg-on-surface/10 rounded"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="absolute inset-0 flex items-center justify-center z-20 p-4">
+          <div className="bg-surface/85 dark:bg-surface/90 backdrop-blur-2xl p-8 rounded-[28px] border border-outline-variant/60 shadow-2xl max-w-lg w-full text-center transform hover:scale-[1.01] transition-all duration-300">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-primary/20 to-primary/5 border border-primary/20 text-primary flex items-center justify-center mx-auto mb-5 shadow-inner">
+              <span className="material-symbols-outlined text-[40px] animate-pulse">lock</span>
+            </div>
+            <h4 className="text-2xl font-serif font-extrabold text-primary mb-2">Team Management & RBAC</h4>
+            <p className="text-sm text-on-surface-variant mb-6 leading-relaxed">
+              Role-Based Access Control (Admin vs. Editor permissions) and multi-designer collaboration are exclusively unlocked on the <strong className="text-primary font-bold">Enterprise Plan</strong>. Your agency is currently on the <strong className="uppercase tracking-wider px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs font-bold">{activePlan}</strong> tier.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.setItem('voyanta_active_plan', 'Enterprise');
+                  setActivePlan('Enterprise');
+                  window.dispatchEvent(new CustomEvent('voyanta:plan-updated'));
+                  toast.success('Upgraded to Enterprise Plan! Team Management is now unlocked.');
+                }}
+                className="px-6 py-3.5 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-on-primary font-bold rounded-xl shadow-lg hover:shadow-primary/25 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto"
+              >
+                <span className="material-symbols-outlined text-[20px]">rocket_launch</span>
+                Upgrade to Enterprise Now
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );

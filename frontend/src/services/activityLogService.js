@@ -1,52 +1,72 @@
-const LOGS_KEY = 'voyanta_activity_logs';
+// Activity log service — writes to Supabase activity_logs table.
+// Falls back gracefully if Supabase is unavailable.
+import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 
-export function getActivityLogs() {
-  try {
-    const raw = localStorage.getItem(LOGS_KEY);
-    if (!raw) {
-      // Seed with some initial welcome log if empty
-      return [
-        {
-          id: 'log_init',
-          type: 'system',
-          description: 'Agency environment initialized and ready.',
-          timestamp: new Date().toISOString(),
-          clientName: 'System'
-        }
-      ];
-    }
-    return JSON.parse(raw);
-  } catch {
-    return [];
+const PAGE_SIZE = 50;
+
+export async function getActivityLogs(limit = PAGE_SIZE) {
+  const agencyId = getAgencyId();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .eq('agency_id', agencyId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (!error && data) return data.map(normalizeLog);
+    } catch {}
   }
+  return [];
 }
 
-export function logActivity(type, description, clientName = 'Agency Team') {
+export async function logActivity(type, description, clientName = 'Agency Team', entityType = null, entityId = null) {
+  const agencyId = getAgencyId();
   try {
-    const logs = getActivityLogs();
-    const newLog = {
-      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      type, // 'proposal', 'pdf', 'approval', 'modification', 'subscription', 'team', 'system'
-      description,
-      timestamp: new Date().toISOString(),
-      clientName
-    };
-    const updated = [newLog, ...logs].slice(0, 50); // keep last 50
-    localStorage.setItem(LOGS_KEY, JSON.stringify(updated));
+    let userId = null;
+    if (supabase) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        userId = user?.id || null;
+      } catch {}
+
+      await supabase.from('activity_logs').insert({
+        agency_id: agencyId,
+        user_id: userId,
+        action: type,
+        details: { description, clientName },
+        entity_type: entityType,
+        entity_id: entityId,
+      });
+    }
     window.dispatchEvent(new CustomEvent('voyanta:activity-log-updated'));
-    return newLog;
+    return { id: crypto.randomUUID(), action: type, details: { description, clientName }, created_at: new Date().toISOString() };
   } catch (err) {
     console.error('Failed to log activity:', err);
     return null;
   }
 }
 
-export function clearActivityLogs() {
+export async function clearActivityLogs() {
+  const agencyId = getAgencyId();
   try {
-    localStorage.setItem(LOGS_KEY, JSON.stringify([]));
+    if (supabase) {
+      await supabase.from('activity_logs').delete().eq('agency_id', agencyId);
+    }
     window.dispatchEvent(new CustomEvent('voyanta:activity-log-updated'));
     return true;
   } catch {
     return false;
   }
+}
+
+function normalizeLog(row) {
+  const details = row.details || {};
+  return {
+    id: row.id,
+    type: row.action,
+    description: details.description || row.action,
+    timestamp: row.created_at,
+    clientName: details.clientName || 'System',
+  };
 }

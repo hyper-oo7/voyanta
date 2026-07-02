@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useToast } from '../context/ToastContext.jsx';
 import { useProposals } from '../hooks/useProposals.js';
-import { useTemplates } from '../hooks/useResources.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { getAnalyticsStats } from '../services/analyticsService.js';
+import { fetchDashboardSummary } from '../services/dashboardService.js';
+import { getActivityLogs } from '../services/activityLogService.js';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -13,35 +14,51 @@ export default function DashboardPage() {
   const { user } = useAuth();
   
   const { proposals, isLoading: loadingProposals } = useProposals();
-  const { data: templates, isLoading: loadingTemplates } = useTemplates();
 
   const [proposalsCollapsed, setProposalsCollapsed] = useState(false);
   const [proposalsEnlarged, setProposalsEnlarged] = useState(false);
   const [showDestModal, setShowDestModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [analyticsVersion, setAnalyticsVersion] = useState(0);
+  
+  // Server-side dashboard stats
+  const [serverStats, setServerStats] = useState(null);
+  const [analytics, setAnalytics] = useState({
+    totalDownloads: 0, totalWhatsapp: 0, totalEmail: 0,
+    totalApprovals: 0, totalModifications: 0, totalEngagement: 0,
+    mostSentDest: 'None yet', mostApprovedDest: 'None yet', mostModifiedDest: 'None yet',
+    destinationsList: [],
+  });
+  const [recentActivity, setRecentActivity] = useState([]);
+
+  // Fetch server-side stats on mount and analytics updates
+  useEffect(() => {
+    fetchDashboardSummary().then(data => {
+      setServerStats(data);
+      setRecentActivity(data.recentActivity || []);
+    }).catch(console.warn);
+
+    getAnalyticsStats(proposals).then(setAnalytics).catch(console.warn);
+  }, [analyticsVersion, proposals]);
 
   useEffect(() => {
     const handler = () => setAnalyticsVersion(v => v + 1);
     window.addEventListener('voyanta:analytics-updated', handler);
+    window.addEventListener('voyanta:activity-log-updated', handler);
     return () => {
       window.removeEventListener('voyanta:analytics-updated', handler);
+      window.removeEventListener('voyanta:activity-log-updated', handler);
     };
   }, []);
 
-  const loading = loadingProposals || loadingTemplates;
+  const loading = loadingProposals;
 
-  const totalProposals = proposals.length;
-  const totalTemplates = templates.length || 45; // Fallback if seeded stats
-  
-  // Case-insensitive unique client count
-  const activeClients = new Set(
-    proposals
-      .map((p) => (p.client_name || p.client || '').trim().toLowerCase())
-      .filter(Boolean)
+  // Use server-side counts if available, otherwise client-side
+  const totalProposals = serverStats?.totalProposals ?? proposals.length;
+  const totalTemplates = serverStats?.totalTemplates ?? 0;
+  const activeClients = serverStats?.activeClients ?? new Set(
+    proposals.map((p) => (p.client_name || p.client || '').trim().toLowerCase()).filter(Boolean)
   ).size;
-
-  const analytics = getAnalyticsStats(proposals);
 
   const filteredProposals = proposals.filter(p => {
     if (!searchQuery) return true;
@@ -182,7 +199,7 @@ export default function DashboardPage() {
                             <StatusPill status={p.status} />
                           </td>
                           <td className="px-xl py-lg font-body-md text-on-surface-variant text-xs">
-                            {p.date ? new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                            {p.date || '—'}
                           </td>
                         </tr>
                       ))
@@ -192,6 +209,30 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+
+          {/* Recent Activity */}
+          {recentActivity.length > 0 && (
+            <div className="bg-surface border border-outline-variant rounded-2xl p-xl">
+              <h3 className="font-headline-sm text-lg font-bold text-on-surface m-0 mb-lg flex items-center gap-sm">
+                <span className="material-symbols-outlined text-primary text-[20px]">timeline</span>
+                Recent Activity
+              </h3>
+              <div className="space-y-md">
+                {recentActivity.map((a, i) => (
+                  <div key={a.id || i} className="flex items-start gap-md p-md bg-surface-container-lowest rounded-xl">
+                    <div className="w-8 h-8 bg-primary/10 text-primary rounded-lg flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined text-[16px]">{a.type || 'sync'}</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-body-md text-sm font-bold text-on-surface m-0">{a.title}</p>
+                      <p className="text-xs text-on-surface-variant m-0 mt-0.5 truncate">{a.detail}</p>
+                    </div>
+                    <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider shrink-0">{a.when}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
         </div>
 
@@ -310,7 +351,7 @@ export default function DashboardPage() {
                           <StatusPill status={p.status} />
                         </td>
                         <td className="px-xl py-lg font-body-md text-on-surface-variant text-xs">
-                          {p.date ? new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                          {p.date || '—'}
                         </td>
                         <td className="px-xl py-lg text-right" onClick={e => e.stopPropagation()}>
                           <button 
@@ -381,7 +422,7 @@ export default function DashboardPage() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={7} className="py-8 text-center text-on-surface-variant font-body-sm">No destination data recorded yet.</td>
+                        <td colSpan={7} className="py-8 text-center text-on-surface-variant font-body-sm">No destination data recorded yet. Generate and share some proposals to see analytics here.</td>
                       </tr>
                     )}
                   </tbody>

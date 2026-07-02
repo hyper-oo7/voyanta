@@ -1,195 +1,157 @@
-// Helper to track and compute engagement stats (PDF downloads, email/WA shares, approvals, modifications, top destinations)
+// Analytics service — reads/writes Supabase analytics_events and notifications tables.
+// Falls back to localStorage if Supabase is unavailable.
+import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 
-const DEST_STATS_KEY = 'voyanta_dest_generation_stats';
-
-function getOrSeedDestStats() {
+// ─── Notifications ───────────────────────────────────────────────────────────
+export async function addNotification(icon, title, desc) {
+  const agencyId = getAgencyId();
   try {
-    const raw = localStorage.getItem(DEST_STATS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-        return parsed;
-      }
+    if (supabase) {
+      let userId = null;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        userId = user?.id || null;
+      } catch {}
+      await supabase.from('notifications').insert({
+        agency_id: agencyId,
+        user_id: userId,
+        icon: icon || 'notifications',
+        title: title || 'New Notification',
+        description: desc || '',
+      });
     }
-  } catch {}
-
-  // Seed default luxury destination data so stat cards and modal look stunning immediately
-  const seeded = {
-    'Maldives Luxury Resort': { pdf: 12, whatsapp: 18, email: 8, approvals: 14, modifications: 3 },
-    'Swiss Alps Expedition': { pdf: 9, whatsapp: 14, email: 5, approvals: 11, modifications: 4 },
-    'Kyoto Heritage Tour': { pdf: 7, whatsapp: 10, email: 6, approvals: 8, modifications: 2 },
-    'Amalfi Coast Yachting': { pdf: 6, whatsapp: 8, email: 4, approvals: 7, modifications: 1 }
-  };
-  try { localStorage.setItem(DEST_STATS_KEY, JSON.stringify(seeded)); } catch {}
-  return seeded;
-}
-
-export function addNotification(icon, title, desc) {
-  try {
-    let list = [];
-    try { list = JSON.parse(localStorage.getItem('voyanta_notifications') || '[]'); } catch {}
-    if (!Array.isArray(list) || list.length === 0) {
-      list = [
-        { id: 1, icon: 'mail', title: 'Proposal Sent', desc: "Alex sent 'Tokyo Neon Nights' to Marcus Thorne.", time: '2 hours ago', unread: true },
-        { id: 2, icon: 'check_circle', title: 'Proposal Accepted', desc: "'Alpine Escape' was accepted by Eleanor Vance.", time: '5 hours ago', unread: true },
-        { id: 3, icon: 'sync', title: 'Database Sync', desc: 'Global hotel inventory updated successfully.', time: 'Yesterday', unread: false }
-      ];
-    }
-    const newNotif = {
-      id: Date.now(),
-      icon: icon || 'notifications',
-      title: title || 'New Notification',
-      desc: desc || '',
-      time: 'Just now',
-      unread: true
-    };
-    list.unshift(newNotif);
-    if (list.length > 20) list = list.slice(0, 20);
-    localStorage.setItem('voyanta_notifications', JSON.stringify(list));
     window.dispatchEvent(new CustomEvent('voyanta:notifications-updated'));
   } catch (err) {
     console.warn('Failed to add notification:', err);
   }
 }
 
-export function getAnalyticsStats(proposals = []) {
-  const destStats = getOrSeedDestStats();
+export async function getNotifications(limit = 20) {
+  const agencyId = getAgencyId();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('agency_id', agencyId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (!error && data) return data;
+    } catch {}
+  }
+  return [];
+}
 
-  // Also fold in any live proposal destinations that might not be in destStats yet
-  proposals.forEach((p) => {
-    if (p.destination) {
-      const d = p.destination.trim();
-      if (d && !destStats[d]) {
-        destStats[d] = { pdf: 0, whatsapp: 0, email: 0, approvals: 0, modifications: 0 };
+export async function markNotificationRead(id) {
+  if (!supabase) return;
+  await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+  window.dispatchEvent(new CustomEvent('voyanta:notifications-updated'));
+}
+
+// ─── Analytics Stats (from Supabase) ─────────────────────────────────────────
+export async function getAnalyticsStats(proposals = []) {
+  const agencyId = getAgencyId();
+
+  // Try Supabase RPC first
+  if (supabase) {
+    try {
+      const { data: destData, error: destErr } = await supabase.rpc('get_destination_analytics', { p_agency_id: agencyId });
+      const { data: summary, error: sumErr } = await supabase.rpc('get_dashboard_summary', { p_agency_id: agencyId });
+
+      if (!destErr && !sumErr && summary) {
+        const destinationsList = Array.isArray(destData) ? destData : [];
+
+        let totalDownloads = 0, totalWhatsapp = 0, totalEmail = 0;
+        let totalApprovals = 0, totalModifications = 0;
+        let mostSentDest = 'None yet', maxSentCount = -1;
+        let mostApprovedDest = 'None yet', maxApprovedCount = -1;
+        let mostModifiedDest = 'None yet', maxModifiedCount = -1;
+
+        destinationsList.forEach(d => {
+          const pdf = Number(d.pdf || 0);
+          const wa = Number(d.whatsapp || 0);
+          const em = Number(d.email || 0);
+          const app = Number(d.approvals || 0);
+          const mod = Number(d.modifications || 0);
+          const total = pdf + wa + em;
+
+          totalDownloads += pdf;
+          totalWhatsapp += wa;
+          totalEmail += em;
+          totalApprovals += app;
+          totalModifications += mod;
+
+          if (total > maxSentCount && total > 0) { maxSentCount = total; mostSentDest = d.name; }
+          if (app > maxApprovedCount && app > 0) { maxApprovedCount = app; mostApprovedDest = d.name; }
+          if (mod > maxModifiedCount && mod > 0) { maxModifiedCount = mod; mostModifiedDest = d.name; }
+        });
+
+        const totalEngagement = totalDownloads + totalWhatsapp + totalEmail + totalApprovals + totalModifications;
+        return {
+          totalDownloads, totalWhatsapp, totalEmail,
+          totalApprovals, totalModifications, totalEngagement,
+          mostSentDest, mostApprovedDest, mostModifiedDest,
+          destinationsList,
+        };
       }
-      const stats = p.stats || {};
-      if (stats.downloads || stats.whatsapp_shares || stats.email_shares || stats.approvals || stats.modifications) {
-        destStats[d].pdf += Number(stats.downloads || 0);
-        destStats[d].whatsapp += Number(stats.whatsapp_shares || 0);
-        destStats[d].email += Number(stats.email_shares || 0);
-        destStats[d].approvals += Number(stats.approvals || 0);
-        destStats[d].modifications += Number(stats.modifications || 0);
-      }
+    } catch (e) {
+      console.warn('Analytics RPC failed, returning empty stats:', e);
     }
-  });
+  }
 
-  let totalDownloads = 0;
-  let totalWhatsapp = 0;
-  let totalEmail = 0;
-  let totalApprovals = 0;
-  let totalModifications = 0;
-
-  let mostSentDest = 'None yet';
-  let maxSentCount = -1;
-
-  let mostApprovedDest = 'None yet';
-  let maxApprovedCount = -1;
-
-  let mostModifiedDest = 'None yet';
-  let maxModifiedCount = -1;
-
-  const destinationsList = [];
-
-  Object.entries(destStats).forEach(([dest, counts]) => {
-    const pdf = Number(counts.pdf || 0);
-    const wa = Number(counts.whatsapp || 0);
-    const em = Number(counts.email || 0);
-    const app = Number(counts.approvals || 0);
-    const mod = Number(counts.modifications || 0);
-    const totalGenerated = pdf + wa + em;
-
-    totalDownloads += pdf;
-    totalWhatsapp += wa;
-    totalEmail += em;
-    totalApprovals += app;
-    totalModifications += mod;
-
-    if (totalGenerated > maxSentCount && totalGenerated > 0) {
-      maxSentCount = totalGenerated;
-      mostSentDest = dest;
-    }
-    if (app > maxApprovedCount && app > 0) {
-      maxApprovedCount = app;
-      mostApprovedDest = dest;
-    }
-    if (mod > maxModifiedCount && mod > 0) {
-      maxModifiedCount = mod;
-      mostModifiedDest = dest;
-    }
-
-    destinationsList.push({
-      name: dest,
-      pdf,
-      whatsapp: wa,
-      email: em,
-      approvals: app,
-      modifications: mod,
-      totalGenerated
-    });
-  });
-
-  destinationsList.sort((a, b) => b.totalGenerated - a.totalGenerated);
-
-  const totalEngagement = totalDownloads + totalWhatsapp + totalEmail + totalApprovals + totalModifications;
+  // Fallback: empty stats
   return {
-    totalDownloads,
-    totalWhatsapp,
-    totalEmail,
-    totalApprovals,
-    totalModifications,
-    totalEngagement,
-    mostSentDest,
-    mostApprovedDest,
-    mostModifiedDest,
-    destinationsList
+    totalDownloads: 0, totalWhatsapp: 0, totalEmail: 0,
+    totalApprovals: 0, totalModifications: 0, totalEngagement: 0,
+    mostSentDest: 'None yet', mostApprovedDest: 'None yet', mostModifiedDest: 'None yet',
+    destinationsList: [],
   };
 }
 
-export function incrementAnalytics(type, proposalId, destName, clientName) {
-  try {
-    let dest = destName || '';
-    let client = clientName || '';
+// ─── Increment Analytics ─────────────────────────────────────────────────────
+export async function incrementAnalytics(type, proposalId, destName, clientName) {
+  const agencyId = getAgencyId();
+  const eventTypeMap = {
+    'download': 'download',
+    'whatsapp': 'whatsapp',
+    'email': 'email',
+    'approval': 'approval',
+    'modification': 'modification',
+  };
+  const eventType = eventTypeMap[type];
+  if (!eventType) return;
 
-    // Lookup destination and client name if not passed
-    if (proposalId && (!dest || !client)) {
+  try {
+    let userId = null;
+    if (supabase) {
       try {
-        const pStr = localStorage.getItem(`voyanta_proposal_${proposalId}`);
-        if (pStr) {
-          const p = JSON.parse(pStr);
-          if (!dest && p.destination) dest = p.destination;
-          if (!client && (p.client_name || p.client)) client = p.client_name || p.client;
-          p.stats = p.stats || {};
-          if (type === 'download') p.stats.downloads = Number(p.stats.downloads || 0) + 1;
-          if (type === 'whatsapp') p.stats.whatsapp_shares = Number(p.stats.whatsapp_shares || 0) + 1;
-          if (type === 'email') p.stats.email_shares = Number(p.stats.email_shares || 0) + 1;
-          if (type === 'approval') p.stats.approvals = Number(p.stats.approvals || 0) + 1;
-          if (type === 'modification') p.stats.modifications = Number(p.stats.modifications || 0) + 1;
-          localStorage.setItem(`voyanta_proposal_${proposalId}`, JSON.stringify(p));
-        }
+        const { data: { user } } = await supabase.auth.getUser();
+        userId = user?.id || null;
       } catch {}
     }
 
-    if (!dest) dest = 'General Destination';
-    if (!client) client = 'Valued Client';
+    const dest = destName || 'General Destination';
+    const client = clientName || 'Valued Client';
 
-    const destStats = getOrSeedDestStats();
-    if (!destStats[dest]) {
-      destStats[dest] = { pdf: 0, whatsapp: 0, email: 0, approvals: 0, modifications: 0 };
+    // Write to Supabase
+    if (supabase) {
+      await supabase.from('analytics_events').insert({
+        agency_id: agencyId,
+        user_id: userId,
+        proposal_id: proposalId || null,
+        event_type: eventType,
+        destination: dest,
+        client_name: client,
+      });
     }
 
-    if (type === 'download') destStats[dest].pdf = Number(destStats[dest].pdf || 0) + 1;
-    if (type === 'whatsapp') destStats[dest].whatsapp = Number(destStats[dest].whatsapp || 0) + 1;
-    if (type === 'email') destStats[dest].email = Number(destStats[dest].email || 0) + 1;
+    // Fire notification for approvals/modifications
     if (type === 'approval') {
-      destStats[dest].approvals = Number(destStats[dest].approvals || 0) + 1;
-      addNotification('check_circle', `Approved by ${client}`, `${client} has approved the proposal plan for ${dest}.`);
+      await addNotification('check_circle', `Approved by ${client}`, `${client} has approved the proposal plan for ${dest}.`);
     }
     if (type === 'modification') {
-      destStats[dest].modifications = Number(destStats[dest].modifications || 0) + 1;
-      addNotification('edit_note', `Modified by ${client}`, `${client} has requested modifications to the plan for ${dest}.`);
+      await addNotification('edit_note', `Modified by ${client}`, `${client} has requested modifications to the plan for ${dest}.`);
     }
-
-    try { localStorage.setItem(DEST_STATS_KEY, JSON.stringify(destStats)); } catch {}
 
     window.dispatchEvent(new CustomEvent('voyanta:analytics-updated'));
   } catch (err) {

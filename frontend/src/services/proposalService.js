@@ -1,25 +1,29 @@
-// Production-mode proposalService: always reads/writes Supabase (now that the
-// schema has been deployed). Demo session no longer redirects to localStorage —
-// it just bypasses the auth gate so testers can play without a real account.
-import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
+// Production-mode proposalService: always reads/writes Supabase.
+// Uses dynamic agency_id from auth store, sets created_by on creation.
+import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 
 const TABLE = 'proposals';
 const CACHE_KEY = 'voyanta_proposals_list_cache';
+const PAGE_SIZE = 50;
 
 // Lightweight projection: Exclude heavy JSONB columns (itinerary, trip_details, brief)
 const LIST_COLUMNS = 'id, agency_id, created_by, client_id, name, client_name, status, destination, start_date, end_date, travelers, budget_min, budget_max, currency, total_cost, is_archived, arrival_city, arrival_airport, departure_city, departure_airport, created_at, updated_at, preferences';
 
-export async function fetchProposals() {
+export async function fetchProposals({ page = 0, pageSize = PAGE_SIZE } = {}) {
+  const agencyId = getAgencyId();
   if (supabase) {
     try {
-      const { data, error } = await supabase.from(TABLE).select(LIST_COLUMNS)
-        .eq('agency_id', DEFAULT_AGENCY_ID)
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      const { data, error, count } = await supabase.from(TABLE).select(LIST_COLUMNS, { count: 'exact' })
+        .eq('agency_id', agencyId)
         .neq('is_archived', true)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(from, to);
       if (!error && data) {
         const remoteList = data.map(normalize);
         try { localStorage.setItem(CACHE_KEY, JSON.stringify(remoteList)); } catch {}
-        return remoteList;
+        return { data: remoteList, count: count || remoteList.length, page, pageSize };
       }
     } catch (e) {
       console.warn('Supabase fetchProposals failed, checking cache:', e);
@@ -30,7 +34,14 @@ export async function fetchProposals() {
   try {
     localList = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]');
   } catch {}
-  return localList.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  localList = localList.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  return { data: localList, count: localList.length, page: 0, pageSize: localList.length };
+}
+
+// Legacy compat: return flat array for hooks that don't support pagination yet
+export async function fetchProposalsFlat() {
+  const result = await fetchProposals({ page: 0, pageSize: 500 });
+  return result.data;
 }
 
 export async function fetchProposalById(id) {
@@ -53,9 +64,21 @@ export async function fetchProposalById(id) {
 }
 
 export async function createProposal(payload) {
+  const agencyId = getAgencyId();
+  
+  // Get current user for created_by
+  let userId = null;
+  if (supabase) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id || null;
+    } catch {}
+  }
+
   const row = {
     id: crypto.randomUUID(),
-    agency_id: DEFAULT_AGENCY_ID,
+    agency_id: agencyId,
+    created_by: userId,
     name: payload.name || 'Untitled Proposal',
     client_name: payload.client_name || '',
     destination: payload.destination || '',
@@ -152,11 +175,32 @@ export async function deleteProposal(id) {
   } catch {}
 }
 
+export async function deleteAllProposals() {
+  const agencyId = getAgencyId();
+  if (supabase) {
+    try {
+      await supabase.from('proposal_items').delete().neq('id', 0);
+      await supabase.from(TABLE).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    } catch (e) {
+      console.warn('Supabase deleteAll failed:', e);
+    }
+  }
+  try {
+    localStorage.removeItem(CACHE_KEY);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('voyanta_proposal_') || k === CACHE_KEY)) {
+        localStorage.removeItem(k);
+      }
+    }
+  } catch {}
+}
+
 export async function duplicateProposal(id) {
   const src = await fetchProposalById(id);
   if (!src) return null;
   // eslint-disable-next-line no-unused-vars
-  const { id: _, created_at, updated_at, date, ...rest } = src;
+  const { id: _, created_at, updated_at, date, created_by, ...rest } = src;
   const newProposal = await createProposal({ ...rest, name: (src.name || 'Proposal') + ' (Copy)', status: 'Draft' });
   
   // Duplicate items
@@ -188,6 +232,7 @@ function normalize(row) {
 }
 
 export async function resetAllDataToZero() {
+  const agencyId = getAgencyId();
   try {
     // 1. Wipe local storage caches
     const keysToRemove = [];
@@ -198,15 +243,14 @@ export async function resetAllDataToZero() {
       }
     }
     keysToRemove.forEach(k => localStorage.removeItem(k));
-    localStorage.setItem('voyanta_global_analytics', JSON.stringify({ downloads: 0, whatsapp: 0, email: 0 }));
-    localStorage.setItem('voyanta_dest_generation_stats', JSON.stringify({}));
-    localStorage.setItem('voyanta_notifications', JSON.stringify([]));
-    localStorage.setItem('voyanta_activity_logs', JSON.stringify([]));
 
-    // 2. Wipe Supabase tables
+    // 2. Wipe Supabase tables for this agency
     if (supabase) {
+      await supabase.from('analytics_events').delete().eq('agency_id', agencyId);
+      await supabase.from('activity_logs').delete().eq('agency_id', agencyId);
+      await supabase.from('notifications').delete().eq('agency_id', agencyId);
       await supabase.from('proposal_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('proposals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('proposals').delete().eq('agency_id', agencyId);
     }
 
     // 3. Notify real-time UI listeners

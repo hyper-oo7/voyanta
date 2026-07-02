@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { useToast } from '../../context/ToastContext.jsx';
 import LogoUploader from '../../components/LogoUploader.jsx';
+import { TEMPLATE_LIST } from '../../templates/registry.js';
 
 const safeStr = (v) => Array.isArray(v) ? v.join('\n') : (v && typeof v === 'object' ? JSON.stringify(v) : (v ?? ''));
 
@@ -51,15 +52,39 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
   return (
     <div className="glass-card rounded-xl p-lg space-y-md" data-testid="step-branding">
       <h3 className="font-headline-sm text-headline-sm text-primary">Agency Branding & Template</h3>
-      <div className="grid grid-cols-1 gap-md">
-        <div>
-          <label className="font-label-md text-label-md text-on-surface block mb-xs">Template Style</label>
-          <select value={safeStr(branding?.template_style || 'elegant')} onChange={upd('template_style')} data-testid="brand-tpl-style"
-            className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
-            <option value="elegant">Elegant (cream, serif)</option>
-            <option value="dark">Dark Premium</option>
-            <option value="light">Light & Friendly</option>
-          </select>
+      <div className="space-y-sm">
+        <label className="font-label-md text-sm font-bold text-on-surface block">Template Architecture Gallery</label>
+        <p className="text-xs text-on-surface-variant m-0 mb-3">Select the design layout and typography system for this proposal's PDF export and live preview.</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {TEMPLATE_LIST.map(tpl => {
+            const isSelected = (safeStr(branding?.template_style || 'classic') === tpl.slug) || (tpl.slug === 'classic' && !branding?.template_style);
+            return (
+              <div
+                key={tpl.slug}
+                onClick={() => setBranding(s => ({ ...s, template_style: tpl.slug }))}
+                className={`group relative rounded-xl border-2 overflow-hidden cursor-pointer transition-all ${isSelected ? 'border-primary shadow-md bg-primary/5' : 'border-outline-variant hover:border-primary/50 bg-white'}`}
+              >
+                <div className="h-28 w-full overflow-hidden relative bg-slate-100">
+                  <img src={tpl.thumbnail} alt={tpl.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/60 text-white backdrop-blur-sm">
+                    {tpl.category}
+                  </span>
+                  {isSelected && (
+                    <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center shadow">
+                      <span className="material-symbols-outlined text-[16px]">check</span>
+                    </div>
+                  )}
+                </div>
+                <div className="p-3">
+                  <h4 className="font-bold text-sm text-on-surface m-0 mb-1 flex items-center justify-between">
+                    {tpl.name}
+                    {tpl.slug === 'editorial' && <span className="text-[9px] bg-rose-500 text-white font-extrabold px-1.5 py-0.5 rounded uppercase">New</span>}
+                  </h4>
+                  <p className="text-xs text-on-surface-variant line-clamp-2 m-0 leading-snug">{tpl.description}</p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">

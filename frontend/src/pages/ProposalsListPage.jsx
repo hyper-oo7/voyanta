@@ -9,6 +9,7 @@ import { updateProposal } from '../services/proposalService.js';
 import { buildProposalExport } from '../services/proposalItemService.js';
 import { incrementAnalytics } from '../services/analyticsService.js';
 import { logActivity } from '../services/activityLogService.js';
+import { getAgencyId } from '../lib/supabaseClient.js';
 // Reuse the dashboard's Stitch HTML chrome (sidebar + topbar + table styling)
 // so the new Proposals list page matches the existing design language without
 // touching any styles.
@@ -23,7 +24,7 @@ export default function ProposalsListPage() {
   const toast = useToast();
   const { signOut, isDemo, user } = useAuth();
   
-  const { proposals, isLoading: loading, error, deleteProposal, duplicateProposal } = useProposals();
+  const { proposals, isLoading: loading, error, deleteProposal, deleteAllProposals, duplicateProposal } = useProposals();
   
   const [editing, setEditing] = useState(null);
   const [shareProposal, setShareProposal] = useState(null);
@@ -108,6 +109,19 @@ export default function ProposalsListPage() {
               toast.success('Proposal deleted');
             } catch (e) { toast.error(e.message || 'Failed to delete'); }
           }}
+          onDeleteAll={async () => {
+            if (localStorage.getItem('voyanta_current_user_role') === 'Editor') {
+              toast.error('Access Denied: Your Editor role cannot delete proposals. Contact an Admin.');
+              return;
+            }
+            if (!window.confirm(`Are you sure you want to delete ALL ${proposals.length} proposals? This action cannot be undone.`)) return;
+            try {
+              toast.info('Deleting all proposals...');
+              await deleteAllProposals();
+              logActivity('proposal', 'Deleted all proposals in library');
+              toast.success('All proposals deleted successfully');
+            } catch (e) { toast.error(e.message || 'Failed to delete all proposals'); }
+          }}
           onShare={(p) => {
             logActivity('proposal', `Opened share link options for proposal: "${p.name}"`, p.client_name);
             setShareProposal(p);
@@ -161,18 +175,58 @@ import { settingsService } from '../services/resourceService.js';
 
 function Portal({ node, children }) { return createPortal(children, node); }
 
-function ProposalsListPanel({ proposals, loading, error, highlightId, onView, onEdit, onDuplicate, onDelete, onShare, onExport }) {
+function ProposalsListPanel({ proposals, loading, error, highlightId, onView, onEdit, onDuplicate, onDelete, onDeleteAll, onShare, onExport }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+
+  const filtered = proposals.filter(p => {
+    if (statusFilter !== 'ALL' && (p.status || 'Draft').toUpperCase() !== statusFilter) return false;
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (p.name || '').toLowerCase().includes(q) || (p.client_name || p.client || '').toLowerCase().includes(q) || (p.destination || '').toLowerCase().includes(q);
+  });
+
   return (
     <div className="flex flex-col h-full" data-testid="proposals-list">
-      <div className="px-xl py-lg flex justify-between items-center mb-md">
+      <div className="px-xl py-lg flex flex-col lg:flex-row justify-between items-start lg:items-center gap-md mb-md">
         <div>
-          <h4 className="font-headline-md text-primary mb-xs">Proposal Library</h4>
-          <p className="text-on-surface-variant font-body-md">Manage and organize your client proposals in one place.</p>
+          <h1 className="text-3xl font-extrabold text-primary mb-1">Proposal Library</h1>
+          <h2 className="text-base font-semibold text-on-surface-variant m-0">Manage and organize your client proposals in one place.</h2>
         </div>
-        <div className="flex items-center gap-md">
-          <span className="text-label-sm font-label-sm text-primary uppercase tracking-widest bg-primary-container px-md py-xs rounded-full">
-            {loading ? 'Loading…' : `${proposals.length} Active Proposals`}
+        <div className="flex flex-wrap items-center gap-md w-full lg:w-auto justify-end">
+          <div className="relative flex-1 min-w-[260px] sm:w-80 md:w-96">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search proposals by name, client, or destination..."
+              className="pl-10 pr-4 py-2.5 text-sm bg-surface rounded-xl border border-outline-variant text-on-surface placeholder:text-on-surface-variant focus:outline-none focus:border-primary w-full shadow-sm"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="px-3 py-2.5 text-sm bg-surface rounded-xl border border-outline-variant text-on-surface font-medium focus:outline-none focus:border-primary cursor-pointer shadow-sm"
+          >
+            <option value="ALL">All Status</option>
+            <option value="DRAFT">Draft</option>
+            <option value="SENT">Sent</option>
+            <option value="ACCEPTED">Accepted</option>
+          </select>
+          <span className="text-label-sm font-label-sm text-primary uppercase tracking-widest bg-primary-container px-md py-xs rounded-full whitespace-nowrap">
+            {loading ? 'Loading…' : `${filtered.length} of ${proposals.length} Proposals`}
           </span>
+          {proposals.length > 0 && onDeleteAll && (
+            <button
+              onClick={onDeleteAll}
+              className="flex items-center gap-1.5 px-3 py-2 bg-error/10 hover:bg-error/20 text-error font-label-sm font-bold uppercase tracking-wider rounded-xl border border-error/20 transition-colors cursor-pointer shadow-sm"
+              title="Delete all proposals in the library"
+            >
+              <span className="material-symbols-outlined text-[16px]">delete_forever</span>
+              Delete All ({proposals.length})
+            </button>
+          )}
         </div>
       </div>
       
@@ -203,9 +257,15 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
         </div>
       )}
 
-      {!loading && proposals.length > 0 && (
+      {!loading && proposals.length > 0 && filtered.length === 0 && (
+        <div className="px-xl py-xxl text-center text-on-surface-variant font-body-md">
+          No proposals matching your search or filter.
+        </div>
+      )}
+
+      {!loading && filtered.length > 0 && (
         <div className="px-xl pb-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-lg items-start">
-          {proposals.map((p, i) => (
+          {filtered.map((p, i) => (
              <ProposalCard 
                key={p.id} proposal={p} highlightId={highlightId} index={i}
                onView={onView} onEdit={onEdit} onDuplicate={onDuplicate} 
@@ -400,11 +460,16 @@ function Field({ label, value, onChange, readOnly, type = 'text', testid }) {
 }
 
 function ShareModal({ proposal, onClose }) {
-  const [settings, setSettings] = useState(null);
+  const [settings, setSettings] = useState(() => {
+    try {
+      const cached = JSON.parse(localStorage.getItem(`voyanta_settings_cache_${getAgencyId()}`) || 'null');
+      return cached || {};
+    } catch { return {}; }
+  });
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    settingsService.get().then(s => setSettings(s)).catch(() => {});
+    settingsService.get().then(s => setSettings(s || {})).catch(() => {});
   }, []);
 
   const previewUrl = `${window.location.origin}/proposals/wizard?id=${encodeURIComponent(proposal.id)}&step=7`;
