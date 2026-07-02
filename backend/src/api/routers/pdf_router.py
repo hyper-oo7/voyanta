@@ -10,7 +10,7 @@ from src.core.security import verify_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pdf")
-PDF_SERVICE_URL = os.environ.get("PDF_SERVICE_URL", "http://localhost:8002")
+PDF_SERVICE_URL = os.environ.get("PDF_SERVICE_URL", "http://127.0.0.1:8002")
 
 @router.get("/health")
 async def pdf_health():

@@ -9,7 +9,8 @@ export function useProposals() {
   const proposalsQuery = useQuery({
     queryKey: ['proposals'],
     queryFn: fetchProposals,
-    staleTime: 30000,
+    staleTime: 60000,
+    refetchOnWindowFocus: false,
     initialData: () => {
       try {
         const cached = JSON.parse(localStorage.getItem('voyanta_proposals_list_cache') || 'null');
@@ -20,9 +21,14 @@ export function useProposals() {
 
   useEffect(() => {
     if (!supabase) return;
+    let lastInvalidated = 0;
     const channel = supabase.channel('proposals-channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['proposals'] });
+        const now = Date.now();
+        if (now - lastInvalidated > 30000) {
+          lastInvalidated = now;
+          queryClient.invalidateQueries({ queryKey: ['proposals'] });
+        }
       })
       .subscribe();
     return () => {

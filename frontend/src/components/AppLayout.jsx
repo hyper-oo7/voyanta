@@ -43,13 +43,40 @@ export default function AppLayout() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const [notifications, setNotifications] = useState([
-    { id: 1, icon: 'mail', title: 'Proposal Sent', desc: "Alex sent 'Tokyo Neon Nights' to Marcus Thorne.", time: '2 hours ago', unread: true },
-    { id: 2, icon: 'check_circle', title: 'Proposal Accepted', desc: "'Alpine Escape' was accepted by Eleanor Vance.", time: '5 hours ago', unread: true },
-    { id: 3, icon: 'sync', title: 'Database Sync', desc: 'Global hotel inventory updated successfully.', time: 'Yesterday', unread: false }
-  ]);
+  const [notifications, setNotifications] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('voyanta_notifications') || 'null');
+      if (stored && Array.isArray(stored) && stored.length > 0) return stored;
+    } catch {}
+    return [
+      { id: 1, icon: 'mail', title: 'Proposal Sent', desc: "Alex sent 'Tokyo Neon Nights' to Marcus Thorne.", time: '2 hours ago', unread: true },
+      { id: 2, icon: 'check_circle', title: 'Proposal Accepted', desc: "'Alpine Escape' was accepted by Eleanor Vance.", time: '5 hours ago', unread: true },
+      { id: 3, icon: 'sync', title: 'Database Sync', desc: 'Global hotel inventory updated successfully.', time: 'Yesterday', unread: false }
+    ];
+  });
 
-  const markAllRead = () => setNotifications(prev => prev.map(n => ({...n, unread: false})));
+  useEffect(() => {
+    const handler = () => {
+      try {
+        const stored = JSON.parse(localStorage.getItem('voyanta_notifications') || 'null');
+        if (stored && Array.isArray(stored) && stored.length > 0) setNotifications(stored);
+      } catch {}
+    };
+    window.addEventListener('voyanta:notifications-updated', handler);
+    window.addEventListener('storage', handler);
+    return () => {
+      window.removeEventListener('voyanta:notifications-updated', handler);
+      window.removeEventListener('storage', handler);
+    };
+  }, []);
+
+  const markAllRead = () => {
+    setNotifications(prev => {
+      const updated = prev.map(n => ({ ...n, unread: false }));
+      try { localStorage.setItem('voyanta_notifications', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface text-on-surface">

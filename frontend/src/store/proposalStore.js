@@ -156,10 +156,13 @@ export const useProposalStore = create((set, get) => ({
 
   // Save draft background sync
   saveDraftBackground: async () => {
+    if (get().status === 'saving') {
+      return get().proposal;
+    }
     set({ status: 'saving' });
     try {
       const payload = get().buildPayload();
-      const currentId = get().proposal?.id;
+      const currentId = get().proposal?.id || get().activeId;
       let p;
       if (currentId) {
         p = await updateProposal(currentId, payload);

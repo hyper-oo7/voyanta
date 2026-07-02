@@ -1,22 +1,27 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useToast } from '../../context/ToastContext.jsx';
-import TemplateRenderer, { ALL as ALL_SECTIONS, ExportOptionsBar } from '../../components/TemplateRenderer.jsx';
+import TemplateRenderer, { ALL as ALL_SECTIONS, ExportOptionsBar, THEMES } from '../../components/TemplateRenderer.jsx';
 import { formatINR } from '../../lib/currency.js';
 import { useProposalStore } from '../../store/proposalStore.js';
+import { incrementAnalytics } from '../../services/analyticsService.js';
+import ImageUploadInput from '../../components/common/ImageUploadInput.jsx';
+import { logActivity } from '../../services/activityLogService.js';
 
-function A4Preview({ children, viewMode }) {
+function A4Preview({ children, viewMode, style = 'classic' }) {
+  const themeBg = THEMES[style]?.bg || '#ffffff';
   return (
     <div className="a4-host overflow-auto py-lg h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#e9eef5] to-[#dfe5ee]" data-testid="a4-preview">
-      <div id="pdf-render-root" className={`a4-paper shadow-2xl overflow-hidden bg-white ${viewMode === 'presentation' ? 'aspect-[210/297] h-[80vh] min-h-[auto] w-auto transition-all duration-500 rounded-xl' : 'w-[210mm] min-h-[297mm] rounded-md'}`}>
+      <div id="pdf-render-root" style={{ backgroundColor: themeBg }} className={`a4-paper shadow-2xl overflow-hidden ${viewMode === 'presentation' ? 'aspect-[210/297] h-[80vh] min-h-[auto] w-auto transition-all duration-500 rounded-xl' : 'w-[210mm] min-h-[297mm] rounded-md'}`}>
         {children}
       </div>
       <style>{`
         @media print {
           @page { size: A4; margin: 0; }
-          html, body, #root { background: white !important; }
+          html, body, #root { background: ${themeBg} !important; }
           body * { visibility: hidden; }
           #pdf-render-root, #pdf-render-root * { visibility: visible; }
-          #pdf-render-root { position: absolute; left: 0; top: 0; padding: 0; background: white; width: 210mm; min-height: 297mm; box-shadow: none !important; border-radius: 0 !important; }
+          #pdf-render-root { position: absolute; left: 0; top: 0; padding: 0; background: ${themeBg}; width: 210mm; min-height: 297mm; box-shadow: none !important; border-radius: 0 !important; }
           .no-print { display: none !important; }
         }
       `}</style>
@@ -24,9 +29,31 @@ function A4Preview({ children, viewMode }) {
   );
 }
 
-export function Step7Preview({ proposalId, branding, customBlocks, proposalName }) {
+export function Step7Preview({ proposalId, branding, customBlocks, proposalName, onAddCustomBlock }) {
   const toast = useToast();
   const { proposal, items, saveDraftBackground } = useProposalStore();
+  const [localCustomBlocks, setLocalCustomBlocks] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('voyanta_global_custom_blocks') || 'null');
+      if (stored && Array.isArray(stored) && stored.length > 0) return stored;
+    } catch {}
+    return customBlocks || [];
+  });
+  const [showAddCustom, setShowAddCustom] = useState(false);
+  const [newCustom, setNewCustom] = useState({ label: '', type: 'text', content: '' });
+
+  useEffect(() => {
+    if (customBlocks && customBlocks.length > 0) {
+      setLocalCustomBlocks(prev => {
+        const merged = [...prev];
+        customBlocks.forEach(cb => {
+          if (!merged.some(m => m.id === cb.id)) merged.push(cb);
+        });
+        try { localStorage.setItem('voyanta_global_custom_blocks', JSON.stringify(merged)); } catch {}
+        return merged;
+      });
+    }
+  }, [customBlocks]);
 
   useEffect(() => {
     if (!proposalId && typeof saveDraftBackground === 'function') {
@@ -53,17 +80,34 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
     };
   }, [proposal, items]);
 
-  const [include, setInclude] = useState(ALL_SECTIONS);
+  const [include, setInclude] = useState(() => {
+    try {
+      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
+      if (prefs && prefs.include_sections) return { ...ALL_SECTIONS, ...prefs.include_sections };
+    } catch {}
+    return ALL_SECTIONS;
+  });
   const [exportOpen, setExportOpen] = useState(false);
-  const [style, setStyle] = useState(branding?.template_style || 'classic');
+  const [showTemplatePrompt, setShowTemplatePrompt] = useState(false);
+  const [style, setStyle] = useState(() => {
+    try {
+      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
+      if (prefs && prefs.template_style) return prefs.template_style;
+    } catch {}
+    return branding?.template_style || 'classic';
+  });
   const [generating, setGenerating] = useState(false);
   
   const [viewMode, setViewMode] = useState('presentation'); // 'presentation' | 'document'
   const [activeSlide, setActiveSlide] = useState(0);
 
   const [sectionOrder, setSectionOrder] = useState(() => {
+    try {
+      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
+      if (prefs && Array.isArray(prefs.section_order) && prefs.section_order.length > 0) return prefs.section_order;
+    } catch {}
     const base = ['hero', 'highlights', 'itinerary', 'hotels', 'costing', 'inclusions', 'exclusions', 'terms', 'contacts', 'socials'];
-    if (customBlocks) customBlocks.forEach(cb => base.push(cb.id));
+    if (localCustomBlocks) localCustomBlocks.forEach(cb => base.push(cb.id));
     return base;
   });
 
@@ -80,7 +124,53 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [viewMode, numSlides]);
 
-  useEffect(() => { setStyle(branding?.template_style || 'classic'); }, [branding?.template_style]);
+  useEffect(() => {
+    try {
+      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
+      if (prefs && prefs.template_style) {
+        setStyle(prefs.template_style);
+        return;
+      }
+    } catch {}
+    if (branding?.template_style) setStyle(branding.template_style);
+  }, [branding?.template_style]);
+
+  useEffect(() => {
+    const handleSaveClicked = () => {
+      setShowTemplatePrompt(true);
+    };
+    window.addEventListener('voyanta:step7-save-clicked', handleSaveClicked);
+    return () => window.removeEventListener('voyanta:step7-save-clicked', handleSaveClicked);
+  }, []);
+
+  const handleConfirmSaveTemplate = () => {
+    try {
+      const templatePrefs = {
+        template_style: style,
+        include_sections: include,
+        section_order: sectionOrder,
+        saved_at: new Date().toISOString()
+      };
+      localStorage.setItem('voyanta_default_template_prefs', JSON.stringify(templatePrefs));
+
+      const galleryStr = localStorage.getItem('voyanta_templates_gallery') || '[]';
+      const gallery = JSON.parse(galleryStr);
+      gallery.unshift({
+        id: crypto.randomUUID(),
+        title: `${proposal?.destination || 'Custom'} (${style.toUpperCase()}) Template`,
+        description: `Saved with ${Object.keys(include).filter(k => include[k]).length} active sections.`,
+        style,
+        include,
+        sectionOrder,
+        created_at: new Date().toISOString()
+      });
+      localStorage.setItem('voyanta_templates_gallery', JSON.stringify(gallery));
+      toast.success('Template saved to Gallery! Will open by default with these section preferences.');
+    } catch (err) {
+      toast.error('Failed to save template preferences.');
+    }
+    setShowTemplatePrompt(false);
+  };
 
   const onDownloadJson = () => {
     if (!json) return;
@@ -93,14 +183,78 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
     toast.success('Proposal JSON exported');
   };
 
+  const handleCreateCustomSection = () => {
+    if (!newCustom.label.trim()) {
+      toast.error('Please enter a title for the custom section');
+      return;
+    }
+    const id = `custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const created = { id, label: newCustom.label.trim(), type: newCustom.type, content: newCustom.content };
+    setLocalCustomBlocks(prev => {
+      const next = [...prev, created];
+      try { localStorage.setItem('voyanta_global_custom_blocks', JSON.stringify(next)); } catch {}
+      return next;
+    });
+    if (typeof onAddCustomBlock === 'function') {
+      onAddCustomBlock(created);
+    }
+    setInclude(prev => ({ ...prev, [id]: true }));
+    setSectionOrder(prev => [...prev, id]);
+    setNewCustom({ label: '', type: 'text', content: '' });
+    setShowAddCustom(false);
+    toast.success(`Section "${created.label}" added!`);
+  };
+
   const onGeneratePdf = async () => {
     if (!proposalId) return;
+    const currentPlan = localStorage.getItem('voyanta_active_plan') || 'Starter';
+    if (currentPlan === 'Starter') {
+      const count = parseInt(localStorage.getItem('voyanta_starter_pdf_count') || '0', 10);
+      if (count >= 10) {
+        toast.error('Starter Plan Limit Reached: You have used your 10 monthly PDF downloads. Upgrade to Professional or Enterprise in Settings.');
+        return;
+      }
+      localStorage.setItem('voyanta_starter_pdf_count', String(count + 1));
+    }
     setGenerating(true);
     try {
+      const renderRoot = document.getElementById('pdf-render-root');
+      let bodyPayload = { proposal_id: proposalId, name: proposalName || 'proposal', style: style };
+      if (renderRoot) {
+        const rootClone = renderRoot.cloneNode(true);
+        rootClone.classList.remove('aspect-[210/297]', 'h-[80vh]', 'min-h-[auto]', 'w-auto', 'overflow-hidden');
+        rootClone.classList.add('w-[210mm]', 'min-h-[297mm]');
+        rootClone.style.height = 'auto';
+        rootClone.style.overflow = 'visible';
+        rootClone.style.aspectRatio = 'auto';
+        rootClone.style.backgroundColor = THEMES[style]?.bg || '#ffffff';
+        rootClone.querySelectorAll('section, .editorial-section').forEach(sec => {
+          sec.style.display = 'block';
+          sec.style.minHeight = 'auto';
+        });
+
+        const headStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+          .map(el => el.outerHTML)
+          .join('\n');
+        const themeBg = THEMES[style]?.bg || '#ffffff';
+        const themeText = THEMES[style]?.text || '#000000';
+        const customPrintStyles = `<style>
+          @page { size: A4; margin: 0; }
+          body, html, #pdf-render-root { margin: 0; padding: 0; background: ${themeBg} !important; color: ${themeText} !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100% !important; height: auto !important; min-height: 100% !important; overflow: visible !important; aspect-ratio: auto !important; }
+          html.dark #pdf-render-root, html.dark #pdf-render-root * { color-scheme: light !important; }
+          .proposal-document, .proposal-document section { display: block !important; break-before: auto !important; page-break-before: auto !important; height: auto !important; min-height: 0 !important; overflow: visible !important; }
+          h1, h2, h3, h4, .editorial-section h2, .editorial-section h3 { break-after: avoid !important; page-break-after: avoid !important; }
+          .break-inside-avoid, .page-break-inside-avoid, li.break-inside-avoid { break-inside: avoid !important; page-break-inside: avoid !important; }
+          .no-print { display: none !important; }
+        </style>`;
+        const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">${headStyles}${customPrintStyles}</head><body style="background-color: ${themeBg}; color: ${themeText}; margin: 0; padding: 0;">${rootClone.outerHTML}</body></html>`;
+        bodyPayload = { html: fullHtml, name: proposalName || 'proposal', style: style };
+      }
+
       const res = await fetch('/api/pdf/generate', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposal_id: proposalId, name: proposalName || 'proposal', style: style }) 
+        body: JSON.stringify(bodyPayload) 
       });
       if (!res.ok) throw new Error('PDF generation failed');
       
@@ -113,6 +267,8 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
       a.click(); 
       a.remove(); 
       URL.revokeObjectURL(url);
+      incrementAnalytics('download', proposalId);
+      logActivity('pdf', `Generated PDF for proposal "${proposalName || proposalId}"`, proposal?.client_name || 'Client');
       toast.success('PDF generated successfully');
     } catch (e) {
       toast.error('Failed to generate PDF');
@@ -172,7 +328,12 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
 
         <button onClick={() => setExportOpen(true)} data-testid="open-export-modal"
           className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">tune</span> Sections
+          <span className="material-symbols-outlined text-[18px]">tune</span> Customize Sections
+        </button>
+        <button onClick={() => setShowTemplatePrompt(true)} 
+          className="px-lg py-md bg-surface-container hover:bg-surface-container-high text-on-surface rounded-lg font-label-md flex items-center gap-xs border border-outline-variant shadow-sm transition-all">
+          <span className="material-symbols-outlined text-[18px]">bookmark_add</span>
+          Save Template
         </button>
         <button onClick={onGeneratePdf} disabled={generating} data-testid="generate-pdf"
           className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-60 flex items-center gap-xs">
@@ -182,8 +343,8 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
       </div>
 
       <div className="flex-1 relative flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
-        <A4Preview viewMode={viewMode}>
-          <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={customBlocks} viewMode={viewMode} activeSlide={activeSlide} />
+        <A4Preview viewMode={viewMode} style={style}>
+          <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={localCustomBlocks} viewMode={viewMode} activeSlide={activeSlide} />
         </A4Preview>
         
         {viewMode === 'presentation' && (
@@ -212,7 +373,81 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <ExportOptionsBar value={include} onChange={setInclude} order={sectionOrder} setOrder={setSectionOrder} customBlocks={customBlocks} />
+            <ExportOptionsBar value={include} onChange={setInclude} order={sectionOrder} setOrder={setSectionOrder} customBlocks={localCustomBlocks} />
+            <div className="pt-4 border-t border-outline-variant">
+              {!showAddCustom ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustom(true)}
+                  className="w-full py-3 px-4 border-2 border-dashed border-primary/40 text-primary hover:border-primary hover:bg-primary/5 rounded-xl font-label-md flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[20px]">add_circle</span>
+                  Add Custom Section (Text, Image, or List)
+                </button>
+              ) : (
+                <div className="bg-surface-container p-4 rounded-xl space-y-4 border border-outline-variant">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-headline-sm text-sm font-bold text-primary m-0">Create Custom Section</h4>
+                    <button type="button" onClick={() => setShowAddCustom(false)} className="text-xs text-on-surface-variant hover:text-on-surface cursor-pointer">Cancel</button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Section Title</label>
+                      <input
+                        type="text"
+                        value={newCustom.label}
+                        onChange={(e) => setNewCustom({ ...newCustom, label: e.target.value })}
+                        placeholder="e.g. VIP Benefits, Important Notice"
+                        className="w-full px-3 py-2 rounded-lg text-sm bg-surface-container-lowest border border-outline-variant text-on-surface"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Content Type</label>
+                      <select
+                        value={newCustom.type}
+                        onChange={(e) => setNewCustom({ ...newCustom, type: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg text-sm bg-surface-container-lowest border border-outline-variant text-on-surface"
+                      >
+                        <option value="text">Paragraph / Text</option>
+                        <option value="list">Bullet List</option>
+                        <option value="image">Image (Upload or URL)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    {newCustom.type === 'image' ? (
+                      <ImageUploadInput
+                        label="Section Image"
+                        value={newCustom.content}
+                        onChange={(val) => setNewCustom({ ...newCustom, content: val })}
+                        placeholder="https://example.com/image.jpg or upload..."
+                      />
+                    ) : (
+                      <>
+                        <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
+                          {newCustom.type === 'list' ? 'List Items (one item per line)' : 'Section Content'}
+                        </label>
+                        <textarea
+                          value={newCustom.content}
+                          onChange={(e) => setNewCustom({ ...newCustom, content: e.target.value })}
+                          placeholder={newCustom.type === 'list' ? 'Complimentary Airport Transfer\nPrivate Butler Service\nExclusive Spa Access' : 'Enter detailed content here...'}
+                          rows="3"
+                          className="w-full px-3 py-2 rounded-lg text-sm bg-surface-container-lowest border border-outline-variant text-on-surface"
+                        />
+                      </>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateCustomSection}
+                    className="w-full py-2.5 bg-primary text-on-primary rounded-lg font-bold text-sm hover:opacity-90 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">check</span>
+                    Save Section & Add to Proposal
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="flex justify-end gap-md">
               <button onClick={() => setInclude(ALL_SECTIONS)} className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low" data-testid="export-select-all">Select all</button>
               <button onClick={() => setExportOpen(false)} className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90" data-testid="export-apply">Apply</button>
@@ -220,6 +455,37 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName 
           </div>
         </div>
       )}
+
+      {showTemplatePrompt && createPortal(
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-xl animate-fade-in" onClick={() => setShowTemplatePrompt(false)}>
+          <div className="bg-surface border border-outline-variant w-full max-w-md rounded-3xl p-xl shadow-2xl flex flex-col items-center text-center" onClick={e => e.stopPropagation()}>
+            <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mb-lg">
+              <span className="material-symbols-outlined text-[32px]">bookmark_add</span>
+            </div>
+            <h3 className="font-display text-2xl font-bold text-on-surface mb-sm">Save Template for Future?</h3>
+            <p className="font-body-md text-sm text-on-surface-variant mb-xl leading-relaxed">
+              Would you like to save this layout ({style.toUpperCase()} style with {Object.keys(include).filter(k => include[k]).length} selected sections) to your Template Gallery? Next time you create a proposal, it will open by default with these section preferences.
+            </p>
+            <div className="flex gap-md w-full">
+              <button 
+                onClick={() => {
+                  setShowTemplatePrompt(false);
+                  toast.success('Proposal saved without template preferences.');
+                }}
+                className="flex-1 py-3 bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md rounded-xl border border-outline-variant transition-all"
+              >
+                No, Just Save
+              </button>
+              <button 
+                onClick={handleConfirmSaveTemplate}
+                className="flex-1 py-3 bg-primary hover:bg-primary/90 text-white font-label-md rounded-xl shadow-lg shadow-primary/30 transition-all font-bold"
+              >
+                Yes, Save Template
+              </button>
+            </div>
+          </div>
+        </div>
+      , document.body)}
     </div>
   );
 }

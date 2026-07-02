@@ -35,11 +35,32 @@ export async function removeItem(id) {
 
 // Build the structured JSON ready for PDF/PPT/email generators downstream.
 export async function buildProposalExport(proposalId) {
-  if (!supabase) throw new Error('Supabase not configured');
-  const [{ data: proposal }, items] = await Promise.all([
-    supabase.from('proposals').select('*').eq('id', proposalId).single(),
-    listItems(proposalId),
-  ]);
+  let proposal = null;
+  let items = [];
+  if (supabase) {
+    try {
+      const [pRes, itemsRes] = await Promise.all([
+        supabase.from('proposals').select('*').eq('id', proposalId).maybeSingle(),
+        listItems(proposalId),
+      ]);
+      if (pRes.data) proposal = pRes.data;
+      if (itemsRes) items = itemsRes;
+    } catch (e) {
+      console.warn('Supabase fetch failed in buildProposalExport, trying localStorage fallback...', e);
+    }
+  }
+  if (!proposal) {
+    try {
+      proposal = JSON.parse(localStorage.getItem(`voyanta_proposal_${proposalId}`) || 'null');
+      if (!proposal) {
+        const cachedList = JSON.parse(localStorage.getItem('voyanta_proposals_list_cache') || '[]');
+        proposal = cachedList.find(p => String(p.id) === String(proposalId)) || null;
+      }
+    } catch {}
+  }
+  if (!proposal) {
+    throw new Error(`Proposal ${proposalId} not found`);
+  }
   const grouped = {};
   for (const it of items) {
     const k = (it.kind || 'custom').toLowerCase();

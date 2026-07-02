@@ -90,17 +90,22 @@ $backendJob = Start-Process -FilePath "uvicorn" -ArgumentList "src.main:app", "-
 Write-ColorMessage "Starting PDF Service (Port 8002)..." "Yellow"
 $pdfJob = Start-Process -FilePath "node" -ArgumentList "server.js" -WorkingDirectory ".\pdf-service" -PassThru -NoNewWindow
 
-# --- 5. Wait for Python Backend Health ---
-Write-ColorMessage "Waiting for Backend to become healthy..." "Cyan"
+# --- 5. Wait for Python Backend and PDF Service Health ---
+Write-ColorMessage "Waiting for Backend (8001) and PDF Service (8002) to become healthy..." "Cyan"
 $retries = 15
-$healthy = $false
+$backendHealthy = $false
+$pdfHealthy = $false
 while ($retries -gt 0) {
     try {
-        $response = Invoke-WebRequest -Uri "http://localhost:8001/api/health" -Method Get -UseBasicParsing -ErrorAction Stop
-        if ($response.StatusCode -eq 200) {
-            $healthy = $true
-            break
+        if (-not $backendHealthy) {
+            $res1 = Invoke-WebRequest -Uri "http://127.0.0.1:8001/api/health" -Method Get -UseBasicParsing -ErrorAction Stop
+            if ($res1.StatusCode -eq 200) { $backendHealthy = $true }
         }
+        if (-not $pdfHealthy) {
+            $res2 = Invoke-WebRequest -Uri "http://127.0.0.1:8002/health" -Method Get -UseBasicParsing -ErrorAction Stop
+            if ($res2.StatusCode -eq 200) { $pdfHealthy = $true }
+        }
+        if ($backendHealthy -and $pdfHealthy) { break }
     } catch {
         # ignore
     }
@@ -108,13 +113,13 @@ while ($retries -gt 0) {
     $retries--
 }
 
-if (-not $healthy) {
-    Write-ColorMessage "Backend failed to start or is not healthy. Stopping processes..." "Red"
+if (-not ($backendHealthy -and $pdfHealthy)) {
+    Write-ColorMessage "Services failed to start or become healthy (Backend: $backendHealthy, PDF: $pdfHealthy). Stopping processes..." "Red"
     Stop-Process -Id $backendJob.Id -Force -ErrorAction SilentlyContinue
     Stop-Process -Id $pdfJob.Id -Force -ErrorAction SilentlyContinue
     exit 1
 }
-Write-ColorMessage "Backend is healthy!" "Green"
+Write-ColorMessage "Backend and PDF Service are healthy!" "Green"
 
 # --- 6. Start Vite Frontend (Port 3000) ---
 Write-ColorMessage "Starting Vite Frontend (Port 3000)..." "Yellow"

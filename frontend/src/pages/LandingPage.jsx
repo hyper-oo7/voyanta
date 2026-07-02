@@ -166,19 +166,19 @@ export default function LandingPage() {
                  <h3 className="font-display text-3xl font-bold text-on-surface mb-sm">Automated Costing</h3>
                  <p className="text-on-surface-variant font-body-lg max-w-md">Apply markups, discounts, and taxes automatically. Ensure your margins are always protected with intelligent pricing logic.</p>
                </div>
-               <div className="w-full sm:w-64 bg-white rounded-2xl p-lg border border-outline-variant shadow-lg rotate-1 hover:rotate-0 transition-transform">
+               <div className="w-full sm:w-64 bg-white dark:bg-slate-800 rounded-2xl p-lg border border-outline-variant shadow-lg rotate-1 hover:rotate-0 transition-transform">
                   <div className="flex justify-between mb-sm text-sm">
                     <span className="text-on-surface-variant">Subtotal</span>
-                    <span className="font-medium">$8,400</span>
+                    <span className="font-medium text-on-surface">$8,400</span>
                   </div>
                   <div className="flex justify-between mb-sm text-sm">
                     <span className="text-on-surface-variant">Markup (15%)</span>
-                    <span className="font-medium text-emerald-600">+$1,260</span>
+                    <span className="font-medium text-emerald-600 dark:text-emerald-400">+$1,260</span>
                   </div>
                   <div className="h-px bg-outline-variant my-md"></div>
                   <div className="flex justify-between font-bold text-lg">
-                    <span>Total</span>
-                    <span className="text-primary">$9,660</span>
+                    <span className="text-on-surface">Total</span>
+                    <span className="text-primary dark:text-blue-400">$9,660</span>
                   </div>
                </div>
             </div>

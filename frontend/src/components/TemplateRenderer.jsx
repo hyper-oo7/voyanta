@@ -1,6 +1,7 @@
 import React, { memo, useState, useEffect } from 'react';
 import { formatINR } from '../lib/currency.js';
 import { fetchContextualImage } from '../services/imageService.js';
+import { incrementAnalytics } from '../services/analyticsService.js';
 
 export const ALL = {
   hero: true, highlights: true, itinerary: true, hotels: true,
@@ -9,7 +10,7 @@ export const ALL = {
 
 export const SECTIONS = ['hero', 'highlights', 'itinerary', 'hotels', 'costing', 'inclusions', 'exclusions', 'terms', 'contacts', 'socials'];
 
-const THEMES = {
+export const THEMES = {
   'modern': { bg: '#ffffff', text: '#000000', accent: '#1a1a1a', alt: '#f9fafb' },
   'minimal': { bg: '#fafafa', text: '#2d3748', accent: '#4a5568', alt: '#edf2f7' },
   'dark': { bg: '#050505', text: '#f9fafb', accent: '#d1d5db', alt: '#111111' },
@@ -78,6 +79,19 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
         const logo = safeText(b.logo_url || '');
         const breakdown = `${travelers} traveller${travelers === 1 ? '' : 's'}` + ((adults || children) ? ` · ${adults} adult${adults === 1 ? '' : 's'}${children ? `, ${children} child${children === 1 ? '' : 'ren'}` : ''}` : '');
         const agencyName = safeText(b.agency_name || '');
+        
+        let heroTitle = safeText(p.name || p.destination || 'Proposal');
+        let clientName = safeText(brief.client_name || p.client_name || p.client || brief.customer_name || p.customer_name || '');
+        if (heroTitle.includes(' — ')) {
+          const parts = heroTitle.split(' — ');
+          heroTitle = parts[0].trim();
+          if (!clientName && parts[1]) clientName = parts[1].trim();
+        } else if (heroTitle.includes(' - ')) {
+          const parts = heroTitle.split(' - ');
+          heroTitle = parts[0].trim();
+          if (!clientName && parts[1]) clientName = parts[1].trim();
+        }
+        
         return (
           <section key={key} className={sectionClass + " !p-0"} style={{ ...sectionStyle, minHeight: '35vh' }}>
             {cover && <img src={cover} alt="" className="absolute inset-0 w-full h-full object-cover" />}
@@ -103,9 +117,14 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
                     {agencyName}
                   </p>
                 ) : null}
-                <h1 className="text-6xl md:text-8xl leading-none mb-6 font-medium drop-shadow-lg" style={{ fontFamily: fontHeadline }}>
-                  {safeText(p.name || 'Proposal')}
+                <h1 className="text-6xl md:text-8xl leading-none mb-3 font-medium drop-shadow-lg" style={{ fontFamily: fontHeadline }}>
+                  {heroTitle}
                 </h1>
+                {clientName ? (
+                  <p className="text-2xl md:text-3xl text-white/95 font-light italic mb-5 tracking-wide drop-shadow" style={{ fontFamily: fontSubhead }}>
+                    Curated For {clientName}
+                  </p>
+                ) : null}
                 <p className="text-xl md:text-2xl max-w-2xl text-white/90 font-light drop-shadow" style={{ fontFamily: fontSubhead }}>
                   {safeText(p.destination || '')}{p.destination && breakdown ? ' · ' : ''}{breakdown}
                 </p>
@@ -302,21 +321,30 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
           <section key={key} className={sectionClass} style={sectionStyle}>
             <Title>Contact</Title>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-lg">
-              {b.contact_email && <div className="break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Email</span>{safeText(b.contact_email)}</div>}
-              {b.contact_phone && <div className="break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Phone</span>{safeText(b.contact_phone)}</div>}
-              {b.website       && <div className="break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Website</span>{safeText(b.website)}</div>}
-              {b.address       && <div className="md:col-span-2 break-inside-avoid"><span className="opacity-60 block text-sm mb-1 uppercase tracking-widest">Address</span>{safeText(b.address)}</div>}
+              {b.contact_email && <div className="break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">mail</span>Email</span><a href={`mailto:${safeText(b.contact_email)}`} className="underline hover:opacity-80 font-medium" style={{ color: theme.text }}>{safeText(b.contact_email)}</a></div>}
+              {b.contact_phone && <div className="break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">call</span>Phone</span><a href={`tel:${safeText(b.contact_phone).replace(/[^0-9+]/g, '')}`} className="underline hover:opacity-80 font-medium" style={{ color: theme.text }}>{safeText(b.contact_phone)}</a></div>}
+              {b.website       && <div className="break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">language</span>Website</span><a href={safeText(b.website).startsWith('http') ? safeText(b.website) : `https://${safeText(b.website)}`} target="_blank" rel="noreferrer" className="underline hover:opacity-80 font-medium" style={{ color: theme.text }}>{safeText(b.website)}</a></div>}
+              {b.address       && <div className="md:col-span-2 break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">location_on</span>Address</span>{safeText(b.address)}</div>}
             </div>
           </section>
         );
       
       case 'socials':
-        const links = [['Facebook', b.social_facebook], ['Instagram', b.social_instagram], ['LinkedIn', b.social_linkedin]].filter(([, v]) => v);
+        const links = [
+          ['Facebook', b.social_facebook, 'share'], 
+          ['Instagram', b.social_instagram, 'photo_camera'], 
+          ['LinkedIn', b.social_linkedin, 'work']
+        ].filter(([, v]) => v);
         if (!links.length) return null;
         return (
           <section key={key} className={sectionClass + " border-t mt-12 pt-8"} style={sectionStyle}>
             <div className="flex justify-center gap-8">
-              {links.map(([name, url]) => <a key={name} href={url} target="_blank" rel="noreferrer" className="underline opacity-80 hover:opacity-100" style={{ color: theme.accent }}>{name}</a>)}
+              {links.map(([name, url, icon]) => (
+                <a key={name} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline opacity-80 hover:opacity-100 font-medium" style={{ color: theme.accent }}>
+                  <span className="material-symbols-outlined text-[20px]">{icon}</span>
+                  {name}
+                </a>
+              ))}
             </div>
           </section>
         );
@@ -324,13 +352,18 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
       default:
         const cb = customBlocks.find(c => c.id === key);
         if (cb) {
+          const contentVal = safeText(b[key] || cb.content || '');
           return (
             <section key={key} className={sectionClass} style={sectionStyle}>
               <Title>{cb.label}</Title>
               {cb.type === 'text' ? (
-                 <div className="whitespace-pre-wrap">{safeText(b[key])}</div>
+                 <div className="whitespace-pre-wrap">{contentVal || '—'}</div>
+              ) : cb.type === 'list' ? (
+                 <ul className="list-disc pl-6 space-y-2 text-lg mt-4">
+                   {(Array.isArray(b[key] || cb.content) ? (b[key] || cb.content) : contentVal.split('\n')).map((item, i) => item.trim() && <li key={i}>{item}</li>)}
+                 </ul>
               ) : (
-                 b[key] ? <img src={safeText(b[key])} className="w-full max-h-[600px] object-cover rounded-xl mt-4 shadow-lg break-inside-avoid" alt={cb.label} /> : null
+                 contentVal ? <img src={contentVal} className="w-full max-h-[600px] object-cover rounded-xl mt-4 shadow-lg break-inside-avoid" alt={cb.label} /> : null
               )}
             </section>
           );
@@ -342,8 +375,72 @@ const TemplateRenderer = memo(function TemplateRenderer({ style = 'classic', dat
   const activeKeys = order.filter(key => include[key]);
 
   return (
-    <article className="proposal-document" style={{ backgroundColor: theme.bg }}>
+    <article className="proposal-document min-h-full w-full" style={{ backgroundColor: theme.bg }}>
       {activeKeys.map((key, idx) => renderSection(key, idx))}
+      
+      {/* Custom Branding Fields Accreditations & Badges */}
+      {branding?.custom_fields && branding.custom_fields.length > 0 && (
+        <div className="editorial-section break-inside-avoid page-break-inside-avoid px-[14mm] py-6 my-6 text-center border-y" style={{ borderColor: theme.accent + '20', backgroundColor: theme.alt + '80' }}>
+          <div className="flex flex-wrap items-center justify-center gap-6 max-w-4xl mx-auto">
+            {branding.custom_fields.map((cf, idx) => cf.label && (
+              <div key={cf.id || idx} className="flex flex-col items-center px-4 py-2">
+                <span className="text-[10px] uppercase tracking-widest font-bold opacity-60" style={{ color: theme.text, fontFamily: fontSubhead }}>{cf.label}</span>
+                <span className="text-sm font-semibold mt-0.5" style={{ color: theme.accent, fontFamily: fontBody }}>{cf.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Luxury Action Footer for WhatsApp Approval & Modifications */}
+      {(viewMode === 'document' || viewMode === 'presentation' || true) && (
+        <div className="editorial-section break-inside-avoid page-break-inside-avoid p-[14mm] mt-8 text-center" style={{ backgroundColor: theme.bg, color: theme.text, fontFamily: fontBody }}>
+          <div className="max-w-2xl mx-auto p-8 rounded-3xl border shadow-sm" style={{ backgroundColor: theme.alt, borderColor: theme.accent + '40' }}>
+            <h3 className="text-3xl mb-3 uppercase tracking-widest font-semibold" style={{ fontFamily: fontHeadline, color: theme.accent }}>
+              Ready to Begin Your Journey?
+            </h3>
+            <p className="text-base opacity-80 max-w-xl mx-auto mb-8 font-light leading-relaxed" style={{ fontFamily: fontSubhead }}>
+              We are dedicated to crafting an immaculate travel experience. Connect with your dedicated curator instantly via WhatsApp to finalize your booking or refine any details.
+            </p>
+            {(() => {
+              const originUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'http://localhost:3000';
+              const cleanPhone = (b.contact_phone || '+919876543210').replace(/[^0-9]/g, '');
+              const pid = p?.id || p?.proposal_id || '';
+              const cname = p?.client_name || p?.client || 'Client';
+              const dest = p?.destination || 'Trip';
+              const pname = p?.name || 'Custom Plan';
+              const approveUrl = `${originUrl}/proposal-action?type=approval&id=${pid}&client=${encodeURIComponent(cname)}&dest=${encodeURIComponent(dest)}&phone=${cleanPhone}&name=${encodeURIComponent(pname)}`;
+              const modifyUrl = `${originUrl}/proposal-action?type=modification&id=${pid}&client=${encodeURIComponent(cname)}&dest=${encodeURIComponent(dest)}&phone=${cleanPhone}&name=${encodeURIComponent(pname)}`;
+              return (
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                  <a
+                    onClick={() => incrementAnalytics('approval', pid, dest, cname)}
+                    href={approveUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full sm:w-auto px-8 py-4 rounded-xl font-medium tracking-wider uppercase text-sm shadow-md transition-all flex items-center justify-center gap-3 no-underline hover:opacity-95 cursor-pointer"
+                    style={{ backgroundColor: '#10b981', color: '#ffffff' }}
+                  >
+                    <span className="material-symbols-outlined text-[20px]">check_circle</span>
+                    Approve Proposal
+                  </a>
+                  <a
+                    onClick={() => incrementAnalytics('modification', pid, dest, cname)}
+                    href={modifyUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full sm:w-auto px-8 py-4 rounded-xl font-medium tracking-wider uppercase text-sm shadow-sm transition-all flex items-center justify-center gap-3 no-underline border hover:opacity-95 cursor-pointer"
+                    style={{ backgroundColor: theme.bg, color: theme.text, borderColor: theme.accent }}
+                  >
+                    <span className="material-symbols-outlined text-[20px]">edit_note</span>
+                    Request Modifications
+                  </a>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </article>
   );
 });

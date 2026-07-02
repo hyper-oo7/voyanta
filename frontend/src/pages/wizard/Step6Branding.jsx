@@ -81,6 +81,61 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
       <TextareaWithAI label="What's Excluded" value={branding?.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" onAI={aiDraft('exclusions', 'exclusions')} />
       <TextareaWithAI label="Terms of Payment" value={branding?.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" onAI={aiDraft('terms_of_payment', 'terms')} />
       
+      {/* Custom Branding Fields */}
+      <div className="pt-md border-t border-outline-variant space-y-3">
+        <div className="flex justify-between items-center">
+          <div>
+            <h4 className="font-headline-sm text-sm font-bold text-primary m-0">Custom Branding Fields</h4>
+            <p className="text-xs text-on-surface-variant m-0">Add extra badges, license numbers, affiliations, or taglines to appear on all proposals.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = [...(branding?.custom_fields || []), { id: Date.now(), label: '', value: '' }];
+              setBranding(s => ({ ...s, custom_fields: next }));
+            }}
+            className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
+          >
+            <span className="material-symbols-outlined text-[16px]">add</span> Add Field
+          </button>
+        </div>
+        {(branding?.custom_fields || []).map((cf, idx) => (
+          <div key={cf.id || idx} className="flex gap-2 items-center bg-surface-container-lowest p-2 rounded-lg border border-outline-variant">
+            <input
+              type="text"
+              placeholder="Label (e.g. IATA License)"
+              value={cf.label || ''}
+              onChange={(e) => {
+                const next = (branding?.custom_fields || []).map((item, i) => i === idx ? { ...item, label: e.target.value } : item);
+                setBranding(s => ({ ...s, custom_fields: next }));
+              }}
+              className="w-1/3 px-3 py-1.5 rounded text-xs border border-outline-variant bg-white"
+            />
+            <input
+              type="text"
+              placeholder="Value (e.g. 98-1-23456)"
+              value={cf.value || ''}
+              onChange={(e) => {
+                const next = (branding?.custom_fields || []).map((item, i) => i === idx ? { ...item, value: e.target.value } : item);
+                setBranding(s => ({ ...s, custom_fields: next }));
+              }}
+              className="flex-1 px-3 py-1.5 rounded text-xs border border-outline-variant bg-white"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const next = (branding?.custom_fields || []).filter((_, i) => i !== idx);
+                setBranding(s => ({ ...s, custom_fields: next }));
+              }}
+              className="p-1 text-error hover:bg-error/10 rounded transition-colors"
+              title="Remove Field"
+            >
+              <span className="material-symbols-outlined text-[16px]">delete</span>
+            </button>
+          </div>
+        ))}
+      </div>
+
       {customBlocks && customBlocks.length > 0 && (
         <div className="pt-md border-t border-outline-variant space-y-md">
           <h4 className="font-headline-sm text-headline-sm text-primary">Custom Sections</h4>

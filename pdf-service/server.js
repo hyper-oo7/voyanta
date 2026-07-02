@@ -43,7 +43,10 @@ async function getBrowser() {
       const candidates = [
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
         'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
         '/usr/bin/google-chrome',
         '/usr/bin/chromium-browser',
         '/usr/bin/chromium',
@@ -59,7 +62,7 @@ async function getBrowser() {
     console.log(`[pdf-service] Launching browser with executablePath: ${execPath || 'default (bundled)'}`);
 
     browserPromise = puppeteer.launch({
-      headless: 'new',
+      headless: true,
       executablePath: execPath,
       args: [
         '--no-sandbox',
@@ -92,17 +95,17 @@ app.post('/generate', async (req, res) => {
     // Set viewport to A4 dimensions (at 96 DPI: 794x1123)
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
     
-    if (proposal_id) {
-      const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+    if (html) {
+      await page.setContent(html, { waitUntil: 'networkidle2', timeout: 30000 });
+      await new Promise(r => setTimeout(r, 300));
+    } else if (proposal_id) {
+      const FRONTEND_URL = process.env.FRONTEND_URL || 'http://127.0.0.1:3000';
       const styleParam = style ? `?style=${encodeURIComponent(style)}` : '';
       const targetUrl = `${FRONTEND_URL}/proposals/${proposal_id}/print${styleParam}`;
       console.log(`[pdf-service] Navigating to ${targetUrl}`);
       await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
       await page.waitForSelector('#pdf-render-root', { timeout: 10000 }).catch(() => {});
       await new Promise(r => setTimeout(r, 500));
-    } else {
-      await page.setContent(html, { waitUntil: 'networkidle2', timeout: 30000 });
-      await new Promise(r => setTimeout(r, 300));
     }
     
     const pdf = await page.pdf({
@@ -111,6 +114,8 @@ app.post('/generate', async (req, res) => {
       preferCSSPageSize: true, // Respects @page size
       margin: { top: '0', right: '0', bottom: '0', left: '0' },
       displayHeaderFooter: false, // Turn off default header/footer since we render everything in HTML
+      tagged: true, // Creates tagged accessible PDF with preserved interactive hyperlinks
+      outline: true, // Preserves document structure outline
     });
     
     const buf = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);

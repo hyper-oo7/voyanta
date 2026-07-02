@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useProposals } from '../hooks/useProposals.js';
 import { updateProposal } from '../services/proposalService.js';
 import { buildProposalExport } from '../services/proposalItemService.js';
+import { incrementAnalytics } from '../services/analyticsService.js';
+import { logActivity } from '../services/activityLogService.js';
 // Reuse the dashboard's Stitch HTML chrome (sidebar + topbar + table styling)
 // so the new Proposals list page matches the existing design language without
 // touching any styles.
@@ -88,15 +90,28 @@ export default function ProposalsListPage() {
           onView={(p) => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=7`)}
           onEdit={(p) => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=1`)}
           onDuplicate={async (p) => {
-            try { await duplicateProposal(p.id); toast.success('Proposal duplicated'); }
-            catch (e) { toast.error(e.message || 'Failed to duplicate'); }
+            try {
+              await duplicateProposal(p.id);
+              logActivity('proposal', `Duplicated proposal: "${p.name}"`, p.client_name);
+              toast.success('Proposal duplicated');
+            } catch (e) { toast.error(e.message || 'Failed to duplicate'); }
           }}
           onDelete={async (p) => {
+            if (localStorage.getItem('voyanta_current_user_role') === 'Editor') {
+              toast.error('Access Denied: Your Editor role cannot delete proposals. Contact an Admin.');
+              return;
+            }
             if (!window.confirm(`Delete "${p.name}"?`)) return;
-            try { await deleteProposal(p.id); toast.success('Proposal deleted'); }
-            catch (e) { toast.error(e.message || 'Failed to delete'); }
+            try {
+              await deleteProposal(p.id);
+              logActivity('proposal', `Deleted proposal: "${p.name}"`, p.client_name);
+              toast.success('Proposal deleted');
+            } catch (e) { toast.error(e.message || 'Failed to delete'); }
           }}
-          onShare={(p) => setShareProposal(p)}
+          onShare={(p) => {
+            logActivity('proposal', `Opened share link options for proposal: "${p.name}"`, p.client_name);
+            setShareProposal(p);
+          }}
           onExport={async (p) => {
             try {
               toast.info('Generating PDF...');
@@ -112,6 +127,8 @@ export default function ProposalsListPage() {
               const a = document.createElement('a'); a.href = url;
               a.download = `${(p.name || 'proposal').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
               document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+              incrementAnalytics('download', p.id);
+              logActivity('pdf', `Generated and downloaded PDF for "${p.name}"`, p.client_name);
               toast.success('PDF downloaded successfully');
             } catch (e) { toast.error(e.message || 'PDF download failed'); }
           }}
@@ -431,7 +448,7 @@ function ShareModal({ proposal, onClose }) {
             </div>
           </button>
 
-          <a href={wpLink} target="_blank" rel="noreferrer" className="flex items-center gap-md p-md bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/30 rounded-xl transition-colors no-underline group">
+          <a onClick={() => incrementAnalytics('whatsapp', proposal.id)} href={wpLink} target="_blank" rel="noreferrer" className="flex items-center gap-md p-md bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/30 rounded-xl transition-colors no-underline group cursor-pointer">
             <div className="w-10 h-10 bg-[#25D366] text-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
               <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="css-i6dzq1"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
             </div>
@@ -441,7 +458,7 @@ function ShareModal({ proposal, onClose }) {
             </div>
           </a>
 
-          <a href={emailLink} className="flex items-center gap-md p-md bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-xl transition-colors no-underline group">
+          <a onClick={() => incrementAnalytics('email', proposal.id)} href={emailLink} className="flex items-center gap-md p-md bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-xl transition-colors no-underline group cursor-pointer">
             <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
               <span className="material-symbols-outlined">mail</span>
             </div>

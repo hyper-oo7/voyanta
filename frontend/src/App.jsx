@@ -23,6 +23,7 @@ const queryClient = new QueryClient({
 const LandingPage = lazy(() => import('./pages/LandingPage.jsx'));
 const AuthenticationPage = lazy(() => import('./pages/AuthenticationPage.jsx'));
 const ProposalPrintRoute = lazy(() => import('./pages/ProposalPrintRoute.jsx'));
+const ProposalActionRoute = lazy(() => import('./pages/ProposalActionRoute.jsx'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'));
 const ProposalsListPage = lazy(() => import('./pages/ProposalsListPage.jsx'));
 const ProposalWizard = lazy(() => import('./pages/ProposalWizard.jsx'));
@@ -38,7 +39,6 @@ const ItineraryLibraryPage = lazy(() => import('./pages/ItineraryLibraryPage.jsx
 const NewItineraryPage = lazy(() => import('./pages/NewItineraryPage.jsx'));
 const ItineraryEditorPage = lazy(() => import('./pages/ItineraryEditorPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
-const ResourceModulePage = lazy(() => import('./pages/ResourceModulePage.jsx'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage.jsx'));
 
 const Protected = ({ children }) => <ProtectedRoute>{children}</ProtectedRoute>;
@@ -69,8 +69,9 @@ export default function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<AuthenticationPage />} />
               
-              {/* Hidden route for headless PDF printing */}
+              {/* Public routes for PDF printing & client action tracking */}
               <Route path="/proposals/:id/print" element={<ProposalPrintRoute />} />
+              <Route path="/proposal-action" element={<ProposalActionRoute />} />
 
               {/* Wrapped all authenticated routes in AppLayout */}
               <Route element={<Protected><AppLayout /></Protected>}>

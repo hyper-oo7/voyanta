@@ -63,7 +63,7 @@
   vertical-align: middle;
 }
 
-/* Elegant Dark Mode Palette */
+/* Elegant Dark Mode Palette & Typography Overrides */
 html.dark {
   color-scheme: dark;
 }
@@ -71,8 +71,14 @@ html.dark body, html.dark .bg-surface, html.dark .bg-background {
   background-color: #0b0f17 !important;
   color: #f0f6fc !important;
 }
-html.dark .bg-white, html.dark .bg-surface-container-lowest, html.dark .bg-surface-container-low, html.dark .bg-surface-container {
-  background-color: #141b28 !important;
+html.dark .bg-white, html.dark .bg-surface-container-lowest, html.dark .bg-surface-container-low, html.dark .bg-surface-container,
+html.dark [class*="bg-white/"] {
+  background-color: rgba(20, 27, 40, 0.88) !important;
+  color: #f0f6fc !important;
+  border-color: #2a3447 !important;
+}
+html.dark .bg-gradient-to-br {
+  background-image: linear-gradient(to bottom right, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.95)) !important;
   color: #f0f6fc !important;
   border-color: #2a3447 !important;
 }
@@ -83,9 +89,92 @@ html.dark .bg-surface-container-high, html.dark .bg-surface-container-highest {
 html.dark .text-on-surface, html.dark .text-on-surface-variant {
   color: #e2e8f0 !important;
 }
+html.dark .text-primary,
+html.dark .text-tertiary,
+html.dark .text-on-background,
+html.dark .text-black,
+html.dark .text-gray-900,
+html.dark .text-gray-800,
+html.dark .text-gray-700 {
+  color: #dae2fd !important;
+}
+html.dark .text-secondary,
+html.dark .text-on-primary-container,
+html.dark .text-on-secondary-container,
+html.dark .text-on-tertiary-container,
+html.dark .text-gray-600,
+html.dark .text-gray-500 {
+  color: #bec6e0 !important;
+}
+html.dark .text-outline,
+html.dark .text-outline-variant {
+  color: #939aa8 !important;
+}
+html.dark .bg-primary\/10,
+html.dark .bg-primary\/20,
+html.dark .bg-primary\/5 {
+  background-color: rgba(218, 226, 253, 0.15) !important;
+  color: #f0f6fc !important;
+}
+html.dark .border-primary,
+html.dark .border-primary\/10,
+html.dark .border-primary\/20 {
+  border-color: rgba(218, 226, 253, 0.3) !important;
+}
 html.dark .border-outline-variant, html.dark .border-outline {
   border-color: #2a3447 !important;
 }
 html.dark .shadow-sm, html.dark .shadow-md, html.dark .shadow-lg, html.dark .shadow-xl, html.dark .shadow-2xl {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
+}
+input, textarea, select {
+  background-color: var(--surface-container-lowest, #ffffff);
+  color: var(--on-surface, #1e293b);
+  border-color: var(--outline-variant, #cbd5e1);
+}
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: #141b28 !important;
+  color: #f0f6fc !important;
+  border-color: #2a3447 !important;
+}
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Print mode resets to ensure pristine A4 documents even if dark mode is active */
+@media print {
+  html.dark, body, .bg-surface, .bg-background, .bg-white, .bg-surface-container-lowest, .bg-surface-container-low, .bg-surface-container, .bg-surface-container-high, .bg-surface-container-highest {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border-color: #e2e8f0 !important;
+    box-shadow: none !important;
+  }
+  html.dark .text-primary, html.dark .text-tertiary, html.dark .text-on-surface, html.dark .text-on-background, html.dark .text-black, html.dark .text-gray-900, html.dark .text-gray-800, html.dark .text-gray-700 {
+    color: #000000 !important;
+  }
+  html.dark .text-secondary, html.dark .text-on-surface-variant, html.dark .text-on-primary-container, html.dark .text-on-secondary-container, html.dark .text-gray-600, html.dark .text-gray-500 {
+    color: #4b5563 !important;
+  }
+  html.dark .bg-primary\/10, html.dark .bg-primary\/20, html.dark .bg-primary\/5 {
+    background-color: #f3f4f6 !important;
+    color: #1f2937 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .editorial-section, section, .glass-card, .rounded-xl, .rounded-2xl, .rounded-3xl, .border, table, tr, th, td, blockquote, figure, img, .day-block, .itinerary-day, .attached-service, .card, li {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-column-break-inside: avoid !important;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+  a, a * {
+    pointer-events: auto !important;
+  }
 }

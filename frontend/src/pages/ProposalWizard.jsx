@@ -78,14 +78,16 @@ export default function ProposalWizard() {
   }, [setBranding, activeId, idParam]);
 
   // Load proposal from DB on mount / URL change
+  // Load proposal from DB on mount / URL change
   useEffect(() => {
     if (idParam && idParam !== activeId) {
       loadProposal(idParam).catch(e => toast.error(e.message || 'Failed to load proposal'));
-    } else if (!idParam && activeId) {
-      // Clear if we navigate to /proposals/wizard without an ID but have one active
+    } else if (!idParam && activeId && !proposal?.id) {
+      // Clear if we navigate to /proposals/wizard without an ID but have one active from an old session
       loadProposal(null);
     }
-  }, [idParam, loadProposal, toast, activeId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idParam]);
 
   const themeParam = params.get('theme');
   useEffect(() => {
@@ -358,7 +360,18 @@ export default function ProposalWizard() {
   }, [pendingItinerary, proposal, toast, setProposal, setClient, saveDraftBackground, addItemsOptimistic, items, defaultQtyFor]);
 
   const triggerApplyItinerary = useCallback(async (itinId) => {
-    if (!itinId) return;
+    if (!itinId) {
+      if (window.confirm('Start from scratch? This will clear all current itinerary days and items.')) {
+        setProposal(p => ({ ...p, itinerary: { days: [] } }));
+        if (items && items.length > 0) {
+          items.forEach(it => removeItemOptimistic(it.id).catch(() => {}));
+        }
+        setItems([]);
+        setClient(c => ({ ...c, itinerary_id: '' }));
+        toast.success('Itinerary cleared. You can start from scratch.');
+      }
+      return;
+    }
     const selectedItin = itineraries.find((it) => it.id === itinId);
     if (!selectedItin) return;
     
@@ -376,7 +389,7 @@ export default function ProposalWizard() {
     setTimeout(() => {
       onApplyItinerary('replace', selectedItin);
     }, 0);
-  }, [itineraries, proposal?.id, saveDraftBackground, toast, onApplyItinerary]);
+  }, [itineraries, proposal?.id, saveDraftBackground, toast, onApplyItinerary, setProposal, setItems, setClient, items, removeItemOptimistic]);
 
   const saveDraft = useCallback(async (silent = false) => {
     if (stepParam === 1 && step1Ref.current) {
@@ -402,13 +415,23 @@ export default function ProposalWizard() {
   }, [saveDraftBackground, setParams, stepParam, toast, idParam]);
 
   // Automatic background saving (auto-save debounced)
+  // Automatic background saving (auto-save debounced)
   useEffect(() => {
     if (!client?.customer_name && !client?.destination) return;
-    const timer = setTimeout(() => {
-      saveDraftBackground().catch(() => {});
+    const timer = setTimeout(async () => {
+      try {
+        const p = await saveDraftBackground();
+        if (p?.id && !idParam) {
+          setParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('id', p.id);
+            return next;
+          }, { replace: true });
+        }
+      } catch {}
     }, 1500);
     return () => clearTimeout(timer);
-  }, [client, branding, costingPrefs, items, saveDraftBackground]);
+  }, [client, branding, costingPrefs, items, saveDraftBackground, idParam, setParams]);
 
   const goStep = (n, idOverride) => setParams({ id: idOverride ?? proposal?.id ?? '', step: String(n) }, { replace: false });
 
@@ -431,17 +454,24 @@ export default function ProposalWizard() {
 
   const onNext = async () => {
     let pid = proposal?.id;
+    if (stepParam === 1 && step1Ref.current) {
+      const isValid = await step1Ref.current.validate();
+      if (!isValid) {
+        toast.error('Please fill in the client name and required fields.');
+        return;
+      }
+    }
     if (!pid) {
       try {
         const p = await saveDraftBackground();
         pid = p?.id;
-      } catch {
-        return;
+      } catch (err) {
+        console.warn('saveDraftBackground error in onNext:', err);
       }
     } else {
       saveDraftBackground().catch(() => {});
     }
-    goStep(Math.min(5, stepParam + 1), pid);
+    goStep(Math.min(5, stepParam + 1), pid || proposal?.id || crypto.randomUUID());
   };
 
   const onPrev = async () => {
@@ -504,7 +534,7 @@ export default function ProposalWizard() {
   return (
     <div ref={wrapperRef} style={{ display: 'contents' }}>
       {mountNode && createPortal(
-        <div className="space-y-lg" data-testid="proposal-wizard">
+        <div className="space-y-lg pb-36" data-testid="proposal-wizard">
           <ProgressBar step={stepParam} onJump={handleJump} />
 
           {status === 'loading' && !proposal ? (
@@ -525,7 +555,18 @@ export default function ProposalWizard() {
                       onPatchItem={onPatchItem} onRemoveItem={onRemoveItem} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft}
                       proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
                     {stepParam === 4 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} />}
-                    {stepParam === 5 && <Step7Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} />}
+                    {stepParam === 5 && <Step7Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} onAddCustomBlock={(cb) => {
+                      setGlobalCustomBlocks(s => {
+                        const next = [...s, cb];
+                        try { localStorage.setItem('voyanta_global_custom_blocks', JSON.stringify(next)); } catch {}
+                        import('../services/resourceService.js').then(({ settingsService }) => {
+                          settingsService.get().then(old => {
+                            settingsService.save({ ...old, custom_blocks: next }).catch(() => {});
+                          });
+                        });
+                        return next;
+                      });
+                    }} />}
                   </Suspense>
                 </motion.div>
               </AnimatePresence>
@@ -541,7 +582,7 @@ export default function ProposalWizard() {
               className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40 disabled:pointer-events-none">
               Previous
             </motion.button>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => saveDraft(false)} disabled={status === 'saving'} data-testid="wizard-save"
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { if (stepParam === 5) { window.dispatchEvent(new CustomEvent('voyanta:step7-save-clicked')); } saveDraft(false); }} disabled={status === 'saving'} data-testid="wizard-save"
               className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40 disabled:pointer-events-none flex gap-2 items-center">
               {status === 'saving' ? <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span> : null}
               {status === 'saving' ? 'Saving…' : 'Save Draft'}

@@ -5,6 +5,9 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { settingsService } from '../services/resourceService.js';
+import ImageUploadInput from '../components/common/ImageUploadInput.jsx';
+import { getActivityLogs, clearActivityLogs, logActivity } from '../services/activityLogService.js';
+import { resetAllDataToZero } from '../services/proposalService.js';
 
 // ---- Fetch Functions ----
 const fetchAgency = async () => {
@@ -102,19 +105,94 @@ function NavButton({ active, onClick, icon, children }) {
 // ---- Sub Pages ----
 
 function PlanSettings({ subscription }) {
+  const toast = useToast();
+  const [activePlan, setActivePlan] = useState(() => localStorage.getItem('voyanta_active_plan') || subscription?.plan || 'Starter');
+
+  const handleSwitchPlan = (planName) => {
+    localStorage.setItem('voyanta_active_plan', planName);
+    setActivePlan(planName);
+    window.dispatchEvent(new CustomEvent('voyanta:plan-updated'));
+    logActivity('subscription', `Switched active subscription tier to ${planName} from Settings`);
+    toast.success(`Switched to ${planName} Plan! Features and limits updated immediately.`);
+  };
+
+  const plans = [
+    {
+      name: 'Starter',
+      price: '$49/mo',
+      allows: ['Up to 10 PDF downloads per month', 'Standard templates', 'Basic agency branding'],
+      restricts: ['Team Management Locked', 'No Custom Branding Fields', 'No White-labeling'],
+    },
+    {
+      name: 'Professional',
+      price: '$129/mo',
+      allows: ['Unlimited PDF downloads & proposals', 'Custom Branding Fields Unlocked', 'Priority email support', 'Analytics dashboard'],
+      restricts: ['Team Management Locked', 'No White-labeling'],
+    },
+    {
+      name: 'Enterprise',
+      price: '$299/mo',
+      allows: ['Unlimited PDF downloads & proposals', 'Team Management & RBAC Unlocked', 'Custom Branding Fields Unlocked', 'Full Audit Logs & White-labeling', 'Dedicated account manager'],
+      restricts: [],
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      <h3 className="text-2xl font-serif font-bold">Plan & Billing</h3>
-      <div className="p-6 bg-surface-container rounded-xl border border-outline-variant">
-        <h4 className="text-lg font-bold">Current Plan: {subscription?.plan || 'Starter'}</h4>
-        <p className="text-on-surface-variant mt-2 mb-6">
-          {subscription?.plan === 'Enterprise' 
-            ? 'You have access to all premium features including Team Management and Audit Logs.'
-            : 'Upgrade to Enterprise to unlock Team Management, strict RBAC, and White-label branding.'}
-        </p>
-        <button className="px-6 py-2 bg-primary text-on-primary rounded-lg font-medium shadow-md hover:bg-primary/90 transition-colors">
-          Manage Subscription
-        </button>
+      <div className="flex justify-between items-center">
+        <h3 className="text-2xl font-serif font-bold">Plan & Billing</h3>
+        <span className="px-4 py-1.5 bg-primary/10 text-primary font-bold rounded-full text-sm">
+          Active Tier: <span className="underline">{activePlan}</span>
+        </span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {plans.map((p) => {
+          const isCurrent = activePlan === p.name;
+          return (
+            <div key={p.name} className={`p-6 rounded-2xl border flex flex-col justify-between transition-all ${isCurrent ? 'bg-primary/5 border-primary shadow-lg ring-2 ring-primary/20' : 'bg-surface-container border-outline-variant hover:border-outline'}`}>
+              <div>
+                <div className="flex justify-between items-start mb-2">
+                  <h4 className="text-xl font-bold font-serif">{p.name}</h4>
+                  {isCurrent && <span className="bg-black text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">Current</span>}
+                </div>
+                <div className="text-2xl font-black mb-4 text-primary">{p.price}</div>
+                
+                <div className="space-y-2 mb-6">
+                  <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">What's Included:</p>
+                  <ul className="space-y-1.5 text-sm">
+                    {p.allows.map((allow, i) => (
+                      <li key={i} className="flex items-center gap-2 text-on-surface">
+                        <span className="material-symbols-outlined text-[18px] text-green-600">check_circle</span>
+                        <span>{allow}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {p.restricts.length > 0 && (
+                    <>
+                      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mt-4">Restrictions:</p>
+                      <ul className="space-y-1.5 text-sm">
+                        {p.restricts.map((rest, i) => (
+                          <li key={i} className="flex items-center gap-2 text-on-surface-variant opacity-80">
+                            <span className="material-symbols-outlined text-[18px] text-error">lock</span>
+                            <span>{rest}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSwitchPlan(p.name)}
+                disabled={isCurrent}
+                className={`w-full py-2.5 rounded-xl font-bold text-sm transition-all ${isCurrent ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-primary text-on-primary hover:bg-primary/90 shadow-md cursor-pointer'}`}
+              >
+                {isCurrent ? 'Active Plan' : `Switch to ${p.name}`}
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -144,32 +222,126 @@ function ProfileSettings({ user, signOut, isDemo }) {
 }
 
 function TeamSettings() {
-  const { data: team = [], isLoading } = useQuery({ queryKey: ['team'], queryFn: fetchTeam });
-  const [inviteEmail, setInviteEmail] = useState('');
   const toast = useToast();
+  const [activePlan, setActivePlan] = useState(() => localStorage.getItem('voyanta_active_plan') || 'Starter');
+  const isEnterprise = activePlan === 'Enterprise';
+
+  const [team, setTeam] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('voyanta_team_members'));
+      if (saved && Array.isArray(saved)) return saved;
+    } catch {}
+    return [
+      { id: 'u_1', name: 'Raman (Lead Agency Concierge)', email: 'raman@voyanta.com', role: 'Admin', status: 'Active' },
+      { id: 'u_2', name: 'Priya Sharma (Senior Travel Designer)', email: 'priya@voyanta.com', role: 'Editor', status: 'Active' },
+    ];
+  });
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [inviteRole, setInviteRole] = useState('Editor');
+
+  useEffect(() => {
+    const handler = () => setActivePlan(localStorage.getItem('voyanta_active_plan') || 'Starter');
+    window.addEventListener('voyanta:plan-updated', handler);
+    return () => window.removeEventListener('voyanta:plan-updated', handler);
+  }, []);
 
   const handleInvite = (e) => {
     e.preventDefault();
-    toast.success(`Invitation sent to ${inviteEmail}`);
+    if (!inviteEmail) return;
+    const next = [...team, { id: 'u_' + Date.now(), name: inviteName || inviteEmail.split('@')[0], email: inviteEmail, role: inviteRole, status: 'Invited' }];
+    setTeam(next);
+    localStorage.setItem('voyanta_team_members', JSON.stringify(next));
+    logActivity('team', `Invited team member ${inviteEmail} with role ${inviteRole}`);
+    toast.success(`Invitation sent to ${inviteEmail} as ${inviteRole}!`);
     setInviteEmail('');
+    setInviteName('');
   };
+
+  const handleRemove = (id) => {
+    const next = team.filter((m) => m.id !== id);
+    setTeam(next);
+    localStorage.setItem('voyanta_team_members', JSON.stringify(next));
+    logActivity('team', `Removed team member (ID: ${id})`);
+    toast.info('Team member removed.');
+  };
+
+  const handleRoleChange = (id, newRole) => {
+    const next = team.map((m) => m.id === id ? { ...m, role: newRole } : m);
+    setTeam(next);
+    localStorage.setItem('voyanta_team_members', JSON.stringify(next));
+    logActivity('team', `Updated role for team member to ${newRole}`);
+    toast.success(`Role updated to ${newRole}.`);
+  };
+
+  if (!isEnterprise) {
+    return (
+      <div className="space-y-6">
+        <h3 className="text-2xl font-serif font-bold">Team Management</h3>
+        <div className="p-8 bg-surface-container rounded-2xl border border-outline-variant text-center max-w-xl mx-auto my-8">
+          <div className="w-16 h-16 rounded-full bg-error/10 text-error flex items-center justify-center mx-auto mb-4">
+            <span className="material-symbols-outlined text-[32px]">lock</span>
+          </div>
+          <h4 className="text-xl font-bold font-serif mb-2">Enterprise Feature Locked</h4>
+          <p className="text-sm text-on-surface-variant mb-6">
+            Team Management & Role-Based Access Control (RBAC) is exclusively available on the Enterprise plan. Your current active tier is <strong className="text-primary">{activePlan}</strong>.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.setItem('voyanta_active_plan', 'Enterprise');
+              setActivePlan('Enterprise');
+              window.dispatchEvent(new CustomEvent('voyanta:plan-updated'));
+              toast.success('Upgraded to Enterprise Plan! Team Management is now unlocked.');
+            }}
+            className="px-6 py-3 bg-primary text-on-primary font-bold rounded-xl shadow-lg hover:bg-primary/90 transition-all"
+          >
+            Upgrade to Enterprise Plan Now
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <h3 className="text-2xl font-serif font-bold">Team Management</h3>
+      <div className="flex justify-between items-center">
+        <div>
+          <h3 className="text-2xl font-serif font-bold">Team Management & RBAC</h3>
+          <p className="text-xs text-on-surface-variant">Assign Admin or Editor roles to control proposal management and deletion permissions.</p>
+        </div>
+        <span className="px-3 py-1 bg-green-500/10 text-green-600 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+          <span className="material-symbols-outlined text-[14px]">verified</span> Enterprise Unlocked
+        </span>
+      </div>
       
       <div className="p-6 bg-surface-container rounded-xl border border-outline-variant">
-        <h4 className="text-lg font-bold mb-4">Invite Agent</h4>
-        <form onSubmit={handleInvite} className="flex gap-4">
+        <h4 className="text-base font-bold mb-3">Invite New Travel Designer</h4>
+        <form onSubmit={handleInvite} className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <input 
+            type="text" 
+            placeholder="Agent Name" 
+            value={inviteName}
+            onChange={e => setInviteName(e.target.value)}
+            className="px-3 py-2 border border-outline rounded-lg bg-white text-sm focus:border-primary outline-none"
+          />
           <input 
             type="email" 
-            placeholder="agent@example.com" 
+            placeholder="agent@voyanta.com" 
             value={inviteEmail}
             onChange={e => setInviteEmail(e.target.value)}
-            className="flex-1 px-4 py-2 border border-outline rounded-lg focus:border-primary outline-none"
+            className="px-3 py-2 border border-outline rounded-lg bg-white text-sm focus:border-primary outline-none"
             required
           />
-          <button type="submit" className="px-6 py-2 bg-black text-white rounded-lg font-medium hover:bg-gray-800">
+          <select
+            value={inviteRole}
+            onChange={e => setInviteRole(e.target.value)}
+            className="px-3 py-2 border border-outline rounded-lg bg-white text-sm focus:border-primary outline-none font-medium"
+          >
+            <option value="Editor">Editor (Create & Edit)</option>
+            <option value="Admin">Admin (Full Access & Delete)</option>
+          </select>
+          <button type="submit" className="px-4 py-2 bg-primary text-on-primary rounded-lg font-bold text-sm hover:bg-primary/90 transition-colors shadow-sm">
             Send Invite
           </button>
         </form>
@@ -179,32 +351,46 @@ function TeamSettings() {
         <table className="w-full text-left">
           <thead className="bg-surface-container-highest border-b border-outline-variant">
             <tr>
-              <th className="p-4 font-medium text-on-surface-variant text-sm">Name</th>
-              <th className="p-4 font-medium text-on-surface-variant text-sm">Role</th>
-              <th className="p-4 font-medium text-on-surface-variant text-sm">Action</th>
+              <th className="p-4 font-medium text-on-surface-variant text-xs uppercase tracking-wider">Member</th>
+              <th className="p-4 font-medium text-on-surface-variant text-xs uppercase tracking-wider">Role & Permissions</th>
+              <th className="p-4 font-medium text-on-surface-variant text-xs uppercase tracking-wider">Status</th>
+              <th className="p-4 font-medium text-on-surface-variant text-xs uppercase tracking-wider text-right">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-outline-variant">
-            {isLoading ? <tr><td colSpan="3" className="p-4 text-center">Loading team...</td></tr> : null}
             {team.map(member => (
-              <tr key={member.id} className="hover:bg-surface-container-highest/50">
+              <tr key={member.id} className="hover:bg-surface-container-highest/50 transition-colors">
                 <td className="p-4">
-                  <div className="font-medium text-on-surface">{member.full_name || 'Unnamed Agent'}</div>
+                  <div className="font-bold text-on-surface text-sm">{member.name}</div>
                   <div className="text-xs text-on-surface-variant">{member.email}</div>
                 </td>
                 <td className="p-4">
-                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full uppercase tracking-wider font-bold">
-                    {member.role}
-                  </span>
+                  <select
+                    value={member.role}
+                    onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                    className="px-2 py-1 rounded bg-white border border-outline text-xs font-bold text-primary cursor-pointer"
+                  >
+                    <option value="Editor">Editor (No Delete)</option>
+                    <option value="Admin">Admin (Full Access)</option>
+                  </select>
+                  <div className="text-[10px] text-on-surface-variant mt-0.5">
+                    {member.role === 'Admin' ? 'Can edit, send & delete proposals' : 'Can edit & send, cannot delete'}
+                  </div>
                 </td>
                 <td className="p-4">
-                  <button className="text-error text-sm font-medium hover:underline">Revoke Access</button>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${member.status === 'Active' ? 'bg-green-500/10 text-green-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                    {member.status}
+                  </span>
+                </td>
+                <td className="p-4 text-right">
+                  {member.email !== 'raman@voyanta.com' && (
+                    <button type="button" onClick={() => handleRemove(member.id)} className="text-error text-xs font-bold hover:underline">
+                      Revoke Access
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
-            {team.length === 0 && !isLoading && (
-              <tr><td colSpan="3" className="p-4 text-center text-on-surface-variant">No team members found.</td></tr>
-            )}
           </tbody>
         </table>
       </div>
@@ -249,13 +435,19 @@ function BrandingSettings() {
               <input type="text" value={safeStr(current.primary_color) || '#0b1c30'} onChange={upd('primary_color')} className="flex-1 px-4 py-2 border border-outline rounded-lg font-mono bg-white" />
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-on-surface-variant mb-1">Logo URL</label>
-            <input type="text" value={safeStr(current.logo_url)} onChange={upd('logo_url')} placeholder="https://..." className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-on-surface-variant mb-1">Cover Image URL</label>
-            <input type="text" value={safeStr(current.cover_image_url)} onChange={upd('cover_image_url')} placeholder="https://..." className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <ImageUploadInput
+              label="Agency Logo"
+              value={safeStr(current.logo_url)}
+              onChange={(val) => setForm(s => ({ ...(s || settings || {}), logo_url: val }))}
+              placeholder="https://example.com/logo.png or upload..."
+            />
+            <ImageUploadInput
+              label="Cover Image"
+              value={safeStr(current.cover_image_url)}
+              onChange={(val) => setForm(s => ({ ...(s || settings || {}), cover_image_url: val }))}
+              placeholder="https://example.com/cover.jpg or upload..."
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-on-surface-variant mb-1">Contact Email</label>
@@ -297,31 +489,70 @@ function BrandingSettings() {
 }
 
 function ActivityLogs() {
-  const { data: logs = [], isLoading } = useQuery({ queryKey: ['activity_logs'], queryFn: fetchActivityLogs });
+  const toast = useToast();
+  const [logs, setLogs] = useState(() => getActivityLogs());
+
+  useEffect(() => {
+    const handler = () => setLogs(getActivityLogs());
+    window.addEventListener('voyanta:activity-log-updated', handler);
+    return () => window.removeEventListener('voyanta:activity-log-updated', handler);
+  }, []);
+
+  const handleClear = () => {
+    if (window.confirm('Are you sure you want to clear all audit & activity logs?')) {
+      clearActivityLogs();
+      setLogs([]);
+      toast.info('Activity logs cleared.');
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <h3 className="text-2xl font-serif font-bold">Audit & Activity Logs</h3>
-      <div className="bg-surface-container rounded-xl border border-outline-variant overflow-hidden">
+      <div className="flex justify-between items-center">
+        <div>
+          <h3 className="text-2xl font-serif font-bold">Audit & Activity Logs</h3>
+          <p className="text-xs text-on-surface-variant">Real-time chronological log of agency actions, client approvals, modifications, and team changes.</p>
+        </div>
+        {logs.length > 0 && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="px-3 py-1.5 bg-error/10 hover:bg-error/20 text-error font-bold text-xs rounded-lg uppercase tracking-wider transition-colors flex items-center gap-1"
+          >
+            <span className="material-symbols-outlined text-[16px]">delete_sweep</span> Clear Logs
+          </button>
+        )}
+      </div>
+      <div className="bg-surface-container rounded-xl border border-outline-variant overflow-hidden shadow-sm">
         <table className="w-full text-left">
           <thead className="bg-surface-container-highest border-b border-outline-variant">
             <tr>
-              <th className="p-4 font-medium text-on-surface-variant text-sm">Timestamp</th>
-              <th className="p-4 font-medium text-on-surface-variant text-sm">Action</th>
-              <th className="p-4 font-medium text-on-surface-variant text-sm">Details</th>
+              <th className="p-4 font-medium text-on-surface-variant text-xs uppercase tracking-wider">Timestamp</th>
+              <th className="p-4 font-medium text-on-surface-variant text-xs uppercase tracking-wider">Type / Source</th>
+              <th className="p-4 font-medium text-on-surface-variant text-xs uppercase tracking-wider">Action Description</th>
+              <th className="p-4 font-medium text-on-surface-variant text-xs uppercase tracking-wider">Client / Entity</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-outline-variant">
-            {isLoading ? <tr><td colSpan="3" className="p-4 text-center">Loading logs...</td></tr> : null}
             {logs.map(log => (
-              <tr key={log.id} className="hover:bg-surface-container-highest/50 text-sm">
-                <td className="p-4 whitespace-nowrap text-on-surface-variant">{new Date(log.created_at).toLocaleString()}</td>
-                <td className="p-4 font-medium text-on-surface">{log.action}</td>
-                <td className="p-4 text-on-surface-variant font-mono text-xs">{JSON.stringify(log.details)}</td>
+              <tr key={log.id} className="hover:bg-surface-container-highest/50 text-sm transition-colors">
+                <td className="p-4 whitespace-nowrap text-on-surface-variant text-xs font-mono">{new Date(log.timestamp || log.created_at || Date.now()).toLocaleString()}</td>
+                <td className="p-4">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    log.type === 'approval' ? 'bg-green-500/10 text-green-600' :
+                    log.type === 'modification' ? 'bg-amber-500/10 text-amber-600' :
+                    log.type === 'pdf' ? 'bg-blue-500/10 text-blue-600' :
+                    log.type === 'subscription' ? 'bg-purple-500/10 text-purple-600' : 'bg-surface-container-high text-on-surface'
+                  }`}>
+                    {log.type || 'System'}
+                  </span>
+                </td>
+                <td className="p-4 font-medium text-on-surface">{log.description || log.action}</td>
+                <td className="p-4 text-on-surface-variant text-xs font-semibold">{log.clientName || 'Agency Team'}</td>
               </tr>
             ))}
-            {logs.length === 0 && !isLoading && (
-              <tr><td colSpan="3" className="p-4 text-center text-on-surface-variant">No activity recorded yet.</td></tr>
+            {logs.length === 0 && (
+              <tr><td colSpan="4" className="p-8 text-center text-on-surface-variant">No activity recorded yet. Create proposals or share links to generate logs.</td></tr>
             )}
           </tbody>
         </table>
