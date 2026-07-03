@@ -1,0 +1,162 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Voyanta Proposal Engine CSS
+   Core tokens, glassmorphic utilities, print-safe rules, and typography styles
+   for all magazine-quality templates.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+/* Base Engine Container */
+.voyanta-engine-root {
+  width: 100%;
+  position: relative;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.voyanta-engine-root *,
+.voyanta-engine-root *::before,
+.voyanta-engine-root *::after {
+  box-sizing: inherit;
+}
+
+/* ── Typography Helpers ─────────────────────────────────────────────────── */
+.font-serif-headline {
+  font-family: var(--engine-font-headline, "Playfair Display", serif);
+}
+
+.font-serif-subhead {
+  font-family: var(--engine-font-subhead, "Cormorant Garamond", serif);
+}
+
+.font-sans-body {
+  font-family: var(--engine-font-body, "Inter", sans-serif);
+}
+
+.font-accent {
+  font-family: var(--engine-font-accent, "Cinzel", serif);
+}
+
+/* ── Glassmorphic & Card Utilities ──────────────────────────────────────── */
+.engine-glass-card {
+  background: var(--engine-glass-bg, rgba(255, 255, 255, 0.75));
+  backdrop-filter: blur(var(--engine-glass-blur, 12px));
+  -webkit-backdrop-filter: blur(var(--engine-glass-blur, 12px));
+  border: 1px solid var(--engine-border, rgba(0, 0, 0, 0.08));
+  box-shadow: var(--engine-shadow, 0 8px 32px rgba(0, 0, 0, 0.06));
+  border-radius: var(--engine-radius, 1rem);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.engine-glass-card:hover {
+  box-shadow: var(--engine-hover-shadow, 0 16px 48px rgba(0, 0, 0, 0.12));
+  transform: translateY(-2px);
+}
+
+.engine-solid-card {
+  background: var(--engine-surface, #ffffff);
+  border: 1px solid var(--engine-border, #e2e8f0);
+  box-shadow: var(--engine-shadow, 0 4px 20px rgba(0, 0, 0, 0.05));
+  border-radius: var(--engine-radius, 1rem);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.engine-solid-card:hover {
+  box-shadow: var(--engine-hover-shadow, 0 12px 36px rgba(0, 0, 0, 0.1));
+  transform: translateY(-2px);
+}
+
+/* ── Section Dividers ───────────────────────────────────────────────────── */
+.engine-divider-elegant {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 3rem 0;
+}
+.engine-divider-elegant::before,
+.engine-divider-elegant::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--engine-border, #ccc), transparent);
+}
+.engine-divider-elegant span {
+  padding: 0 1rem;
+  font-family: var(--engine-font-accent, serif);
+  font-size: 1.25rem;
+  color: var(--engine-accent, #c41e3a);
+  opacity: 0.8;
+}
+
+.engine-divider-double {
+  border-top: 3px double var(--engine-border, #ccc);
+  margin: 3rem 0;
+}
+
+.engine-divider-gradient {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--engine-accent, #3b82f6), transparent);
+  margin: 3rem 0;
+  opacity: 0.6;
+}
+
+/* ── Print & A4 PDF Safe Rules ─────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  html, body, #pdf-render-root, .voyanta-engine-root {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Prevent awkward page breaks */
+  h1, h2, h3, h4, h5, h6,
+  .engine-page-break-avoid,
+  .engine-solid-card,
+  .engine-glass-card {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  h1, h2, h3 {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  section {
+    display: block !important;
+  }
+
+  /* Force page breaks where requested */
+  .engine-page-break-before {
+    break-before: page !important;
+    page-break-before: always !important;
+  }
+
+  .engine-page-break-after {
+    break-after: page !important;
+    page-break-after: always !important;
+  }
+
+  /* Reset shadows and transforms for print */
+  .engine-glass-card,
+  .engine-solid-card {
+    box-shadow: none !important;
+    transform: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #d1d5db !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

@@ -37,6 +37,9 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
     if (type === 'flight') defaultData = { name: '', details: '', image_url: '', ...presetData };
     if (type === 'transfer') defaultData = { name: '', details: '', image_url: '', ...presetData };
     if (type === 'meals') defaultData = { name: '', details: '', image_url: '', ...presetData };
+    if (type === 'cruise') defaultData = { name: '', details: '', image_url: '', ...presetData };
+    if (type === 'destination') defaultData = { name: '', details: '', image_url: '', ...presetData };
+    if (type === 'custom') defaultData = { name: '', details: '', image_url: '', ...presetData };
 
     const newBlock = { id: crypto.randomUUID(), type, data: defaultData };
     const currentContent = Array.isArray(dayData.content) ? [...dayData.content] : [];
@@ -119,6 +122,9 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
                     <BlockMenuItem icon="flight" label="Flight" onClick={() => { setPickerType('flight'); setShowBlockMenu(false); }} />
                     <BlockMenuItem icon="directions_car" label="Transfer" onClick={() => addContentBlock('transfer')} />
                     <BlockMenuItem icon="restaurant" label="Meals" onClick={() => addContentBlock('meals')} />
+                    <BlockMenuItem icon="directions_boat" label="Cruise / Ferry" onClick={() => addContentBlock('cruise')} />
+                    <BlockMenuItem icon="location_on" label="Destination Overview" onClick={() => addContentBlock('destination')} />
+                    <BlockMenuItem icon="dashboard" label="Custom Card" onClick={() => addContentBlock('custom')} />
                   </div>
                 </div>
               )}

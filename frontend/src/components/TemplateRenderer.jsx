@@ -209,7 +209,7 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
                               </div>
                             );
                           }
-                          if (['hotel', 'activity', 'flight', 'transfer', 'meals', 'custom'].includes(block.type)) {
+                          if (['hotel', 'activity', 'flight', 'transfer', 'meals', 'cruise', 'destination', 'custom'].includes(block.type)) {
                             return (
                               <div key={block.id} className="flex items-stretch gap-4 p-4 rounded-xl my-3 break-inside-avoid page-break-inside-avoid shadow-xs border border-opacity-15" style={{ backgroundColor: theme.bg, borderColor: theme.text }}>
                                 <div className="flex-1 min-w-0 flex flex-col justify-center py-1">

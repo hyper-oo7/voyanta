@@ -53,6 +53,12 @@ export default function SortableContentBlock({ id, item, onChange, onRemove }) {
         return { icon: 'directions_car', label: 'Transfer', color: 'text-indigo-600 bg-indigo-50 border-indigo-200' };
       case 'meals':
         return { icon: 'restaurant', label: 'Meals', color: 'text-orange-600 bg-orange-50 border-orange-200' };
+      case 'cruise':
+        return { icon: 'directions_boat', label: 'Cruise / Ferry', color: 'text-cyan-600 bg-cyan-50 border-cyan-200' };
+      case 'destination':
+        return { icon: 'location_on', label: 'Destination Overview', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' };
+      case 'custom':
+        return { icon: 'dashboard', label: 'Custom Card', color: 'text-violet-600 bg-violet-50 border-violet-200' };
       default:
         return { icon: 'widgets', label: 'Block', color: 'text-gray-600 bg-gray-50 border-gray-200' };
     }
@@ -105,7 +111,7 @@ export default function SortableContentBlock({ id, item, onChange, onRemove }) {
           />
         )}
         
-        {(item.type === 'hotel' || item.type === 'activity' || item.type === 'flight' || item.type === 'transfer' || item.type === 'meals') && (
+        {(item.type === 'hotel' || item.type === 'activity' || item.type === 'flight' || item.type === 'transfer' || item.type === 'meals' || item.type === 'cruise' || item.type === 'destination' || item.type === 'custom') && (
           <div className="flex gap-md items-stretch mt-1 group/travel">
             <div className="relative w-20 rounded-lg bg-surface-variant flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm border border-outline-variant min-h-[60px]">
               {item.data.image_url ? (
