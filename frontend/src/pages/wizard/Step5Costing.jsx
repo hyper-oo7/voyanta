@@ -2,6 +2,14 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { formatINR } from '../../lib/currency.js';
 import { addItem } from '../../services/proposalItemService.js';
 
+const cleanPrice = (val) => {
+  if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+  if (!val) return 0;
+  const cleaned = String(val).replace(/[^0-9.-]+/g, '');
+  const parsed = parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const KINDS = ['Hotel', 'Flight', 'Activity', 'Transfer', 'Meals', 'Custom', 'Visa', 'Tax', 'Margin', 'Fee', 'Discount'];
 
 const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveItem }) {
@@ -33,7 +41,13 @@ const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveI
       <td className="px-lg py-md w-[140px]">
         <input type="number" min="0" step="0.01" value={unitPrice}
           onChange={(e) => setUnitPrice(e.target.value)}
-          onBlur={(e) => onPatchItem(item.id, { unit_price: parseFloat(e.target.value) || 0 })}
+          onBlur={(e) => {
+            const parsed = parseFloat(e.target.value);
+            // Fall back to current item price if parse fails (e.g. empty field), not 0
+            const safePrice = Number.isFinite(parsed) ? parsed : (Number(item.unit_price) || 0);
+            setUnitPrice(safePrice);
+            onPatchItem(item.id, { unit_price: safePrice });
+          }}
           className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
       </td>
       <td className="px-lg py-md font-label-md text-primary">
@@ -75,7 +89,11 @@ export function Step5Costing({ proposal, proposalId, items, setItems, onPatchIte
             if (refId ? !currentRefIds.has(refId) : !currentLabels.has(lowerLabel)) {
               if (refId) currentRefIds.add(refId);
               if (lowerLabel) currentLabels.add(lowerLabel);
-              const price = Number(raw.price_per_night || raw.price || raw.cost || block.data.price || 0);
+              const price = cleanPrice(
+                raw.price_per_night ?? raw.price ?? raw.cost ?? raw.rate ?? raw.unit_price ?? raw.amount ??
+                block.data.price ?? block.data.price_per_night ?? block.data.rate ?? block.data.cost ?? block.data.unit_price ?? block.data.amount ??
+                0
+              );
               harvested.push({
                 kind: k,
                 ref_id: refId || crypto.randomUUID(),
@@ -161,7 +179,7 @@ export function Step5Costing({ proposal, proposalId, items, setItems, onPatchIte
           <h3 className="font-headline-sm text-headline-sm text-primary flex-1">Cost Breakdown</h3>
           <select onChange={(e) => { if (e.target.value) { onAdd(e.target.value); e.target.value=''; } }}
             data-testid="add-line-select"
-            className="px-md py-sm border border-outline-variant rounded-lg font-label-md bg-white">
+            className="px-md py-sm border border-outline-variant rounded-lg font-label-md bg-surface-container-lowest">
             <option value="">+ Add line…</option>
             {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
@@ -183,19 +201,19 @@ export function Step5Costing({ proposal, proposalId, items, setItems, onPatchIte
            <div className="grid grid-cols-2 md:grid-cols-4 gap-md flex-1">
              <label className="flex flex-col gap-xs">
                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Fixed Markup</span>
-               <input type="number" step="0.01" value={costingPrefs?.fixed_markup || 0} onChange={updPref('fixed_markup')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
+               <input type="number" step="0.01" value={costingPrefs?.fixed_markup || 0} onChange={updPref('fixed_markup')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
              </label>
              <label className="flex flex-col gap-xs">
                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">% Markup</span>
-               <input type="number" step="0.1" value={costingPrefs?.pct_markup || 0} onChange={updPref('pct_markup')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
+               <input type="number" step="0.1" value={costingPrefs?.pct_markup || 0} onChange={updPref('pct_markup')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
              </label>
              <label className="flex flex-col gap-xs">
                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Discount (Flat)</span>
-               <input type="number" step="0.01" value={costingPrefs?.discount || 0} onChange={updPref('discount')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
+               <input type="number" step="0.01" value={costingPrefs?.discount || 0} onChange={updPref('discount')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
              </label>
              <label className="flex flex-col gap-xs">
                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Tax / GST (%)</span>
-               <input type="number" step="0.1" value={costingPrefs?.tax || 0} onChange={updPref('tax')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-white text-sm" />
+               <input type="number" step="0.1" value={costingPrefs?.tax || 0} onChange={updPref('tax')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
              </label>
            </div>
            <div className="text-right pl-lg">

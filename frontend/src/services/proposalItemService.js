@@ -4,11 +4,21 @@ import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 // Pricing fields (qty * unit_price) are summed by the cost calculator.
 
 export async function listItems(proposalId) {
-  if (!supabase || !proposalId) return [];
-  const { data, error } = await supabase.from('proposal_items')
-    .select('*').eq('proposal_id', proposalId).order('position', { ascending: true });
-  if (error) throw error;
-  return data || [];
+  if (!proposalId) return [];
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('proposal_items')
+        .select('*').eq('proposal_id', proposalId).order('position', { ascending: true });
+      if (!error && data) return data;
+    } catch (e) {
+      console.warn('listItems Supabase error, falling back to localStorage:', e);
+    }
+  }
+  try {
+    const prop = JSON.parse(localStorage.getItem(`voyanta_proposal_${proposalId}`) || 'null');
+    if (prop && Array.isArray(prop.items)) return prop.items;
+  } catch {}
+  return [];
 }
 
 export async function addItem(proposalId, item) {
@@ -60,6 +70,11 @@ export async function buildProposalExport(proposalId) {
   }
   if (!proposal) {
     throw new Error(`Proposal ${proposalId} not found`);
+  }
+  if ((!items || items.length === 0) && Array.isArray(proposal.items)) {
+    items = proposal.items;
+  } else if ((!items || items.length === 0)) {
+    items = await listItems(proposalId);
   }
   const grouped = {};
   for (const it of items) {

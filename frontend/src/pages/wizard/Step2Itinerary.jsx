@@ -5,6 +5,15 @@ import { addItem, removeItem } from '../../services/proposalItemService.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useProposalStore } from '../../store/proposalStore.js';
 
+const cleanPrice = (val) => {
+  if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+  if (!val) return 0;
+  const cleaned = String(val).replace(/[^0-9.-]+/g, '');
+  const parsed = parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const extractPrice = (item) => cleanPrice(item?.price_per_night ?? item?.price ?? item?.cost ?? item?.rate ?? item?.unit_price ?? item?.amount ?? 0);
+
 export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItinerary, client, items, setItems, proposalCurrency, addItemsOptimistic, saveDraft }) {
   const toast = useToast();
   const { saveDraftBackground } = useProposalStore();
@@ -104,9 +113,11 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     let label = '';
     let price = 0;
     
-    if (kind === 'hotel') { label = resourceItem.name; price = Number(resourceItem.price_per_night||0); }
-    else if (kind === 'flight') { label = `${resourceItem.airline||'Flight'} ${resourceItem.flight_no||''} ${resourceItem.origin||''}→${resourceItem.destination||''}`.trim(); price = Number(resourceItem.cost||0); }
-    else if (kind === 'activity') { label = resourceItem.name; price = Number(resourceItem.price||0); }
+    if (kind === 'hotel') { label = resourceItem.name || resourceItem.label || 'Hotel'; }
+    else if (kind === 'flight') { label = `${resourceItem.airline||'Flight'} ${resourceItem.flight_no||''} ${resourceItem.origin||''}→${resourceItem.destination||''}`.trim(); }
+    else if (kind === 'activity') { label = resourceItem.name || resourceItem.label || 'Activity'; }
+    else { label = resourceItem.name || resourceItem.label || `${kind.toUpperCase()} Item`; }
+    price = extractPrice(resourceItem);
 
     try {
       const newItem = {
@@ -123,7 +134,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       const baseMeta = {
         id: resourceItem.id,
         rawItem: resourceItem,
-        price: Number(resourceItem.price || resourceItem.price_per_night || resourceItem.cost || 0)
+        price: extractPrice(resourceItem)
       };
       if (kind === 'hotel') {
         blockData = {

@@ -10,6 +10,14 @@ import { useProposalStore } from '../store/proposalStore.js';
 import { itinerariesService } from '../services/resourceService.js';
 import { supabase } from '../lib/supabaseClient.js';
 
+const cleanPrice = (val) => {
+  if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+  if (!val) return 0;
+  const cleaned = String(val).replace(/[^0-9.-]+/g, '');
+  const parsed = parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 import { ProgressBar, STEPS } from './wizard/ProgressBar.jsx';
 import { Step1Client } from './wizard/Step1Client.jsx';
 import { Step2Itinerary } from './wizard/Step2Itinerary.jsx';
@@ -288,7 +296,11 @@ export default function ProposalWizard() {
               if ((!refId || !currentRefIds.has(refId)) && (!lowerLabel || !currentLabels.has(lowerLabel))) {
                 if (refId) currentRefIds.add(refId);
                 if (lowerLabel) currentLabels.add(lowerLabel);
-                const price = Number(raw.price_per_night || raw.price || raw.cost || block.data.price || 0);
+                const price = cleanPrice(
+                  raw.price_per_night ?? raw.price ?? raw.cost ?? raw.rate ?? raw.unit_price ?? raw.amount ??
+                  block.data.price ?? block.data.price_per_night ?? block.data.rate ?? block.data.cost ?? block.data.unit_price ?? block.data.amount ??
+                  0
+                );
                 harvestedItems.push({
                   kind: k,
                   ref_id: refId || crypto.randomUUID(),
@@ -577,7 +589,7 @@ export default function ProposalWizard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
             className="fixed bottom-0 right-0 w-[calc(100%-16rem)] z-50 p-4 flex justify-center pb-0" data-testid="wizard-footer-wrapper">
-            <div className="w-full max-w-5xl flex items-center gap-md shadow-[0_-8px_32px_rgba(0,0,0,0.1)] border border-b-0 border-white/40 bg-white/70 backdrop-blur-2xl transition-all duration-300 rounded-t-3xl p-4">
+            <div className="w-full max-w-5xl flex items-center gap-md shadow-[0_-8px_32px_rgba(0,0,0,0.1)] border border-b-0 border-outline-variant/40 bg-surface-container-lowest/90 backdrop-blur-2xl transition-all duration-300 rounded-t-3xl p-4">
             <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onPrev} disabled={stepParam === 1} data-testid="wizard-prev"
               className="px-xl py-3 border border-white/60 bg-white/40 backdrop-blur-md rounded-xl font-label-md text-on-surface hover:bg-white/80 transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-white/40 disabled:pointer-events-none">
               Previous

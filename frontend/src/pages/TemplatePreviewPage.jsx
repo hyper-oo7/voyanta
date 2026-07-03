@@ -6,7 +6,6 @@ import TemplateRenderer, { ALL } from '../components/TemplateRenderer.jsx';
 export default function TemplatePreviewPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [viewMode, setViewMode] = useState('presentation');
   
   const template = TEMPLATES.find(t => t.id === id);
   
@@ -102,11 +101,6 @@ export default function TemplatePreviewPage() {
         </div>
 
         <div className="flex items-center gap-6">
-          <div className="flex bg-surface-container rounded-lg p-1">
-            <button onClick={() => setViewMode('presentation')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'presentation' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Presentation</button>
-            <button onClick={() => setViewMode('document')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'document' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Document</button>
-          </div>
-          
           <button onClick={startEditing} className="px-6 py-2.5 bg-primary text-white rounded-lg font-label-md hover:bg-primary/90 transition-all shadow-md hover:shadow-lg flex items-center gap-2">
             Use this Template <span className="material-symbols-outlined text-[18px]">edit</span>
           </button>
@@ -114,14 +108,13 @@ export default function TemplatePreviewPage() {
       </div>
 
       {/* Preview Canvas */}
-      <div className={`mx-auto w-full transition-all duration-500 ease-in-out ${viewMode === 'document' ? 'max-w-[210mm] py-8' : 'h-[calc(100vh-73px)] overflow-y-auto overflow-x-hidden'}`}>
-        <div className={`bg-white shadow-2xl relative ${viewMode === 'document' ? '' : 'h-full flex flex-col'}`} style={viewMode === 'document' ? { minHeight: '297mm' } : {}}>
+      <div className="mx-auto w-full max-w-[210mm] py-8 transition-all duration-500 ease-in-out">
+        <div className="bg-white shadow-2xl relative" style={{ minHeight: '297mm' }}>
            <TemplateRenderer 
              style={template.theme} 
              data={mockData} 
              include={ALL} 
-             viewMode={viewMode}
-             activeSlide={viewMode === 'presentation' ? 0 : undefined} 
+             viewMode="document"
            />
         </div>
       </div>

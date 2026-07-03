@@ -10,7 +10,7 @@ const Field = memo(function Field({ label, value, onChange, type = 'text', testi
     <label className={'flex flex-col gap-xs ' + extraClass}>
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
       <input type={type} value={safeStr(value)} onChange={onChange} data-testid={testid}
-        className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
+        className="px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
     </label>
   );
 });
@@ -20,7 +20,7 @@ const Textarea = memo(function Textarea({ label, value, onChange, testid, placeh
     <label className="flex flex-col gap-xs">
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
       <textarea value={safeStr(value)} onChange={onChange} rows={3} placeholder={placeholder} data-testid={testid}
-        className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
+        className="w-full px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
     </label>
   );
 });
@@ -37,7 +37,7 @@ function TextareaWithAI({ label, value, onChange, testid, onAI }) {
         </button>
       </span>
       <textarea value={safeStr(value)} onChange={onChange} rows={3} data-testid={testid}
-        className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
+        className="w-full px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20" />
     </label>
   );
 }
@@ -62,7 +62,7 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
               <div
                 key={tpl.slug}
                 onClick={() => setBranding(s => ({ ...s, template_style: tpl.slug }))}
-                className={`group relative rounded-xl border-2 overflow-hidden cursor-pointer transition-all ${isSelected ? 'border-primary shadow-md bg-primary/5' : 'border-outline-variant hover:border-primary/50 bg-white'}`}
+                className={`group relative rounded-xl border-2 overflow-hidden cursor-pointer transition-all ${isSelected ? 'border-primary shadow-md bg-primary/5' : 'border-outline-variant hover:border-primary/50 bg-surface-container-lowest'}`}
               >
                 <div className="h-28 w-full overflow-hidden relative bg-slate-100">
                   <img src={tpl.thumbnail} alt={tpl.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -116,41 +116,45 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
           <button
             type="button"
             onClick={() => {
-              const next = [...(branding?.custom_fields || []), { id: Date.now(), label: '', value: '' }];
-              setBranding(s => ({ ...s, custom_fields: next }));
+              const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+              const next = [...current, { id: Date.now() + Math.random(), label: '', value: '' }];
+              setBranding(s => ({ ...(s || {}), custom_fields: next }));
             }}
             className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
           >
             <span className="material-symbols-outlined text-[16px]">add</span> Add Field
           </button>
         </div>
-        {(branding?.custom_fields || []).map((cf, idx) => (
+        {(Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : []).map((cf, idx) => (
           <div key={cf.id || idx} className="flex gap-2 items-center bg-surface-container-lowest p-2 rounded-lg border border-outline-variant">
             <input
               type="text"
               placeholder="Label (e.g. IATA License)"
               value={cf.label || ''}
               onChange={(e) => {
-                const next = (branding?.custom_fields || []).map((item, i) => i === idx ? { ...item, label: e.target.value } : item);
-                setBranding(s => ({ ...s, custom_fields: next }));
+                const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+                const next = current.map((item, i) => i === idx ? { ...item, label: e.target.value } : item);
+                setBranding(s => ({ ...(s || {}), custom_fields: next }));
               }}
-              className="w-1/3 px-3 py-1.5 rounded text-xs border border-outline-variant bg-white"
+              className="w-1/3 px-3 py-1.5 rounded text-xs border border-outline-variant bg-surface-container-lowest"
             />
             <input
               type="text"
               placeholder="Value (e.g. 98-1-23456)"
               value={cf.value || ''}
               onChange={(e) => {
-                const next = (branding?.custom_fields || []).map((item, i) => i === idx ? { ...item, value: e.target.value } : item);
-                setBranding(s => ({ ...s, custom_fields: next }));
+                const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+                const next = current.map((item, i) => i === idx ? { ...item, value: e.target.value } : item);
+                setBranding(s => ({ ...(s || {}), custom_fields: next }));
               }}
-              className="flex-1 px-3 py-1.5 rounded text-xs border border-outline-variant bg-white"
+              className="flex-1 px-3 py-1.5 rounded text-xs border border-outline-variant bg-surface-container-lowest"
             />
             <button
               type="button"
               onClick={() => {
-                const next = (branding?.custom_fields || []).filter((_, i) => i !== idx);
-                setBranding(s => ({ ...s, custom_fields: next }));
+                const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+                const next = current.filter((_, i) => i !== idx);
+                setBranding(s => ({ ...(s || {}), custom_fields: next }));
               }}
               className="p-1 text-error hover:bg-error/10 rounded transition-colors"
               title="Remove Field"

@@ -1,0 +1,79 @@
+/* Voyanta Luxury Themes Global Stylesheet */
+
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+.theme-host {
+  width: 100%;
+  color: #1e293b;
+  background-color: #ffffff;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.theme-section {
+  padding: 3rem 4rem;
+  position: relative;
+  overflow: hidden;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.theme-cover {
+  min-height: 850px;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 4rem;
+  position: relative;
+  color: #ffffff;
+}
+
+.theme-cover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.2) 60%, rgba(0, 0, 0, 0.4) 100%);
+  z-index: 1;
+}
+
+.theme-cover > * {
+  position: relative;
+  z-index: 2;
+}
+
+.theme-card {
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Print Isolation Rules (Rule 3 Guardrail) */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  .theme-host {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  .theme-section {
+    padding: 15mm 15mm !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .theme-cover {
+    height: 297mm !important;
+    min-height: 297mm !important;
+    padding: 20mm !important;
+    page-break-after: always;
+    break-after: always;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

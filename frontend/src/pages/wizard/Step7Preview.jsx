@@ -9,11 +9,11 @@ import ImageUploadInput from '../../components/common/ImageUploadInput.jsx';
 import { logActivity } from '../../services/activityLogService.js';
 import { useBackendHealth } from '../../context/BackendHealthContext.jsx';
 
-function A4Preview({ children, viewMode, style = 'classic' }) {
+function A4Preview({ children, style = 'classic' }) {
   const themeBg = THEMES[style]?.bg || '#ffffff';
   return (
-    <div className="a4-host overflow-auto py-lg h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#e9eef5] to-[#dfe5ee]" data-testid="a4-preview">
-      <div id="pdf-render-root" style={{ backgroundColor: themeBg }} className={`a4-paper shadow-2xl overflow-hidden ${viewMode === 'presentation' ? 'aspect-[210/297] h-[80vh] min-h-[auto] w-auto transition-all duration-500 rounded-xl' : 'w-[210mm] min-h-[297mm] rounded-md'}`}>
+    <div className="a4-host overflow-auto py-lg h-full flex flex-col items-center justify-start bg-gradient-to-b from-[#e9eef5] to-[#dfe5ee]" data-testid="a4-preview">
+      <div id="pdf-render-root" style={{ backgroundColor: themeBg }} className="a4-paper shadow-2xl overflow-hidden w-[210mm] min-h-[297mm] rounded-md my-4">
         {children}
       </div>
       <style>{`
@@ -99,9 +99,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
     return branding?.template_style || 'classic';
   });
   const [generating, setGenerating] = useState(false);
-  
-  const [viewMode, setViewMode] = useState('presentation'); // 'presentation' | 'document'
-  const [activeSlide, setActiveSlide] = useState(0);
+  const [designStudioOpen, setDesignStudioOpen] = useState(false);
 
   const [sectionOrder, setSectionOrder] = useState(() => {
     try {
@@ -112,19 +110,6 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
     if (localCustomBlocks) localCustomBlocks.forEach(cb => base.push(cb.id));
     return base;
   });
-
-  const activeKeys = sectionOrder.filter(k => include[k]);
-  const numSlides = activeKeys.length;
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (viewMode !== 'presentation') return;
-      if (e.key === 'ArrowRight') setActiveSlide(s => Math.min(s + 1, numSlides - 1));
-      if (e.key === 'ArrowLeft') setActiveSlide(s => Math.max(s - 1, 0));
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [viewMode, numSlides]);
 
   useEffect(() => {
     try {
@@ -291,7 +276,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
       <div className="glass-card p-md rounded-xl flex items-center gap-md flex-wrap no-print">
         <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest">Theme</span>
         <select value={style} onChange={(e) => setStyle(e.target.value)} data-testid="preview-style"
-          className="px-md py-sm bg-white border border-outline-variant rounded-lg font-body-md">
+          className="px-md py-sm bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md">
           <option value="modern">Modern Luxury</option>
           <option value="minimal">Minimal Editorial</option>
           <option value="dark">Dark Luxury</option>
@@ -323,10 +308,10 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           AI Auto-Title
         </button>
 
-        <div className="flex bg-surface-container rounded-lg p-1 ml-auto">
-          <button onClick={() => setViewMode('presentation')} className={`px-4 py-1.5 rounded-md text-sm font-medium ${viewMode === 'presentation' ? 'bg-white shadow text-primary' : 'text-on-surface-variant'}`}>Presentation</button>
-          <button onClick={() => setViewMode('document')} className={`px-4 py-1.5 rounded-md text-sm font-medium ${viewMode === 'document' ? 'bg-white shadow text-primary' : 'text-on-surface-variant'}`}>Document</button>
-        </div>
+        <button onClick={() => setDesignStudioOpen(true)} data-testid="open-design-studio"
+          className="px-lg py-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 rounded-lg font-label-md flex items-center gap-xs shadow-sm ml-auto transition-all">
+          <span className="material-symbols-outlined text-[18px]">palette</span> Design Studio (Colors, Texts & Images)
+        </button>
 
         <button onClick={() => setExportOpen(true)} data-testid="open-export-modal"
           className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
@@ -346,24 +331,9 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
       </div>
 
       <div className="flex-1 relative flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
-        <A4Preview viewMode={viewMode} style={style}>
-          <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={localCustomBlocks} viewMode={viewMode} activeSlide={activeSlide} />
+        <A4Preview style={style}>
+          <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={localCustomBlocks} viewMode="document" branding={branding} />
         </A4Preview>
-        
-        {viewMode === 'presentation' && (
-          <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-6 no-print pointer-events-none">
-            <div className="bg-black/60 backdrop-blur-md rounded-full px-6 py-3 flex items-center gap-4 text-white pointer-events-auto">
-              <button onClick={() => setActiveSlide(s => Math.max(s - 1, 0))} disabled={activeSlide === 0} className="hover:text-primary-container disabled:opacity-30"><span className="material-symbols-outlined">chevron_left</span></button>
-              <div className="flex gap-2 items-center">
-                {activeKeys.map((k, i) => (
-                  <button key={k} onClick={() => setActiveSlide(i)} className={`w-2 h-2 rounded-full transition-all ${i === activeSlide ? 'bg-white scale-125' : 'bg-white/40 hover:bg-white/60'}`} />
-                ))}
-              </div>
-              <button onClick={() => setActiveSlide(s => Math.min(s + 1, numSlides - 1))} disabled={activeSlide === numSlides - 1} className="hover:text-primary-container disabled:opacity-30"><span className="material-symbols-outlined">chevron_right</span></button>
-              <div className="ml-4 pl-4 border-l border-white/20 text-sm font-medium">Page {activeSlide + 1} of {numSlides}</div>
-            </div>
-          </div>
-        )}
       </div>
 
       {exportOpen && (
@@ -458,6 +428,81 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           </div>
         </div>
       )}
+
+      {designStudioOpen && createPortal(
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-end animate-fade-in no-print" onClick={() => setDesignStudioOpen(false)}>
+          <div className="bg-surface border-l border-outline-variant w-full max-w-md h-full overflow-y-auto p-xl shadow-2xl flex flex-col gap-lg" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b border-outline-variant pb-md">
+              <div className="flex items-center gap-sm">
+                <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                  <span className="material-symbols-outlined">palette</span>
+                </div>
+                <div>
+                  <h3 className="font-headline-sm text-lg font-bold text-on-surface m-0">Design Studio</h3>
+                  <p className="text-xs text-on-surface-variant m-0">Live customize texts, colors & images</p>
+                </div>
+              </div>
+              <button onClick={() => setDesignStudioOpen(false)} className="p-sm text-on-surface-variant hover:text-on-surface rounded-full">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-md">
+              <h4 className="font-bold text-sm text-primary uppercase tracking-wider m-0">1. Theme Colors</h4>
+              <div className="grid grid-cols-2 gap-sm">
+                <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
+                  Primary Brand Color
+                  <div className="flex gap-2 items-center">
+                    <input type="color" value={branding?.primary_color || '#10b981'} onChange={e => setBranding(s => ({ ...s, primary_color: e.target.value }))} className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent" />
+                    <span className="font-mono text-xs text-on-surface-variant">{branding?.primary_color || '#10b981'}</span>
+                  </div>
+                </label>
+                <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
+                  Secondary Accent
+                  <div className="flex gap-2 items-center">
+                    <input type="color" value={branding?.secondary_color || '#3b82f6'} onChange={e => setBranding(s => ({ ...s, secondary_color: e.target.value }))} className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent" />
+                    <span className="font-mono text-xs text-on-surface-variant">{branding?.secondary_color || '#3b82f6'}</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-md border-t border-outline-variant pt-md">
+              <h4 className="font-bold text-sm text-primary uppercase tracking-wider m-0">2. Cover & Logo Images</h4>
+              <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
+                Hero Cover Image URL
+                <input type="text" value={branding?.cover_image_url || ''} placeholder="https://images.unsplash.com/..." onChange={e => setBranding(s => ({ ...s, cover_image_url: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
+                Agency Logo URL
+                <input type="text" value={branding?.logo_url || ''} placeholder="https://..." onChange={e => setBranding(s => ({ ...s, logo_url: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" />
+              </label>
+            </div>
+
+            <div className="space-y-md border-t border-outline-variant pt-md">
+              <h4 className="font-bold text-sm text-primary uppercase tracking-wider m-0">3. Proposal Text Overrides</h4>
+              <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
+                Proposal Title / Client Name
+                <input type="text" value={proposal?.name || ''} placeholder="Safari Adventure" onChange={e => useProposalStore.getState().updateProposal({ name: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
+                Destination
+                <input type="text" value={proposal?.destination || ''} placeholder="Serengeti, Tanzania" onChange={e => useProposalStore.getState().updateProposal({ destination: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
+                Executive Welcome Text / Special Notes
+                <textarea rows={3} value={proposal?.brief?.special_notes || ''} placeholder="Welcome to your dream luxury getaway..." onChange={e => useProposalStore.getState().updateProposal({ brief: { ...proposal?.brief, special_notes: e.target.value } })} className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" />
+              </label>
+            </div>
+
+            <div className="mt-auto pt-md border-t border-outline-variant">
+              <button onClick={() => setDesignStudioOpen(false)} className="w-full py-3 bg-primary text-white font-bold rounded-xl shadow-md hover:bg-primary/90 transition-all">
+                Apply Customizations
+              </button>
+            </div>
+          </div>
+        </div>
+      , document.body)}
 
       {showTemplatePrompt && createPortal(
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-xl animate-fade-in" onClick={() => setShowTemplatePrompt(false)}>

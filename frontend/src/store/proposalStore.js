@@ -200,38 +200,53 @@ export const useProposalStore = create((set, get) => ({
       const syncedItems = await listItems(pid);
       set({ items: syncedItems });
     } catch (err) {
-      // Revert on failure
-      set({ items: previousItems });
-      throw err;
+      console.warn('Supabase sync failed for proposal items, preserving items in offline draft:', err);
+      try {
+        const norm = { ...get().proposal, items: get().items };
+        localStorage.setItem(`voyanta_proposal_${pid}`, JSON.stringify(norm));
+      } catch {}
     }
   },
 
   removeItemOptimistic: async (itemId) => {
     const previousItems = [...get().items];
+    const pid = get().proposal?.id;
     // Optimistic remove
     set({ items: previousItems.filter(i => i.id !== itemId) });
+    
+    // Skip DB call for temp items — they haven't been persisted yet
+    if (String(itemId).startsWith('temp-')) return;
     
     try {
       await removeItem(itemId);
     } catch (err) {
-      // Revert
-      set({ items: previousItems });
-      throw err;
+      console.warn('Supabase sync failed for item remove, preserving change in offline draft:', err);
+      try {
+        const norm = { ...get().proposal, items: get().items };
+        if (pid) localStorage.setItem(`voyanta_proposal_${pid}`, JSON.stringify(norm));
+      } catch {}
     }
   },
 
   updateItemOptimistic: async (itemId, patch) => {
     const previousItems = [...get().items];
+    const pid = get().proposal?.id;
     // Optimistic patch
     set({ items: previousItems.map(i => i.id === itemId ? { ...i, ...patch } : i) });
+
+    // Skip DB call for temp items — they haven't been persisted yet.
+    // The real ID will be assigned when addItemsOptimistic's background sync refetches.
+    if (String(itemId).startsWith('temp-')) return;
 
     try {
       const updated = await updateItem(itemId, patch);
       set({ items: get().items.map(i => i.id === itemId ? updated : i) });
     } catch (err) {
-      // Revert
-      set({ items: previousItems });
-      throw err;
+      console.warn('Supabase sync failed for item update, preserving change in offline draft:', err);
+      try {
+        const norm = { ...get().proposal, items: get().items };
+        if (pid) localStorage.setItem(`voyanta_proposal_${pid}`, JSON.stringify(norm));
+      } catch {}
     }
   }
 }));

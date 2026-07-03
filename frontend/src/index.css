@@ -66,6 +66,15 @@
 /* Elegant Dark Mode Palette & Typography Overrides */
 html.dark {
   color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+html.dark .glass-card {
+  background: rgba(20, 27, 40, 0.85) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(42, 52, 71, 0.6) !important;
+  color: #f0f6fc !important;
 }
 html.dark body, html.dark .bg-surface, html.dark .bg-background {
   background-color: #0b0f17 !important;
@@ -142,6 +151,28 @@ html.dark select {
 html.dark input::placeholder,
 html.dark textarea::placeholder {
   color: #64748b !important;
+}
+/* Ensure bg-surface-container-lowest token resolves to dark in dark mode */
+html.dark .bg-surface-container-lowest,
+html.dark [class*="bg-surface-container-lowest"] {
+  background-color: #141b28 !important;
+  color: #f0f6fc !important;
+}
+/* Option elements inside selects */
+html.dark select option {
+  background-color: #1e293b !important;
+  color: #f0f6fc !important;
+}
+/* Number input spinners */
+html.dark input[type="number"]::-webkit-inner-spin-button,
+html.dark input[type="number"]::-webkit-outer-spin-button {
+  filter: invert(1);
+}
+/* Labels and headings inside dark glass-cards */
+html.dark .glass-card .font-label-md,
+html.dark .glass-card .font-headline-sm,
+html.dark .glass-card label span {
+  color: #e2e8f0 !important;
 }
 
 /* Print mode resets to ensure pristine A4 documents even if dark mode is active */

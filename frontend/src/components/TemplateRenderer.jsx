@@ -23,10 +23,20 @@ export const THEMES = {
   'adventure': { bg: '#f1f5f9', text: '#0f172a', accent: '#ea580c', alt: '#e2e8f0' },
   'beach': { bg: '#f0f9ff', text: '#0c4a6e', accent: '#0284c7', alt: '#e0f2fe' },
   'cruise': { bg: '#f8fafc', text: '#1e293b', accent: '#3b82f6', alt: '#e2e8f0' },
-  'wildlife': { bg: '#fefce8', text: '#422006', accent: '#65a30d', alt: '#fef08a' }
+  'wildlife': { bg: '#fefce8', text: '#422006', accent: '#65a30d', alt: '#fef08a' },
+  'safari': { bg: '#ffffff', text: '#1c1917', accent: '#c2410c', alt: '#fefce8' },
+  'alpine': { bg: '#ffffff', text: '#0f172a', accent: '#0284c7', alt: '#f0f9ff' },
+  'zen': { bg: '#ffffff', text: '#18181b', accent: '#15803d', alt: '#f0fdf4' },
+  'aegean': { bg: '#ffffff', text: '#1e293b', accent: '#1e3a8a', alt: '#f8fafc' },
+  'desert': { bg: '#ffffff', text: '#451a03', accent: '#b45309', alt: '#fffbeb' },
+  'nordic': { bg: '#ffffff', text: '#0f172a', accent: '#10b981', alt: '#f1f5f9' },
+  'tropic': { bg: '#ffffff', text: '#042f2e', accent: '#0d9488', alt: '#f0fdfa' },
+  'maharaja': { bg: '#ffffff', text: '#4c0519', accent: '#831843', alt: '#fff1f2' },
+  'cosmopolitan': { bg: '#ffffff', text: '#18181b', accent: '#06b6d4', alt: '#f8fafc' },
+  'eco_sanctuary': { bg: '#ffffff', text: '#14532d', accent: '#166534', alt: '#f0fdf4' }
 };
 
-const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 'classic', data, include = ALL, order = SECTIONS, customBlocks = [], viewMode = 'document', activeSlide = 0 }) {
+const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 'classic', data, include = ALL, order = SECTIONS, customBlocks = [], viewMode = 'document', activeSlide = 0, branding: brandingProp }) {
   if (!data) return null;
   const theme = THEMES[style] || THEMES.classic;
   
@@ -39,6 +49,8 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
 
   const p = data.proposal || {};
   const b = (p.preferences && p.preferences.branding) || {};
+  // Merge explicit branding prop (from Step7Preview) with proposal-embedded branding
+  const branding = brandingProp || b || {};
   const items = data.items_by_kind || {};
   const total = data.totals?.subtotal || 0;
   const currency = data.totals?.currency || 'INR';
@@ -58,15 +70,12 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
   const renderSection = (key, index) => {
     if (!include[key]) return null;
     
-    const isActive = viewMode === 'document' || index === activeSlide;
-    const displayStyle = isActive ? 'block' : 'none';
-    
     // Add page-break CSS classes
-    const sectionClass = `editorial-section relative overflow-hidden bg-[${theme.bg}] text-[${theme.text}] ${viewMode === 'document' ? 'py-[8mm] px-[12mm]' : 'p-[14mm]'}`;
+    const sectionClass = `editorial-section relative overflow-hidden bg-[${theme.bg}] text-[${theme.text}] py-[8mm] px-[12mm]`;
     const sectionStyle = { 
-      display: displayStyle, 
+      display: 'block', 
       breakBefore: 'auto', // Allow natural flow according to page fit
-      minHeight: viewMode === 'presentation' ? '100%' : 'auto',
+      minHeight: 'auto',
       backgroundColor: theme.bg,
       color: theme.text,
       fontFamily: fontBody
@@ -394,9 +403,8 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
       )}
 
       {/* Luxury Action Footer for WhatsApp Approval & Modifications */}
-      {(viewMode === 'document' || viewMode === 'presentation' || true) && (
-        <div className="editorial-section break-inside-avoid page-break-inside-avoid p-[14mm] mt-8 text-center" style={{ backgroundColor: theme.bg, color: theme.text, fontFamily: fontBody }}>
-          <div className="max-w-2xl mx-auto p-8 rounded-3xl border shadow-sm" style={{ backgroundColor: theme.alt, borderColor: theme.accent + '40' }}>
+      <div className="editorial-section break-inside-avoid page-break-inside-avoid p-[14mm] mt-8 text-center" style={{ backgroundColor: theme.bg, color: theme.text, fontFamily: fontBody }}>
+        <div className="max-w-2xl mx-auto p-8 rounded-3xl border shadow-sm" style={{ backgroundColor: theme.alt, borderColor: theme.accent + '40' }}>
             <h3 className="text-3xl mb-3 uppercase tracking-widest font-semibold" style={{ fontFamily: fontHeadline, color: theme.accent }}>
               Ready to Begin Your Journey?
             </h3>
@@ -441,7 +449,6 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
             })()}
           </div>
         </div>
-      )}
     </article>
   );
 });

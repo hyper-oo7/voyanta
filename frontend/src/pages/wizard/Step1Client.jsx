@@ -45,7 +45,7 @@ const Field = memo(function Field({ label, register, name, type = 'text', testid
     <label className={'flex flex-col gap-xs ' + extraClass}>
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
       <input type={type} {...register(name, { valueAsNumber: type === 'number' })} data-testid={testid}
-        className={`px-md py-md bg-white border rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 ${error ? 'border-error' : 'border-outline-variant'}`} />
+        className={`px-md py-md bg-surface-container-lowest border rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 ${error ? 'border-error' : 'border-outline-variant'}`} />
       {error && <span className="text-xs text-error">{error.message}</span>}
     </label>
   );
@@ -106,7 +106,7 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient }
           <div>
             <label className="font-label-md text-label-md text-on-surface block mb-xs">Country Code</label>
             <select {...register('country')} data-testid="country-code"
-              className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md">
+              className="px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md">
               {COUNTRY_CODES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
@@ -118,7 +118,7 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient }
           <div className="w-1/3">
             <label className="font-label-md text-label-md text-on-surface block mb-xs">Tour Type</label>
             <select {...register('tour_type')} data-testid="tour-type"
-              className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20">
+              className="w-full px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20">
               <option value="">(Select)</option>
               {TOUR_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
@@ -167,7 +167,7 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient }
       <div>
         <label className="font-label-md text-label-md text-on-surface block mb-xs">Special Notes</label>
         <textarea {...register('special_notes')} rows={3} data-testid="special-notes"
-          className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+          className="w-full px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md" />
       </div>
     </div>
   );
