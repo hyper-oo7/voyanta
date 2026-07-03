@@ -8,12 +8,49 @@ import { incrementAnalytics } from '../../services/analyticsService.js';
 import ImageUploadInput from '../../components/common/ImageUploadInput.jsx';
 import { logActivity } from '../../services/activityLogService.js';
 import { useBackendHealth } from '../../context/BackendHealthContext.jsx';
+import { api } from '../../services/api.js';
+import InlineStudioPopover from '../../components/common/InlineStudioPopover.jsx';
 
-function A4Preview({ children, style = 'classic' }) {
+function A4Preview({ children, style = 'classic', isInteractiveStudio, onStudioClick }) {
   const themeBg = THEMES[style]?.bg || '#ffffff';
   return (
     <div className="a4-host overflow-auto py-lg h-full flex flex-col items-center justify-start bg-gradient-to-b from-[#e9eef5] to-[#dfe5ee]" data-testid="a4-preview">
-      <div id="pdf-render-root" style={{ backgroundColor: themeBg }} className="a4-paper shadow-2xl overflow-hidden w-[210mm] min-h-[297mm] rounded-md my-4">
+      <div 
+        id="pdf-render-root" 
+        style={{ backgroundColor: themeBg }} 
+        className={`a4-paper shadow-2xl overflow-hidden w-[210mm] min-h-[297mm] rounded-md my-4 ${isInteractiveStudio ? 'cursor-pointer ring-4 ring-primary/50 transition-all' : ''}`}
+        onClick={(e) => {
+          if (!isInteractiveStudio) return;
+          e.preventDefault();
+          e.stopPropagation();
+          let el = e.target;
+          while (el && el.id !== 'pdf-render-root' && el.tagName.toLowerCase() !== 'body') {
+            const tag = el.tagName.toLowerCase();
+            if (['h1','h2','h3','h4','h5','h6','p','span','a','li','img','section'].includes(tag) || el.classList.contains('editorial-section') || el.classList.contains('card') || el.classList.contains('glass-card')) {
+              if (onStudioClick) onStudioClick(el);
+              return;
+            }
+            el = el.parentElement;
+          }
+          if (onStudioClick) onStudioClick(e.target);
+        }}
+        onMouseOver={(e) => {
+          if (!isInteractiveStudio) return;
+          const el = e.target;
+          if (el && el.id !== 'pdf-render-root' && el !== e.currentTarget) {
+            el.style.outline = '2px dashed #3b82f6';
+            el.style.outlineOffset = '2px';
+          }
+        }}
+        onMouseOut={(e) => {
+          if (!isInteractiveStudio) return;
+          const el = e.target;
+          if (el && el.id !== 'pdf-render-root' && el !== e.currentTarget) {
+            el.style.outline = '';
+            el.style.outlineOffset = '';
+          }
+        }}
+      >
         {children}
       </div>
       <style>{`
@@ -43,6 +80,37 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
   });
   const [showAddCustom, setShowAddCustom] = useState(false);
   const [newCustom, setNewCustom] = useState({ label: '', type: 'text', content: '' });
+  const [isInteractiveStudio, setIsInteractiveStudio] = useState(false);
+  const [studioTarget, setStudioTarget] = useState(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(`voyanta_overrides_${proposalId}`) || '{}');
+        for (const [key, val] of Object.entries(saved)) {
+          const el = document.getElementById(key) || document.querySelector(`[data-testid="${key}"]`);
+          if (el) {
+            if (val.type === 'text') {
+              if (val.text !== undefined) el.innerText = val.text;
+              if (val.color) el.style.color = val.color;
+              if (val.fontSize) el.style.fontSize = val.fontSize;
+              if (val.fontWeight) el.style.fontWeight = val.fontWeight;
+              if (val.textAlign) el.style.textAlign = val.textAlign;
+            } else if (val.type === 'image') {
+              if (el.tagName.toLowerCase() === 'img') el.src = val.src;
+              else el.style.backgroundImage = `url("${val.src}")`;
+              if (val.objectFit) el.style.objectFit = val.objectFit;
+              if (val.borderRadius) el.style.borderRadius = val.borderRadius;
+            } else if (val.type === 'section') {
+              if (val.backgroundColor) el.style.backgroundColor = val.backgroundColor;
+              if (val.padding) el.style.padding = val.padding;
+            }
+          }
+        }
+      } catch {}
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [proposalId, branding]);
 
   useEffect(() => {
     if (customBlocks && customBlocks.length > 0) {
@@ -221,7 +289,14 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
         });
 
         const headStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-          .map(el => el.outerHTML)
+          .map(el => {
+            if (el.tagName.toLowerCase() === 'link' && el.href) {
+              const clone = el.cloneNode();
+              clone.setAttribute('href', el.href);
+              return clone.outerHTML;
+            }
+            return el.outerHTML;
+          })
           .join('\n');
         const themeBg = THEMES[style]?.bg || '#ffffff';
         const themeText = THEMES[style]?.text || '#000000';
@@ -234,18 +309,12 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           .break-inside-avoid, .page-break-inside-avoid, li.break-inside-avoid { break-inside: avoid !important; page-break-inside: avoid !important; }
           .no-print { display: none !important; }
         </style>`;
-        const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">${headStyles}${customPrintStyles}</head><body style="background-color: ${themeBg}; color: ${themeText}; margin: 0; padding: 0;">${rootClone.outerHTML}</body></html>`;
+        const baseTag = `<base href="${window.location.origin}/">`;
+        const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">${baseTag}${headStyles}${customPrintStyles}</head><body style="background-color: ${themeBg}; color: ${themeText}; margin: 0; padding: 0;">${rootClone.outerHTML}</body></html>`;
         bodyPayload = { html: fullHtml, name: proposalName || 'proposal', style: style };
       }
 
-      const res = await fetch('/api/pdf/generate', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bodyPayload) 
-      });
-      if (!res.ok) throw new Error('PDF generation failed');
-      
-      const blob = await res.blob();
+      const blob = await api.post('/api/pdf/generate', bodyPayload, { responseType: 'blob', timeout: 60000 });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); 
       a.href = url;
@@ -308,9 +377,9 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           AI Auto-Title
         </button>
 
-        <button onClick={() => setDesignStudioOpen(true)} data-testid="open-design-studio"
-          className="px-lg py-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 rounded-lg font-label-md flex items-center gap-xs shadow-sm ml-auto transition-all">
-          <span className="material-symbols-outlined text-[18px]">palette</span> Design Studio (Colors, Texts & Images)
+        <button onClick={() => { setIsInteractiveStudio(!isInteractiveStudio); setDesignStudioOpen(true); }} data-testid="open-design-studio"
+          className={`px-lg py-md border rounded-lg font-label-md flex items-center gap-xs shadow-sm ml-auto transition-all ${isInteractiveStudio ? 'bg-primary text-white font-bold border-primary shadow-lg animate-pulse' : 'bg-primary/10 text-primary border-primary/30 hover:bg-primary/20'}`}>
+          <span className="material-symbols-outlined text-[18px]">palette</span> {isInteractiveStudio ? '✨ Interactive Studio Active' : 'Design Studio (Colors, Texts & Images)'}
         </button>
 
         <button onClick={() => setExportOpen(true)} data-testid="open-export-modal"
@@ -330,10 +399,42 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
         </button>
       </div>
 
+      {isInteractiveStudio && (
+        <div className="bg-primary text-on-primary px-4 py-3 rounded-xl font-bold text-xs flex items-center justify-between shadow-lg mb-4 animate-fade-in no-print">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-lg animate-bounce">magic_button</span>
+            <span>🎨 WYSIWYG Interactive Studio Active — Click any text, price, image, or section below to edit inline!</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setDesignStudioOpen(true)} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-white font-bold transition-colors">
+              ⚙️ Open Drawer
+            </button>
+            <button onClick={() => { setIsInteractiveStudio(false); setStudioTarget(null); }} className="px-3 py-1 bg-white text-primary rounded-lg font-bold hover:bg-white/90 transition-colors">
+              ✕ Exit Studio
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 relative flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
-        <A4Preview style={style}>
+        <A4Preview style={style} isInteractiveStudio={isInteractiveStudio} onStudioClick={(el) => setStudioTarget(el)}>
           <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={localCustomBlocks} viewMode="document" branding={branding} />
         </A4Preview>
+        {isInteractiveStudio && studioTarget && (
+          <InlineStudioPopover 
+            target={studioTarget} 
+            onClose={() => setStudioTarget(null)} 
+            branding={branding} 
+            setBranding={useProposalStore.getState().updateProposal} 
+            onApplyOverride={(elKey, override) => {
+              try {
+                const currentOverrides = JSON.parse(localStorage.getItem(`voyanta_overrides_${proposalId}`) || '{}');
+                currentOverrides[elKey] = override;
+                localStorage.setItem(`voyanta_overrides_${proposalId}`, JSON.stringify(currentOverrides));
+              } catch {}
+            }}
+          />
+        )}
       </div>
 
       {exportOpen && (

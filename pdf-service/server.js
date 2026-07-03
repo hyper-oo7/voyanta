@@ -122,7 +122,7 @@ app.get('/health', (_req, res) => res.json({
 }));
 
 app.post('/generate', async (req, res) => {
-  const { html, name, proposal_id, style } = req.body || {};
+  const { html, name, proposal_id, style, local_storage } = req.body || {};
   if (!html && !proposal_id) return res.status(400).json({ error: 'missing html or proposal_id payload' });
   
   if (html && html.length > 10 * 1024 * 1024) {
@@ -134,15 +134,30 @@ app.post('/generate', async (req, res) => {
   try {
     page = await acquirePage();
     
+    if (local_storage && typeof local_storage === 'object') {
+      await page.evaluateOnNewDocument((data) => {
+        for (const [k, v] of Object.entries(data)) {
+          try { localStorage.setItem(k, v); } catch {}
+        }
+      }, local_storage);
+    }
+    
     if (html) {
-      // Use domcontentloaded for fast initial display, wait brief network idle
-      await page.setContent(html, { waitUntil: ['domcontentloaded', 'networkidle0'], timeout: 25000 });
+      try {
+        await page.setContent(html, { waitUntil: ['domcontentloaded', 'networkidle2'], timeout: 25000 });
+      } catch (err) {
+        console.warn('[pdf-service] setContent timeout warning (proceeding with rendered DOM):', err.message);
+      }
     } else if (proposal_id) {
       const FRONTEND_URL = process.env.FRONTEND_URL || 'http://127.0.0.1:3000';
       const styleParam = style ? `?style=${encodeURIComponent(style)}` : '';
       const targetUrl = `${FRONTEND_URL}/proposals/${proposal_id}/print${styleParam}`;
       console.log(`[pdf-service] Navigating to ${targetUrl}`);
-      await page.goto(targetUrl, { waitUntil: ['domcontentloaded', 'networkidle0'], timeout: 25000 });
+      try {
+        await page.goto(targetUrl, { waitUntil: ['domcontentloaded', 'networkidle2'], timeout: 25000 });
+      } catch (err) {
+        console.warn('[pdf-service] goto timeout warning (proceeding with rendered DOM):', err.message);
+      }
       await page.waitForSelector('#pdf-render-root', { timeout: 8000 }).catch(() => {});
     }
     

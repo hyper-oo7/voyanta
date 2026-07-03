@@ -6,7 +6,7 @@ from fastapi.responses import Response, JSONResponse
 from typing import Any
 
 from src.models.api_models import PDFGenerateRequest
-from src.core.security import verify_token
+from src.core.security import verify_token, verify_token_optional
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pdf")
@@ -23,7 +23,7 @@ async def pdf_health():
             return JSONResponse(status_code=503, content={"ok": False, "error": str(e)})
 
 @router.post("/generate")
-async def pdf_generate(request: PDFGenerateRequest, user: Any = Depends(verify_token)):
+async def pdf_generate(request: PDFGenerateRequest, user: Any = Depends(verify_token_optional)):
     payload = request.model_dump(exclude_none=True)
     if not payload.get("proposal_id") and not payload.get("html"):
         raise HTTPException(status_code=400, detail="Missing proposal_id or html")

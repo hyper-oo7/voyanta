@@ -10,6 +10,7 @@ import { buildProposalExport } from '../services/proposalItemService.js';
 import { incrementAnalytics } from '../services/analyticsService.js';
 import { logActivity } from '../services/activityLogService.js';
 import { getAgencyId } from '../lib/supabaseClient.js';
+import { api } from '../services/api.js';
 // Reuse the dashboard's Stitch HTML chrome (sidebar + topbar + table styling)
 // so the new Proposals list page matches the existing design language without
 // touching any styles.
@@ -130,13 +131,19 @@ export default function ProposalsListPage() {
             try {
               toast.info('Generating PDF...');
               const style = p.preferences?.branding?.template_style || 'classic';
-              const res = await fetch('/api/pdf/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ proposal_id: p.id, name: p.name || 'proposal', style })
-              });
-              if (!res.ok) throw new Error('Failed to generate PDF');
-              const blob = await res.blob();
+              const localStorageDump = {};
+              for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith('voyanta_')) {
+                  localStorageDump[k] = localStorage.getItem(k);
+                }
+              }
+              const blob = await api.post('/api/pdf/generate', {
+                proposal_id: p.id,
+                name: p.name || 'proposal',
+                style,
+                local_storage: localStorageDump
+              }, { responseType: 'blob', timeout: 60000 });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a'); a.href = url;
               a.download = `${(p.name || 'proposal').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
