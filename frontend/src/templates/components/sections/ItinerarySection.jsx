@@ -10,7 +10,7 @@ import PageBreakSmart from '../utility/PageBreakSmart.jsx';
  * Automatically embeds flight, hotel, and activity cards associated with each day.
  */
 export default function ItinerarySection({ proposal = {}, items = [], theme = {}, layoutConfig = {}, currency = 'INR' }) {
-  const days = proposal.itinerary || proposal.days || [];
+  const days = Array.isArray(proposal.itinerary?.days) ? proposal.itinerary.days : (Array.isArray(proposal.itinerary) ? proposal.itinerary : (Array.isArray(proposal.days) ? proposal.days : []));
   if (!Array.isArray(days) || days.length === 0) return null;
 
   const sequence = layoutConfig.dayLayouts || layoutConfig.dayLayoutSequence || ['alternating-layout'];

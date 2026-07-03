@@ -3,8 +3,10 @@ import './themes.css';
 import { formatPrice, safeText, SectionHeader, PageBreak } from '../base/BaseTemplate.jsx';
 import { fetchContextualImage } from '../../services/imageService.js';
 import { incrementAnalytics } from '../../services/analyticsService.js';
+import UniversalTemplateExtras from '../../components/common/UniversalTemplateExtras.jsx';
 
-export default function LuxuryThemeEngine({ themeSlug, config, data, include = {} }) {
+export default function LuxuryThemeEngine(props) {
+  const { themeSlug, config, data, include = {}, customBlocks = [], order = [] } = props;
   if (!data) return null;
 
   const p = data.proposal || {};
@@ -12,7 +14,7 @@ export default function LuxuryThemeEngine({ themeSlug, config, data, include = {
   const items = data.items_by_kind || {};
   const total = data.totals?.subtotal || 0;
   const currency = data.totals?.currency || 'INR';
-  const days = Array.isArray(p.itinerary?.days) ? p.itinerary.days : [];
+  const days = Array.isArray(p.itinerary?.days) ? p.itinerary.days : (Array.isArray(p.itinerary) ? p.itinerary : (Array.isArray(p.days) ? p.days : []));
   const brief = p.brief || {};
   const travelers = Number(brief.num_adults ?? p.travelers ?? 1) + Number(brief.num_children ?? 0) || Number(p.travelers) || 1;
 
@@ -326,6 +328,7 @@ export default function LuxuryThemeEngine({ themeSlug, config, data, include = {
           })()}
         </div>
       </section>
+      <UniversalTemplateExtras proposal={p} branding={b} customBlocks={customBlocks} order={order} style={themeSlug} theme={{ typography: { headline: headlineFont, body: fontFamily }, colors: { primary: primaryColor, accent: accentColor } }} />
     </div>
   );
 }

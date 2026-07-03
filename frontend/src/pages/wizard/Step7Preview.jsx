@@ -261,7 +261,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
   };
 
   const onGeneratePdf = async () => {
-    if (!proposalId) return;
+    if (!proposalId || generating) return;
     const currentPlan = localStorage.getItem('voyanta_active_plan') || 'Starter';
     if (currentPlan === 'Starter') {
       const count = parseInt(localStorage.getItem('voyanta_starter_pdf_count') || '0', 10);
@@ -272,6 +272,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
       localStorage.setItem('voyanta_starter_pdf_count', String(count + 1));
     }
     setGenerating(true);
+    toast.info('⏳ PDF Generation in Process... Preparing high-definition document layouts and typography, please hold on.', { duration: 3000 });
     try {
       const renderRoot = document.getElementById('pdf-render-root');
       let bodyPayload = { proposal_id: proposalId, name: proposalName || 'proposal', style: style };
@@ -307,7 +308,10 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           .proposal-document, .proposal-document section { display: block !important; break-before: auto !important; page-break-before: auto !important; height: auto !important; min-height: 0 !important; overflow: visible !important; }
           h1, h2, h3, h4, .editorial-section h2, .editorial-section h3 { break-after: avoid !important; page-break-after: avoid !important; }
           .break-inside-avoid, .page-break-inside-avoid, li.break-inside-avoid { break-inside: avoid !important; page-break-inside: avoid !important; }
-          .no-print { display: none !important; }
+          @media print {
+            body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background: #ffffff !important; color: #000000 !important; }
+            .no-print { display: none !important; }
+          }
         </style>`;
         const baseTag = `<base href="${window.location.origin}/">`;
         const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">${baseTag}${headStyles}${customPrintStyles}</head><body style="background-color: ${themeBg}; color: ${themeText}; margin: 0; padding: 0;">${rootClone.outerHTML}</body></html>`;
@@ -327,7 +331,8 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
       logActivity('pdf', `Generated PDF for proposal "${proposalName || proposalId}"`, proposal?.client_name || 'Client');
       toast.success('PDF generated successfully');
     } catch (e) {
-      toast.error('Failed to generate PDF');
+      console.error('PDF generation error:', e);
+      toast.error(`Failed to generate PDF: ${e.message || 'Service unreachable'}`);
     } finally {
       setGenerating(false);
     }

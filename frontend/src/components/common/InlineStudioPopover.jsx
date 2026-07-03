@@ -35,14 +35,50 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
   const [bgColor, setBgColor] = useState('#ffffff');
   const [padding, setPadding] = useState('24px');
 
+  // Dragging state
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e) => {
+      const newLeft = Math.max(0, Math.min(window.innerWidth - 360, e.clientX - dragOffset.x));
+      const newTop = Math.max(0, Math.min(window.innerHeight - 80, e.clientY - dragOffset.y));
+      setPosition({ top: newTop, left: newLeft });
+    };
+    const handleMouseUp = () => setIsDragging(false);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragOffset]);
+
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    setDragOffset({
+      x: e.clientX - position.left,
+      y: e.clientY - position.top
+    });
+  };
+
   useEffect(() => {
     if (!target) return;
     const rect = target.getBoundingClientRect();
+    const modalHeight = 460;
+    const modalWidth = 360;
     
-    // Calculate placement to avoid overflowing viewport
-    const left = Math.min(Math.max(16, rect.left), window.innerWidth - 380);
-    const top = rect.top > 340 ? rect.top - 330 : rect.bottom + 12;
-    setPosition({ top: Math.max(12, top), left });
+    // Calculate placement to avoid overflowing viewport or going behind screen
+    let left = Math.min(Math.max(16, rect.left), window.innerWidth - modalWidth - 16);
+    let top = rect.bottom + 12;
+    if (top + modalHeight > window.innerHeight - 20) {
+      top = rect.top - modalHeight - 12;
+      if (top < 16) {
+        top = Math.max(16, (window.innerHeight - modalHeight) / 2);
+      }
+    }
+    setPosition({ top: Math.max(16, top), left });
     
     // Determine type
     const tagName = target.tagName.toLowerCase();
@@ -155,11 +191,15 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
 
   return createPortal(
     <div 
-      className="fixed z-[9999] w-[360px] bg-surface border border-outline-variant rounded-2xl shadow-2xl p-4 animate-fade-in no-print"
+      className="fixed z-[999999] w-[360px] bg-surface border border-outline-variant rounded-2xl shadow-2xl p-4 animate-fade-in no-print"
       style={{ top: position.top, left: position.left }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between pb-3 mb-3 border-b border-outline-variant">
+      <div 
+        className="flex items-center justify-between pb-3 mb-3 border-b border-outline-variant cursor-move select-none bg-surface-container/50 -mx-4 -mt-4 p-4 rounded-t-2xl hover:bg-surface-container transition-colors"
+        onMouseDown={handleMouseDown}
+        title="Click and drag header to move editor anywhere on screen"
+      >
         <div className="flex items-center gap-2">
           <span className="material-symbols-outlined text-primary text-xl">
             {editorType === 'image' ? 'image' : editorType === 'section' ? 'layers' : 'edit_note'}
@@ -168,12 +208,17 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
             {editorType === 'image' ? 'Media Studio' : editorType === 'section' ? 'Section Studio' : 'Inline Text Editor'}
           </span>
         </div>
-        <button 
-          onClick={onClose} 
-          className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface"
-        >
-          <span className="material-symbols-outlined text-sm">close</span>
-        </button>
+        <div className="flex items-center gap-1">
+          <span className="material-symbols-outlined text-on-surface-variant text-base animate-pulse">drag_indicator</span>
+          <button 
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onClose(); }} 
+            onMouseDown={(e) => e.stopPropagation()}
+            className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-colors"
+          >
+            <span className="material-symbols-outlined text-sm">close</span>
+          </button>
+        </div>
       </div>
 
       {/* TEXT EDITOR */}

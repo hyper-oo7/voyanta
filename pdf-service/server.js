@@ -31,6 +31,18 @@ let activePages = 0;
 const pageQueue = [];
 
 async function getBrowser() {
+  if (browserPromise) {
+    try {
+      const b = await browserPromise;
+      if (!b || !b.isConnected()) {
+        console.log('[pdf-service] Browser disconnected or closed, relaunching...');
+        browserPromise = null;
+      }
+    } catch {
+      browserPromise = null;
+    }
+  }
+
   if (jobsProcessed >= MAX_JOBS_BEFORE_RECYCLE && activePages === 0) {
     console.log(`[pdf-service] Recycling Chromium after ${jobsProcessed} jobs...`);
     jobsProcessed = 0;
@@ -41,29 +53,28 @@ async function getBrowser() {
 
   if (!browserPromise) {
     let execPath = undefined;
-    try {
-      const p = puppeteer.executablePath();
-      if (p && fs.existsSync(p)) execPath = p;
-    } catch {}
-
-    if (!execPath) {
-      const candidates = [
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-        '/usr/bin/google-chrome',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/chromium',
-      ];
-      for (const c of candidates) {
-        if (fs.existsSync(c)) {
-          execPath = c;
-          break;
-        }
+    const candidates = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium',
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        execPath = c;
+        break;
       }
+    }
+    if (!execPath) {
+      try {
+        const p = puppeteer.executablePath();
+        if (p && fs.existsSync(p)) execPath = p;
+      } catch {}
     }
 
     console.log(`[pdf-service] Launching browser with executablePath: ${execPath || 'default (bundled)'}`);
@@ -92,15 +103,24 @@ async function acquirePage() {
     await new Promise(resolve => pageQueue.push(resolve));
   }
   activePages++;
-  const browser = await getBrowser();
-  const page = await browser.newPage();
-  await page.emulateMediaType('print');
-  await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
-  return page;
+  try {
+    const browser = await getBrowser();
+    const page = await browser.newPage();
+    await page.emulateMediaType('print');
+    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+    return page;
+  } catch (err) {
+    activePages = Math.max(0, activePages - 1);
+    if (pageQueue.length > 0) {
+      const next = pageQueue.shift();
+      next();
+    }
+    throw err;
+  }
 }
 
 function releasePage(page) {
-  activePages--;
+  activePages = Math.max(0, activePages - 1);
   jobsProcessed++;
   if (pageQueue.length > 0) {
     const next = pageQueue.shift();

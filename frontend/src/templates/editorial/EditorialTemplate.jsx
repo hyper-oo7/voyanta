@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import './editorial.css';
 import { formatPrice, safeText, SectionHeader, PageBreak } from '../base/BaseTemplate.jsx';
 import { fetchContextualImage } from '../../services/imageService.js';
+import UniversalTemplateExtras from '../../components/common/UniversalTemplateExtras.jsx';
 
-export default function EditorialTemplate({ data, include = {}, viewMode = 'document' }) {
+export default function EditorialTemplate(props) {
+  const { data, include = {}, viewMode = 'document', customBlocks = [], order = [] } = props;
   if (!data) return null;
 
   const p = data.proposal || {};
@@ -11,7 +13,7 @@ export default function EditorialTemplate({ data, include = {}, viewMode = 'docu
   const items = data.items_by_kind || {};
   const total = data.totals?.subtotal || 0;
   const currency = data.totals?.currency || 'INR';
-  const days = Array.isArray(p.itinerary?.days) ? p.itinerary.days : [];
+  const days = Array.isArray(p.itinerary?.days) ? p.itinerary.days : (Array.isArray(p.itinerary) ? p.itinerary : (Array.isArray(p.days) ? p.days : []));
   const brief = p.brief || {};
   const travelers = Number(brief.num_adults ?? p.travelers ?? 1) + Number(brief.num_children ?? 0) || Number(p.travelers) || 1;
 
@@ -251,6 +253,7 @@ export default function EditorialTemplate({ data, include = {}, viewMode = 'docu
           </div>
         </section>
       )}
+      <UniversalTemplateExtras proposal={p} branding={b} customBlocks={customBlocks} order={order} style={props.style || 'editorial'} theme={{ typography: { headline: "'Noto Serif JP', serif", body: "'Inter', sans-serif" }, colors: { primary: '#0f172a', accent: '#e11d48' } }} />
     </div>
   );
 }

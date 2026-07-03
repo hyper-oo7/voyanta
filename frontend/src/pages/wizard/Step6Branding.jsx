@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { useToast } from '../../context/ToastContext.jsx';
 import LogoUploader from '../../components/LogoUploader.jsx';
 import { TEMPLATE_LIST } from '../../templates/registry.js';
@@ -44,28 +44,85 @@ function TextareaWithAI({ label, value, onChange, testid, onAI }) {
 
 export function Step6Branding({ branding, setBranding, customBlocks }) {
   const toast = useToast();
+  const [activeCategory, setActiveCategory] = useState('All');
+  const [showFieldMenu, setShowFieldMenu] = useState(false);
+  const currentPlan = typeof window !== 'undefined' ? (localStorage.getItem('voyanta_active_plan') || 'Starter') : 'Starter';
+
   const upd = (k) => (e) => setBranding((s) => ({ ...s, [k]: e.target.value }));
   const aiDraft = (field, label) => () => {
     toast.info(`AI ${label} draft coming soon — for now, type your own.`);
   };
 
+  const categories = ['All', 'Basic Tier', 'Luxury Magazine', 'Minimalist', 'Corporate', 'Honeymoon', 'Family & Adventure'];
+
   return (
     <div className="glass-card rounded-xl p-lg space-y-md" data-testid="step-branding">
       <h3 className="font-headline-sm text-headline-sm text-primary">Agency Branding & Template</h3>
       <div className="space-y-sm">
-        <label className="font-label-md text-sm font-bold text-on-surface block">Template Architecture Gallery</label>
-        <p className="text-xs text-on-surface-variant m-0 mb-3">Select the design layout and typography system for this proposal's PDF export and live preview.</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {TEMPLATE_LIST.map(tpl => {
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+          <div>
+            <label className="font-label-md text-sm font-bold text-on-surface block">Template Architecture Gallery</label>
+            <p className="text-xs text-on-surface-variant m-0">Select the design layout and typography system for this proposal's PDF export and live preview.</p>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-full text-amber-700 font-bold text-[11px]">
+            <span className="material-symbols-outlined text-[14px]">workspace_premium</span>
+            <span>Current Plan: {currentPlan}</span>
+          </div>
+        </div>
+
+        {/* Category Pills */}
+        <div className="flex flex-wrap gap-1.5 pt-2 pb-1">
+          {categories.map(cat => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setActiveCategory(cat)}
+              className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${activeCategory === cat ? 'bg-primary text-white shadow-sm scale-105' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-1">
+          {TEMPLATE_LIST.filter(tpl => {
+            if (activeCategory === 'All') return true;
+            const slug = tpl.slug || '';
+            const catLower = (tpl.category || '').toLowerCase();
+            let group = 'Luxury Magazine';
+            if (tpl.tier === 'Basic' || ['classic', 'editorial', 'vibrant', 'modern', 'honeymoon', 'family', 'safari', 'alpine', 'zen', 'aegean', 'desert', 'nordic', 'tropic', 'maharaja', 'cosmopolitan', 'eco_sanctuary'].includes(slug)) {
+              group = 'Basic Tier';
+            } else if (catLower.includes('minimal') || catLower.includes('modern')) {
+              group = 'Minimalist';
+            } else if (catLower.includes('corporate') || catLower.includes('executive')) {
+              group = 'Corporate';
+            } else if (catLower.includes('honeymoon') || catLower.includes('romantic')) {
+              group = 'Honeymoon';
+            } else if (catLower.includes('family') || catLower.includes('adventure') || catLower.includes('safari')) {
+              group = 'Family & Adventure';
+            }
+            return group === activeCategory || (activeCategory === 'Basic Tier' && group === 'Basic Tier');
+          }).map(tpl => {
             const isSelected = (safeStr(branding?.template_style || 'classic') === tpl.slug) || (tpl.slug === 'classic' && !branding?.template_style);
+            const slug = tpl.slug || '';
+            const isBasic = tpl.tier === 'Basic' || ['classic', 'editorial', 'vibrant', 'modern', 'honeymoon', 'family', 'safari', 'alpine', 'zen', 'aegean', 'desert', 'nordic', 'tropic', 'maharaja', 'cosmopolitan', 'eco_sanctuary'].includes(slug);
+            const isPremium = !isBasic;
+            const isLocked = isPremium && currentPlan === 'Starter';
+
             return (
               <div
                 key={tpl.slug}
-                onClick={() => setBranding(s => ({ ...s, template_style: tpl.slug }))}
-                className={`group relative rounded-xl border-2 overflow-hidden cursor-pointer transition-all ${isSelected ? 'border-primary shadow-md bg-primary/5' : 'border-outline-variant hover:border-primary/50 bg-surface-container-lowest'}`}
+                onClick={() => {
+                  if (isLocked) {
+                    toast.error('Starter Plan allows Basic & Classic templates only. Upgrade to Professional or Enterprise in Settings to unlock Premium layouts!');
+                    return;
+                  }
+                  setBranding(s => ({ ...s, template_style: tpl.slug }));
+                }}
+                className={`group relative rounded-xl border-2 overflow-hidden cursor-pointer transition-all ${isSelected ? 'border-primary shadow-md bg-primary/5' : isLocked ? 'border-outline-variant/60 opacity-85 hover:border-amber-500/50 bg-surface-container-lowest' : 'border-outline-variant hover:border-primary/50 bg-surface-container-lowest'}`}
               >
                 <div className="h-28 w-full overflow-hidden relative bg-slate-100">
-                  <img src={tpl.thumbnail} alt={tpl.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <img src={tpl.thumbnail} alt={tpl.name} className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${isLocked ? 'grayscale-[30%]' : ''}`} />
                   <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/60 text-white backdrop-blur-sm">
                     {tpl.category}
                   </span>
@@ -73,6 +130,17 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
                     <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center shadow">
                       <span className="material-symbols-outlined text-[16px]">check</span>
                     </div>
+                  )}
+                  {isLocked && (
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="material-symbols-outlined text-2xl text-amber-400">lock</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider mt-1 text-amber-300">PRO Plan Only</span>
+                    </div>
+                  )}
+                  {isPremium && (
+                    <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-500 to-amber-600 text-black shadow flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[12px]">lock</span> PRO
+                    </span>
                   )}
                 </div>
                 <div className="p-3">
@@ -108,59 +176,149 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
       
       {/* Custom Branding Fields */}
       <div className="pt-md border-t border-outline-variant space-y-3">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center relative">
           <div>
             <h4 className="font-headline-sm text-sm font-bold text-primary m-0">Custom Branding Fields</h4>
-            <p className="text-xs text-on-surface-variant m-0">Add extra badges, license numbers, affiliations, or taglines to appear on all proposals.</p>
+            <p className="text-xs text-on-surface-variant m-0">Add badges, checklists, or partner images to appear on all proposals.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
-              const next = [...current, { id: Date.now() + Math.random(), label: '', value: '' }];
-              setBranding(s => ({ ...(s || {}), custom_fields: next }));
-            }}
-            className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
-          >
-            <span className="material-symbols-outlined text-[16px]">add</span> Add Field
-          </button>
-        </div>
-        {(Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : []).map((cf, idx) => (
-          <div key={cf.id || idx} className="flex gap-2 items-center bg-surface-container-lowest p-2 rounded-lg border border-outline-variant">
-            <input
-              type="text"
-              placeholder="Label (e.g. IATA License)"
-              value={cf.label || ''}
-              onChange={(e) => {
-                const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
-                const next = current.map((item, i) => i === idx ? { ...item, label: e.target.value } : item);
-                setBranding(s => ({ ...(s || {}), custom_fields: next }));
-              }}
-              className="w-1/3 px-3 py-1.5 rounded text-xs border border-outline-variant bg-surface-container-lowest"
-            />
-            <input
-              type="text"
-              placeholder="Value (e.g. 98-1-23456)"
-              value={cf.value || ''}
-              onChange={(e) => {
-                const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
-                const next = current.map((item, i) => i === idx ? { ...item, value: e.target.value } : item);
-                setBranding(s => ({ ...(s || {}), custom_fields: next }));
-              }}
-              className="flex-1 px-3 py-1.5 rounded text-xs border border-outline-variant bg-surface-container-lowest"
-            />
+          <div className="relative">
             <button
               type="button"
-              onClick={() => {
-                const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
-                const next = current.filter((_, i) => i !== idx);
-                setBranding(s => ({ ...(s || {}), custom_fields: next }));
-              }}
-              className="p-1 text-error hover:bg-error/10 rounded transition-colors"
-              title="Remove Field"
+              onClick={() => setShowFieldMenu(v => !v)}
+              className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors shadow-sm"
             >
-              <span className="material-symbols-outlined text-[16px]">delete</span>
+              <span className="material-symbols-outlined text-[16px]">add_circle</span> Add Field
+              <span className="material-symbols-outlined text-[14px]">{showFieldMenu ? 'expand_less' : 'expand_more'}</span>
             </button>
+            {showFieldMenu && (
+              <div className="absolute right-0 top-full mt-1 w-48 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-xl z-50 p-1.5 space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+                    const next = [...current, { id: Date.now() + Math.random(), label: '', value: '', type: 'text' }];
+                    setBranding(s => ({ ...(s || {}), custom_fields: next }));
+                    setShowFieldMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold hover:bg-primary/10 text-on-surface flex items-center gap-2 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-primary text-base">badge</span>
+                  <div>
+                    <div className="font-bold">Text / Badge</div>
+                    <div className="text-[10px] text-on-surface-variant">License, Tagline, Affiliation</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+                    const next = [...current, { id: Date.now() + Math.random(), label: '', value: '', type: 'checklist' }];
+                    setBranding(s => ({ ...(s || {}), custom_fields: next }));
+                    setShowFieldMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold hover:bg-primary/10 text-on-surface flex items-center gap-2 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-primary text-base">checklist</span>
+                  <div>
+                    <div className="font-bold">Checklist</div>
+                    <div className="text-[10px] text-on-surface-variant">VIP amenities, Packing list</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+                    const next = [...current, { id: Date.now() + Math.random(), label: '', value: '', type: 'image' }];
+                    setBranding(s => ({ ...(s || {}), custom_fields: next }));
+                    setShowFieldMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold hover:bg-primary/10 text-on-surface flex items-center gap-2 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-primary text-base">image</span>
+                  <div>
+                    <div className="font-bold">Image / Seal</div>
+                    <div className="text-[10px] text-on-surface-variant">Partner logo, Accreditation</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {(Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : []).map((cf, idx) => (
+          <div key={cf.id || idx} className="flex flex-col md:flex-row gap-3 items-start md:items-center bg-surface-container-lowest p-3 rounded-xl border border-outline-variant shadow-sm">
+            <div className="flex items-center gap-2 w-full md:w-1/3">
+              <span className="material-symbols-outlined text-primary text-base flex-shrink-0" title={`Type: ${cf.type || 'text'}`}>
+                {cf.type === 'checklist' ? 'check_box' : cf.type === 'image' ? 'image' : 'badge'}
+              </span>
+              <input
+                type="text"
+                placeholder={cf.type === 'checklist' ? 'List Title (e.g. VIP Benefits)' : cf.type === 'image' ? 'Image Label (e.g. ASTA Seal)' : 'Label (e.g. IATA License)'}
+                value={cf.label || ''}
+                onChange={(e) => {
+                  const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+                  const next = current.map((item, i) => i === idx ? { ...item, label: e.target.value } : item);
+                  setBranding(s => ({ ...(s || {}), custom_fields: next }));
+                }}
+                className="w-full px-3 py-1.5 rounded-lg text-xs font-bold border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            
+            <div className="flex-1 w-full flex items-center gap-2">
+              {cf.type === 'checklist' ? (
+                <textarea
+                  placeholder="Enter items separated by newlines..."
+                  rows={2}
+                  value={Array.isArray(cf.value) ? cf.value.join('\n') : (cf.value || '')}
+                  onChange={(e) => {
+                    const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+                    const next = current.map((item, i) => i === idx ? { ...item, value: e.target.value } : item);
+                    setBranding(s => ({ ...(s || {}), custom_fields: next }));
+                  }}
+                  className="w-full px-3 py-1.5 rounded-lg text-xs border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary/20"
+                />
+              ) : cf.type === 'image' ? (
+                <div className="w-full flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Paste Image URL or upload..."
+                    value={cf.value || ''}
+                    onChange={(e) => {
+                      const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+                      const next = current.map((item, i) => i === idx ? { ...item, value: e.target.value } : item);
+                      setBranding(s => ({ ...(s || {}), custom_fields: next }));
+                    }}
+                    className="flex-1 px-3 py-1.5 rounded-lg text-xs border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary/20"
+                  />
+                  {cf.value && <img src={cf.value} alt="preview" className="w-8 h-8 object-contain rounded border bg-white flex-shrink-0" />}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="Value (e.g. 98-1-23456 or Member since 2020)"
+                  value={cf.value || ''}
+                  onChange={(e) => {
+                    const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+                    const next = current.map((item, i) => i === idx ? { ...item, value: e.target.value } : item);
+                    setBranding(s => ({ ...(s || {}), custom_fields: next }));
+                  }}
+                  className="w-full px-3 py-1.5 rounded-lg text-xs border border-outline-variant bg-surface-container-lowest focus:ring-2 focus:ring-primary/20"
+                />
+              )}
+              
+              <button
+                type="button"
+                onClick={() => {
+                  const current = Array.isArray(branding?.custom_fields) ? branding.custom_fields.filter(f => f && typeof f === 'object') : [];
+                  const next = current.filter((_, i) => i !== idx);
+                  setBranding(s => ({ ...(s || {}), custom_fields: next }));
+                }}
+                className="p-1.5 text-error hover:bg-error/10 rounded-lg transition-colors flex-shrink-0"
+                title="Remove Field"
+              >
+                <span className="material-symbols-outlined text-[18px]">delete</span>
+              </button>
+            </div>
           </div>
         ))}
       </div>
