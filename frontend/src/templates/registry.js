@@ -159,7 +159,7 @@ Object.entries(TEMPLATE_CONFIGS).forEach(([slug, config]) => {
       tier: config.tier || 'Premium',
       description: config.description,
       thumbnail: config.thumbnail || 'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&w=600&q=80',
-      bestFor: config.tags || [config.category],
+      bestFor: config.bestFor || config.tags || [config.category],
       component: ConfigDrivenComponent,
     };
   }

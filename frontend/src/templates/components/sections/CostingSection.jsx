@@ -1,6 +1,7 @@
 import React from 'react';
 import GlassCard from '../utility/GlassCard.jsx';
 import SectionDivider from '../utility/SectionDivider.jsx';
+import { formatPrice as libFormatPrice } from '../../../lib/currency.js';
 
 /**
  * Costing & Investment Section component.
@@ -13,13 +14,7 @@ export default function CostingSection({ items = [], proposal = {}, theme = {}, 
   const textSec = theme.colors?.textSecondary || '#64748b';
   const dividerType = theme.effects?.sectionDivider || 'elegant-line';
 
-  const formatPrice = (val) => {
-    try {
-      return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(val);
-    } catch {
-      return `₹${val.toLocaleString()}`;
-    }
-  };
+  const formatPrice = (val) => libFormatPrice(val, currency);
 
   // Group items by kind
   const grouped = {};

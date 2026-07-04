@@ -532,21 +532,36 @@ function BrandingSettings() {
 
 function ActivityLogs() {
   const toast = useToast();
-  const [logs, setLogs] = useState(() => getActivityLogs());
+  const [logs, setLogs] = useState([]);
+  const [page, setPage] = useState(0);
+  const pageSize = 10;
+
+  const loadLogs = async () => {
+    try {
+      const data = await getActivityLogs();
+      setLogs(Array.isArray(data) ? data : []);
+    } catch {
+      setLogs([]);
+    }
+  };
 
   useEffect(() => {
-    const handler = () => setLogs(getActivityLogs());
-    window.addEventListener('voyanta:activity-log-updated', handler);
-    return () => window.removeEventListener('voyanta:activity-log-updated', handler);
+    loadLogs();
+    window.addEventListener('voyanta:activity-log-updated', loadLogs);
+    return () => window.removeEventListener('voyanta:activity-log-updated', loadLogs);
   }, []);
 
-  const handleClear = () => {
+  const handleClear = async () => {
     if (window.confirm('Are you sure you want to clear all audit & activity logs?')) {
-      clearActivityLogs();
+      await clearActivityLogs();
       setLogs([]);
+      setPage(0);
       toast.info('Activity logs cleared.');
     }
   };
+
+  const totalPages = Math.max(1, Math.ceil(logs.length / pageSize));
+  const paginatedLogs = logs.slice(page * pageSize, (page + 1) * pageSize);
 
   return (
     <div className="space-y-6">
@@ -565,7 +580,7 @@ function ActivityLogs() {
           </button>
         )}
       </div>
-      <div className="bg-surface-container rounded-xl border border-outline-variant overflow-hidden shadow-sm">
+      <div className="bg-surface-container rounded-xl border border-outline-variant overflow-hidden shadow-sm flex flex-col">
         <table className="w-full text-left">
           <thead className="bg-surface-container-highest border-b border-outline-variant">
             <tr>
@@ -576,7 +591,7 @@ function ActivityLogs() {
             </tr>
           </thead>
           <tbody className="divide-y divide-outline-variant">
-            {logs.map(log => (
+            {paginatedLogs.map(log => (
               <tr key={log.id} className="hover:bg-surface-container-highest/50 text-sm transition-colors">
                 <td className="p-4 whitespace-nowrap text-on-surface-variant text-xs font-mono">{new Date(log.timestamp || log.created_at || Date.now()).toLocaleString()}</td>
                 <td className="p-4">
@@ -598,6 +613,34 @@ function ActivityLogs() {
             )}
           </tbody>
         </table>
+        {totalPages > 1 && (
+          <div className="px-4 py-3 flex items-center justify-between border-t border-outline-variant bg-surface-container-lowest">
+            <span className="text-xs font-semibold text-on-surface-variant">
+              Showing {page * pageSize + 1} to {Math.min((page + 1) * pageSize, logs.length)} of {logs.length} entries
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface text-xs font-bold text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-container transition-colors flex items-center gap-1"
+              >
+                <span className="material-symbols-outlined text-[16px]">chevron_left</span> Prev
+              </button>
+              <span className="px-3 py-1 text-xs font-extrabold text-primary font-mono">
+                Page {page + 1} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+                className="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface text-xs font-bold text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-container transition-colors flex items-center gap-1"
+              >
+                Next <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

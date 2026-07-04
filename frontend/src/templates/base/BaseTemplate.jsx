@@ -1,9 +1,8 @@
 import React from 'react';
-import { formatINR } from '../../lib/currency.js';
+import { formatPrice as libFormatPrice } from '../../lib/currency.js';
 
 export function formatPrice(amount, currency = 'INR') {
-  if (currency === 'INR') return formatINR(amount);
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(amount) || 0);
+  return libFormatPrice(amount, currency);
 }
 
 export function safeText(val) {

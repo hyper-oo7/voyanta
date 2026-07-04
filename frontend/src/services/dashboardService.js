@@ -53,7 +53,17 @@ export async function fetchDashboardSummary() {
   } catch (err) {
     console.warn('Dashboard summary RPC failed:', err);
     const proposals = await fetchProposalsFlat();
-    return fallbackSummary(proposals);
+    const activityLogs = await getActivityLogs(5);
+    const recentActivity = activityLogs.map((log, i) => ({
+      id: log.id || i,
+      type: log.type === 'approval' ? 'check_circle' : log.type === 'modification' ? 'edit_note' : log.type === 'pdf' ? 'picture_as_pdf' : 'sync',
+      title: log.description?.split(' ').slice(0, 3).join(' ') || log.type || 'Activity',
+      detail: log.description || '',
+      when: formatRelativeTime(log.timestamp),
+    }));
+    const summary = fallbackSummary(proposals);
+    summary.recentActivity = recentActivity.length > 0 ? recentActivity : [];
+    return summary;
   }
 }
 

@@ -4,7 +4,7 @@ import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 
 const TABLE = 'proposals';
 const CACHE_KEY = 'voyanta_proposals_list_cache';
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10;
 
 // Lightweight projection: Exclude heavy JSONB columns (itinerary, trip_details, brief)
 const LIST_COLUMNS = 'id, agency_id, created_by, client_id, name, client_name, status, destination, start_date, end_date, travelers, budget_min, budget_max, currency, total_cost, is_archived, arrival_city, arrival_airport, departure_city, departure_airport, created_at, updated_at, preferences';
@@ -79,6 +79,7 @@ export async function createProposal(payload) {
     id: crypto.randomUUID(),
     agency_id: agencyId,
     created_by: userId,
+    client_id: payload.client_id || null,
     name: payload.name || 'Untitled Proposal',
     client_name: payload.client_name || '',
     destination: payload.destination || '',
@@ -122,6 +123,7 @@ export async function createProposal(payload) {
     list.unshift(norm);
     localStorage.setItem(CACHE_KEY, JSON.stringify(list));
   } catch {}
+  window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
   return norm;
 }
 
@@ -133,6 +135,7 @@ export async function updateProposal(id, patch) {
       if (!error && data) {
         const norm = normalize(data);
         try { localStorage.setItem(`voyanta_proposal_${id}`, JSON.stringify(norm)); } catch {}
+        window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
         return norm;
       }
     } catch (e) {
@@ -157,6 +160,7 @@ export async function updateProposal(id, patch) {
       list.unshift(norm);
     }
     localStorage.setItem(CACHE_KEY, JSON.stringify(list));
+    window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
     return norm;
   } catch {
     return normalize({ id, ...patch });
@@ -164,9 +168,13 @@ export async function updateProposal(id, patch) {
 }
 
 export async function deleteProposal(id) {
-  if (!supabase) throw new Error('Supabase not configured');
-  const { error } = await supabase.from(TABLE).delete().eq('id', id);
-  if (error) throw error;
+  if (supabase) {
+    try {
+      await supabase.from(TABLE).delete().eq('id', id);
+    } catch (err) {
+      console.warn('Supabase deleteProposal failed, cleaning up offline cache:', err);
+    }
+  }
   try {
     localStorage.removeItem(`voyanta_proposal_${id}`);
     const listStr = localStorage.getItem(CACHE_KEY) || '[]';

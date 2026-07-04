@@ -80,32 +80,83 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
     }
     setPosition({ top: Math.max(16, top), left });
     
-    // Determine type
+    // Determine type & initialize all states so switching tabs works seamlessly
     const tagName = target.tagName.toLowerCase();
-    const isImage = tagName === 'img' || target.style.backgroundImage || target.classList.contains('bg-cover');
-    const isSection = tagName === 'section' || target.classList.contains('editorial-section') || target.classList.contains('glass-card');
     
+    const findRelevantImg = (el) => {
+      if (!el) return null;
+      if (el.tagName && el.tagName.toLowerCase() === 'img') return el;
+      const childImg = el.querySelector && el.querySelector('img');
+      if (childImg) return childImg;
+      const container = el.closest && el.closest('section, .editorial-section, .card, .glass-card, [class*="hero"]');
+      if (container) {
+        const containerImg = container.querySelector('img');
+        if (containerImg) return containerImg;
+      }
+      return null;
+    };
+
+    const targetImg = findRelevantImg(target);
+    const compStyle = window.getComputedStyle(target);
+    const hasBgImg = target.style.backgroundImage || (compStyle.backgroundImage && compStyle.backgroundImage !== 'none');
+    const isImage = targetImg || hasBgImg || target.classList.contains('bg-cover');
+    const isSection = tagName === 'section' || target.classList.contains('editorial-section') || target.classList.contains('glass-card') || target.classList.contains('card');
+    
+    // Init image state
+    if (targetImg) {
+      setImageSrc(targetImg.src || targetImg.getAttribute('src') || '');
+      setObjectFit(targetImg.style.objectFit || 'cover');
+      setBorderRadius(targetImg.style.borderRadius || '8px');
+    } else if (target.style.backgroundImage && target.style.backgroundImage !== 'none') {
+      const bgUrl = target.style.backgroundImage.replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
+      setImageSrc(bgUrl);
+    } else if (branding?.cover_image_url) {
+      setImageSrc(branding.cover_image_url);
+    }
+
+    // Init text state
+    setTextVal(target.innerText || '');
+    setTextColor(target.style.color || compStyle.color || '#000000');
+    setFontSize(target.style.fontSize || compStyle.fontSize || '16px');
+    setFontWeight(target.style.fontWeight || compStyle.fontWeight || 'normal');
+    setTextAlign(target.style.textAlign || compStyle.textAlign || 'left');
+
+    // Init section state
+    setBgColor(target.style.backgroundColor || compStyle.backgroundColor || '#ffffff');
+    setPadding(target.style.padding || compStyle.padding || '24px');
+
     if (isImage) {
       setEditorType('image');
-      setImageSrc(target.src || target.getAttribute('src') || '');
-      setObjectFit(target.style.objectFit || 'cover');
-      setBorderRadius(target.style.borderRadius || '8px');
-    } else if (isSection && target.children.length > 2) {
+    } else if (isSection && target.children.length > 1) {
       setEditorType('section');
-      setBgColor(target.style.backgroundColor || '#ffffff');
-      setPadding(target.style.padding || '24px');
     } else {
       setEditorType('text');
-      setTextVal(target.innerText || '');
-      const compStyle = window.getComputedStyle(target);
-      setTextColor(target.style.color || compStyle.color || '#000000');
-      setFontSize(target.style.fontSize || compStyle.fontSize || '16px');
-      setFontWeight(target.style.fontWeight || compStyle.fontWeight || 'normal');
-      setTextAlign(target.style.textAlign || compStyle.textAlign || 'left');
     }
-  }, [target]);
+  }, [target, branding]);
 
   if (!target) return null;
+
+  const getStableSelector = (el) => {
+    if (!el) return '';
+    if (el.id && el.id !== 'pdf-render-root') return `#${el.id}`;
+    if (el.getAttribute('data-testid')) return `[data-testid="${el.getAttribute('data-testid')}"]`;
+    const path = [];
+    let curr = el;
+    while (curr && curr.id !== 'pdf-render-root' && curr.tagName && curr.tagName.toLowerCase() !== 'body') {
+      let selector = curr.tagName.toLowerCase();
+      const parent = curr.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children).filter(c => c.tagName === curr.tagName);
+        if (siblings.length > 1) {
+          const idx = Array.from(parent.children).indexOf(curr) + 1;
+          selector += `:nth-child(${idx})`;
+        }
+      }
+      path.unshift(selector);
+      curr = parent;
+    }
+    return `#pdf-render-root > ${path.join(' > ')}`;
+  };
 
   const handleApplyText = () => {
     target.innerText = textVal;
@@ -124,33 +175,55 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
         color: textColor,
         fontSize,
         fontWeight,
-        textAlign
+        textAlign,
+        selector: getStableSelector(target)
       });
     }
     toast?.success('Text & typography styling applied!');
     onClose();
   };
 
+  const findRelevantImg = (el) => {
+    if (!el) return null;
+    if (el.tagName && el.tagName.toLowerCase() === 'img') return el;
+    const childImg = el.querySelector && el.querySelector('img');
+    if (childImg) return childImg;
+    const container = el.closest && el.closest('section, .editorial-section, .card, .glass-card, [class*="hero"]');
+    if (container) {
+      const containerImg = container.querySelector('img');
+      if (containerImg) return containerImg;
+    }
+    return null;
+  };
+
   const handleApplyImage = (src = imageSrc) => {
-    if (target.tagName.toLowerCase() === 'img') {
-      target.src = src;
-      target.style.objectFit = objectFit;
-      target.style.borderRadius = borderRadius;
+    const targetImg = findRelevantImg(target);
+    const targetEl = targetImg || target;
+
+    if (targetImg) {
+      targetImg.src = src;
+      targetImg.style.objectFit = objectFit;
+      targetImg.style.borderRadius = borderRadius;
     } else {
       target.style.backgroundImage = `url("${src}")`;
       target.style.backgroundSize = objectFit;
       target.style.borderRadius = borderRadius;
     }
     
-    const elementKey = target.id || `img-${Math.random().toString(36).substr(2, 6)}`;
-    if (!target.id) target.id = elementKey;
+    if (setBranding && (targetEl.closest('section')?.getAttribute('key') === 'hero' || targetEl.closest('.min-h-\\[35vh\\]') || targetEl.closest('[class*="hero"]'))) {
+      setBranding(b => ({ ...b, cover_image_url: src }));
+    }
+
+    const elementKey = targetEl.id || targetEl.getAttribute('data-testid') || `img-${Math.random().toString(36).substr(2, 6)}`;
+    if (!targetEl.id) targetEl.id = elementKey;
     
     if (onApplyOverride) {
       onApplyOverride(elementKey, {
         type: 'image',
         src,
         objectFit,
-        borderRadius
+        borderRadius,
+        selector: getStableSelector(targetEl)
       });
     }
     toast?.success('Image customization applied!');
@@ -168,7 +241,8 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
       onApplyOverride(elementKey, {
         type: 'section',
         backgroundColor: bgColor,
-        padding
+        padding,
+        selector: getStableSelector(target)
       });
     }
     toast?.success('Section styling updated!');
@@ -219,6 +293,31 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
         </div>
+      </div>
+
+      {/* Studio Tab Navigation */}
+      <div className="flex bg-surface-container rounded-xl p-1 mb-4 gap-1 border border-outline-variant/40">
+        <button
+          type="button"
+          onClick={() => setEditorType('text')}
+          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${editorType === 'text' ? 'bg-white dark:bg-surface-dark shadow text-primary font-extrabold' : 'text-on-surface-variant hover:text-primary'}`}
+        >
+          <span className="material-symbols-outlined text-[14px]">edit_note</span> Text
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditorType('image')}
+          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${editorType === 'image' ? 'bg-white dark:bg-surface-dark shadow text-primary font-extrabold' : 'text-on-surface-variant hover:text-primary'}`}
+        >
+          <span className="material-symbols-outlined text-[14px]">image</span> Image
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditorType('section')}
+          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${editorType === 'section' ? 'bg-white dark:bg-surface-dark shadow text-primary font-extrabold' : 'text-on-surface-variant hover:text-primary'}`}
+        >
+          <span className="material-symbols-outlined text-[14px]">layers</span> Section
+        </button>
       </div>
 
       {/* TEXT EDITOR */}
@@ -293,7 +392,7 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
             </div>
           </div>
 
-          <button onClick={handleApplyText} className="w-full mt-2 py-2.5 bg-primary text-white font-bold text-xs rounded-xl shadow hover:bg-primary/90 transition-all flex items-center justify-center gap-1.5">
+          <button type="button" onClick={handleApplyText} className="w-full mt-2 py-2.5 bg-primary text-white font-bold text-xs rounded-xl shadow hover:bg-primary/90 transition-all flex items-center justify-center gap-1.5">
             <span className="material-symbols-outlined text-sm">check</span> Apply Typography
           </button>
         </div>
@@ -345,7 +444,7 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
             </div>
           </div>
 
-          <button onClick={() => handleApplyImage()} className="w-full mt-2 py-2.5 bg-primary text-white font-bold text-xs rounded-xl shadow hover:bg-primary/90 transition-all flex items-center justify-center gap-1.5">
+          <button type="button" onClick={() => handleApplyImage()} className="w-full mt-2 py-2.5 bg-primary text-white font-bold text-xs rounded-xl shadow hover:bg-primary/90 transition-all flex items-center justify-center gap-1.5">
             <span className="material-symbols-outlined text-sm">check</span> Apply Image
           </button>
         </div>
@@ -384,7 +483,7 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
             </div>
           </div>
 
-          <button onClick={handleApplySection} className="w-full mt-2 py-2.5 bg-primary text-white font-bold text-xs rounded-xl shadow hover:bg-primary/90 transition-all flex items-center justify-center gap-1.5">
+          <button type="button" onClick={handleApplySection} className="w-full mt-2 py-2.5 bg-primary text-white font-bold text-xs rounded-xl shadow hover:bg-primary/90 transition-all flex items-center justify-center gap-1.5">
             <span className="material-symbols-outlined text-sm">check</span> Apply Section Styling
           </button>
         </div>

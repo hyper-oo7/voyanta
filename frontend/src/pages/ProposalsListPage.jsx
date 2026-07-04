@@ -185,6 +185,12 @@ function Portal({ node, children }) { return createPortal(children, node); }
 function ProposalsListPanel({ proposals, loading, error, highlightId, onView, onEdit, onDuplicate, onDelete, onDeleteAll, onShare, onExport }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [page, setPage] = useState(0);
+  const pageSize = 10;
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchQuery, statusFilter]);
 
   const filtered = proposals.filter(p => {
     if (statusFilter !== 'ALL' && (p.status || 'Draft').toUpperCase() !== statusFilter) return false;
@@ -192,6 +198,9 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
     const q = searchQuery.toLowerCase();
     return (p.name || '').toLowerCase().includes(q) || (p.client_name || p.client || '').toLowerCase().includes(q) || (p.destination || '').toLowerCase().includes(q);
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice(page * pageSize, (page + 1) * pageSize);
 
   return (
     <div className="flex flex-col h-full" data-testid="proposals-list">
@@ -271,15 +280,43 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
       )}
 
       {!loading && filtered.length > 0 && (
-        <div className="px-xl pb-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-lg items-start">
-          {filtered.map((p, i) => (
-             <ProposalCard 
-               key={p.id} proposal={p} highlightId={highlightId} index={i}
-               onView={onView} onEdit={onEdit} onDuplicate={onDuplicate} 
-               onDelete={onDelete} onShare={onShare} onExport={onExport} 
-             />
-          ))}
-        </div>
+        <>
+          <div className="px-xl pb-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-lg items-start">
+            {paginated.map((p, i) => (
+               <ProposalCard 
+                 key={p.id} proposal={p} highlightId={highlightId} index={page * pageSize + i}
+                 onView={onView} onEdit={onEdit} onDuplicate={onDuplicate} 
+                 onDelete={onDelete} onShare={onShare} onExport={onExport} 
+               />
+            ))}
+          </div>
+          {totalPages > 1 && (
+            <div className="px-xl py-md flex items-center justify-between border-t border-outline-variant bg-surface-container-lowest mt-auto">
+              <span className="text-xs font-semibold text-on-surface-variant">
+                Showing {page * pageSize + 1} to {Math.min((page + 1) * pageSize, filtered.length)} of {filtered.length} entries
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface text-xs font-bold text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-container transition-colors flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-[16px]">chevron_left</span> Prev
+                </button>
+                <span className="px-3 py-1 text-xs font-extrabold text-primary font-mono">
+                  Page {page + 1} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface text-xs font-bold text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-container transition-colors flex items-center gap-1"
+                >
+                  Next <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

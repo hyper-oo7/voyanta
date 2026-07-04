@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useToast } from '../../context/ToastContext.jsx';
 import TemplateRenderer, { ALL as ALL_SECTIONS, ExportOptionsBar, THEMES } from '../../components/TemplateRenderer.jsx';
-import { formatINR } from '../../lib/currency.js';
+import { formatPrice } from '../../lib/currency.js';
 import { useProposalStore } from '../../store/proposalStore.js';
 import { incrementAnalytics } from '../../services/analyticsService.js';
 import ImageUploadInput from '../../components/common/ImageUploadInput.jsx';
@@ -10,6 +10,8 @@ import { logActivity } from '../../services/activityLogService.js';
 import { useBackendHealth } from '../../context/BackendHealthContext.jsx';
 import { api } from '../../services/api.js';
 import InlineStudioPopover from '../../components/common/InlineStudioPopover.jsx';
+import { upsertClientFromProposal } from '../../services/crmService.js';
+import { createProposal, updateProposal } from '../../services/proposalService.js';
 
 function A4Preview({ children, style = 'classic', isInteractiveStudio, onStudioClick }) {
   const themeBg = THEMES[style]?.bg || '#ffffff';
@@ -70,7 +72,7 @@ function A4Preview({ children, style = 'classic', isInteractiveStudio, onStudioC
 export function Step7Preview({ proposalId, branding, customBlocks, proposalName, onAddCustomBlock }) {
   const toast = useToast();
   const { isHealthy } = useBackendHealth();
-  const { proposal, items, saveDraftBackground } = useProposalStore();
+  const { proposal, items, saveDraftBackground, setProposal } = useProposalStore();
   const [localCustomBlocks, setLocalCustomBlocks] = useState(() => {
     try {
       const stored = JSON.parse(localStorage.getItem('voyanta_global_custom_blocks') || 'null');
@@ -88,7 +90,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
       try {
         const saved = JSON.parse(localStorage.getItem(`voyanta_overrides_${proposalId}`) || '{}');
         for (const [key, val] of Object.entries(saved)) {
-          const el = document.getElementById(key) || document.querySelector(`[data-testid="${key}"]`);
+          const el = document.getElementById(key) || document.querySelector(`[data-testid="${key}"]`) || (val.selector ? document.querySelector(val.selector) : null);
           if (el) {
             if (val.type === 'text') {
               if (val.text !== undefined) el.innerText = val.text;
@@ -329,6 +331,23 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
       URL.revokeObjectURL(url);
       incrementAnalytics('download', proposalId);
       logActivity('pdf', `Generated PDF for proposal "${proposalName || proposalId}"`, proposal?.client_name || 'Client');
+      setProposal({ status: 'Proposal Sent' });
+      try {
+        const pStore = useProposalStore.getState();
+        const payload = pStore.buildPayload();
+        const pid = proposalId || pStore.activeId || payload.id;
+        if (pid) {
+          await updateProposal(pid, { ...payload, status: 'Proposal Sent' });
+        } else {
+          const created = await createProposal({ ...payload, status: 'Proposal Sent' });
+          pStore.setActiveId(created.id);
+        }
+        await upsertClientFromProposal({ ...proposal, status: 'Proposal Sent', name: proposalName || proposalId });
+      } catch (err) {
+        console.warn('Sync error after PDF generation:', err);
+      }
+      window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
+      window.dispatchEvent(new CustomEvent('voyanta:analytics-updated'));
       toast.success('PDF generated successfully');
     } catch (e) {
       console.error('PDF generation error:', e);
@@ -359,7 +378,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           <option value="corporate">Corporate Executive</option>
         </select>
         
-        <button onClick={() => {
+        <button type="button" onClick={() => {
           const dest = json?.proposal?.destination || 'Destination';
           const travelers = json?.proposal?.travelers || 2;
           const tType = json?.proposal?.preferences?.tour_type || 'Luxury';
@@ -382,21 +401,21 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           AI Auto-Title
         </button>
 
-        <button onClick={() => { setIsInteractiveStudio(!isInteractiveStudio); setDesignStudioOpen(true); }} data-testid="open-design-studio"
+        <button type="button" onClick={() => { setIsInteractiveStudio(!isInteractiveStudio); setDesignStudioOpen(true); }} data-testid="open-design-studio"
           className={`px-lg py-md border rounded-lg font-label-md flex items-center gap-xs shadow-sm ml-auto transition-all ${isInteractiveStudio ? 'bg-primary text-white font-bold border-primary shadow-lg animate-pulse' : 'bg-primary/10 text-primary border-primary/30 hover:bg-primary/20'}`}>
           <span className="material-symbols-outlined text-[18px]">palette</span> {isInteractiveStudio ? '✨ Interactive Studio Active' : 'Design Studio (Colors, Texts & Images)'}
         </button>
 
-        <button onClick={() => setExportOpen(true)} data-testid="open-export-modal"
+        <button type="button" onClick={() => setExportOpen(true)} data-testid="open-export-modal"
           className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
           <span className="material-symbols-outlined text-[18px]">tune</span> Customize Sections
         </button>
-        <button onClick={() => setShowTemplatePrompt(true)} 
+        <button type="button" onClick={() => setShowTemplatePrompt(true)} 
           className="px-lg py-md bg-surface-container hover:bg-surface-container-high text-on-surface rounded-lg font-label-md flex items-center gap-xs border border-outline-variant shadow-sm transition-all">
           <span className="material-symbols-outlined text-[18px]">bookmark_add</span>
           Save Template
         </button>
-        <button onClick={onGeneratePdf} disabled={generating || !isHealthy} data-testid="generate-pdf"
+        <button type="button" onClick={onGeneratePdf} disabled={generating || !isHealthy} data-testid="generate-pdf"
           title={!isHealthy ? 'Backend API or PDF service unreachable' : 'Generate and download A4 PDF'}
           className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-50 flex items-center gap-xs">
           <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
@@ -411,10 +430,10 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
             <span>🎨 WYSIWYG Interactive Studio Active — Click any text, price, image, or section below to edit inline!</span>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setDesignStudioOpen(true)} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-white font-bold transition-colors">
+            <button type="button" onClick={() => setDesignStudioOpen(true)} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-white font-bold transition-colors">
               ⚙️ Open Drawer
             </button>
-            <button onClick={() => { setIsInteractiveStudio(false); setStudioTarget(null); }} className="px-3 py-1 bg-white text-primary rounded-lg font-bold hover:bg-white/90 transition-colors">
+            <button type="button" onClick={() => { setIsInteractiveStudio(false); setStudioTarget(null); }} className="px-3 py-1 bg-white text-primary rounded-lg font-bold hover:bg-white/90 transition-colors">
               ✕ Exit Studio
             </button>
           </div>
@@ -430,12 +449,18 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
             target={studioTarget} 
             onClose={() => setStudioTarget(null)} 
             branding={branding} 
-            setBranding={useProposalStore.getState().updateProposal} 
+            setBranding={(fnOrVal) => {
+              const st = useProposalStore.getState();
+              const next = typeof fnOrVal === 'function' ? fnOrVal(st.branding) : fnOrVal;
+              st.setBranding(next);
+              if (typeof st.saveDraftBackground === 'function') st.saveDraftBackground().catch(()=>{});
+            }} 
             onApplyOverride={(elKey, override) => {
               try {
                 const currentOverrides = JSON.parse(localStorage.getItem(`voyanta_overrides_${proposalId}`) || '{}');
                 currentOverrides[elKey] = override;
                 localStorage.setItem(`voyanta_overrides_${proposalId}`, JSON.stringify(currentOverrides));
+                if (typeof saveDraftBackground === 'function') saveDraftBackground().catch(()=>{});
               } catch {}
             }}
           />
@@ -528,8 +553,8 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
               )}
             </div>
             <div className="flex justify-end gap-md">
-              <button onClick={() => setInclude(ALL_SECTIONS)} className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low" data-testid="export-select-all">Select all</button>
-              <button onClick={() => setExportOpen(false)} className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90" data-testid="export-apply">Apply</button>
+              <button type="button" onClick={() => setInclude(ALL_SECTIONS)} className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low" data-testid="export-select-all">Select all</button>
+              <button type="button" onClick={() => setExportOpen(false)} className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90" data-testid="export-apply">Apply</button>
             </div>
           </div>
         </div>
@@ -548,7 +573,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
                   <p className="text-xs text-on-surface-variant m-0">Live customize texts, colors & images</p>
                 </div>
               </div>
-              <button onClick={() => setDesignStudioOpen(false)} className="p-sm text-on-surface-variant hover:text-on-surface rounded-full">
+              <button type="button" onClick={() => setDesignStudioOpen(false)} className="p-sm text-on-surface-variant hover:text-on-surface rounded-full">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
@@ -602,7 +627,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
             </div>
 
             <div className="mt-auto pt-md border-t border-outline-variant">
-              <button onClick={() => setDesignStudioOpen(false)} className="w-full py-3 bg-primary text-white font-bold rounded-xl shadow-md hover:bg-primary/90 transition-all">
+              <button type="button" onClick={() => setDesignStudioOpen(false)} className="w-full py-3 bg-primary text-white font-bold rounded-xl shadow-md hover:bg-primary/90 transition-all">
                 Apply Customizations
               </button>
             </div>
@@ -622,6 +647,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
             </p>
             <div className="flex gap-md w-full">
               <button 
+                type="button"
                 onClick={() => {
                   setShowTemplatePrompt(false);
                   toast.success('Proposal saved without template preferences.');
@@ -631,6 +657,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
                 No, Just Save
               </button>
               <button 
+                type="button"
                 onClick={handleConfirmSaveTemplate}
                 className="flex-1 py-3 bg-primary hover:bg-primary/90 text-white font-label-md rounded-xl shadow-lg shadow-primary/30 transition-all font-bold"
               >

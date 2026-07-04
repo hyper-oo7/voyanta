@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { useToast } from '../../context/ToastContext.jsx';
 import LogoUploader from '../../components/LogoUploader.jsx';
 import { TEMPLATE_LIST } from '../../templates/registry.js';
@@ -46,7 +46,19 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
   const toast = useToast();
   const [activeCategory, setActiveCategory] = useState('All');
   const [showFieldMenu, setShowFieldMenu] = useState(false);
-  const currentPlan = typeof window !== 'undefined' ? (localStorage.getItem('voyanta_active_plan') || 'Starter') : 'Starter';
+  const [currentPlan, setCurrentPlan] = useState(() => typeof window !== 'undefined' ? (localStorage.getItem('voyanta_active_plan') || 'Starter') : 'Starter');
+
+  useEffect(() => {
+    const handler = () => setCurrentPlan(localStorage.getItem('voyanta_active_plan') || 'Starter');
+    window.addEventListener('voyanta:plan-updated', handler);
+    window.addEventListener('storage', handler);
+    return () => {
+      window.removeEventListener('voyanta:plan-updated', handler);
+      window.removeEventListener('storage', handler);
+    };
+  }, []);
+
+  const isStarter = !currentPlan || currentPlan.toLowerCase() === 'starter';
 
   const upd = (k) => (e) => setBranding((s) => ({ ...s, [k]: e.target.value }));
   const aiDraft = (field, label) => () => {
@@ -107,7 +119,7 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
             const slug = tpl.slug || '';
             const isBasic = tpl.tier === 'Basic' || ['classic', 'editorial', 'vibrant', 'modern', 'honeymoon', 'family', 'safari', 'alpine', 'zen', 'aegean', 'desert', 'nordic', 'tropic', 'maharaja', 'cosmopolitan', 'eco_sanctuary'].includes(slug);
             const isPremium = !isBasic;
-            const isLocked = isPremium && currentPlan === 'Starter';
+            const isLocked = isPremium && isStarter;
 
             return (
               <div
@@ -139,7 +151,7 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
                   )}
                   {isPremium && (
                     <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-500 to-amber-600 text-black shadow flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[12px]">lock</span> PRO
+                      <span className="material-symbols-outlined text-[12px]">{isLocked ? 'lock' : 'diamond'}</span> {isLocked ? 'PRO' : 'UNLOCKED'}
                     </span>
                   )}
                 </div>

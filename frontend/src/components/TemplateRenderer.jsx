@@ -1,6 +1,6 @@
 import React, { memo, useState, useEffect, Suspense } from 'react';
 import { TEMPLATE_REGISTRY } from '../templates/registry.js';
-import { formatINR } from '../lib/currency.js';
+import { formatPrice } from '../lib/currency.js';
 import { fetchContextualImage } from '../services/imageService.js';
 import { incrementAnalytics } from '../services/analyticsService.js';
 import UniversalTemplateExtras from './common/UniversalTemplateExtras.jsx';
@@ -241,7 +241,7 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
                         <div className="text-xs uppercase tracking-wider font-bold opacity-60">Attached Reservations & Services</div>
                         {dayItems.filter(it => !renderedNames.has((it.label || '').toLowerCase().trim())).map(item => {
                           const imgUrl = item.meta?.image_url || (item.meta?.selected_images && item.meta.selected_images[0]) || '';
-                          const priceStr = (Number(item.qty) || 0) * (Number(item.unit_price) || 0) > 0 ? formatINR((Number(item.qty) || 0) * (Number(item.unit_price) || 0)) : '';
+                          const priceStr = (Number(item.qty) || 0) * (Number(item.unit_price) || 0) > 0 ? formatPrice((Number(item.qty) || 0) * (Number(item.unit_price) || 0), currency) : '';
                           return (
                             <div key={item.id} className="flex items-stretch gap-4 p-3 rounded-xl break-inside-avoid page-break-inside-avoid shadow-xs border border-opacity-15" style={{ backgroundColor: theme.bg, borderColor: theme.text }}>
                               <div className="flex-1 min-w-0 flex flex-col justify-center py-0.5">
@@ -278,7 +278,7 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
             <ul className="space-y-8">
               {items.hotel.map((it) => {
                 const imgUrl = it.meta?.image_url || (it.meta?.selected_images && it.meta.selected_images[0]) || '';
-                const priceStr = formatINR((Number(it.qty) || 0) * (Number(it.unit_price) || 0));
+                const priceStr = formatPrice((Number(it.qty) || 0) * (Number(it.unit_price) || 0), currency);
                 return (
                 <li key={it.id} className="flex items-stretch gap-6 pb-6 break-inside-avoid page-break-inside-avoid border-b border-opacity-10" style={{ borderColor: theme.text }}>
                   <div className="flex-1 min-w-0 flex flex-col justify-center py-1">
@@ -309,12 +309,12 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
                 return (
                   <div key={kind} className="flex justify-between py-3 border-b border-opacity-10 break-inside-avoid text-lg" style={{ borderColor: theme.text }}>
                     <span className="capitalize">{kind} ({list.length})</span>
-                    <span style={{ color: theme.accent, fontFamily: fontSubhead }} className="font-semibold">{formatINR(sub)}</span>
+                    <span style={{ color: theme.accent, fontFamily: fontSubhead }} className="font-semibold">{formatPrice(sub, currency)}</span>
                   </div>
                 );
               })}
               <div className="flex justify-between pt-8 text-3xl font-bold" style={{ color: theme.accent, fontFamily: fontHeadline }}>
-                <span>Total</span><span>{formatINR(total)}</span>
+                <span>Total</span><span>{formatPrice(total, currency)}</span>
               </div>
             </div>
           </section>

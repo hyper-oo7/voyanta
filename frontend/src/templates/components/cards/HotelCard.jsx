@@ -1,6 +1,7 @@
 import React from 'react';
 import GlassCard from '../utility/GlassCard.jsx';
 import StatBadge from '../utility/StatBadge.jsx';
+import { formatPrice as libFormatPrice } from '../../../lib/currency.js';
 
 /**
  * Premium Hotel Card component.
@@ -17,13 +18,7 @@ export default function HotelCard({ item, theme = {}, variant = 'default', curre
   const roomType = item.room_type || item.category || 'Deluxe Suite';
   const nights = item.qty || item.nights || 1;
 
-  const formatPrice = (val) => {
-    try {
-      return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(val);
-    } catch {
-      return `₹${val.toLocaleString()}`;
-    }
-  };
+  const formatPrice = (val) => libFormatPrice(val, currency);
 
   const primaryColor = theme.colors?.primary || '#1a1a2e';
   const accentColor = theme.colors?.accent || '#c41e3a';

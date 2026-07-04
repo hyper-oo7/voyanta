@@ -45,22 +45,25 @@ export default function DashboardPage() {
     const handler = () => setAnalyticsVersion(v => v + 1);
     window.addEventListener('voyanta:analytics-updated', handler);
     window.addEventListener('voyanta:activity-log-updated', handler);
+    window.addEventListener('voyanta:proposals-updated', handler);
     return () => {
       window.removeEventListener('voyanta:analytics-updated', handler);
       window.removeEventListener('voyanta:activity-log-updated', handler);
+      window.removeEventListener('voyanta:proposals-updated', handler);
     };
   }, []);
 
   const loading = loadingProposals;
+  const safeProposalsList = Array.isArray(proposals) ? proposals : [];
 
   // Use server-side counts if available, otherwise client-side
-  const totalProposals = serverStats?.totalProposals ?? proposals.length;
+  const totalProposals = serverStats?.totalProposals ?? safeProposalsList.length;
   const totalTemplates = serverStats?.totalTemplates ?? 0;
   const activeClients = serverStats?.activeClients ?? new Set(
-    proposals.map((p) => (p.client_name || p.client || '').trim().toLowerCase()).filter(Boolean)
+    safeProposalsList.map((p) => (p.client_name || p.client || '').trim().toLowerCase()).filter(Boolean)
   ).size;
 
-  const filteredProposals = proposals.filter(p => {
+  const filteredProposals = safeProposalsList.filter(p => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (p.name || '').toLowerCase().includes(q) || (p.client_name || p.client || '').toLowerCase().includes(q) || (p.destination || '').toLowerCase().includes(q);

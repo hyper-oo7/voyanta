@@ -9,6 +9,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import { useProposalStore } from '../store/proposalStore.js';
 import { itinerariesService } from '../services/resourceService.js';
 import { supabase } from '../lib/supabaseClient.js';
+import { TEMPLATE_LIST } from '../templates/registry.js';
 
 const cleanPrice = (val) => {
   if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
@@ -123,6 +124,19 @@ export default function ProposalWizard() {
 
     setBranding(b => ({ ...b, template_style: style }));
   }, [client.tour_type, client.destination, proposal?.destination, idParam, themeParam, setBranding]);
+
+  useEffect(() => {
+    if (themeParam && !idParam) {
+      setBranding(b => {
+        const tpl = TEMPLATE_LIST.find(t => t.slug === themeParam || t.id === themeParam || t.theme === themeParam);
+        return {
+          ...b,
+          template_style: themeParam,
+          cover_image_url: b.cover_image_url || (tpl ? tpl.thumbnail : '')
+        };
+      });
+    }
+  }, [themeParam, idParam, setBranding]);
 
   // Eagerly preload heavy steps so they are instantly ready when the user reaches them
   useEffect(() => {
@@ -445,7 +459,7 @@ export default function ProposalWizard() {
     return () => clearTimeout(timer);
   }, [client, branding, costingPrefs, items, saveDraftBackground, idParam, setParams]);
 
-  const goStep = (n, idOverride) => setParams({ id: idOverride ?? proposal?.id ?? '', step: String(n) }, { replace: false });
+  const goStep = (n, idOverride) => setParams({ id: idOverride || proposal?.id || activeId || idParam || '', step: String(n) }, { replace: false });
 
   const handleJump = async (n) => {
     let pid = proposal?.id;
@@ -483,7 +497,7 @@ export default function ProposalWizard() {
     } else {
       saveDraftBackground().catch(() => {});
     }
-    goStep(Math.min(5, stepParam + 1), pid || proposal?.id || crypto.randomUUID());
+    goStep(Math.min(5, stepParam + 1), pid || proposal?.id || activeId || idParam);
   };
 
   const onPrev = async () => {
@@ -563,7 +577,7 @@ export default function ProposalWizard() {
                   <Suspense fallback={<div className="p-xl text-center"><span className="material-symbols-outlined animate-spin text-2xl">progress_activity</span></div>}>
                     {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} />}
                     {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={() => loadProposal(proposal?.id)} itineraries={itineraries} onApplyItinerary={triggerApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft} />}
-                    {stepParam === 3 && <Step5Costing proposal={proposal} proposalId={proposal?.id} items={items} setItems={setItems}
+                    {stepParam === 3 && <Step5Costing proposal={proposal} setProposal={setProposal} proposalId={proposal?.id} items={items} setItems={setItems}
                       onPatchItem={onPatchItem} onRemoveItem={onRemoveItem} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft}
                       proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
                     {stepParam === 4 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} />}

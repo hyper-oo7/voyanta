@@ -26,6 +26,7 @@ const ProposalPrintRoute = lazy(() => import('./pages/ProposalPrintRoute.jsx'));
 const ProposalActionRoute = lazy(() => import('./pages/ProposalActionRoute.jsx'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'));
 const ProposalsListPage = lazy(() => import('./pages/ProposalsListPage.jsx'));
+const CrmPage = lazy(() => import('./pages/CrmPage.jsx'));
 const ProposalWizard = lazy(() => import('./pages/ProposalWizard.jsx'));
 const CostCalculatorPage = lazy(() => import('./pages/CostCalculatorPage.jsx'));
 const HotelLibraryPage = lazy(() => import('./pages/HotelLibraryPage.jsx'));
@@ -77,6 +78,7 @@ export default function App() {
               <Route element={<Protected><AppLayout /></Protected>}>
                 <Route path="/dashboard"           element={<DashboardPage />} />
                 <Route path="/proposals"           element={<ProposalsListPage />} />
+                <Route path="/crm"                 element={<CrmPage />} />
 
                 {/* Wizard is the primary proposal workflow */}
                 <Route path="/proposals/wizard"    element={<ProposalWizard />} />

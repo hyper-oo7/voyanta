@@ -70,6 +70,7 @@ export const useProposalStore = create((set, get) => ({
   // Load a proposal from the DB
   loadProposal: async (id) => {
     if (!id) {
+      if (!get().activeId) get().setActiveId(crypto.randomUUID());
       set({ proposal: null, items: [], status: 'idle' });
       return;
     }
@@ -87,6 +88,7 @@ export const useProposalStore = create((set, get) => ({
           proposal: p,
           items: its,
           client: {
+            client_id: p.client_id || b.client_id || '',
             customer_name: p.client_name || '',
             phone: b.phone || '',
             country: b.country || DEFAULT_COUNTRY,
@@ -125,6 +127,7 @@ export const useProposalStore = create((set, get) => ({
     const { client: c, branding, costingPrefs, proposal } = get();
     const travelers = (parseInt(c.num_adults, 10) || 0) + (parseInt(c.num_children, 10) || 0);
     return {
+      client_id: c.client_id || c.id || proposal?.client_id || null,
       name: c.destination ? `${c.destination} — ${c.customer_name || 'Trip'}` : (c.customer_name || 'Untitled Proposal'),
       client_name: c.customer_name || 'New Client',
       destination: c.destination || null,
@@ -136,7 +139,7 @@ export const useProposalStore = create((set, get) => ({
       departure_airport: c.departure_airport || null,
       travelers: travelers || 1,
       budget_max: c.budget === '' ? null : Number(c.budget),
-      currency: 'INR', // TODO: Make configurable if needed
+      currency: proposal?.currency || 'INR',
       brief: {
         phone: c.phone, country: c.country, email: c.email,
         date_mode: c.date_mode,
@@ -184,21 +187,27 @@ export const useProposalStore = create((set, get) => ({
     const pid = get().proposal?.id;
     if (!pid) throw new Error('No active proposal');
     
-    // 1. Optimistic UI Update
-    // Give them temporary unique IDs so React keys don't complain
-    const optimisticItems = newItemsToInsert.map((item, idx) => ({
+    // 1. Optimistic UI Update with permanent UUIDs
+    const optimisticItems = newItemsToInsert.map((item) => ({
       ...item,
-      id: `temp-${Date.now()}-${idx}`,
+      id: item.id || crypto.randomUUID(),
       proposal_id: pid
     }));
     set({ items: [...previousItems, ...optimisticItems] });
 
-    // 2. Background Database Sync
+    // 2. Background Database Sync without overwriting live user typing
     try {
-      await Promise.all(newItemsToInsert.map((item) => addItem(pid, item)));
-      // Refetch true list to get real IDs
-      const syncedItems = await listItems(pid);
-      set({ items: syncedItems });
+      const addedResults = await Promise.all(optimisticItems.map((item) => addItem(pid, item)));
+      set((state) => ({
+        items: state.items.map((it) => {
+          const matched = addedResults.find((r) => r && String(r.id) === String(it.id));
+          if (matched) {
+            // Merge DB metadata while strictly preserving live user edits (label, qty, unit_price)
+            return { ...matched, label: it.label, qty: it.qty, unit_price: it.unit_price };
+          }
+          return it;
+        })
+      }));
     } catch (err) {
       console.warn('Supabase sync failed for proposal items, preserving items in offline draft:', err);
       try {
@@ -212,10 +221,7 @@ export const useProposalStore = create((set, get) => ({
     const previousItems = [...get().items];
     const pid = get().proposal?.id;
     // Optimistic remove
-    set({ items: previousItems.filter(i => i.id !== itemId) });
-    
-    // Skip DB call for temp items — they haven't been persisted yet
-    if (String(itemId).startsWith('temp-')) return;
+    set({ items: previousItems.filter(i => String(i.id) !== String(itemId)) });
     
     try {
       await removeItem(itemId);
@@ -232,15 +238,19 @@ export const useProposalStore = create((set, get) => ({
     const previousItems = [...get().items];
     const pid = get().proposal?.id;
     // Optimistic patch
-    set({ items: previousItems.map(i => i.id === itemId ? { ...i, ...patch } : i) });
-
-    // Skip DB call for temp items — they haven't been persisted yet.
-    // The real ID will be assigned when addItemsOptimistic's background sync refetches.
-    if (String(itemId).startsWith('temp-')) return;
+    set({ items: previousItems.map(i => String(i.id) === String(itemId) ? { ...i, ...patch } : i) });
 
     try {
       const updated = await updateItem(itemId, patch);
-      set({ items: get().items.map(i => i.id === itemId ? updated : i) });
+      set((state) => ({
+        items: state.items.map(i => {
+          if (String(i.id) === String(itemId)) {
+            // Merge DB response while preserving live user edits in current state
+            return { ...updated, ...i };
+          }
+          return i;
+        })
+      }));
     } catch (err) {
       console.warn('Supabase sync failed for item update, preserving change in offline draft:', err);
       try {

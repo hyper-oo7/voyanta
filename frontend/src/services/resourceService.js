@@ -43,29 +43,125 @@ export function makeResourceService(resource) {
       return count || 0;
     },
     get: async (id) => {
-      const { data, error } = await supabase.from(resource).select('*').eq('id', id).single();
-      if (error) throw error;
-      return data;
+      if (supabase) {
+        try {
+          const { data, error } = await supabase.from(resource).select('*').eq('id', id).single();
+          if (!error && data) return data;
+        } catch {}
+      }
+      try {
+        const cachedItem = JSON.parse(localStorage.getItem(`voyanta_res_${resource}_${id}`) || 'null');
+        if (cachedItem) return cachedItem;
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(`voyanta_res_cache_${resource}`)) {
+            const list = JSON.parse(localStorage.getItem(k) || '[]');
+            if (Array.isArray(list)) {
+              const found = list.find(it => String(it.id) === String(id));
+              if (found) return found;
+            }
+          }
+        }
+      } catch {}
+      return null;
     },
     create: async (row) => {
       const agencyId = getAgencyId();
-      const { data, error } = await supabase.from(resource).insert({ agency_id: agencyId, ...row }).select().single();
-      if (error) throw error;
-      return data;
+      const newId = row.id || crypto.randomUUID();
+      const fullRow = { id: newId, agency_id: agencyId, created_at: new Date().toISOString(), ...row };
+      if (supabase) {
+        try {
+          const { data, error } = await supabase.from(resource).insert(fullRow).select().single();
+          if (!error && data) {
+            try { localStorage.setItem(`voyanta_res_${resource}_${data.id}`, JSON.stringify(data)); } catch {}
+            return data;
+          }
+        } catch (e) {
+          console.warn(`Supabase create error for ${resource}, falling back to localStorage:`, e);
+        }
+      }
+      try {
+        localStorage.setItem(`voyanta_res_${resource}_${newId}`, JSON.stringify(fullRow));
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(`voyanta_res_cache_${resource}`)) {
+            const list = JSON.parse(localStorage.getItem(k) || '[]');
+            if (Array.isArray(list)) {
+              list.unshift(fullRow);
+              localStorage.setItem(k, JSON.stringify(list));
+            }
+          }
+        }
+      } catch {}
+      return fullRow;
     },
     update: async (id, patch) => {
-      const { data, error } = await supabase.from(resource).update(patch).eq('id', id).select().single();
-      if (error) throw error;
-      return data;
+      if (supabase) {
+        try {
+          const { data, error } = await supabase.from(resource).update(patch).eq('id', id).select().single();
+          if (!error && data) {
+            try { localStorage.setItem(`voyanta_res_${resource}_${id}`, JSON.stringify(data)); } catch {}
+            return data;
+          }
+        } catch (e) {
+          console.warn(`Supabase update error for ${resource}, falling back to localStorage:`, e);
+        }
+      }
+      try {
+        const existing = JSON.parse(localStorage.getItem(`voyanta_res_${resource}_${id}`) || 'null') || { id };
+        const updated = { ...existing, ...patch, id };
+        localStorage.setItem(`voyanta_res_${resource}_${id}`, JSON.stringify(updated));
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(`voyanta_res_cache_${resource}`)) {
+            const list = JSON.parse(localStorage.getItem(k) || '[]');
+            if (Array.isArray(list)) {
+              const idx = list.findIndex(it => String(it.id) === String(id));
+              if (idx >= 0) {
+                list[idx] = { ...list[idx], ...patch, id };
+                localStorage.setItem(k, JSON.stringify(list));
+              }
+            }
+          }
+        }
+        return updated;
+      } catch { return { id, ...patch }; }
     },
     remove: async (id) => {
-      const { error } = await supabase.from(resource).delete().eq('id', id);
-      if (error) throw error;
+      if (supabase) {
+        try { await supabase.from(resource).delete().eq('id', id); } catch {}
+      }
+      try {
+        localStorage.removeItem(`voyanta_res_${resource}_${id}`);
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(`voyanta_res_cache_${resource}`)) {
+            const list = JSON.parse(localStorage.getItem(k) || '[]');
+            if (Array.isArray(list)) {
+              localStorage.setItem(k, JSON.stringify(list.filter(it => String(it.id) !== String(id))));
+            }
+          }
+        }
+      } catch {}
     },
     removeMany: async (ids) => {
       if (!ids?.length) return;
-      const { error } = await supabase.from(resource).delete().in('id', ids);
-      if (error) throw error;
+      if (supabase) {
+        try { await supabase.from(resource).delete().in('id', ids); } catch {}
+      }
+      try {
+        const idSet = new Set(ids.map(String));
+        ids.forEach(id => localStorage.removeItem(`voyanta_res_${resource}_${id}`));
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(`voyanta_res_cache_${resource}`)) {
+            const list = JSON.parse(localStorage.getItem(k) || '[]');
+            if (Array.isArray(list)) {
+              localStorage.setItem(k, JSON.stringify(list.filter(it => !idSet.has(String(it.id)))));
+            }
+          }
+        }
+      } catch {}
     },
   };
 }

@@ -14,13 +14,18 @@ export function useProposals() {
     initialData: () => {
       try {
         const cached = JSON.parse(localStorage.getItem('voyanta_proposals_list_cache') || 'null');
-        return cached || undefined;
+        if (Array.isArray(cached)) return cached;
+        if (cached && Array.isArray(cached.data)) return cached.data;
+        return undefined;
       } catch { return undefined; }
     },
   });
 
   useEffect(() => {
-    if (!supabase) return;
+    const handleUpdate = () => queryClient.invalidateQueries({ queryKey: ['proposals'] });
+    window.addEventListener('voyanta:proposals-updated', handleUpdate);
+    
+    if (!supabase) return () => window.removeEventListener('voyanta:proposals-updated', handleUpdate);
     let lastInvalidated = 0;
     const channel = supabase.channel('proposals-channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'proposals' }, () => {
@@ -32,6 +37,7 @@ export function useProposals() {
       })
       .subscribe();
     return () => {
+      window.removeEventListener('voyanta:proposals-updated', handleUpdate);
       supabase.removeChannel(channel);
     };
   }, [queryClient]);
@@ -64,8 +70,11 @@ export function useProposals() {
     },
   });
 
+  const rawData = proposalsQuery.data;
+  const safeProposals = Array.isArray(rawData) ? rawData : (rawData && Array.isArray(rawData.data) ? rawData.data : []);
+
   return {
-    proposals: proposalsQuery.data || [],
+    proposals: safeProposals,
     isLoading: proposalsQuery.isLoading,
     isError: proposalsQuery.isError,
     error: proposalsQuery.error,
