@@ -1,6 +1,7 @@
 // Production-mode proposalService: always reads/writes Supabase.
 // Uses dynamic agency_id from auth store, sets created_by on creation.
 import { supabase, getAgencyId } from '../lib/supabaseClient.js';
+import { upsertClientFromProposal } from './crmService.js';
 
 const TABLE = 'proposals';
 const CACHE_KEY = 'voyanta_proposals_list_cache';
@@ -107,6 +108,7 @@ export async function createProposal(payload) {
       if (!error && data) {
         const norm = normalize(data);
         try { localStorage.setItem(`voyanta_proposal_${norm.id}`, JSON.stringify(norm)); } catch {}
+        try { upsertClientFromProposal(norm).catch(() => {}); } catch {}
         return norm;
       }
     } catch (e) {
@@ -114,7 +116,6 @@ export async function createProposal(payload) {
     }
   }
 
-  // LocalStorage Fallback
   const norm = normalize(row);
   try {
     localStorage.setItem(`voyanta_proposal_${norm.id}`, JSON.stringify(norm));
@@ -123,6 +124,7 @@ export async function createProposal(payload) {
     list.unshift(norm);
     localStorage.setItem(CACHE_KEY, JSON.stringify(list));
   } catch {}
+  try { upsertClientFromProposal(norm).catch(() => {}); } catch {}
   window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
   return norm;
 }
@@ -135,6 +137,7 @@ export async function updateProposal(id, patch) {
       if (!error && data) {
         const norm = normalize(data);
         try { localStorage.setItem(`voyanta_proposal_${id}`, JSON.stringify(norm)); } catch {}
+        try { upsertClientFromProposal(norm).catch(() => {}); } catch {}
         window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
         return norm;
       }
@@ -160,6 +163,7 @@ export async function updateProposal(id, patch) {
       list.unshift(norm);
     }
     localStorage.setItem(CACHE_KEY, JSON.stringify(list));
+    try { upsertClientFromProposal(norm).catch(() => {}); } catch {}
     window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
     return norm;
   } catch {

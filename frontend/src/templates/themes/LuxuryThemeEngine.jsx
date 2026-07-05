@@ -47,6 +47,20 @@ export default function LuxuryThemeEngine(props) {
   const logoUrl = safeText(b.logo_url || '');
   const agencyName = safeText(b.agency_name || 'Voyanta Luxury Travel');
   const clientName = safeText(brief.client_name || p.client_name || 'Valued Client');
+  const rawTitle = safeText(p.name || p.destination || 'Bespoke Journey')
+    .replace(new RegExp(`\\s*[—\\-]\\s*${clientName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), '')
+    .replace(new RegExp(`\\s*[—\\-]\\s*${(p.client_name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), '')
+    .trim();
+
+  const startDate = brief.start_date || p.start_date;
+  const endDate = brief.end_date || p.end_date;
+  const dateRangeStr = (startDate && endDate) 
+    ? `${new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} — ${new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    : (startDate ? new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Flexible / Open Dates');
+
+  const adultsNum = brief.num_adults ?? brief.adults ?? p.adults ?? travelers;
+  const childrenNum = brief.num_children ?? brief.children ?? p.children ?? 0;
+  const partySizeStr = childrenNum > 0 ? `${travelers} Persons (${adultsNum} Adults, ${childrenNum} Children)` : `${travelers} Person${travelers === 1 ? '' : 's'}`;
 
   return (
     <div className="theme-host min-h-screen" style={{ backgroundColor: bgColor, fontFamily }}>
@@ -78,25 +92,29 @@ export default function LuxuryThemeEngine(props) {
               {config.subtitlePrefix || 'Prepared Exclusively For'} {clientName}
             </span>
             <h1 className="text-5xl md:text-7xl font-black text-white leading-tight mb-6 drop-shadow-xl max-w-4xl" style={{ fontFamily: headlineFont }}>
-              {safeText(p.name || p.destination || 'Bespoke Journey')}
+              {rawTitle || 'Bespoke Journey'}
             </h1>
             <p className="text-lg text-white/90 max-w-2xl font-light leading-relaxed drop-shadow">
               {safeText(brief.special_notes || p.highlights || config.defaultWelcome || 'An extraordinary travel experience meticulously designed to elevate every moment.')}
             </p>
           </div>
 
-          <div className="flex flex-wrap justify-between items-end border-t border-white/20 pt-6 text-white/90 text-sm">
+          <div className="flex flex-wrap justify-between items-end border-t border-white/20 pt-6 text-white/90 text-sm gap-4">
             <div>
               <span className="text-xs uppercase tracking-widest text-white/60 block">Destination</span>
               <strong className="text-base text-white">{safeText(p.destination || 'Global')}</strong>
+            </div>
+            <div>
+              <span className="text-xs uppercase tracking-widest text-white/60 block">Travel Dates</span>
+              <strong className="text-base text-white">{dateRangeStr}</strong>
             </div>
             <div>
               <span className="text-xs uppercase tracking-widest text-white/60 block">Duration</span>
               <strong className="text-base text-white">{days.length || p.duration_days || 7} Days & Nights</strong>
             </div>
             <div>
-              <span className="text-xs uppercase tracking-widest text-white/60 block">Party Size</span>
-              <strong className="text-base text-white">{travelers} VIP Traveller{travelers === 1 ? '' : 's'}</strong>
+              <span className="text-xs uppercase tracking-widest text-white/60 block">No. of Persons</span>
+              <strong className="text-base text-white">{partySizeStr}</strong>
             </div>
             <div>
               <span className="text-xs uppercase tracking-widest text-white/60 block">Investment</span>

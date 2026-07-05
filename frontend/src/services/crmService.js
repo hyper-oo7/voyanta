@@ -83,6 +83,7 @@ export async function createClient(clientData) {
       if (!error && data) {
         const list = getLocalClients();
         saveLocalClients([data, ...list]);
+        try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
         return data;
       }
     } catch (e) {
@@ -93,6 +94,7 @@ export async function createClient(clientData) {
   const list = getLocalClients();
   const updated = [newClient, ...list];
   saveLocalClients(updated);
+  try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
   return newClient;
 }
 
@@ -106,6 +108,7 @@ export async function updateClient(id, patch) {
       if (!error && data) {
         const list = getLocalClients().map(c => c.id === id ? { ...c, ...data } : c);
         saveLocalClients(list);
+        try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
         return data;
       }
     } catch (e) {
@@ -115,6 +118,7 @@ export async function updateClient(id, patch) {
 
   const list = getLocalClients().map(c => c.id === id ? { ...c, ...updatePayload } : c);
   saveLocalClients(list);
+  try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
   const updated = list.find(c => c.id === id);
   return updated || null;
 }
@@ -129,14 +133,15 @@ export async function deleteClient(id) {
   }
   const list = getLocalClients().filter(c => c.id !== id);
   saveLocalClients(list);
+  try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
   return true;
 }
 
 export async function upsertClientFromProposal(proposal) {
   if (!proposal) return null;
-  const name = proposal.client_name || proposal.client || proposal.brief?.client_name || 'Valued Client';
-  const email = proposal.client_email || proposal.brief?.client_email || '';
-  const phone = proposal.client_phone || proposal.brief?.client_phone || '';
+  const name = proposal.client_name || proposal.customer_name || proposal.client || proposal.brief?.client_name || proposal.brief?.customer_name || 'Valued Client';
+  const email = proposal.client_email || proposal.email || proposal.brief?.client_email || proposal.brief?.email || '';
+  const phone = proposal.client_phone || proposal.phone || proposal.brief?.client_phone || proposal.brief?.phone || '';
   const destination = proposal.destination || proposal.brief?.destination || '';
 
   const list = getLocalClients();

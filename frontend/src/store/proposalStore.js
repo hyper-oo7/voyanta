@@ -4,6 +4,25 @@ import { listItems, addItem, removeItem, updateItem } from '../services/proposal
 import { DEFAULT_COUNTRY } from '../lib/countries.js';
 import { sanitizeBrandingObject } from '../services/resourceService.js';
 
+const saveLocalBackup = (state) => {
+  try {
+    const id = state.proposal?.id || state.activeId;
+    if (id) {
+      const draft = {
+        id,
+        client: state.client,
+        branding: state.branding,
+        costingPrefs: state.costingPrefs,
+        proposal: state.proposal,
+        items: state.items,
+        updated_at: new Date().toISOString()
+      };
+      localStorage.setItem(`voyanta_proposal_draft_${id}`, JSON.stringify(draft));
+      localStorage.setItem('voyanta_active_proposal_id', id);
+    }
+  } catch {}
+};
+
 export const useProposalStore = create((set, get) => ({
   // State
   activeId: localStorage.getItem('voyanta_active_proposal_id') || null,
@@ -28,6 +47,7 @@ export const useProposalStore = create((set, get) => ({
     cover_image_url: '', highlights: '',
     inclusions: '', exclusions: '', terms_of_payment: '',
     primary_color: '#0b1c30', template_style: 'classic', font_family: '',
+    custom_fields: []
   },
   costingPrefs: {
     fixed_markup: 0,
@@ -47,25 +67,35 @@ export const useProposalStore = create((set, get) => ({
     set({ activeId: id });
   },
 
-  setClient: (partialClient) => set((state) => ({ 
-    client: typeof partialClient === 'function' ? partialClient(state.client) : { ...state.client, ...partialClient } 
-  })),
+  setClient: (partialClient) => set((state) => { 
+    const nextClient = typeof partialClient === 'function' ? partialClient(state.client) : { ...state.client, ...partialClient };
+    saveLocalBackup({ ...state, client: nextClient });
+    return { client: nextClient };
+  }),
 
-  setBranding: (partialBranding) => set((state) => ({ 
-    branding: sanitizeBrandingObject(typeof partialBranding === 'function' ? partialBranding(state.branding) : { ...state.branding, ...partialBranding }) 
-  })),
+  setBranding: (partialBranding) => set((state) => { 
+    const nextBranding = sanitizeBrandingObject(typeof partialBranding === 'function' ? partialBranding(state.branding) : { ...state.branding, ...partialBranding });
+    saveLocalBackup({ ...state, branding: nextBranding });
+    return { branding: nextBranding };
+  }),
 
-  setCostingPrefs: (partialCosting) => set((state) => ({ 
-    costingPrefs: typeof partialCosting === 'function' ? partialCosting(state.costingPrefs) : { ...state.costingPrefs, ...partialCosting } 
-  })),
+  setCostingPrefs: (partialCosting) => set((state) => { 
+    const nextCosting = typeof partialCosting === 'function' ? partialCosting(state.costingPrefs) : { ...state.costingPrefs, ...partialCosting };
+    saveLocalBackup({ ...state, costingPrefs: nextCosting });
+    return { costingPrefs: nextCosting };
+  }),
 
-  setProposal: (partialProposal) => set((state) => ({ 
-    proposal: typeof partialProposal === 'function' ? partialProposal(state.proposal) : { ...state.proposal, ...partialProposal } 
-  })),
+  setProposal: (partialProposal) => set((state) => { 
+    const nextProposal = typeof partialProposal === 'function' ? partialProposal(state.proposal) : { ...state.proposal, ...partialProposal };
+    saveLocalBackup({ ...state, proposal: nextProposal });
+    return { proposal: nextProposal };
+  }),
 
-  setItems: (newItems) => set((state) => ({
-    items: typeof newItems === 'function' ? newItems(state.items) : newItems
-  })),
+  setItems: (newItems) => set((state) => {
+    const nextItems = typeof newItems === 'function' ? newItems(state.items) : newItems;
+    saveLocalBackup({ ...state, items: nextItems });
+    return { items: nextItems };
+  }),
 
   // Load a proposal from the DB
   loadProposal: async (id) => {
@@ -76,9 +106,25 @@ export const useProposalStore = create((set, get) => ({
     }
     set({ status: 'loading' });
     try {
-      const [p, its] = await Promise.all([fetchProposalById(id), listItems(id)]);
+      let p = null;
+      let its = [];
+      try {
+        [p, its] = await Promise.all([fetchProposalById(id), listItems(id)]);
+      } catch (dbErr) {
+        console.warn('DB fetch failed, falling back to local backup:', dbErr);
+      }
+      if (!p) {
+        try {
+          const draftStr = localStorage.getItem(`voyanta_proposal_draft_${id}`) || localStorage.getItem(`voyanta_proposal_${id}`);
+          if (draftStr) {
+            const draft = JSON.parse(draftStr);
+            p = draft.proposal || draft;
+            its = draft.items || [];
+          }
+        } catch {}
+      }
       if (p) {
-        get().setActiveId(p.id);
+        get().setActiveId(p.id || id);
         const b = p.brief || {};
         
         const rawBranding = { ...get().branding, ...(p.preferences?.branding || {}) };
@@ -86,13 +132,13 @@ export const useProposalStore = create((set, get) => ({
 
         set({
           proposal: p,
-          items: its,
+          items: its || [],
           client: {
             client_id: p.client_id || b.client_id || '',
-            customer_name: p.client_name || '',
-            phone: b.phone || '',
+            customer_name: p.client_name || p.name || '',
+            phone: b.phone || p.phone || p.client_phone || '',
             country: b.country || DEFAULT_COUNTRY,
-            email: b.email || '',
+            email: b.email || p.email || p.client_email || '',
             destination: p.destination || '',
             start_date: p.start_date || '',
             end_date: p.end_date || '',
@@ -114,6 +160,8 @@ export const useProposalStore = create((set, get) => ({
           costingPrefs: { ...get().costingPrefs, ...(p.preferences?.costing || {}) },
           status: 'idle'
         });
+      } else {
+        set({ status: 'idle' });
       }
     } catch (error) {
       console.error('Failed to load proposal', error);
@@ -128,7 +176,7 @@ export const useProposalStore = create((set, get) => ({
     const travelers = (parseInt(c.num_adults, 10) || 0) + (parseInt(c.num_children, 10) || 0);
     return {
       client_id: c.client_id || c.id || proposal?.client_id || null,
-      name: c.destination ? `${c.destination} — ${c.customer_name || 'Trip'}` : (c.customer_name || 'Untitled Proposal'),
+      name: proposal?.name || (c.destination ? `${c.destination}${c.tour_type ? ' ' + c.tour_type : ' Itinerary'}` : 'Travel Proposal'),
       client_name: c.customer_name || 'New Client',
       destination: c.destination || null,
       start_date: c.date_mode === 'dates' ? (c.start_date || null) : null,

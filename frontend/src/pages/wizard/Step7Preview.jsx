@@ -12,6 +12,7 @@ import { api } from '../../services/api.js';
 import InlineStudioPopover from '../../components/common/InlineStudioPopover.jsx';
 import { upsertClientFromProposal } from '../../services/crmService.js';
 import { createProposal, updateProposal } from '../../services/proposalService.js';
+import SmartContactCaptureModal from '../../components/common/SmartContactCaptureModal.jsx';
 
 function A4Preview({ children, style = 'classic', isInteractiveStudio, onStudioClick }) {
   const themeBg = THEMES[style]?.bg || '#ffffff';
@@ -84,6 +85,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
   const [newCustom, setNewCustom] = useState({ label: '', type: 'text', content: '' });
   const [isInteractiveStudio, setIsInteractiveStudio] = useState(false);
   const [studioTarget, setStudioTarget] = useState(null);
+  const [smartContact, setSmartContact] = useState(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -342,7 +344,13 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           const created = await createProposal({ ...payload, status: 'Proposal Sent' });
           pStore.setActiveId(created.id);
         }
-        await upsertClientFromProposal({ ...proposal, status: 'Proposal Sent', name: proposalName || proposalId });
+        await upsertClientFromProposal({
+          ...pStore.client,
+          ...proposal,
+          ...payload,
+          status: 'Proposal Sent',
+          name: proposalName || proposal?.name || proposalId
+        });
       } catch (err) {
         console.warn('Sync error after PDF generation:', err);
       }
@@ -401,9 +409,14 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           AI Auto-Title
         </button>
 
-        <button type="button" onClick={() => { setIsInteractiveStudio(!isInteractiveStudio); setDesignStudioOpen(true); }} data-testid="open-design-studio"
-          className={`px-lg py-md border rounded-lg font-label-md flex items-center gap-xs shadow-sm ml-auto transition-all ${isInteractiveStudio ? 'bg-primary text-white font-bold border-primary shadow-lg animate-pulse' : 'bg-primary/10 text-primary border-primary/30 hover:bg-primary/20'}`}>
-          <span className="material-symbols-outlined text-[18px]">palette</span> {isInteractiveStudio ? '✨ Interactive Studio Active' : 'Design Studio (Colors, Texts & Images)'}
+        <button type="button" onClick={() => setDesignStudioOpen(true)} data-testid="open-design-studio"
+          className="px-lg py-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 rounded-lg font-label-md flex items-center gap-xs shadow-sm ml-auto transition-all">
+          <span className="material-symbols-outlined text-[18px]">palette</span> 🎨 Brand & Design Studio
+        </button>
+
+        <button type="button" onClick={() => setIsInteractiveStudio(!isInteractiveStudio)} data-testid="toggle-wysiwyg"
+          className={`px-lg py-md border rounded-lg font-label-md flex items-center gap-xs shadow-sm transition-all ${isInteractiveStudio ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-lg animate-pulse' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'}`}>
+          <span className="material-symbols-outlined text-[18px]">edit_document</span> {isInteractiveStudio ? '✨ WYSIWYG Active (Click Text to Edit)' : '✨ WYSIWYG Live Editor'}
         </button>
 
         <button type="button" onClick={() => setExportOpen(true)} data-testid="open-export-modal"
@@ -414,6 +427,42 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           className="px-lg py-md bg-surface-container hover:bg-surface-container-high text-on-surface rounded-lg font-label-md flex items-center gap-xs border border-outline-variant shadow-sm transition-all">
           <span className="material-symbols-outlined text-[18px]">bookmark_add</span>
           Save Template
+        </button>
+
+        <button type="button" onClick={() => {
+          incrementAnalytics('whatsapp', proposalId);
+          setSmartContact({
+            mode: 'whatsapp',
+            initialPhone: proposal?.client_phone || proposal?.phone || proposal?.brief?.phone || '',
+            initialEmail: proposal?.client_email || proposal?.email || proposal?.brief?.email || '',
+            clientName: proposal?.client_name || proposalName || 'Client',
+            clientId: proposal?.client_id || null,
+            proposalId: proposalId || proposal?.id,
+            proposalObj: proposal,
+            shareText: `Hi! Here is the travel proposal for ${proposalName || 'your trip'}. View and approve it here: ${window.location.origin}/proposals/wizard?id=${encodeURIComponent(proposalId || proposal?.id)}&step=7`,
+            shareSubject: `Travel Proposal: ${proposalName || 'Your Trip'}`
+          });
+        }} className="px-lg py-md bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/30 rounded-lg font-label-md flex items-center gap-xs font-bold shadow-sm transition-all">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+          Share WA
+        </button>
+
+        <button type="button" onClick={() => {
+          incrementAnalytics('email', proposalId);
+          setSmartContact({
+            mode: 'email',
+            initialPhone: proposal?.client_phone || proposal?.phone || proposal?.brief?.phone || '',
+            initialEmail: proposal?.client_email || proposal?.email || proposal?.brief?.email || '',
+            clientName: proposal?.client_name || proposalName || 'Client',
+            clientId: proposal?.client_id || null,
+            proposalId: proposalId || proposal?.id,
+            proposalObj: proposal,
+            shareText: `Hi! Here is the travel proposal for ${proposalName || 'your trip'}. View and approve it here: ${window.location.origin}/proposals/wizard?id=${encodeURIComponent(proposalId || proposal?.id)}&step=7`,
+            shareSubject: `Travel Proposal: ${proposalName || 'Your Trip'}`
+          });
+        }} className="px-lg py-md bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 border border-blue-500/30 rounded-lg font-label-md flex items-center gap-xs font-bold shadow-sm transition-all">
+          <span className="material-symbols-outlined text-[18px]">mail</span>
+          Share Email
         </button>
         <button type="button" onClick={onGeneratePdf} disabled={generating || !isHealthy} data-testid="generate-pdf"
           title={!isHealthy ? 'Backend API or PDF service unreachable' : 'Generate and download A4 PDF'}
@@ -667,6 +716,14 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           </div>
         </div>
       , document.body)}
+
+      {smartContact && (
+        <SmartContactCaptureModal
+          isOpen={true}
+          onClose={() => setSmartContact(null)}
+          {...smartContact}
+        />
+      )}
     </div>
   );
 }

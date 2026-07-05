@@ -40,6 +40,20 @@ export default function EditorialTemplate(props) {
   const logoUrl = safeText(b.logo_url || '');
   const agencyName = safeText(b.agency_name || 'Voyanta Travel');
   const clientName = safeText(brief.client_name || p.client_name || 'Valued Client');
+  const rawTitle = safeText(p.name || p.destination || 'Exclusive Journey')
+    .replace(new RegExp(`\\s*[—\\-]\\s*${clientName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), '')
+    .replace(new RegExp(`\\s*[—\\-]\\s*${(p.client_name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), '')
+    .trim();
+
+  const startDate = brief.start_date || p.start_date;
+  const endDate = brief.end_date || p.end_date;
+  const dateRangeStr = (startDate && endDate) 
+    ? `${new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} — ${new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    : (startDate ? new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Flexible / Open Dates');
+
+  const adultsNum = brief.num_adults ?? brief.adults ?? p.adults ?? travelers;
+  const childrenNum = brief.num_children ?? brief.children ?? p.children ?? 0;
+  const partySizeStr = childrenNum > 0 ? `${travelers} Persons (${adultsNum} Adults, ${childrenNum} Children)` : `${travelers} Person${travelers === 1 ? '' : 's'}`;
 
   return (
     <div className="template-editorial w-full min-h-screen">
@@ -61,18 +75,26 @@ export default function EditorialTemplate(props) {
           </div>
 
           <div className="editorial-cover-content my-auto max-w-2xl">
-            <h1 className="editorial-title m-0">{safeText(p.name || p.destination || 'Exclusive Journey')}</h1>
+            <h1 className="editorial-title m-0">{rawTitle || 'Exclusive Journey'}</h1>
             <p className="text-xl font-light opacity-90 mt-2 mb-6">
-              Tailored specifically for <strong className="font-bold">{clientName}</strong> &middot; {travelers} Traveller{travelers > 1 ? 's' : ''}
+              Tailored specifically for <strong className="font-bold">{clientName}</strong> &middot; {partySizeStr}
             </p>
-            <div className="flex gap-6 text-sm font-semibold tracking-wider uppercase border-t border-white/20 pt-6">
+            <div className="flex flex-wrap gap-6 text-sm font-semibold tracking-wider uppercase border-t border-white/20 pt-6">
               <div>
                 <span className="block text-xs opacity-60">Destination</span>
                 <span>{safeText(p.destination || 'Various')}</span>
               </div>
               <div>
+                <span className="block text-xs opacity-60">Travel Dates</span>
+                <span className="normal-case">{dateRangeStr}</span>
+              </div>
+              <div>
                 <span className="block text-xs opacity-60">Duration</span>
                 <span>{days.length > 0 ? `${days.length} Days` : 'Custom'}</span>
+              </div>
+              <div>
+                <span className="block text-xs opacity-60">No. of Persons</span>
+                <span>{partySizeStr}</span>
               </div>
               {total > 0 && (
                 <div>

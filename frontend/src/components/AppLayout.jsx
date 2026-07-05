@@ -8,6 +8,7 @@ const navItems = [
   { path: '/proposals/wizard', icon: 'add_box', label: 'New Proposal' },
   { path: '/proposals', icon: 'folder_open', label: 'Proposals' },
   { path: '/crm', icon: 'groups', label: 'Clients (CRM)' },
+  { path: '/invoices', icon: 'account_balance_wallet', label: 'Invoices & Billing' },
   { path: '/templates', icon: 'description', label: 'Templates' },
   { path: '/libraries/hotels', icon: 'hotel', label: 'Hotels' },
   { path: '/flights', icon: 'flight', label: 'Flights' },

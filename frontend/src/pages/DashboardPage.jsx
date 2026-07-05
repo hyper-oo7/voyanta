@@ -7,6 +7,9 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { getAnalyticsStats } from '../services/analyticsService.js';
 import { fetchDashboardSummary } from '../services/dashboardService.js';
 import { getActivityLogs } from '../services/activityLogService.js';
+import { fetchInvoices } from '../services/invoiceService.js';
+import { fetchClients } from '../services/crmService.js';
+import { TEMPLATE_LIST } from '../templates/registry.js';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -20,6 +23,9 @@ export default function DashboardPage() {
   const [showDestModal, setShowDestModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [analyticsVersion, setAnalyticsVersion] = useState(0);
+  const [totalInvoicesCount, setTotalInvoicesCount] = useState(0);
+  const [invoicesList, setInvoicesList] = useState([]);
+  const [crmClientsCount, setCrmClientsCount] = useState(0);
   
   // Server-side dashboard stats
   const [serverStats, setServerStats] = useState(null);
@@ -39,6 +45,13 @@ export default function DashboardPage() {
     }).catch(console.warn);
 
     getAnalyticsStats(proposals).then(setAnalytics).catch(console.warn);
+    fetchInvoices().then(list => {
+      setInvoicesList(list || []);
+      setTotalInvoicesCount((list || []).length);
+    }).catch(() => {});
+    fetchClients().then(res => {
+      setCrmClientsCount(res?.count || (res?.data || []).length || 0);
+    }).catch(() => {});
   }, [analyticsVersion, proposals]);
 
   useEffect(() => {
@@ -56,12 +69,35 @@ export default function DashboardPage() {
   const loading = loadingProposals;
   const safeProposalsList = Array.isArray(proposals) ? proposals : [];
 
-  // Use server-side counts if available, otherwise client-side
-  const totalProposals = serverStats?.totalProposals ?? safeProposalsList.length;
-  const totalTemplates = serverStats?.totalTemplates ?? 0;
-  const activeClients = serverStats?.activeClients ?? new Set(
+  // Compute accurate KPI counts
+  const totalProposals = Math.max(serverStats?.totalProposals || 0, safeProposalsList.length);
+  const totalTemplates = TEMPLATE_LIST.length;
+  const uniqueProposalClients = new Set(
     safeProposalsList.map((p) => (p.client_name || p.client || '').trim().toLowerCase()).filter(Boolean)
   ).size;
+  const activeClients = Math.max(serverStats?.activeClients || 0, crmClientsCount, uniqueProposalClients);
+
+  // Compute Approvals: approved/booked proposals + invoices (sent/partially paid/paid) minus cancelled
+  const approvedProposalsCount = safeProposalsList.filter(p => ['Approved', 'Booked'].includes(p.status)).length;
+  const validInvoicesCount = invoicesList.filter(i => ['Sent', 'Partially Paid', 'Paid'].includes(i.status)).length;
+  const cancelledInvoicesCount = invoicesList.filter(i => i.status === 'Cancelled').length;
+  const totalApprovalsMetric = Math.max(0, (analytics.totalApprovals || 0) + approvedProposalsCount + validInvoicesCount - cancelledInvoicesCount);
+
+  const getMostFreqDest = (list) => {
+    const counts = {};
+    let max = 0, top = 'None yet';
+    list.forEach(item => {
+      const d = (item.destination || '').trim();
+      if (d && d !== 'Concierge Travel Package' && d !== 'Custom Travel Package') {
+        counts[d] = (counts[d] || 0) + 1;
+        if (counts[d] > max) { max = counts[d]; top = d; }
+      }
+    });
+    return top;
+  };
+  const mostSentDestComputed = analytics.mostSentDest !== 'None yet' ? analytics.mostSentDest : getMostFreqDest([...safeProposalsList, ...invoicesList]);
+  const mostApprovedDestComputed = analytics.mostApprovedDest !== 'None yet' ? analytics.mostApprovedDest : getMostFreqDest(safeProposalsList.filter(p => ['Approved', 'Booked'].includes(p.status)));
+  const mostModifiedDestComputed = analytics.mostModifiedDest !== 'None yet' ? analytics.mostModifiedDest : getMostFreqDest(safeProposalsList.filter(p => p.status === 'Revision Requested'));
 
   const filteredProposals = safeProposalsList.filter(p => {
     if (!searchQuery) return true;
@@ -100,10 +136,11 @@ export default function DashboardPage() {
       </div>
 
       {/* Top Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-lg">
         <StatCard title="TOTAL PROPOSALS" value={loading ? "..." : totalProposals} icon="folder" onClick={() => navigate('/proposals')} />
         <StatCard title="TOTAL TEMPLATES" value={loading ? "..." : totalTemplates} icon="description" onClick={() => navigate('/templates')} />
-        <StatCard title="NO OF CLIENTS" value={loading ? "..." : activeClients} icon="person" />
+        <StatCard title="NO OF CLIENTS" value={loading ? "..." : activeClients} icon="person" onClick={() => navigate('/crm')} />
+        <StatCard title="INVOICES & REVENUE" value={loading ? "..." : totalInvoicesCount} icon="account_balance_wallet" onClick={() => navigate('/invoices')} />
       </div>
 
       {/* Engagement & Analytics Grid - Generation */}
@@ -111,15 +148,15 @@ export default function DashboardPage() {
         <MiniStatCard title="PDF DOWNLOADS" value={analytics.totalDownloads} icon="download" color="text-blue-500 bg-blue-500/10" />
         <MiniStatCard title="SHARES (WA / GMAIL)" value={analytics.totalWhatsapp + analytics.totalEmail} subtitle={`${analytics.totalWhatsapp} WA · ${analytics.totalEmail} Email`} icon="share" color="text-emerald-500 bg-emerald-500/10" />
         <MiniStatCard title="TOTAL ENGAGEMENT" value={analytics.totalEngagement} subtitle="PDFs + Emails + WA" icon="monitoring" color="text-purple-500 bg-purple-500/10" />
-        <MiniStatCard title="MOST SENT DEST." value={analytics.mostSentDest} subtitle="Click for Breakdown" icon="location_on" color="text-amber-500 bg-amber-500/10" isText onClick={() => setShowDestModal(true)} />
+        <MiniStatCard title="MOST SENT DEST." value={mostSentDestComputed} subtitle="Click for Breakdown" icon="location_on" color="text-amber-500 bg-amber-500/10" isText onClick={() => setShowDestModal(true)} />
       </div>
 
       {/* Client Action & Plan Insights */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-lg">
-        <MiniStatCard title="NO OF APPROVALS" value={analytics.totalApprovals} subtitle="Client Plan Approvals" icon="check_circle" color="text-teal-500 bg-teal-500/10" />
+        <MiniStatCard title="NO OF APPROVALS" value={totalApprovalsMetric} subtitle="Client Plan Approvals" icon="check_circle" color="text-teal-500 bg-teal-500/10" />
         <MiniStatCard title="NO OF MODIFICATIONS" value={analytics.totalModifications} subtitle="Client Change Requests" icon="edit_note" color="text-rose-500 bg-rose-500/10" />
-        <MiniStatCard title="MOST APPROVED DEST." value={analytics.mostApprovedDest} subtitle="Top Approved Plan" icon="thumb_up" color="text-indigo-500 bg-indigo-500/10" isText onClick={() => setShowDestModal(true)} />
-        <MiniStatCard title="MOST MODIFIED DEST." value={analytics.mostModifiedDest} subtitle="Top Modified Plan" icon="rate_review" color="text-orange-500 bg-orange-500/10" isText onClick={() => setShowDestModal(true)} />
+        <MiniStatCard title="MOST APPROVED DEST." value={mostApprovedDestComputed} subtitle="Top Approved Plan" icon="thumb_up" color="text-indigo-500 bg-indigo-500/10" isText onClick={() => setShowDestModal(true)} />
+        <MiniStatCard title="MOST MODIFIED DEST." value={mostModifiedDestComputed} subtitle="Top Modified Plan" icon="rate_review" color="text-orange-500 bg-orange-500/10" isText onClick={() => setShowDestModal(true)} />
       </div>
 
       {/* Main Grid */}

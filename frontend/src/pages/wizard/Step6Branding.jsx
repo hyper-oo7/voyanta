@@ -353,6 +353,23 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
         </div>
       )}
 
+      {/* Invoice & UPI Payment Linkage Banner */}
+      <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 flex items-center justify-between gap-4 mt-6">
+        <div className="flex items-center gap-3">
+          <span className="material-symbols-outlined text-primary text-2xl">receipt_long</span>
+          <div>
+            <h5 className="text-xs font-bold text-on-surface m-0">Invoicing & UPI Payment Sync Active</h5>
+            <p className="text-[11px] text-on-surface-variant m-0">
+              Agency logo, primary colors, and UPI Pay Now VPA (`{branding?.upi_id || 'voyantatravel@okaxis'}`) are synchronized with your Settings for instant invoice generation.
+            </p>
+          </div>
+        </div>
+        <a href="/settings" target="_blank" rel="noreferrer" className="text-xs font-bold text-primary hover:underline flex items-center gap-1 flex-shrink-0">
+          <span>Edit Billing Settings</span>
+          <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+        </a>
+      </div>
+
       <p className="font-label-sm text-on-surface-variant">Branding is stored on this proposal and used in the preview & export. Defaults are inherited from your Agency Branding page.</p>
     </div>
   );

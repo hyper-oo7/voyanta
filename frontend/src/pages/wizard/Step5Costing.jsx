@@ -82,53 +82,7 @@ export function Step5Costing({ proposal, setProposal, proposalId, items, setItem
   const itemsRef = useRef(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
 
-  useEffect(() => {
-    const days = proposal?.itinerary?.days;
-    if (!Array.isArray(days) || !addItemsOptimistic) return;
-    const currentItems = itemsRef.current || [];
-    const currentRefIds = new Set(currentItems.map(it => String(it.ref_id || '')).filter(Boolean));
-    const currentLabels = new Set(currentItems.map(it => String(it.label || '').toLowerCase().trim()).filter(Boolean));
-    const harvested = [];
 
-    days.forEach((dayObj, idx) => {
-      const dayNum = dayObj.day || idx + 1;
-      if (Array.isArray(dayObj.content)) {
-        dayObj.content.forEach((block) => {
-          if (!block || !block.type || !block.data) return;
-          const k = block.type.toLowerCase();
-          if (['hotel', 'flight', 'activity', 'transfer', 'meals', 'custom'].includes(k)) {
-            const raw = block.data.rawItem || {};
-            const refId = String(raw.id || block.data.id || block.id || '');
-            const label = String(block.data.name || raw.name || `${raw.airline || 'Flight'} ${raw.flight_no || ''}`.trim() || `${k.toUpperCase()} Item`).trim();
-            const lowerLabel = label.toLowerCase();
-
-            if (refId ? !currentRefIds.has(refId) : !currentLabels.has(lowerLabel)) {
-              if (refId) currentRefIds.add(refId);
-              if (lowerLabel) currentLabels.add(lowerLabel);
-              const price = cleanPrice(
-                raw.price_per_night ?? raw.price ?? raw.cost ?? raw.rate ?? raw.unit_price ?? raw.amount ??
-                block.data.price ?? block.data.price_per_night ?? block.data.rate ?? block.data.cost ?? block.data.unit_price ?? block.data.amount ??
-                0
-              );
-              harvested.push({
-                kind: k,
-                ref_id: refId || crypto.randomUUID(),
-                label: label,
-                qty: k === 'hotel' ? 1 : ((proposal?.travelers || 1)),
-                unit_price: price,
-                currency: raw.currency || proposalCurrency || 'INR',
-                meta: { source: `${k}s`, day: dayNum, details: block.data.details || '' }
-              });
-            }
-          }
-        });
-      }
-    });
-
-    if (harvested.length > 0) {
-      addItemsOptimistic(harvested).catch(() => {});
-    }
-  }, [proposal?.itinerary?.days, addItemsOptimistic, proposal?.travelers, proposalCurrency]);
 
   const rawTotal = useMemo(() => items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0), [items]);
   

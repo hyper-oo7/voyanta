@@ -6,11 +6,24 @@ import StatBadge from '../utility/StatBadge.jsx';
  * Supports 5 variants: full-bleed-cinematic, split-screen, minimal-text, collage-hero, editorial-cover
  */
 export default function HeroBanner({ proposal = {}, theme = {}, variant = 'full-bleed-cinematic', items = [] }) {
-  const name = proposal.name || proposal.title || 'Exclusive Travel Proposal';
   const clientName = proposal.client_name || proposal.client || proposal.preferences?.branding?.client_name || '';
+  const name = (proposal.name || proposal.title || 'Exclusive Travel Proposal')
+    .replace(new RegExp(`\\s*[—\\-]\\s*${clientName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), '')
+    .trim() || 'Exclusive Travel Proposal';
   const dest = proposal.destination || 'Selected Destinations';
   const days = proposal.duration_days || proposal.days || 7;
   const nights = days > 1 ? days - 1 : 1;
+
+  const startDate = proposal.start_date || proposal.brief?.start_date;
+  const endDate = proposal.end_date || proposal.brief?.end_date;
+  const dateRangeStr = (startDate && endDate) 
+    ? `${new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} — ${new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    : (startDate ? new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null);
+
+  const travelers = proposal.travelers || 1;
+  const adultsNum = proposal.num_adults ?? proposal.adults ?? travelers;
+  const childrenNum = proposal.num_children ?? proposal.children ?? 0;
+  const partySizeStr = childrenNum > 0 ? `${travelers} Persons (${adultsNum} Adults, ${childrenNum} Children)` : `${travelers} Person${travelers === 1 ? '' : 's'}`;
 
   // Find a good hero image from proposal or theme defaults
   const customHero = proposal.preferences?.branding?.hero_image || proposal.hero_image || proposal.cover_image;
@@ -30,7 +43,9 @@ export default function HeroBanner({ proposal = {}, theme = {}, variant = 'full-
         <div className="md:w-1/2 p-10 md:p-16 flex flex-col justify-center relative z-10" style={{ backgroundColor: theme.colors?.background }}>
           <div className="mb-6 flex flex-wrap gap-2">
             <StatBadge label={dest} icon="location_on" theme={theme} />
+            {dateRangeStr && <StatBadge label={dateRangeStr} icon="calendar_today" theme={theme} />}
             <StatBadge label={`${days} Days / ${nights} Nights`} icon="calendar_month" theme={theme} variant="square" />
+            <StatBadge label={partySizeStr} icon="group" theme={theme} />
           </div>
           <h1 
             className="text-4xl md:text-6xl font-bold font-serif mb-6 leading-tight" 
@@ -62,7 +77,7 @@ export default function HeroBanner({ proposal = {}, theme = {}, variant = 'full-
       <section className="py-20 md:py-32 px-8 md:px-16 text-center w-full relative" style={{ backgroundColor: theme.colors?.background }}>
         <div className="max-w-4xl mx-auto">
           <div className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase mb-6" style={{ backgroundColor: theme.colors?.surfaceAlt, color: accentColor }}>
-            {dest} • {days} Days
+            {dest} • {dateRangeStr ? `${dateRangeStr} • ` : ''}{days} Days • {partySizeStr}
           </div>
           <h1 
             className="text-5xl md:text-7xl font-bold mb-8 leading-tight tracking-tight" 
@@ -88,9 +103,11 @@ export default function HeroBanner({ proposal = {}, theme = {}, variant = 'full-
         <img src={imgUrl} alt={dest} className="absolute inset-0 w-full h-full object-cover z-0" />
         <div className="absolute inset-0 z-10" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 40%, rgba(0,0,0,0.9) 100%)' }} />
         
-        <div className="relative z-20 flex justify-between items-center border-b border-white/20 pb-6">
+        <div className="relative z-20 flex flex-wrap justify-between items-center border-b border-white/20 pb-6 gap-4">
           <span className="text-sm tracking-widest uppercase font-mono">{dest}</span>
+          {dateRangeStr && <span className="text-sm tracking-widest font-mono">📅 {dateRangeStr}</span>}
           <span className="text-sm tracking-widest uppercase font-mono">{days} Days / {nights} Nights</span>
+          <span className="text-sm tracking-widest uppercase font-mono">👥 {partySizeStr}</span>
         </div>
 
         <div className="relative z-20 my-auto py-12 text-center max-w-5xl mx-auto">
@@ -171,8 +188,16 @@ export default function HeroBanner({ proposal = {}, theme = {}, variant = 'full-
           <span className="px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase bg-white/20 backdrop-blur-md text-white border border-white/30">
             {dest}
           </span>
+          {dateRangeStr && (
+            <span className="px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest bg-white/20 backdrop-blur-md text-white border border-white/30">
+              📅 {dateRangeStr}
+            </span>
+          )}
           <span className="px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase bg-black/40 backdrop-blur-md text-white border border-white/20">
             {days} Days / {nights} Nights
+          </span>
+          <span className="px-4 py-1.5 rounded-full text-xs font-semibold tracking-widest uppercase bg-amber-500/30 backdrop-blur-md text-white border border-amber-400/30">
+            👥 {partySizeStr}
           </span>
         </div>
 

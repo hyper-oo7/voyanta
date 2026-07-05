@@ -520,9 +520,130 @@ function BrandingSettings() {
           <label className="block text-sm font-medium text-on-surface-variant mb-1">Default Terms of Payment</label>
           <textarea rows="3" value={safeStr(current.terms_of_payment)} onChange={upd('terms_of_payment')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
         </div>
+
+        {/* Billing, Invoicing & UPI Payment Configuration */}
+        <div className="pt-4 border-t border-outline-variant">
+          <h4 className="text-lg font-serif font-bold text-on-surface mb-3 flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">account_balance_wallet</span>
+            Invoicing, UPI Payment & Billing Settings
+          </h4>
+          <p className="text-xs text-on-surface-variant mb-4">
+            These settings link directly with your proposal branding and automatically populate all generated invoices and receipts.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">UPI ID / VPA (For Instant Payments)</label>
+              <input
+                type="text"
+                placeholder="e.g. voyantatravel@okaxis or 9876543210@upi"
+                value={safeStr(current.upi_id)}
+                onChange={upd('upi_id')}
+                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-mono"
+              />
+              <span className="text-[10px] text-on-surface-variant/70 mt-0.5 block">Used for generating direct "Pay Now" UPI deep links & verification QR codes.</span>
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">UPI Payee Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Voyanta Luxury Travel"
+                value={safeStr(current.upi_payee_name || current.agency_name)}
+                onChange={upd('upi_payee_name')}
+                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Invoice Numbering Format</label>
+              <select
+                value={current.invoice_number_format || 'INV-000001'}
+                onChange={upd('invoice_number_format')}
+                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-medium"
+              >
+                <option value="INV-000001">INV-000001 (Recommended Standard)</option>
+                <option value="2026-00054">2026-00054 (Yearly Sequence)</option>
+                <option value="VOY-DEL-1045">VOY-DEL-1045 (Agency Prefix)</option>
+                <option value="CUSTOM">CUSTOM (Type Custom Prefix Below)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Custom Invoice Prefix & Next No.</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Prefix (e.g. INV- or MYAGENCY-)"
+                  value={safeStr(current.invoice_custom_prefix || (current.invoice_number_format === 'CUSTOM-0001' || current.invoice_number_format === 'CUSTOM' ? 'INV-' : current.invoice_number_format ? current.invoice_number_format.split('-')[0] + '-' : 'INV-'))}
+                  onChange={upd('invoice_custom_prefix')}
+                  className="w-2/3 px-3 py-2 border border-outline rounded-lg bg-white text-sm font-mono font-bold text-primary"
+                />
+                <input
+                  type="number"
+                  placeholder="Next #"
+                  value={current.invoice_next_sequence || 1}
+                  onChange={upd('invoice_next_sequence')}
+                  className="w-1/3 px-3 py-2 border border-outline rounded-lg bg-white text-sm font-mono font-bold text-center"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Default Currency</label>
+              <select
+                value={current.default_currency || 'INR'}
+                onChange={upd('default_currency')}
+                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-bold text-primary"
+              >
+                <option value="INR">₹ INR - Indian Rupee (Recommended Default)</option>
+                <option value="USD">$ USD - US Dollar</option>
+                <option value="EUR">€ EUR - Euro</option>
+                <option value="GBP">£ GBP - British Pound</option>
+                <option value="AUD">$ AUD - Australian Dollar</option>
+                <option value="CAD">$ CAD - Canadian Dollar</option>
+                <option value="AED">AED - UAE Dirham</option>
+                <option value="SGD">$ SGD - Singapore Dollar</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Default Tax Rate (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="50"
+                step="0.5"
+                placeholder="e.g. 5 for GST 5%"
+                value={safeStr(current.default_tax_rate !== undefined ? current.default_tax_rate : 5)}
+                onChange={upd('default_tax_rate')}
+                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Invoice Default Notes</label>
+              <input
+                type="text"
+                placeholder="e.g. Thank you for booking with Voyanta Concierge."
+                value={safeStr(current.invoice_default_notes)}
+                onChange={upd('invoice_default_notes')}
+                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm"
+              />
+            </div>
+            <div className="md:col-span-2 pt-2 border-t border-outline-variant/40">
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Authentic Payment / UPI QR Code Image</label>
+              <p className="text-xs text-on-surface-variant mb-2">Upload your official agency Bank or UPI payment QR code image. This authentic QR code will be embedded directly on all generated invoices and receipts.</p>
+              <div className="max-w-xs">
+                <ImageUploadInput
+                  label="Upload Payment QR Code"
+                  value={safeStr(current.payment_qr_code || localStorage.getItem('voyanta_payment_qr_code') || '')}
+                  onChange={(val) => {
+                    setForm(s => ({ ...(s || settings || {}), payment_qr_code: val }));
+                    try { localStorage.setItem('voyanta_payment_qr_code', val || ''); } catch {}
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="pt-4">
           <button onClick={() => mutation.mutate(current)} disabled={mutation.isPending} className="px-6 py-2 bg-primary text-on-primary rounded-lg font-medium shadow-md hover:bg-primary/90 transition-colors disabled:opacity-50">
-            {mutation.isPending ? 'Saving...' : 'Save Brand Guidelines'}
+            {mutation.isPending ? 'Saving...' : 'Save Brand Guidelines & Billing Settings'}
           </button>
         </div>
       </div>

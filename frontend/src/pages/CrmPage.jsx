@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { fetchClients, createClient, updateClient, deleteClient, TRIP_STATUSES } from '../services/crmService.js';
 import { useNavigate } from 'react-router-dom';
+import { Client360Modal } from '../components/crm/Client360Modal.jsx';
 
 export default function CrmPage() {
   const toast = useToast();
@@ -18,6 +19,7 @@ export default function CrmPage() {
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
+  const [client360, setClient360] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -42,6 +44,13 @@ export default function CrmPage() {
 
   useEffect(() => {
     loadClients();
+    const handleUpdate = () => loadClients();
+    window.addEventListener('voyanta:crm-updated', handleUpdate);
+    window.addEventListener('focus', handleUpdate);
+    return () => {
+      window.removeEventListener('voyanta:crm-updated', handleUpdate);
+      window.removeEventListener('focus', handleUpdate);
+    };
   }, [loadClients]);
 
   // Client search filtering on current page or re-querying
@@ -247,7 +256,16 @@ export default function CrmPage() {
                           {(client.name || 'C').charAt(0)}
                         </div>
                         <div>
-                          <p className="font-bold text-sm text-on-surface m-0 leading-tight">{client.name}</p>
+                          <button
+                            type="button"
+                            onClick={() => setClient360(client)}
+                            className="font-bold text-sm text-on-surface hover:text-primary transition-colors text-left flex items-center gap-1.5 m-0 leading-tight group/link"
+                          >
+                            <span className="group-hover/link:underline">{client.name}</span>
+                            <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full uppercase tracking-wider font-extrabold flex items-center gap-0.5" title="Open Client 360 & Invoices">
+                              ⚡ 360°
+                            </span>
+                          </button>
                           <span className="text-[10px] font-mono text-on-surface-variant/70 uppercase tracking-wider mt-0.5 block">
                             Added {new Date(client.created_at || Date.now()).toLocaleDateString()}
                           </span>
@@ -298,6 +316,15 @@ export default function CrmPage() {
                     </td>
                     <td className="py-4 px-6 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setClient360(client)}
+                          className="px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-on-primary font-bold text-[11px] transition-colors flex items-center gap-1 shadow-xs mr-1"
+                          title="View Client 360 & Invoices"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">receipt_long</span>
+                          <span>Invoices</span>
+                        </button>
                         <button
                           onClick={() => handleOpenEdit(client)}
                           className="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors"
@@ -478,6 +505,15 @@ export default function CrmPage() {
           </div>
         </div>
       )}
+
+      {/* Client 360 Drawer / Modal */}
+      {client360 && (
+        <Client360Modal
+          client={client360}
+          onClose={() => setClient360(null)}
+        />
+      )}
     </div>
   );
 }
+

@@ -200,22 +200,31 @@ const DEFAULT_SETTINGS = {
 };
 
 export function sanitizeBrandingObject(raw) {
-  if (!raw || typeof raw !== 'object') return {};
+  if (!raw || typeof raw !== 'object') return { custom_fields: [] };
   const cleaned = {};
   for (const k in raw) {
     const val = raw[k];
-    if (k === 'notification_preferences' || k === 'custom_blocks' || k === 'itinerary' || k === 'preferences' || k === 'computed_totals' || k === 'items' || typeof val === 'boolean' || typeof val === 'number') {
-      cleaned[k] = val;
+    if (k === 'custom_fields' || k === 'custom_blocks' || k === 'notification_preferences' || k === 'itinerary' || k === 'preferences' || k === 'computed_totals' || k === 'items' || typeof val === 'boolean' || typeof val === 'number') {
+      if ((k === 'custom_fields' || k === 'custom_blocks') && !Array.isArray(val)) {
+        cleaned[k] = [];
+      } else {
+        cleaned[k] = val;
+      }
       continue;
     }
     if (Array.isArray(val)) {
-      cleaned[k] = val.map(item => typeof item === 'object' && item !== null ? (item.url || item.src || item.text || item.label || JSON.stringify(item)) : String(item ?? '')).join('\n');
+      if (val.some(i => typeof i === 'object' && i !== null)) {
+        cleaned[k] = val;
+      } else {
+        cleaned[k] = val.map(item => String(item ?? '')).join('\n');
+      }
     } else if (val && typeof val === 'object') {
       cleaned[k] = String(val.url || val.src || val.image_url || val.text || val.content || val.label || JSON.stringify(val) || '');
     } else {
       cleaned[k] = val ?? '';
     }
   }
+  if (!Array.isArray(cleaned.custom_fields)) cleaned.custom_fields = [];
   return cleaned;
 }
 

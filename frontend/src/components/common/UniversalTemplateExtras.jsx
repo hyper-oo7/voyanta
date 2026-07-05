@@ -52,7 +52,7 @@ export default function UniversalTemplateExtras({ proposal = {}, branding = {}, 
       })}
 
       {/* 2. Custom Branding Fields (Text, Checklist, Image) */}
-      {branding?.custom_fields && branding.custom_fields.length > 0 && (
+      {Array.isArray(branding?.custom_fields) && branding.custom_fields.length > 0 && (
         <div className="editorial-section break-inside-avoid page-break-inside-avoid px-[14mm] py-8 my-8 text-center border-y" style={{ borderColor: accentColor + '30', backgroundColor: bgColor }}>
           <h3 className="text-xs uppercase tracking-[0.25em] font-bold opacity-60 mb-6 block" style={{ color: primaryColor, fontFamily: fontSubhead }}>
             Agency Accreditations & Brand Specifications

@@ -11,6 +11,7 @@ import { incrementAnalytics } from '../services/analyticsService.js';
 import { logActivity } from '../services/activityLogService.js';
 import { getAgencyId } from '../lib/supabaseClient.js';
 import { api } from '../services/api.js';
+import SmartContactCaptureModal from '../components/common/SmartContactCaptureModal.jsx';
 // Reuse the dashboard's Stitch HTML chrome (sidebar + topbar + table styling)
 // so the new Proposals list page matches the existing design language without
 // touching any styles.
@@ -504,26 +505,13 @@ function Field({ label, value, onChange, readOnly, type = 'text', testid }) {
 }
 
 function ShareModal({ proposal, onClose }) {
-  const [settings, setSettings] = useState(() => {
-    try {
-      const cached = JSON.parse(localStorage.getItem(`voyanta_settings_cache_${getAgencyId()}`) || 'null');
-      return cached || {};
-    } catch { return {}; }
-  });
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    settingsService.get().then(s => setSettings(s || {})).catch(() => {});
-  }, []);
+  const [smartContact, setSmartContact] = useState(null);
 
   const previewUrl = `${window.location.origin}/proposals/wizard?id=${encodeURIComponent(proposal.id)}&step=7`;
   const text = `Hi! Here is the travel proposal for ${proposal.name}. View it here: ${previewUrl}`;
-  const wpNum = settings?.whatsapp_number || '';
-  const wpClean = wpNum.replace(/[^0-9]/g, '');
-  const wpLink = wpClean ? `https://wa.me/${wpClean}?text=${encodeURIComponent(text)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-  
-  const email = settings?.customer_email_notifications || settings?.contact_email || '';
-  const emailLink = `mailto:${email}?subject=${encodeURIComponent(`Travel Proposal: ${proposal.name}`)}&body=${encodeURIComponent(text)}`;
+  const clientPhone = proposal.client_phone || proposal.phone || proposal.brief?.phone || '';
+  const clientEmail = proposal.client_email || proposal.email || proposal.brief?.email || '';
   
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/30 backdrop-blur-sm" onClick={onClose}>
@@ -557,25 +545,59 @@ function ShareModal({ proposal, onClose }) {
             </div>
           </button>
 
-          <a onClick={() => incrementAnalytics('whatsapp', proposal.id)} href={wpLink} target="_blank" rel="noreferrer" className="flex items-center gap-md p-md bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/30 rounded-xl transition-colors no-underline group cursor-pointer">
+          <button
+            type="button"
+            onClick={() => {
+              incrementAnalytics('whatsapp', proposal.id);
+              setSmartContact({
+                mode: 'whatsapp',
+                initialPhone: clientPhone,
+                initialEmail: clientEmail,
+                clientName: proposal.client_name || proposal.name || 'Client',
+                clientId: proposal.client_id || null,
+                proposalId: proposal.id,
+                proposalObj: proposal,
+                shareText: text,
+                shareSubject: `Travel Proposal: ${proposal.name}`
+              });
+            }}
+            className="flex items-center gap-md p-md bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/30 rounded-xl transition-colors w-full text-left cursor-pointer group"
+          >
             <div className="w-10 h-10 bg-[#25D366] text-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
               <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="css-i6dzq1"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
             </div>
             <div>
               <div className="font-label-md font-bold text-on-surface">WhatsApp</div>
-              <div className="font-label-sm text-on-surface-variant">Send directly to client</div>
+              <div className="font-label-sm text-on-surface-variant">Send directly to client number</div>
             </div>
-          </a>
+          </button>
 
-          <a onClick={() => incrementAnalytics('email', proposal.id)} href={emailLink} className="flex items-center gap-md p-md bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-xl transition-colors no-underline group cursor-pointer">
+          <button
+            type="button"
+            onClick={() => {
+              incrementAnalytics('email', proposal.id);
+              setSmartContact({
+                mode: 'email',
+                initialPhone: clientPhone,
+                initialEmail: clientEmail,
+                clientName: proposal.client_name || proposal.name || 'Client',
+                clientId: proposal.client_id || null,
+                proposalId: proposal.id,
+                proposalObj: proposal,
+                shareText: text,
+                shareSubject: `Travel Proposal: ${proposal.name}`
+              });
+            }}
+            className="flex items-center gap-md p-md bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-xl transition-colors w-full text-left cursor-pointer group"
+          >
             <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
               <span className="material-symbols-outlined">mail</span>
             </div>
             <div>
               <div className="font-label-md font-bold text-on-surface">Email</div>
-              <div className="font-label-sm text-on-surface-variant">Compose in default mail app</div>
+              <div className="font-label-sm text-on-surface-variant">Compose in default mail app to client</div>
             </div>
-          </a>
+          </button>
           
           <a href={previewUrl} className="flex items-center gap-md p-md bg-surface-container-low hover:bg-surface-container-high border border-outline-variant rounded-xl transition-colors no-underline group">
             <div className="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-md">
@@ -588,6 +610,14 @@ function ShareModal({ proposal, onClose }) {
           </a>
         </div>
       </div>
+
+      {smartContact && (
+        <SmartContactCaptureModal
+          isOpen={true}
+          onClose={() => setSmartContact(null)}
+          {...smartContact}
+        />
+      )}
     </div>
   );
 }
