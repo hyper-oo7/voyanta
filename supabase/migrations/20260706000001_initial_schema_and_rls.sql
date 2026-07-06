@@ -332,7 +332,7 @@ create table if not exists public.activity_logs (
   action text not null,
   details jsonb,
   entity_type text,
-  entity_id uuid,
+  entity_id text,
   created_at timestamptz default now()
 );
 

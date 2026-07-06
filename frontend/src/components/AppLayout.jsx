@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext.jsx';
 
 const navItems = [
   { path: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
+  { path: '/vault', icon: 'auto_awesome', label: 'MY VAULT', badge: 'AI & RAG' },
   { path: '/proposals/wizard', icon: 'add_box', label: 'New Proposal' },
   { path: '/proposals', icon: 'folder_open', label: 'Proposals' },
   { path: '/crm', icon: 'groups', label: 'Clients (CRM)' },
@@ -110,7 +111,12 @@ export default function AppLayout() {
               }
             >
               <span className="material-symbols-outlined">{item.icon}</span>
-              <span className="font-label-md text-label-md">{item.label}</span>
+              <span className="font-label-md text-label-md flex-1">{item.label}</span>
+              {item.badge && (
+                <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-primary/15 text-primary border border-primary/30">
+                  {item.badge}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

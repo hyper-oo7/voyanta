@@ -10,6 +10,23 @@ export default function ReminderCenterModal({
 }) {
   const toast = useToast();
   const [filter, setFilter] = useState('all'); // 'all' | 'overdue' | 'duesoon'
+  const [checkedReminders, setCheckedReminders] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('voyanta_checked_reminders') || '{}');
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleReminderCheck = (id, forceState = null) => {
+    setCheckedReminders(prev => {
+      const nextVal = forceState !== null ? forceState : !prev[id];
+      const next = { ...prev, [id]: nextVal };
+      try { localStorage.setItem('voyanta_checked_reminders', JSON.stringify(next)); } catch {}
+      try { window.dispatchEvent(new CustomEvent('voyanta:reminders-updated')); } catch {}
+      return next;
+    });
+  };
 
   const { overdue, dueSoon, allReminders } = useMemo(() => {
     const now = new Date();
@@ -138,36 +155,53 @@ export default function ReminderCenterModal({
               const bal = inv.remaining_balance ?? inv.total_amount ?? 0;
               const msgText = buildReminderText(inv);
               const subject = `Urgent Billing Reminder: Invoice #${inv.invoice_number || 'INV'} - Voyanta Travel`;
+              const isChecked = !!checkedReminders[inv.id];
 
               return (
                 <div
                   key={inv.id}
                   className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-800/80 hover:shadow-md ${
+                    isChecked ? 'border-emerald-500/40 bg-emerald-500/[0.04] opacity-80' :
                     isOverdue ? 'border-red-500/30 bg-red-500/[0.02]' : 'border-amber-500/30 bg-amber-500/[0.02]'
                   }`}
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
-                        isOverdue ? 'bg-red-500/10 text-red-600 border border-red-500/20' : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
-                      }`}>
-                        {isOverdue ? `⚠️ Overdue by ${inv.daysDiff} Days` : `⏳ Due in ${inv.daysDiff} Days`}
-                      </span>
-                      <span className="text-xs font-mono font-bold text-slate-500">#{inv.invoice_number || 'INV'}</span>
-                    </div>
-                    <div className="font-bold text-base text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                      {inv.client_name || 'Client Name'}
-                      {inv.client_phone && <span className="text-xs font-normal text-slate-400">({inv.client_phone})</span>}
-                    </div>
-                    <div className="text-xs text-slate-500 flex items-center gap-4">
-                      <span>Due: <strong className="text-slate-700 dark:text-slate-300">{inv.due_date || 'N/A'}</strong></span>
-                      <span>Balance: <strong className="text-red-500 font-display text-sm">{formatPrice(bal, cur)}</strong></span>
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleReminderCheck(inv.id)}
+                      className="mt-1 w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer shrink-0"
+                      title="Check to mark reminder as sent/done"
+                    />
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isChecked && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 flex items-center gap-1">
+                            ✓ Sent / Done
+                          </span>
+                        )}
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
+                          isOverdue ? 'bg-red-500/10 text-red-600 border border-red-500/20' : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                        }`}>
+                          {isOverdue ? `⚠️ Overdue by ${inv.daysDiff} Days` : `⏳ Due in ${inv.daysDiff} Days`}
+                        </span>
+                        <span className="text-xs font-mono font-bold text-slate-500">#{inv.invoice_number || 'INV'}</span>
+                      </div>
+                      <div className="font-bold text-base text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        {inv.client_name || 'Client Name'}
+                        {inv.client_phone && <span className="text-xs font-normal text-slate-400">({inv.client_phone})</span>}
+                      </div>
+                      <div className="text-xs text-slate-500 flex items-center gap-4">
+                        <span>Due: <strong className="text-slate-700 dark:text-slate-300">{inv.due_date || 'N/A'}</strong></span>
+                        <span>Balance: <strong className="text-red-500 font-display text-sm">{formatPrice(bal, cur)}</strong></span>
+                      </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => {
+                        toggleReminderCheck(inv.id, true);
                         if (onTriggerReminder) {
                           onTriggerReminder({
                             mode: 'whatsapp',
@@ -178,7 +212,7 @@ export default function ReminderCenterModal({
                         }
                       }}
                       className="px-3.5 py-2 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/30 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all transform hover:scale-105 active:scale-95 shadow-sm"
-                      title="Send WhatsApp Reminder"
+                      title="Send WhatsApp Reminder (marks as checked)"
                     >
                       <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
                       WhatsApp
@@ -186,6 +220,7 @@ export default function ReminderCenterModal({
 
                     <button
                       onClick={() => {
+                        toggleReminderCheck(inv.id, true);
                         if (onTriggerReminder) {
                           onTriggerReminder({
                             mode: 'email',
@@ -196,7 +231,7 @@ export default function ReminderCenterModal({
                         }
                       }}
                       className="px-3.5 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all transform hover:scale-105 active:scale-95 shadow-sm"
-                      title="Send Gmail Reminder"
+                      title="Send Gmail Reminder (marks as checked)"
                     >
                       <span className="material-symbols-outlined text-base">mail</span>
                       Gmail

@@ -148,3 +148,116 @@ export default function UniversalTemplateExtras({ proposal = {}, branding = {}, 
     </div>
   );
 }
+
+export function DayInventorySections({ day, theme = {}, accentColor = '#e11d48', vibe = null }) {
+  if (!day) return null;
+  const primary = theme.colors?.primary || '#1a1a2e';
+  const textSec = theme.colors?.textSecondary || '#64748b';
+  
+  const rawItems = Array.isArray(day.content) ? day.content : [];
+  
+  const hotels = rawItems.filter(i => i.type === 'hotel' || i.type === 'resort' || i.type === 'accommodation');
+  if (Array.isArray(day.hotels)) {
+    day.hotels.forEach(h => {
+      if (typeof h === 'string') hotels.push({ id: Math.random(), type: 'hotel', label: h, data: { name: h } });
+      else if (h && typeof h === 'object') hotels.push({ id: h.id || Math.random(), type: 'hotel', label: h.name || h.label, data: h });
+    });
+  }
+
+  const actItems = rawItems.filter(i => i.type === 'activity' || i.type === 'cruise' || i.type === 'tour' || i.type === 'sightseeing');
+  if (Array.isArray(day.activities)) {
+    day.activities.forEach(a => {
+      if (typeof a === 'string') actItems.push({ id: Math.random(), type: 'activity', label: a, data: { name: a } });
+      else if (a && typeof a === 'object') actItems.push({ id: a.id || Math.random(), type: 'activity', label: a.name || a.label, data: a });
+    });
+  }
+
+  const transItems = rawItems.filter(i => i.type === 'transfer' || i.type === 'flight' || i.type === 'logistics');
+  if (Array.isArray(day.transfers)) {
+    day.transfers.forEach(t => {
+      if (typeof t === 'string') transItems.push({ id: Math.random(), type: 'transfer', label: t, data: { name: t } });
+      else if (t && typeof t === 'object') transItems.push({ id: t.id || Math.random(), type: 'transfer', label: t.name || t.label, data: t });
+    });
+  }
+
+  const mealItems = rawItems.filter(i => i.type === 'meal' || i.type === 'dining' || i.type === 'restaurant');
+  if (Array.isArray(day.meals)) {
+    day.meals.forEach(m => {
+      if (typeof m === 'string') mealItems.push({ id: Math.random(), type: 'meal', label: m, data: { name: m } });
+      else if (m && typeof m === 'object') mealItems.push({ id: m.id || Math.random(), type: 'meal', label: m.name || m.label, data: m });
+    });
+  }
+
+  const hasAny = hotels.length > 0 || actItems.length > 0 || transItems.length > 0 || mealItems.length > 0;
+  if (!hasAny) return null;
+
+  const getSectionTitle = (defaultTitle, key) => {
+    if (vibe && vibe.sectionTitles && vibe.sectionTitles[key]) {
+      return vibe.sectionTitles[key];
+    }
+    return defaultTitle;
+  };
+
+  const renderSection = (title, icon, itemsList, badgeText, key) => {
+    if (itemsList.length === 0) return null;
+    const images = [];
+    itemsList.forEach(it => {
+      const img = it.image_url || it.data?.image_url || it.photo || it.data?.photo;
+      if (img && typeof img === 'string') images.push(img);
+    });
+
+    return (
+      <div className="mt-6 pt-4 border-t border-outline-variant/30 space-y-3">
+        <div className="flex items-center gap-2 font-bold text-sm tracking-wide uppercase" style={{ color: primary }}>
+          <span className="text-lg" style={{ color: accentColor }}>{icon}</span>
+          <span>{getSectionTitle(title, key)}</span>
+          {badgeText && (
+            <span className="ml-auto text-[10px] px-2.5 py-0.5 rounded-full font-semibold border" style={{ borderColor: accentColor + '40', color: accentColor, backgroundColor: accentColor + '10' }}>
+              {badgeText}
+            </span>
+          )}
+        </div>
+        <div className="space-y-3 pl-6 border-l-2" style={{ borderColor: accentColor + '30' }}>
+          {itemsList.map((it, idx) => {
+            const name = it.label || it.name || it.data?.name || it.data?.title || 'Included Item';
+            const details = it.details || it.description || it.data?.details || it.data?.description || '';
+            const venue = it.venue || it.data?.venue || it.data?.location || '';
+            const priceVal = Number(it.price || it.data?.price || 0);
+            return (
+              <div key={idx} className="text-sm">
+                <div className="font-semibold" style={{ color: primary }}>
+                  {name} {venue && <span className="font-normal opacity-75">({venue})</span>}
+                  {priceVal > 0 && <span className="float-right text-xs font-mono font-bold" style={{ color: accentColor }}>₹{priceVal.toLocaleString('en-IN')}</span>}
+                </div>
+                {details && (
+                  <p className="text-xs mt-1 leading-relaxed whitespace-pre-wrap opacity-85" style={{ color: textSec }}>
+                    {details}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {images.length > 0 && (
+          <div className={`grid gap-3 pt-3 ${images.length === 1 ? 'grid-cols-1' : images.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            {images.slice(0, 3).map((imgUrl, imgIdx) => (
+              <div key={imgIdx} className="h-40 rounded-xl overflow-hidden shadow-sm border border-outline-variant/40">
+                <img src={imgUrl} alt={title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="w-full mt-4 space-y-4">
+      {renderSection('Accommodations & Check-In', '🏰', hotels, 'Stays', 'accommodations')}
+      {renderSection('Private Experiences & Activities', '🧭', actItems, 'VIP Tour', 'activities')}
+      {renderSection('VIP Transfers & Logistics', '🚗', transItems, 'Transit', 'transfers')}
+      {renderSection('Gourmet Dining & Meals', '🍷', mealItems, 'Dining', 'meals')}
+    </div>
+  );
+}
+

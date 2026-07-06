@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './editorial.css';
 import { formatPrice, safeText, SectionHeader, PageBreak } from '../base/BaseTemplate.jsx';
 import { fetchContextualImage } from '../../services/imageService.js';
-import UniversalTemplateExtras from '../../components/common/UniversalTemplateExtras.jsx';
+import UniversalTemplateExtras, { DayInventorySections } from '../../components/common/UniversalTemplateExtras.jsx';
 
 export default function EditorialTemplate(props) {
   const { data, include = {}, viewMode = 'document', customBlocks = [], order = [] } = props;
@@ -153,12 +153,7 @@ export default function EditorialTemplate(props) {
                     <h3 className="text-2xl font-bold text-slate-900 m-0 mb-3 font-display">{safeText(day.title || `Day ${idx + 1}`)}</h3>
                     <p className="text-slate-600 leading-relaxed text-sm m-0 mb-4">{safeText(day.description || 'Spend the day exploring local landmarks and cultural sites at your own leisurely pace.')}</p>
                     
-                    {Array.isArray(day.activities) && day.activities.length > 0 && (
-                      <div className="bg-rose-50/50 border-l-4 border-rose-500 p-3 rounded-r-lg text-xs text-slate-700 font-medium">
-                        <strong className="text-rose-700 block mb-1 uppercase tracking-wider">Featured Activity:</strong>
-                        {day.activities.join(' · ')}
-                      </div>
-                    )}
+                    <DayInventorySections day={day} theme={{ colors: { primary: '#0f172a', textSecondary: '#475569' } }} accentColor="#e11d48" />
                   </div>
 
                   <div className="photo-collage">

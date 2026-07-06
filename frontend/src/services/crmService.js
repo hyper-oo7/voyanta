@@ -51,8 +51,25 @@ export async function fetchClients({ page = 0, pageSize = PAGE_SIZE, status = nu
 
       const { data, error, count } = await query.range(from, to);
       if (!error && data) {
-        saveLocalClients(data);
-        return { data, count: count || data.length, page, pageSize };
+        const local = getLocalClients();
+        const localMap = new Map();
+        local.forEach(c => localMap.set(String(c.id), c));
+        
+        const mergedData = data.map(dbC => {
+          if (localMap.has(String(dbC.id))) {
+            return { ...dbC, ...localMap.get(String(dbC.id)) };
+          }
+          return dbC;
+        });
+        
+        local.forEach(c => {
+          if (!mergedData.some(m => String(m.id) === String(c.id))) {
+            mergedData.push(c);
+          }
+        });
+
+        saveLocalClients(mergedData);
+        return { data: mergedData, count: count || mergedData.length, page, pageSize };
       }
     } catch (e) {
       console.warn('Supabase fetchClients failed, falling back to localStorage:', e);
@@ -87,16 +104,19 @@ export async function createClient(clientData) {
   };
 
   if (supabase) {
-    const { data, error } = await supabase.from(TABLE).insert([newClient]).select().single();
-    if (error) {
-      notifyDbError(TABLE, error);
-      throw error;
-    }
-    if (data) {
-      const list = getLocalClients();
-      saveLocalClients([data, ...list]);
-      try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
-      return data;
+    try {
+      const { data, error } = await supabase.from(TABLE).insert([newClient]).select().single();
+      if (!error && data) {
+        const list = getLocalClients();
+        saveLocalClients([data, ...list]);
+        try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
+        return data;
+      }
+      if (error) {
+        console.warn('Supabase createClient error (falling back to local cache):', error);
+      }
+    } catch (e) {
+      console.warn('Supabase createClient exception (falling back to local cache):', e);
     }
   }
 
@@ -111,36 +131,48 @@ export async function updateClient(id, patch) {
   const now = new Date().toISOString();
   const updatePayload = { ...patch, updated_at: now };
 
-  if (supabase) {
-    const { data, error } = await supabase.from(TABLE).update(updatePayload).eq('id', id).select().single();
-    if (error) {
-      notifyDbError(TABLE, error);
-      throw error;
-    }
-    if (data) {
-      const list = getLocalClients().map(c => c.id === id ? { ...c, ...data } : c);
-      saveLocalClients(list);
-      try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
-      return data;
+  if (supabase && !String(id).startsWith('inv_client_')) {
+    try {
+      const { data, error } = await supabase.from(TABLE).update(updatePayload).eq('id', id).select().single();
+      if (!error && data) {
+        const list = getLocalClients().map(c => String(c.id) === String(id) ? { ...c, ...data } : c);
+        saveLocalClients(list);
+        try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
+        return data;
+      }
+      if (error) {
+        console.warn('Supabase updateClient error (falling back to local cache):', error);
+      }
+    } catch (e) {
+      console.warn('Supabase updateClient exception (falling back to local cache):', e);
     }
   }
 
-  const list = getLocalClients().map(c => c.id === id ? { ...c, ...updatePayload } : c);
+  let list = getLocalClients();
+  const exists = list.some(c => String(c.id) === String(id));
+  if (!exists) {
+    list = [{ id, updated_at: now, ...patch }, ...list];
+  } else {
+    list = list.map(c => String(c.id) === String(id) ? { ...c, ...updatePayload } : c);
+  }
   saveLocalClients(list);
   try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
-  const updated = list.find(c => c.id === id);
-  return updated || null;
+  const updated = list.find(c => String(c.id) === String(id));
+  return updated || { id, ...updatePayload };
 }
 
 export async function deleteClient(id) {
-  if (supabase) {
-    const { error } = await supabase.from(TABLE).delete().eq('id', id);
-    if (error) {
-      notifyDbError(TABLE, error);
-      throw error;
+  if (supabase && !String(id).startsWith('inv_client_')) {
+    try {
+      const { error } = await supabase.from(TABLE).delete().eq('id', id);
+      if (error) {
+        console.warn('Supabase deleteClient error (falling back to local cache):', error);
+      }
+    } catch (e) {
+      console.warn('Supabase deleteClient exception (falling back to local cache):', e);
     }
   }
-  const list = getLocalClients().filter(c => c.id !== id);
+  const list = getLocalClients().filter(c => String(c.id) !== String(id));
   saveLocalClients(list);
   try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
   return true;

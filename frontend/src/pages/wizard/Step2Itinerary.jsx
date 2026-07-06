@@ -19,9 +19,27 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   const { saveDraftBackground } = useProposalStore();
   const days = proposal?.itinerary?.days || [];
   
-  const [activeTab, setActiveTab] = useState('itinerary');
+  const [activeTab, setActiveTab] = useState('sub_destinations');
   const [libraryData, setLibraryData] = useState({ hotels: [], flights: [], itinerary: [] });
   const [search, setSearch] = useState('');
+
+  const [vaultItems, setVaultItems] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]'); } catch { return []; }
+  });
+
+  const subDestinationsList = useMemo(() => {
+    const set = new Set();
+    (vaultItems || []).forEach(vt => {
+      if (Array.isArray(vt.sub_destinations)) vt.sub_destinations.forEach(sd => set.add(sd));
+    });
+    ['Zurich', 'Lucerne', 'Interlaken', 'Zermatt', 'Geneva', 'St. Moritz', 'Amalfi Coast', 'Positano', 'Capri', 'Santorini', 'Mykonos', 'Bali Ubud', 'Bali Seminyak', 'Kyoto', 'Tokyo'].forEach(sd => set.add(sd));
+    return Array.from(set).map((name, idx) => ({
+      id: `sub_${idx}_${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+      name: name,
+      location: 'Switzerland / Europe / Global Luxury',
+      description: `Brings 5★ Hotel, VIP Tour, Private Chauffeur Transfer & Michelin Dining in ${name}.`
+    }));
+  }, [vaultItems]);
 
   // Duration-Driven Builder: Prepopulate days if empty
   useEffect(() => {
@@ -190,12 +208,80 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     } catch (e) { toast.error(e.message); }
   };
 
-  const baseItems = activeTab === 'itinerary' ? itineraries : libraryData[activeTab];
+  const importSubDestinationToDay = async (subDestName, dayIndex) => {
+    try {
+      const pid = proposal?.id;
+      if (!pid) {
+        toast.error('Please save client draft in Step 1 first.');
+        return;
+      }
+      const currentDay = days[dayIndex] || {};
+      const newTitle = `VIP Experience in ${subDestName}`;
+      const newDesc = `Executive private luxury tour, 5-star hotel check-in, and gourmet Michelin dining in ${subDestName}.`;
+      
+      const hotelBlock = { id: crypto.randomUUID(), type: 'hotel', data: { name: `Grand Palace & Spa ${subDestName}`, category: '5 Star Luxury', price_per_night: 800, location: `${subDestName} Center`, image_url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=80' } };
+      const actBlock = { id: crypto.randomUUID(), type: 'activity', data: { name: `VIP Private Old Town & Scenic Tour (${subDestName})`, duration: '4 hours', price: 250, location: subDestName, image_url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=800&auto=format&fit=crop&q=80' } };
+      const transBlock = { id: crypto.randomUUID(), type: 'transfer', data: { name: `VIP Chauffeur Transfer in ${subDestName}`, vehicle_type: 'Mercedes-Benz S-Class', price: 150 } };
+      const mealBlock = { id: crypto.randomUUID(), type: 'meal', data: { venue: `Pavillon Michelin Tasting Dinner (${subDestName})`, type: 'Dinner', price: 200, image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=80' } };
+
+      const currentContent = Array.isArray(currentDay.content) ? [...currentDay.content] : [];
+      updateDay(dayIndex, { title: newTitle, description: newDesc, content: [...currentContent, hotelBlock, actBlock, transBlock, mealBlock] });
+
+      if (addItemsOptimistic) {
+        addItemsOptimistic([
+          { id: crypto.randomUUID(), proposal_id: pid, kind: 'hotel', label: hotelBlock.data.name, details: hotelBlock.data.location, qty: 1, unit_price: 800, total_price: 800, currency: proposalCurrency, meta: { day: dayIndex + 1 } },
+          { id: crypto.randomUUID(), proposal_id: pid, kind: 'activity', label: actBlock.data.name, details: actBlock.data.location, qty: 1, unit_price: 250, total_price: 250, currency: proposalCurrency, meta: { day: dayIndex + 1 } },
+          { id: crypto.randomUUID(), proposal_id: pid, kind: 'transfer', label: transBlock.data.name, details: transBlock.data.vehicle_type, qty: 1, unit_price: 150, total_price: 150, currency: proposalCurrency, meta: { day: dayIndex + 1 } },
+          { id: crypto.randomUUID(), proposal_id: pid, kind: 'meal', label: mealBlock.data.venue, details: '7-Course Gourmet Dinner', qty: 1, unit_price: 200, total_price: 200, currency: proposalCurrency, meta: { day: dayIndex + 1 } }
+        ]);
+      }
+      toast.success(`Imported ${subDestName} (Hotel, Activity, Transfer & Meal) to Day ${dayIndex + 1}!`);
+    } catch (err) { toast.error('Failed to import: ' + err.message); }
+  };
+
+  const handleReferenceChange = (val) => {
+    if (!val) {
+      onApplyItinerary('');
+      return;
+    }
+    if (val.startsWith('vault_')) {
+      const vid = val.replace('vault_', '');
+      const vt = (vaultItems || []).find(v => String(v.id) === String(vid) || String(v.option_id) === String(vid));
+      if (vt && Array.isArray(vt.days)) {
+        const pid = proposal?.id;
+        if (!pid) { toast.error('Please save client info in Step 1 first.'); return; }
+        const mappedDays = vt.days.map((d, i) => {
+          const contentBlocks = [];
+          (d.hotels || []).forEach(h => contentBlocks.push({ id: crypto.randomUUID(), type: 'hotel', data: h }));
+          (d.activities || []).forEach(a => contentBlocks.push({ id: crypto.randomUUID(), type: 'activity', data: a }));
+          (d.transfers || []).forEach(tr => contentBlocks.push({ id: crypto.randomUUID(), type: 'transfer', data: tr }));
+          (d.meals || []).forEach(m => contentBlocks.push({ id: crypto.randomUUID(), type: 'meal', data: m }));
+          return { id: crypto.randomUUID(), day: d.day_number || i + 1, title: d.title || `Day ${i + 1}`, description: d.description || '', image_url: (d.hotels?.[0]?.image_url) || (d.activities?.[0]?.image_url) || null, content: contentBlocks };
+        });
+        setProposal(p => ({ ...p, itinerary: { days: mappedDays }, destination: vt.destination || p?.destination }));
+        if (addItemsOptimistic) {
+          const newItems = [];
+          mappedDays.forEach((md, idx) => {
+            md.content.forEach(blk => {
+              const p = Number(blk.data?.price_per_night ?? blk.data?.price ?? 0);
+              newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: blk.type === 'hotel' ? 'hotel' : blk.type === 'transfer' ? 'transfer' : blk.type === 'meal' ? 'meal' : 'activity', label: blk.data?.name || blk.data?.venue || 'Item', details: blk.data?.location || blk.data?.details || '', qty: 1, unit_price: p, total_price: p, currency: proposalCurrency, meta: { day: idx + 1 } });
+            });
+          });
+          if (newItems.length > 0) addItemsOptimistic(newItems);
+        }
+        toast.success(`Loaded ${vt.option_title || 'Vault Tour'} with ${mappedDays.length} days and inventory!`);
+      }
+    } else {
+      onApplyItinerary(val);
+    }
+  };
+
+  const baseItems = activeTab === 'sub_destinations' ? subDestinationsList : libraryData[activeTab] || [];
   const filteredItems = baseItems.filter(item => {
     const term = search.toLowerCase();
+    if (activeTab === 'sub_destinations') return item.name?.toLowerCase().includes(term) || item.description?.toLowerCase().includes(term);
     if (activeTab === 'hotels') return item.name?.toLowerCase().includes(term) || item.location?.toLowerCase().includes(term);
     if (activeTab === 'flights') return item.airline?.toLowerCase().includes(term) || item.flight_no?.toLowerCase().includes(term);
-    if (activeTab === 'itinerary') return item.name?.toLowerCase().includes(term) || item.destination?.toLowerCase().includes(term);
     return true;
   });
 
@@ -207,11 +293,18 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         <div className="glass-card rounded-2xl p-lg space-y-md border border-outline-variant/50">
           <h3 className="font-headline-sm text-primary">Proposal Itinerary</h3>
           <div>
-            <label className="font-label-md text-on-surface block mb-xs font-semibold">Reference Itinerary</label>
-            <select value={client.itinerary_id || ''} onChange={(e) => onApplyItinerary(e.target.value)} data-testid="ref-itinerary"
+            <label className="font-label-md text-on-surface block mb-xs font-semibold">My Vault Tour Recommendation / Reference Itinerary</label>
+            <select value={client.itinerary_id || ''} onChange={(e) => handleReferenceChange(e.target.value)} data-testid="ref-itinerary"
               className="w-full px-md py-md bg-surface-container-lowest border border-outline-variant rounded-xl font-body-md focus:border-primary transition-colors">
               <option value="">— Start from Scratch —</option>
-              {itineraries.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.destination || 'No location'})</option>)}
+              {vaultItems && vaultItems.length > 0 && (
+                <optgroup label="🏆 My Vault Recommendations">
+                  {vaultItems.map((vt) => <option key={vt.id} value={`vault_${vt.id}`}>{vt.option_title || vt.destination} ({vt.duration_days || 7} Days • {vt.currency || '$'}{vt.total_estimated_cost || ''})</option>)}
+                </optgroup>
+              )}
+              <optgroup label="📚 Standard Library Itineraries">
+                {itineraries.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.destination || 'No location'})</option>)}
+              </optgroup>
             </select>
           </div>
         </div>
@@ -256,7 +349,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           <div className="p-md border-b border-outline-variant/50 bg-white/50 backdrop-blur-md">
             <h4 className="font-label-md text-on-surface uppercase tracking-widest mb-sm">Library</h4>
             <div className="flex bg-surface-container rounded-lg p-1">
-              <button onClick={() => setActiveTab('itinerary')} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'itinerary' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Itinerary</button>
+              <button onClick={() => setActiveTab('sub_destinations')} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'sub_destinations' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Sub-Destinations</button>
               <button onClick={() => setActiveTab('hotels')} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'hotels' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Hotels</button>
               <button onClick={() => setActiveTab('flights')} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'flights' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Flights</button>
             </div>
@@ -275,16 +368,24 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
                 <p className="text-xs text-on-surface-variant truncate">
                   {activeTab === 'hotels' && item.location}
                   {activeTab === 'flights' && `${item.origin} → ${item.destination}`}
-                  {activeTab === 'itinerary' && `${item.destination || ''} • ${item.duration || 1} Days`}
+                  {activeTab === 'sub_destinations' && item.description}
                 </p>
                 <div className="mt-sm pt-sm border-t border-outline-variant/50">
-                  {activeTab === 'itinerary' ? (
-                    <button 
-                      onClick={() => onApplyItinerary(item.id)}
-                      className="w-full text-xs py-1.5 bg-primary/10 hover:bg-primary/20 text-primary font-medium rounded-lg transition-colors border-none cursor-pointer"
+                  {activeTab === 'sub_destinations' ? (
+                    <select 
+                      className="w-full text-xs py-1.5 px-2 bg-primary/10 hover:bg-primary/20 rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-bold"
+                      onChange={(e) => {
+                        if(e.target.value !== '') {
+                          importSubDestinationToDay(item.name, parseInt(e.target.value));
+                          e.target.value = '';
+                        }
+                      }}
                     >
-                      Import Tour
-                    </button>
+                      <option value="">+ Import to Day...</option>
+                      {days.map((d, i) => (
+                        <option key={i} value={i}>Day {d.day}</option>
+                      ))}
+                    </select>
                   ) : (
                     <select 
                       className="w-full text-xs py-1 px-2 bg-surface-container rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-medium"

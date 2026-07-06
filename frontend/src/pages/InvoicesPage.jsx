@@ -44,13 +44,42 @@ export default function InvoicesPage() {
     loadData();
   }, [loadData]);
 
+  const [remindersTick, setRemindersTick] = useState(0);
+  useEffect(() => {
+    const handleUpd = () => setRemindersTick(t => t + 1);
+    window.addEventListener('voyanta:reminders-updated', handleUpd);
+    window.addEventListener('storage', handleUpd);
+    return () => {
+      window.removeEventListener('voyanta:reminders-updated', handleUpd);
+      window.removeEventListener('storage', handleUpd);
+    };
+  }, []);
+
   // Financial KPIs
-  const totalBilled = useMemo(() => invoices.reduce((acc, i) => acc + (Number(i.total_amount) || 0), 0), [invoices]);
-  const totalCollected = useMemo(() => invoices.reduce((acc, i) => acc + (Number(i.paid_amount) || 0), 0), [invoices]);
-  const totalOutstanding = useMemo(() => invoices.reduce((acc, i) => acc + (Number(i.remaining_balance) || 0), 0), [invoices]);
+  const totalBilled = useMemo(() => invoices.reduce((acc, i) => {
+    if (i.status === 'Cancelled' || i.status === 'Refunded') return acc;
+    return acc + (Number(i.total_amount) || 0);
+  }, 0), [invoices]);
+
+  const totalCollected = useMemo(() => invoices.reduce((acc, i) => {
+    if (i.status === 'Cancelled' || i.status === 'Refunded') return acc;
+    const paid = i.status === 'Paid' ? (Number(i.total_amount) || Number(i.paid_amount) || 0) : (Number(i.paid_amount) || 0);
+    return acc + paid;
+  }, 0), [invoices]);
+
+  const totalOutstanding = useMemo(() => invoices.reduce((acc, i) => {
+    if (i.status === 'Cancelled' || i.status === 'Refunded' || i.status === 'Paid') return acc;
+    const rem = Number(i.remaining_balance !== undefined ? i.remaining_balance : (Number(i.total_amount || 0) - Number(i.paid_amount || 0)));
+    return acc + Math.max(0, rem);
+  }, 0), [invoices]);
 
   const activeRemindersCount = useMemo(() => {
+    let checkedMap = {};
+    try {
+      checkedMap = JSON.parse(localStorage.getItem('voyanta_checked_reminders') || '{}');
+    } catch {}
     return invoices.filter(i => {
+      if (checkedMap[i.id]) return false;
       if (i.status === 'Paid' || i.status === 'Cancelled' || i.status === 'Refunded') return false;
       const bal = Number(i.remaining_balance ?? i.total_amount ?? 0);
       if (bal <= 0) return false;
@@ -61,7 +90,7 @@ export default function InvoicesPage() {
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       return diffDays <= 5;
     }).length;
-  }, [invoices]);
+  }, [invoices, remindersTick]);
 
   const filteredInvoices = useMemo(() => {
     let list = invoices;
@@ -153,7 +182,7 @@ export default function InvoicesPage() {
             onClick={() => setShowReminders(true)}
             className="px-5 py-3 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 font-extrabold text-xs uppercase tracking-wider border border-amber-500/30 transition-all flex items-center gap-2 relative shadow-sm"
           >
-            <span className="material-symbols-outlined text-[18px] animate-bounce">notifications_active</span>
+            <span className={`material-symbols-outlined text-[18px] ${activeRemindersCount > 0 ? 'animate-bounce' : ''}`}>notifications_active</span>
             🔔 Reminders ({activeRemindersCount})
             {activeRemindersCount > 0 && (
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
@@ -252,15 +281,15 @@ export default function InvoicesPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-surface-container-low border-b border-outline-variant text-xs font-black uppercase tracking-widest text-on-surface-variant">
-                <th className="py-4 px-6">Invoice #</th>
-                <th className="py-4 px-6">Client / Contact</th>
-                <th className="py-4 px-6">Destination</th>
-                <th className="py-4 px-6">Date & Due</th>
-                <th className="py-4 px-6">Amount</th>
-                <th className="py-4 px-6">Paid</th>
-                <th className="py-4 px-6">Remaining</th>
-                <th className="py-4 px-6">Status</th>
-                <th className="py-4 px-6 text-right">Actions</th>
+                <th className="py-3 px-3">Invoice #</th>
+                <th className="py-3 px-3">Client / Contact</th>
+                <th className="py-3 px-3">Actions</th>
+                <th className="py-3 px-3">Destination</th>
+                <th className="py-3 px-3">Date & Due</th>
+                <th className="py-3 px-3">Amount</th>
+                <th className="py-3 px-3">Paid</th>
+                <th className="py-3 px-3">Remaining</th>
+                <th className="py-3 px-3">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/60 text-xs">
@@ -288,32 +317,73 @@ export default function InvoicesPage() {
                 </tr>
               ) : (
                 filteredInvoices.map(inv => (
-                  <tr key={inv.id} className="hover:bg-surface-container-low/50 transition-colors group">
-                    <td className="py-4 px-6 font-mono font-black text-primary text-sm">
+                  <tr key={inv.id} onClick={() => setActiveInvoice(inv)} className="hover:bg-surface-container-low/50 transition-colors group cursor-pointer">
+                    <td className="py-3 px-3 font-mono font-black text-primary text-sm">
                       #{inv.invoice_number}
                       {inv.parent_invoice_id && <span className="block text-[10px] text-amber-600 font-sans font-bold">Split Installment</span>}
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="py-3 px-3">
                       <div className="font-bold text-sm text-on-surface">{inv.client_name || 'Client'}</div>
                       {inv.client_email && <div className="text-[11px] text-on-surface-variant font-mono">{inv.client_email}</div>}
                     </td>
-                    <td className="py-4 px-6 font-semibold text-primary">
+                    <td className="py-3 px-3" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setActiveInvoice(inv); }}
+                          className="px-2.5 py-1 rounded-xl bg-primary text-on-primary font-bold text-xs shadow hover:bg-primary/90 transition-colors inline-flex items-center gap-1"
+                          title="Open / Edit Invoice"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">open_in_new</span> Edit
+                        </button>
+
+                        {(inv.status === 'Paid' || inv.status === 'Partially Paid') && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setReceiptInvoice(inv); }}
+                            className="px-2 py-1 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition-colors inline-flex items-center gap-1 shadow"
+                            title="View Receipt Badge"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">verified</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setShareInvoice(inv); }}
+                          className="p-1.5 rounded-xl bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors"
+                          title="Share via WhatsApp or Email"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">share</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleDelete(inv.id); }}
+                          className="p-1.5 rounded-xl text-on-surface-variant hover:bg-error-container/20 hover:text-error transition-colors"
+                          title="Delete Invoice"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 font-semibold text-primary">
                       {inv.destination || '—'}
                     </td>
-                    <td className="py-4 px-6 text-on-surface-variant">
+                    <td className="py-3 px-3 text-on-surface-variant">
                       <div>{inv.issue_date || new Date(inv.created_at || Date.now()).toLocaleDateString()}</div>
                       <div className="text-[10px] opacity-70">Due: {inv.due_date || 'Immediate'}</div>
                     </td>
-                    <td className="py-4 px-6 font-mono font-bold text-on-surface text-sm">
+                    <td className="py-3 px-3 font-mono font-bold text-on-surface text-sm">
                       {formatCurrency(inv.total_amount || 0, inv.currency)}
                     </td>
-                    <td className="py-4 px-6 font-mono font-bold text-emerald-600 text-sm">
-                      {formatCurrency(inv.paid_amount || 0, inv.currency)}
+                    <td className="py-3 px-3 font-mono font-bold text-emerald-600 text-sm">
+                      {formatCurrency(inv.status === 'Paid' ? (Number(inv.total_amount) || Number(inv.paid_amount) || 0) : (inv.paid_amount || 0), inv.currency)}
                     </td>
-                    <td className="py-4 px-6 font-mono font-bold text-rose-600 text-sm">
-                      {formatCurrency(inv.remaining_balance || 0, inv.currency)}
+                    <td className="py-3 px-3 font-mono font-bold text-rose-600 text-sm">
+                      {formatCurrency((inv.status === 'Paid' || inv.status === 'Cancelled' || inv.status === 'Refunded') ? 0 : (inv.remaining_balance !== undefined ? inv.remaining_balance : (Number(inv.total_amount || 0) - Number(inv.paid_amount || 0))), inv.currency)}
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="py-3 px-3">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
                         inv.status === 'Paid' ? 'bg-emerald-100 text-emerald-800' :
                         inv.status === 'Partially Paid' ? 'bg-amber-100 text-amber-800' :
@@ -322,47 +392,6 @@ export default function InvoicesPage() {
                       }`}>
                         {inv.status || 'Sent'}
                       </span>
-                    </td>
-                    <td className="py-4 px-6 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setActiveInvoice(inv)}
-                          className="px-3 py-1.5 rounded-xl bg-primary text-on-primary font-bold text-xs shadow hover:bg-primary/90 transition-colors inline-flex items-center gap-1"
-                          title="Open / Edit Invoice"
-                        >
-                          <span className="material-symbols-outlined text-[15px]">open_in_new</span> Edit
-                        </button>
-
-                        {(inv.status === 'Paid' || inv.status === 'Partially Paid') && (
-                          <button
-                            type="button"
-                            onClick={() => setReceiptInvoice(inv)}
-                            className="px-2.5 py-1.5 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-500 transition-colors inline-flex items-center gap-1 shadow"
-                            title="View Receipt Badge"
-                          >
-                            <span className="material-symbols-outlined text-[15px]">verified</span>
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => setShareInvoice(inv)}
-                          className="p-1.5 rounded-xl bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors"
-                          title="Share via WhatsApp or Email"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">share</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(inv.id)}
-                          className="p-1.5 rounded-xl text-on-surface-variant hover:bg-error-container/20 hover:text-error transition-colors"
-                          title="Delete Invoice"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">delete</span>
-                        </button>
-                      </div>
                     </td>
                   </tr>
                 ))

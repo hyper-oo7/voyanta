@@ -80,7 +80,19 @@ export async function fetchInvoices({ clientName = null, status = null, destinat
 }
 
 function filterList(list, { clientName, status, destination, currency }) {
-  return list.filter(inv => {
+  const normalized = (list || []).map(inv => {
+    const copy = { ...inv };
+    if (copy.status === 'Paid') {
+      copy.paid_amount = Number(copy.total_amount || copy.paid_amount || 0);
+      copy.remaining_balance = 0;
+    } else if (copy.status === 'Cancelled' || copy.status === 'Refunded') {
+      copy.remaining_balance = 0;
+    } else if (copy.remaining_balance === undefined || copy.remaining_balance === null) {
+      copy.remaining_balance = Math.max(0, Number(copy.total_amount || 0) - Number(copy.paid_amount || 0));
+    }
+    return copy;
+  });
+  return normalized.filter(inv => {
     if (clientName && !(inv.client_name || '').toLowerCase().includes(clientName.toLowerCase())) return false;
     if (status && status !== 'ALL' && inv.status !== status) return false;
     if (destination && !(inv.destination || '').toLowerCase().includes(destination.toLowerCase())) return false;
@@ -318,8 +330,11 @@ export async function saveInvoiceRecord(invoice, isNew = false) {
         .select()
         .single();
       if (error) {
-        notifyDbError('invoices', error);
-        throw error;
+        if (!error.message?.includes('schema cache') && !error.message?.includes('does not exist') && !error.message?.includes('Could not find the table')) {
+          notifyDbError('invoices', error);
+        }
+        console.warn('Supabase upsert invoice failed, falling back to local storage:', error.message);
+        return null;
       }
       if (data) return data;
       return null;
@@ -380,10 +395,16 @@ export async function deleteInvoice(id) {
   const agencyId = getAgencyId();
 
   if (supabase) {
-    const { error } = await supabase.from('invoices').delete().eq('id', id).eq('agency_id', agencyId);
-    if (error) {
-      notifyDbError('invoices', error);
-      throw error;
+    try {
+      const { error } = await supabase.from('invoices').delete().eq('id', id).eq('agency_id', agencyId);
+      if (error) {
+        if (!error.message?.includes('schema cache') && !error.message?.includes('does not exist') && !error.message?.includes('Could not find the table')) {
+          notifyDbError('invoices', error);
+        }
+        console.warn('Supabase delete invoice failed, falling back to local storage:', error.message);
+      }
+    } catch (e) {
+      console.warn('Supabase delete invoice exception, falling back to local storage:', e.message);
     }
   }
 

@@ -28,6 +28,7 @@ export const useProposalStore = create((set, get) => ({
   activeId: localStorage.getItem('voyanta_active_proposal_id') || null,
   proposal: null,
   items: [],
+  recommendationOptions: [],
   client: {
     customer_name: '', phone: '', country: DEFAULT_COUNTRY, email: '',
     destination: '',
@@ -46,7 +47,7 @@ export const useProposalStore = create((set, get) => ({
     social_facebook: '', social_instagram: '', social_linkedin: '',
     cover_image_url: '', highlights: '',
     inclusions: '', exclusions: '', terms_of_payment: '',
-    primary_color: '#0b1c30', template_style: 'classic', font_family: '',
+    template_style: 'classic',
     custom_fields: []
   },
   costingPrefs: {
@@ -306,5 +307,20 @@ export const useProposalStore = create((set, get) => ({
         if (pid) localStorage.setItem(`voyanta_proposal_${pid}`, JSON.stringify(norm));
       } catch {}
     }
-  }
+  },
+
+  setField: (field, value) => set((state) => ({
+    client: { ...state.client, [field]: value },
+    proposal: state.proposal ? { ...state.proposal, [field]: value } : state.proposal
+  })),
+
+  addRecommendationOption: (opt) => set((state) => ({
+    recommendationOptions: [opt, ...(state.recommendationOptions || []).filter(o => (o.option_id || o.id) !== (opt.option_id || opt.id))]
+  })),
+
+  deleteRecommendationOption: (id) => set((state) => ({
+    recommendationOptions: (state.recommendationOptions || []).filter(o => (o.option_id || o.id) !== id)
+  }))
 }));
+
+export default useProposalStore;

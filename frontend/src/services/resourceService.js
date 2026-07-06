@@ -211,9 +211,7 @@ const DEFAULT_SETTINGS = {
   },
   social_facebook: '',
   social_instagram: '',
-  social_linkedin: '',
-  font_family: '',
-  primary_color: '#0b1c30'
+  social_linkedin: ''
 };
 
 export function sanitizeBrandingObject(raw) {
@@ -276,7 +274,6 @@ export const settingsService = {
         if (agencyData) {
           initial.agency_name = agencyData.name || initial.agency_name;
           initial.logo_url = agencyData.logo_url || initial.logo_url;
-          initial.primary_color = agencyData.primary_color || initial.primary_color;
         }
 
         const sanitizedInitial = sanitizeBrandingObject(initial);
@@ -317,7 +314,6 @@ export const settingsService = {
       const agencyPatch = {
         name: cleanSettings.agency_name,
         logo_url: cleanSettings.logo_url || null,
-        primary_color: cleanSettings.primary_color || null,
       };
       await supabase.from('agencies').update(agencyPatch).eq('id', agencyId);
 

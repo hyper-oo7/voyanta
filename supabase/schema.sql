@@ -132,6 +132,61 @@ create table if not exists public.proposal_items (
 );
 create index if not exists proposal_items_proposal_idx on public.proposal_items (proposal_id);
 
+-- INVOICES --------------------------------------------------------------------
+create table if not exists public.invoices (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid references public.agencies(id) on delete cascade,
+  proposal_id uuid references public.proposals(id) on delete set null,
+  invoice_number text unique not null,
+  client_name text not null,
+  client_email text,
+  client_phone text,
+  destination text,
+  status text default 'Sent' check (status in ('Draft', 'Sent', 'Partially Paid', 'Paid', 'Cancelled', 'Refunded')),
+  issue_date date default CURRENT_DATE,
+  due_date date default (CURRENT_DATE + interval '10 days'),
+  currency text default 'INR',
+  subtotal numeric default 0,
+  tax_rate numeric default 5.0,
+  tax_amount numeric default 0,
+  total_amount numeric default 0,
+  paid_amount numeric default 0,
+  remaining_balance numeric default 0,
+  parent_invoice_id uuid references public.invoices(id) on delete set null,
+  items jsonb default '[]'::jsonb,
+  notes text,
+  terms text,
+  upi_id text,
+  upi_payee_name text,
+  branding jsonb,
+  activity_log jsonb default '[]'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- SEMANTIC CACHE & VAULT ------------------------------------------------------
+create table if not exists public.semantic_cache (
+  id uuid primary key default gen_random_uuid(),
+  hash text unique not null,
+  destination text,
+  budget numeric,
+  parsed_json jsonb not null,
+  created_at timestamptz default now()
+);
+create index if not exists semantic_cache_hash_idx on public.semantic_cache (hash);
+
+create table if not exists public.supplier_pdfs (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid references public.agencies(id) on delete cascade,
+  filename text not null,
+  file_path text not null,
+  size_bytes bigint default 0,
+  created_at timestamptz default now(),
+  expires_at timestamptz not null,
+  status text default 'active'
+);
+create index if not exists supplier_pdfs_expires_at_idx on public.supplier_pdfs (expires_at);
+
 -- HOTELS ----------------------------------------------------------------------
 create table if not exists public.hotels (
   id uuid primary key default gen_random_uuid(),
@@ -292,7 +347,7 @@ create table if not exists public.activity_logs (
   action text not null,
   details jsonb,
   entity_type text,
-  entity_id uuid,
+  entity_id text,
   created_at timestamptz default now()
 );
 create index if not exists activity_logs_agency_idx on public.activity_logs (agency_id, created_at desc);
@@ -397,6 +452,7 @@ alter table public.users enable row level security;
 alter table public.clients enable row level security;
 alter table public.proposals enable row level security;
 alter table public.proposal_items enable row level security;
+alter table public.invoices enable row level security;
 alter table public.hotels enable row level security;
 alter table public.flights enable row level security;
 alter table public.activities enable row level security;
@@ -440,6 +496,9 @@ create policy "proposals_agency" on public.proposals for all using (agency_id = 
 
 drop policy if exists "proposal_items_agency" on public.proposal_items;
 create policy "proposal_items_agency" on public.proposal_items for all using (proposal_id in (select id from public.proposals where agency_id = public.current_agency_id()));
+
+drop policy if exists "invoices_agency" on public.invoices;
+create policy "invoices_agency" on public.invoices for all using (agency_id = public.current_agency_id());
 
 -- Inventory & Library policies
 drop policy if exists "hotels_agency" on public.hotels;

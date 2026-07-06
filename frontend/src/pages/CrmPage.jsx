@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { fetchClients, createClient, updateClient, deleteClient, TRIP_STATUSES } from '../services/crmService.js';
+import { fetchInvoices } from '../services/invoiceService.js';
 import { useNavigate } from 'react-router-dom';
 import { Client360Modal } from '../components/crm/Client360Modal.jsx';
+
+const formatCurr = (val, curr = 'INR') => new Intl.NumberFormat('en-IN', { style: 'currency', currency: curr, maximumFractionDigits: 0 }).format(Number(val) || 0);
 
 export default function CrmPage() {
   const toast = useToast();
@@ -32,15 +35,58 @@ export default function CrmPage() {
   const loadClients = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchClients({ page, pageSize, status: statusFilter === 'ALL' ? null : statusFilter });
-      setClients(res.data || []);
-      setTotalCount(res.count || 0);
+      const [res, invs] = await Promise.all([
+        fetchClients({ page, pageSize, status: statusFilter === 'ALL' ? null : statusFilter }),
+        fetchInvoices().catch(() => [])
+      ]);
+      const baseClients = res.data || [];
+      const clientMap = new Map();
+      
+      baseClients.forEach(c => {
+        const key = (c.name || '').toLowerCase().trim();
+        clientMap.set(key, { ...c, invoiced_amount: 0, paid_amount: 0, invoice_count: 0 });
+      });
+
+      (invs || []).forEach(inv => {
+        if (inv.status === 'Cancelled' || inv.status === 'Refunded') return;
+        const key = (inv.client_name || '').toLowerCase().trim();
+        if (!key) return;
+        const tot = Number(inv.total_amount || 0);
+        const pd = inv.status === 'Paid' ? tot : Number(inv.paid_amount || 0);
+        
+        if (clientMap.has(key)) {
+          const ex = clientMap.get(key);
+          ex.invoiced_amount += tot;
+          ex.paid_amount += pd;
+          ex.invoice_count += 1;
+          if (!ex.destination && inv.destination) ex.destination = inv.destination;
+          clientMap.set(key, ex);
+        } else {
+          clientMap.set(key, {
+            id: `inv_client_${inv.id}`,
+            name: inv.client_name,
+            email: inv.client_email || '',
+            phone: inv.client_phone || '',
+            destination: inv.destination || 'Various',
+            status: inv.status === 'Paid' ? 'BOOKED' : 'SENT',
+            notes: `Auto-linked from Invoice #${inv.invoice_number}`,
+            invoiced_amount: tot,
+            paid_amount: pd,
+            invoice_count: 1,
+            created_at: inv.created_at || new Date().toISOString()
+          });
+        }
+      });
+
+      const mergedList = Array.from(clientMap.values());
+      setClients(mergedList);
+      setTotalCount(mergedList.length);
     } catch (err) {
       toast.error('Failed to load CRM clients');
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter, toast]);
+  }, [page, pageSize, statusFilter, toast]);
 
   useEffect(() => {
     loadClients();
@@ -217,6 +263,7 @@ export default function CrmPage() {
                 <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Client Name</th>
                 <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Contact Info</th>
                 <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Destination</th>
+                <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Invoiced & Revenue</th>
                 <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Pipeline Status</th>
                 <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Notes / Remarks</th>
                 <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant text-right">Actions</th>
@@ -225,7 +272,7 @@ export default function CrmPage() {
             <tbody className="divide-y divide-outline-variant/60">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-on-surface-variant">
+                  <td colSpan={7} className="py-12 text-center text-on-surface-variant">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <span className="material-symbols-outlined animate-spin text-3xl text-primary">progress_activity</span>
                       <span className="text-sm font-semibold">Loading client directory...</span>
@@ -234,7 +281,7 @@ export default function CrmPage() {
                 </tr>
               ) : filteredClients.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-on-surface-variant">
+                  <td colSpan={7} className="py-16 text-center text-on-surface-variant">
                     <div className="flex flex-col items-center justify-center gap-3 max-w-sm mx-auto">
                       <div className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant">
                         <span className="material-symbols-outlined text-2xl">person_off</span>
@@ -295,6 +342,20 @@ export default function CrmPage() {
                           {client.destination}
                         </span>
                       ) : <span className="text-xs text-on-surface-variant/50 italic">—</span>}
+                    </td>
+                    <td className="py-4 px-6 font-mono text-xs">
+                      {client.invoice_count > 0 ? (
+                        <div>
+                          <div className="font-black text-emerald-600 dark:text-emerald-400">
+                            {formatCurr(client.paid_amount || 0, client.currency || 'INR')} Paid
+                          </div>
+                          <div className="text-[10px] text-on-surface-variant font-semibold">
+                            {formatCurr(client.invoiced_amount || 0, client.currency || 'INR')} Billed ({client.invoice_count} inv)
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-on-surface-variant/40 italic">0 Invoices</span>
+                      )}
                     </td>
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-2">

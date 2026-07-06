@@ -203,34 +203,36 @@ export default function TemplatesPage() {
       </div>
 
       {/* Filter Tabs & Search Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-surface-container-low p-4 rounded-2xl border border-outline-variant/60 shadow-sm sticky top-20 z-30 backdrop-blur-md bg-white/80 dark:bg-surface-dark/80">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 no-scrollbar">
-          {CATEGORY_GROUPS.map(cat => {
-            const count = cat.key === 'all' ? TEMPLATES.length : TEMPLATES.filter(t => t.group === cat.key).length;
-            return (
-              <button
-                key={cat.key}
-                onClick={() => setActiveTab(cat.key)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === cat.key ? 'bg-primary text-white shadow-md transform scale-105' : 'bg-surface hover:bg-surface-container text-on-surface-variant'}`}
-              >
-                <span className="material-symbols-outlined text-[16px]">{cat.icon}</span>
-                <span>{cat.label}</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${activeTab === cat.key ? 'bg-white/20 text-white' : 'bg-surface-variant text-on-surface-variant'}`}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-surface-container-low p-4 rounded-2xl border border-outline-variant/60 shadow-sm backdrop-blur-md bg-white/80 dark:bg-surface-dark/80">
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider whitespace-nowrap flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-primary text-base">category</span>
+            Category:
+          </label>
+          <select
+            value={activeTab}
+            onChange={(e) => setActiveTab(e.target.value)}
+            className="px-4 py-2.5 bg-surface rounded-xl border border-outline-variant text-xs font-bold text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm min-w-[240px] cursor-pointer"
+          >
+            {CATEGORY_GROUPS.map(cat => {
+              const count = cat.key === 'all' ? TEMPLATES.length : TEMPLATES.filter(t => t.group === cat.key).length;
+              return (
+                <option key={cat.key} value={cat.key}>
+                  {cat.label} ({count})
+                </option>
+              );
+            })}
+          </select>
         </div>
 
-        <div className="relative min-w-[280px]">
+        <div className="relative flex-1 max-w-xl">
           <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
           <input
             type="text"
             placeholder="Search templates, vibes, tags..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-surface rounded-xl border border-outline-variant text-xs font-medium focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+            className="w-full pl-10 pr-10 py-2.5 bg-surface rounded-xl border border-outline-variant text-xs font-medium focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all shadow-sm"
           />
           {searchQuery && (
             <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface">

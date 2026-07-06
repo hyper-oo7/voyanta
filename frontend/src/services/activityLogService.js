@@ -72,16 +72,25 @@ export async function logActivity(type, description, clientName = 'Agency Team',
         userId = user?.id || null;
       } catch {}
 
-      const { error } = await supabase.from('activity_logs').insert({
+      let { error } = await supabase.from('activity_logs').insert({
         agency_id: agencyId,
         user_id: userId,
         action: type,
-        details: { description, clientName },
+        details: { description, clientName, entity_type: entityType, entity_id: String(entityId || '') },
         entity_type: entityType,
-        entity_id: entityId,
+        entity_id: String(entityId || ''),
       });
+      if (error && (error.message?.includes('entity_id') || error.message?.includes('schema cache') || error.message?.includes('uuid') || error.code === 'PGRST204' || error.code === '22P02')) {
+        const fallback = await supabase.from('activity_logs').insert({
+          agency_id: agencyId,
+          user_id: userId,
+          action: type,
+          details: { description, clientName, entity_type: entityType, entity_id: String(entityId || '') },
+        });
+        error = fallback.error;
+      }
       if (error) {
-        notifyDbError('activity_logs', error);
+        console.warn('Supabase activity_logs insert notice (using local storage fallback):', error.message);
       }
     } catch (err) {
       console.warn('Supabase logActivity failed, saving to localStorage:', err);

@@ -1,9 +1,13 @@
 import React from 'react';
 import GlassCard from '../components/utility/GlassCard.jsx';
 import StatBadge from '../components/utility/StatBadge.jsx';
+import { DayInventorySections } from '../../components/common/UniversalTemplateExtras.jsx';
 
 // ── Shared Helper for Activities Display ─────────────────────────────────────
-function ActivityTags({ activities, accentColor }) {
+function ActivityTags({ activities, accentColor, day, theme, vibe }) {
+  if (day && (day.content || day.hotels || day.transfers || day.meals || day.activities)) {
+    return <DayInventorySections day={day} theme={theme || {}} accentColor={accentColor} vibe={vibe} />;
+  }
   if (!activities || !Array.isArray(activities) || activities.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-2 mt-4">
@@ -39,7 +43,7 @@ export function LeftImage({ day, dayImage, theme, index }) {
         <p className="text-sm md:text-base leading-relaxed" style={{ color: textSec }}>
           {day.description || 'Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure.'}
         </p>
-        <ActivityTags activities={day.activities} accentColor={accent} />
+        <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
   );
@@ -68,7 +72,7 @@ export function RightImage({ day, dayImage, theme, index }) {
         <p className="text-sm md:text-base leading-relaxed" style={{ color: textSec }}>
           {day.description || 'Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure.'}
         </p>
-        <ActivityTags activities={day.activities} accentColor={accent} />
+        <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
   );
@@ -95,7 +99,7 @@ export function TopImage({ day, dayImage, theme, index }) {
       <p className="text-base leading-relaxed max-w-4xl" style={{ color: textSec }}>
         {day.description || 'Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure.'}
       </p>
-      <ActivityTags activities={day.activities} accentColor={accent} />
+      <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
     </div>
   );
 }
@@ -121,7 +125,7 @@ export function BottomGallery({ day, dayImage, theme, index }) {
       <p className="text-base leading-relaxed mb-6" style={{ color: textSec }}>
         {day.description || 'Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure.'}
       </p>
-      <ActivityTags activities={day.activities} accentColor={accent} />
+      <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       
       <div className="grid grid-cols-3 gap-4 mt-6">
         <div className="h-40 rounded-xl overflow-hidden shadow">
@@ -151,7 +155,7 @@ export function MasonryGallery({ day, dayImage, theme, index }) {
         <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: accent }}>Day 0{num}</div>
         <h3 className="text-3xl font-serif font-bold" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
         <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'Immerse yourself in scenic beauty and private tours.'}</p>
-        <ActivityTags activities={day.activities} accentColor={accent} />
+        <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
       <div className="md:col-span-6 grid grid-cols-2 gap-4">
         <div className="h-64 rounded-2xl overflow-hidden shadow-lg">
@@ -186,7 +190,7 @@ export function PinterestStyle({ day, dayImage, theme, index }) {
             <h3 className="text-2xl font-bold mb-4" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
             <p className="text-sm md:text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'An inspiring day full of memorable moments.'}</p>
           </div>
-          <ActivityTags activities={day.activities} accentColor={accent} />
+          <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
         </div>
       </div>
     </GlassCard>
@@ -217,7 +221,7 @@ export function MagazineEditorial({ day, dayImage, theme, index }) {
           <p className="text-lg font-serif italic leading-relaxed pl-4 border-l-2" style={{ color: primary, borderColor: accent }}>
             "{day.description || 'Every moment of today is engineered for wonder, luxury, and cultural depth.'}"
           </p>
-          <ActivityTags activities={day.activities} accentColor={accent} />
+          <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
         </div>
         <div className="md:col-span-5">
           <div className="h-72 rounded-2xl overflow-hidden shadow-xl relative group">
@@ -252,7 +256,7 @@ export function Timeline({ day, dayImage, theme, index }) {
         <div className="h-56 rounded-xl overflow-hidden shadow-md mb-4 max-w-lg">
           <img src={dayImage} alt={`Day ${num}`} className="w-full h-full object-cover" />
         </div>
-        <ActivityTags activities={day.activities} accentColor={accent} />
+        <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
   );
@@ -278,7 +282,7 @@ export function SplitScreen({ day, dayImage, theme, index }) {
         <span className="text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: accent }}>Itinerary Segment</span>
         <h3 className="text-2xl md:text-3xl font-serif font-bold mb-4" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
         <p className="text-sm md:text-base leading-relaxed mb-4" style={{ color: textSec }}>{day.description || 'Explore the wonders of your destination in complete luxury.'}</p>
-        <ActivityTags activities={day.activities} accentColor={accent} />
+        <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
   );
@@ -302,7 +306,7 @@ export function FloatingCards({ day, dayImage, theme, index }) {
         </span>
         <h3 className="text-2xl md:text-3xl font-serif font-bold mb-3" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
         <p className="text-sm md:text-base leading-relaxed mb-4" style={{ color: textSec }}>{day.description || 'A remarkable day crafted around VIP access and comfort.'}</p>
-        <ActivityTags activities={day.activities} accentColor={accent} />
+        <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
   );
@@ -327,7 +331,7 @@ export function GlassCards({ day, dayImage, theme, index }) {
           </div>
           <h3 className="text-2xl md:text-3xl font-bold font-serif" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
           <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'Delight in breathtaking sights and private hospitality.'}</p>
-          <ActivityTags activities={day.activities} accentColor={accent} />
+          <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
         </div>
         <div className="w-full md:w-5/12 h-64 rounded-2xl overflow-hidden shadow-lg">
           <img src={dayImage} alt={`Day ${num}`} className="w-full h-full object-cover" />
@@ -354,7 +358,7 @@ export function BentoGrid({ day, dayImage, theme, index }) {
           <h3 className="text-2xl md:text-3xl font-bold font-serif mb-4" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
           <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'A full day of extraordinary discovery and VIP comfort.'}</p>
         </div>
-        <ActivityTags activities={day.activities} accentColor={accent} />
+        <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
       
       <div className="md:col-span-4 h-72 md:h-auto rounded-2xl overflow-hidden shadow-md relative group">
@@ -388,7 +392,7 @@ export function PolaroidStyle({ day, dayImage, theme, index }) {
         <span className="text-xs uppercase tracking-widest font-semibold block" style={{ color: accent }}>Travel Snapshot</span>
         <h3 className="text-3xl font-bold" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
         <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'Capture the spirit of adventure with private guides and unforgettable scenery.'}</p>
-        <ActivityTags activities={day.activities} accentColor={accent} />
+        <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
   );
@@ -414,7 +418,7 @@ export function LuxuryCardStack({ day, dayImage, theme, index }) {
           </div>
           <h3 className="text-3xl font-serif font-bold mb-4" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
           <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'Experience premier luxury and exclusive access to cultural icons.'}</p>
-          <ActivityTags activities={day.activities} accentColor={accent} />
+          <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
         </div>
       </div>
     </div>
@@ -447,7 +451,7 @@ export function FullBleedImage({ day, dayImage, theme, index }) {
         <p className="text-base md:text-lg text-white/90 leading-relaxed font-light">
           {day.description || 'An immersive day surrounded by dramatic vistas and personalized luxury.'}
         </p>
-        <ActivityTags activities={day.activities} accentColor="#fbbf24" />
+        <ActivityTags activities={day.activities} accentColor="#fbbf24" day={day} theme={theme} />
       </div>
     </div>
   );
@@ -473,7 +477,7 @@ export function HeroImageGallery({ day, dayImage, theme, index }) {
         <img src={dayImage} alt={`Day ${num}`} className="w-full h-full object-cover" />
       </div>
       <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'Spend the day exploring iconic landmarks and cultural treasures.'}</p>
-      <ActivityTags activities={day.activities} accentColor={accent} />
+      <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
     </div>
   );
 }
@@ -496,7 +500,7 @@ export function TwoColumnEditorial({ day, dayImage, theme, index }) {
           <p className="text-base leading-relaxed font-serif" style={{ color: textSec }}>
             {day.description || 'An inspiring journey designed for those who appreciate fine hospitality and authentic local encounters.'}
           </p>
-          <ActivityTags activities={day.activities} accentColor={accent} />
+          <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
         </div>
         <div className="h-64 rounded-xl overflow-hidden shadow-lg">
           <img src={dayImage} alt={`Day ${num}`} className="w-full h-full object-cover" />
@@ -524,7 +528,7 @@ export function ThreeColumnMagazine({ day, dayImage, theme, index }) {
           <p className="text-sm md:text-base leading-relaxed" style={{ color: textSec }}>
             {day.description || 'Spend the day discovering hidden gems and enjoying VIP treatment.'}
           </p>
-          <ActivityTags activities={day.activities} accentColor={accent} />
+          <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
         </div>
         <div className="md:col-span-4 h-52 rounded-xl overflow-hidden shadow">
           <img src={dayImage} alt={`Day ${num}`} className="w-full h-full object-cover" />
@@ -552,7 +556,7 @@ export function StorybookLayout({ day, dayImage, theme, index }) {
         "{day.description || 'An enchanting narrative unfolds as you explore scenic landscapes and historical monuments.'}"
       </p>
       <div className="flex justify-center">
-        <ActivityTags activities={day.activities} accentColor={accent} />
+        <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
   );

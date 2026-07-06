@@ -200,8 +200,39 @@ function PlanSettings({ subscription }) {
 }
 
 function ProfileSettings({ user, signOut, isDemo }) {
-  const agencyId = getAgencyId();
-  const voyantaId = user?.id || '00000000-0000-0000-0000-000000000001';
+  const rawAgencyId = getAgencyId() || '0001';
+  const rawUserId = user?.id || '0001';
+
+  // Calculate Voyanta ID: VOY-{MMM}-{YYYY}-{digit from 0001}
+  const createdDate = user?.created_at ? new Date(user.created_at) : new Date();
+  const monthStr = createdDate.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+  const yearStr = createdDate.getFullYear();
+  const userNums = (String(rawUserId).match(/\d+/g) || ['0001']).join('');
+  const userDigit = userNums.slice(-4).padStart(4, '0');
+  const voyantaId = `VOY-${monthStr}-${yearStr}-${userDigit === '0000' ? '0001' : userDigit}`;
+
+  // Calculate Agency ID: {Agency name's first 3 letters}-digit from 0001
+  let agencyName = 'Voyanta';
+  try {
+    const rawSet = localStorage.getItem('voyanta_settings_data');
+    if (rawSet) {
+      const parsed = JSON.parse(rawSet);
+      if (parsed.agency_name) agencyName = parsed.agency_name;
+    }
+  } catch {}
+  if (agencyName === 'Voyanta' || !agencyName.trim()) {
+    try {
+      const rawBrand = localStorage.getItem('voyanta_agency_branding');
+      if (rawBrand) {
+        const parsedB = JSON.parse(rawBrand);
+        if (parsedB.agency_name) agencyName = parsedB.agency_name;
+      }
+    } catch {}
+  }
+  const agencyNums = (String(rawAgencyId).match(/\d+/g) || ['0001']).join('');
+  const agencyDigit = agencyNums.slice(-4).padStart(4, '0');
+  const first3 = (agencyName.replace(/[^a-zA-Z]/g, '') || 'VOY').slice(0, 3).toUpperCase().padEnd(3, 'X');
+  const agencyId = `${first3}-${agencyDigit === '0000' ? '0001' : agencyDigit}`;
 
   return (
     <div className="space-y-6">
@@ -533,16 +564,9 @@ function BrandingSettings() {
       <h3 className="text-2xl font-serif font-bold">Agency Branding & Default Template</h3>
       <div className="p-6 bg-surface-container rounded-xl border border-outline-variant space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+          <div className="md:col-span-2">
             <label className="block text-sm font-medium text-on-surface-variant mb-1">Agency Name</label>
             <input type="text" value={safeStr(current.agency_name)} onChange={upd('agency_name')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-on-surface-variant mb-1">Primary Color (Hex)</label>
-            <div className="flex gap-4">
-              <input type="color" value={safeStr(current.primary_color) || '#0b1c30'} onChange={upd('primary_color')} className="h-10 w-10 p-1 rounded border border-outline cursor-pointer bg-white" />
-              <input type="text" value={safeStr(current.primary_color) || '#0b1c30'} onChange={upd('primary_color')} className="flex-1 px-4 py-2 border border-outline rounded-lg font-mono bg-white" />
-            </div>
           </div>
           <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
             <ImageUploadInput
