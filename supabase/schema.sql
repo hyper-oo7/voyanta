@@ -167,6 +167,7 @@ create table if not exists public.invoices (
 -- SEMANTIC CACHE & VAULT ------------------------------------------------------
 create table if not exists public.semantic_cache (
   id uuid primary key default gen_random_uuid(),
+  agency_id uuid references public.agencies(id) on delete cascade,
   hash text unique not null,
   destination text,
   budget numeric,
@@ -174,6 +175,8 @@ create table if not exists public.semantic_cache (
   created_at timestamptz default now()
 );
 create index if not exists semantic_cache_hash_idx on public.semantic_cache (hash);
+create index if not exists semantic_cache_agency_idx on public.semantic_cache (agency_id);
+
 
 create table if not exists public.supplier_pdfs (
   id uuid primary key default gen_random_uuid(),
@@ -536,8 +539,19 @@ create policy "activity_logs_agency" on public.activity_logs for all using (agen
 drop policy if exists "notifications_agency" on public.notifications;
 create policy "notifications_agency" on public.notifications for all using (agency_id = public.current_agency_id());
 
+alter table public.semantic_cache enable row level security;
+alter table public.supplier_pdfs enable row level security;
+
+drop policy if exists "semantic_cache_agency" on public.semantic_cache;
+create policy "semantic_cache_agency" on public.semantic_cache for all using (agency_id = public.current_agency_id() or agency_id is null);
+
+drop policy if exists "supplier_pdfs_agency" on public.supplier_pdfs;
+create policy "supplier_pdfs_agency" on public.supplier_pdfs for all using (agency_id = public.current_agency_id() or agency_id is null);
+
 -- STORAGE BUCKET (v3) ---------------------------------------------------------
 insert into storage.buckets (id, name, public) values ('agency-assets', 'agency-assets', true) on conflict (id) do nothing;
+insert into storage.buckets (id, name, public) values ('proposal-assets', 'proposal-assets', false) on conflict (id) do update set public = false;
+insert into storage.buckets (id, name, public) values ('generated-documents', 'generated-documents', false) on conflict (id) do update set public = false;
 
 drop policy if exists "Public read agency assets" on storage.objects;
 create policy "Public read agency assets" on storage.objects for select using (bucket_id = 'agency-assets');
@@ -550,6 +564,19 @@ create policy "Users can update agency assets" on storage.objects for update usi
 
 drop policy if exists "Users can delete agency assets" on storage.objects;
 create policy "Users can delete agency assets" on storage.objects for delete using (bucket_id = 'agency-assets' and auth.uid() is not null);
+
+drop policy if exists "Authenticated read proposal assets" on storage.objects;
+create policy "Authenticated read proposal assets" on storage.objects for select using (bucket_id in ('proposal-assets', 'generated-documents') and auth.uid() is not null);
+
+drop policy if exists "Authenticated upload proposal assets" on storage.objects;
+create policy "Authenticated upload proposal assets" on storage.objects for insert with check (bucket_id in ('proposal-assets', 'generated-documents') and auth.uid() is not null);
+
+drop policy if exists "Authenticated update proposal assets" on storage.objects;
+create policy "Authenticated update proposal assets" on storage.objects for update using (bucket_id in ('proposal-assets', 'generated-documents') and auth.uid() is not null);
+
+drop policy if exists "Authenticated delete proposal assets" on storage.objects;
+create policy "Authenticated delete proposal assets" on storage.objects for delete using (bucket_id in ('proposal-assets', 'generated-documents') and auth.uid() is not null);
+
 
 -- INDEXES FOR PERFORMANCE -----------------------------------------------------
 create index if not exists clients_agency_idx on public.clients (agency_id);

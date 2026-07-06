@@ -10,6 +10,10 @@
 import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 
 export const BUCKET = 'agency-assets';
+export const PRIVATE_BUCKETS = Object.freeze({
+  PROPOSAL_ASSETS: 'proposal-assets',
+  GENERATED_DOCS: 'generated-documents',
+});
 
 export const FOLDERS = Object.freeze({
   LOGOS: 'logos',
@@ -25,6 +29,23 @@ export const FOLDERS = Object.freeze({
 const DEFAULT_MAX_IMAGE_BYTES = 5 * 1024 * 1024;       // 5 MB
 const DEFAULT_MAX_FILE_BYTES  = 25 * 1024 * 1024;      // 25 MB
 
+function getTargetBucket(folder) {
+  if (folder === FOLDERS.PROPOSAL_PDFS || folder === 'proposal-pdfs' || folder === 'generated-documents') {
+    return PRIVATE_BUCKETS.GENERATED_DOCS;
+  }
+  if (folder === FOLDERS.CLIENT_FILES || folder === 'client-files' || folder === 'proposal-assets') {
+    return PRIVATE_BUCKETS.PROPOSAL_ASSETS;
+  }
+  return BUCKET;
+}
+
+export async function getSignedUrl(path, bucket = PRIVATE_BUCKETS.GENERATED_DOCS, expiresIn = 3600) {
+  if (!supabase) throw new Error('Supabase storage not configured');
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
+  if (error || !data?.signedUrl) throw new Error(error?.message || 'Failed to generate signed URL');
+  return data.signedUrl;
+}
+
 // Upload an image and return its public URL. Falls back to a data URL when
 // Supabase storage is unavailable (so previews still work in demo mode).
 export async function uploadImage(file, folder, { maxBytes = DEFAULT_MAX_IMAGE_BYTES } = {}) {
@@ -34,12 +55,16 @@ export async function uploadImage(file, folder, { maxBytes = DEFAULT_MAX_IMAGE_B
 
   if (supabase) {
     try {
+      const targetBucket = getTargetBucket(folder);
       const path = buildPath(folder, file.name);
-      const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+      const { error } = await supabase.storage.from(targetBucket).upload(path, file, {
         cacheControl: '3600', upsert: false, contentType: file.type,
       });
       if (!error) {
-        const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+        if (targetBucket !== BUCKET) {
+          return await getSignedUrl(path, targetBucket, 3600);
+        }
+        const { data } = supabase.storage.from(targetBucket).getPublicUrl(path);
         if (data?.publicUrl) return data.publicUrl;
       }
     } catch { /* fallthrough → embed */ }
@@ -47,28 +72,36 @@ export async function uploadImage(file, folder, { maxBytes = DEFAULT_MAX_IMAGE_B
   return await readAsDataURL(file);
 }
 
-// Upload an arbitrary file (PDF, doc, image) and return its public URL.
+// Upload an arbitrary file (PDF, doc, image) and return its public URL or signed URL.
 // Unlike uploadImage(), this does NOT fall back to a data URL: real files
 // must round-trip through storage.
-export async function uploadFile(file, folder, { maxBytes = DEFAULT_MAX_FILE_BYTES } = {}) {
+export async function uploadFile(file, folder, { maxBytes = DEFAULT_MAX_FILE_BYTES, expiresIn = 3600 } = {}) {
   if (!file) throw new Error('No file');
   if (file.size > maxBytes) throw new Error(`Max ${Math.round(maxBytes / 1024 / 1024)} MB`);
   if (!supabase) throw new Error('Supabase storage not configured');
 
+  const targetBucket = getTargetBucket(folder);
   const path = buildPath(folder, file.name);
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+  const { error } = await supabase.storage.from(targetBucket).upload(path, file, {
     cacheControl: '3600', upsert: false, contentType: file.type || 'application/octet-stream',
   });
   if (error) throw new Error(error.message);
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  if (!data?.publicUrl) throw new Error('Failed to derive public URL');
-  return { url: data.publicUrl, path, name: file.name, size: file.size, type: file.type };
+
+  let url;
+  if (targetBucket !== BUCKET) {
+    url = await getSignedUrl(path, targetBucket, expiresIn);
+  } else {
+    const { data } = supabase.storage.from(targetBucket).getPublicUrl(path);
+    if (!data?.publicUrl) throw new Error('Failed to derive public URL');
+    url = data.publicUrl;
+  }
+  return { url, path, bucket: targetBucket, name: file.name, size: file.size, type: file.type };
 }
 
 // Convenience for generated artefacts (PDF blobs we want to archive).
-export async function uploadBlob(blob, filename, folder) {
+export async function uploadBlob(blob, filename, folder, options = {}) {
   const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
-  return await uploadFile(file, folder);
+  return await uploadFile(file, folder, options);
 }
 
 function buildPath(folder, filename) {
@@ -84,3 +117,4 @@ function readAsDataURL(file) {
     r.readAsDataURL(file);
   });
 }
+

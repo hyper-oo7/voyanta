@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { DayBlock } from '../../components/timeline/DayBlock.jsx';
 import { hotelsService, flightsService, activitiesService } from '../../services/resourceService.js';
 import { addItem, removeItem } from '../../services/proposalItemService.js';
@@ -32,14 +32,17 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     (vaultItems || []).forEach(vt => {
       if (Array.isArray(vt.sub_destinations)) vt.sub_destinations.forEach(sd => set.add(sd));
     });
-    ['Zurich', 'Lucerne', 'Interlaken', 'Zermatt', 'Geneva', 'St. Moritz', 'Amalfi Coast', 'Positano', 'Capri', 'Santorini', 'Mykonos', 'Bali Ubud', 'Bali Seminyak', 'Kyoto', 'Tokyo'].forEach(sd => set.add(sd));
+    if (set.size === 0) {
+      const dest = proposal?.destination || 'City Center';
+      [dest, `${dest} Historic District`, `${dest} Waterfront`, `${dest} Highlands`].forEach(sd => set.add(sd));
+    }
     return Array.from(set).map((name, idx) => ({
       id: `sub_${idx}_${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
       name: name,
-      location: 'Switzerland / Europe / Global Luxury',
-      description: `Brings 5★ Hotel, VIP Tour, Private Chauffeur Transfer & Michelin Dining in ${name}.`
+      location: proposal?.destination || 'Selected Destination District',
+      description: `Brings 5★ Hotel, VIP Tour, Private Chauffeur Transfer & Gourmet Dining in ${name}.`
     }));
-  }, [vaultItems]);
+  }, [vaultItems, proposal?.destination]);
 
   // Duration-Driven Builder: Prepopulate days if empty
   useEffect(() => {
@@ -219,10 +222,10 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       const newTitle = `VIP Experience in ${subDestName}`;
       const newDesc = `Executive private luxury tour, 5-star hotel check-in, and gourmet Michelin dining in ${subDestName}.`;
       
-      const hotelBlock = { id: crypto.randomUUID(), type: 'hotel', data: { name: `Grand Palace & Spa ${subDestName}`, category: '5 Star Luxury', price_per_night: 800, location: `${subDestName} Center`, image_url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=80' } };
-      const actBlock = { id: crypto.randomUUID(), type: 'activity', data: { name: `VIP Private Old Town & Scenic Tour (${subDestName})`, duration: '4 hours', price: 250, location: subDestName, image_url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=800&auto=format&fit=crop&q=80' } };
-      const transBlock = { id: crypto.randomUUID(), type: 'transfer', data: { name: `VIP Chauffeur Transfer in ${subDestName}`, vehicle_type: 'Mercedes-Benz S-Class', price: 150 } };
-      const mealBlock = { id: crypto.randomUUID(), type: 'meal', data: { venue: `Pavillon Michelin Tasting Dinner (${subDestName})`, type: 'Dinner', price: 200, image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=80' } };
+      const hotelBlock = { id: crypto.randomUUID(), type: 'hotel', data: { name: `Luxury Hotel & Spa ${subDestName}`, category: '5 Star Luxury', price_per_night: 800, location: `${subDestName} Center`, image_url: '' } };
+      const actBlock = { id: crypto.randomUUID(), type: 'activity', data: { name: `VIP Private Guided Tour (${subDestName})`, duration: '4 hours', price: 250, location: subDestName, image_url: '' } };
+      const transBlock = { id: crypto.randomUUID(), type: 'transfer', data: { name: `VIP Chauffeur Transfer in ${subDestName}`, vehicle_type: 'Mercedes-Benz S-Class / Maybach', price: 150 } };
+      const mealBlock = { id: crypto.randomUUID(), type: 'meal', data: { venue: `Signature Gourmet Dining (${subDestName})`, type: 'Dinner', price: 200, image_url: '' } };
 
       const currentContent = Array.isArray(currentDay.content) ? [...currentDay.content] : [];
       updateDay(dayIndex, { title: newTitle, description: newDesc, content: [...currentContent, hotelBlock, actBlock, transBlock, mealBlock] });

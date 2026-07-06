@@ -14,7 +14,9 @@ from src.services.cascading_ai_service import route_model_cascading
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pdf")
 PDF_SERVICE_URL = os.environ.get("PDF_SERVICE_URL", "http://127.0.0.1:8002")
-INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "voyanta-internal-secret")
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY")
+if not INTERNAL_API_KEY:
+    raise RuntimeError("FATAL: INTERNAL_API_KEY environment variable is not set.")
 
 @router.get("/health")
 async def pdf_health():
@@ -50,8 +52,8 @@ async def pdf_generate(request: PDFGenerateRequest, user: Any = Depends(verify_t
         except HTTPException:
             raise
         except Exception as e:
-            logger.exception("PDF generate proxy failed")
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.exception("PDF service call failed")
+            raise HTTPException(status_code=500, detail=f"PDF service failure: {str(e)}")
 
 @router.post("/vault-process")
 async def process_vault_pdf(
@@ -59,7 +61,8 @@ async def process_vault_pdf(
     destination: str = Form("Switzerland"),
     budget: float = Form(10000.0),
     duration: int = Form(7),
-    currency: str = Form("INR")
+    currency: str = Form("INR"),
+    user: Any = Depends(verify_token)
 ):
     """
     100% Efficient Pipeline:
@@ -67,9 +70,13 @@ async def process_vault_pdf(
     2. Deterministic Pre-Parsing & Token Compression (Strips boilerplate legalese)
     3. Spatial Image Extraction & Linking
     4. Semantic Caching ($0.00 cost match)
-    5. Model Cascading (gpt-4o-mini -> claude-3-5-sonnet) with +-20% budget filtering
+    5. Model Cascading (gpt-4o-mini -> claude-3-5-sonnet -> gemini) with +-20% budget filtering
     """
     try:
+        agency_id = None
+        if isinstance(user, dict):
+            agency_id = (user.get("user_metadata") or {}).get("agency_id") or (user.get("app_metadata") or {}).get("agency_id") or user.get("agency_id")
+
         file_bytes = await file.read()
         storage_meta = save_temporary_pdf(file_bytes, file.filename or "supplier_package.pdf")
         
@@ -81,8 +88,9 @@ async def process_vault_pdf(
             for page in doc:
                 raw_text += page.get_text() + "\n"
             doc.close()
-        except Exception:
-            raw_text += "Luxury 5 Star Alpine itinerary with private lake cruises, mountain rail transfers, and Michelin star dining. Terms and conditions apply. Limitation of liability and cancellation policy copyright 2026 all rights reserved."
+        except Exception as e:
+            logger.error(f"Failed to read PDF file text: {e}")
+            raise HTTPException(status_code=400, detail="Unable to extract text from PDF file. Ensure the PDF is valid and not encrypted.")
             
         compressed_text, compression_metrics = deterministic_pre_parse_and_compress(raw_text)
         
@@ -91,7 +99,7 @@ async def process_vault_pdf(
         
         # Check Semantic Cache (RAG / SHA Hash) for $0 cost instant hit
         hash_key = compute_content_hash(compressed_text, budget, duration)
-        cached_result = await get_cached_recommendation(hash_key)
+        cached_result = await get_cached_recommendation(hash_key, agency_id=agency_id)
         
         if cached_result:
             return JSONResponse(content={
@@ -114,7 +122,7 @@ async def process_vault_pdf(
         )
         
         # Store in Semantic Cache for future zero-cost retrievals
-        await store_cached_recommendation(hash_key, ai_result, destination, budget)
+        await store_cached_recommendation(hash_key, ai_result, destination, budget, agency_id=agency_id)
         
         return JSONResponse(content={
             "status": "success",
@@ -124,12 +132,14 @@ async def process_vault_pdf(
             "compression_metrics": compression_metrics,
             "data": ai_result
         })
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Vault PDF processing failed")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @router.post("/vault-cleanup")
-async def run_vault_cleanup():
+async def run_vault_cleanup(user: Any = Depends(verify_token)):
     """
     Scheduled script endpoint to delete temporary PDF files older than 15 days.
     """

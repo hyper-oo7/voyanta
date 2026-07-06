@@ -106,41 +106,37 @@ def extract_images_and_link_spatially(file_path: str) -> List[Dict[str, Any]]:
     images_list = []
     try:
         import fitz  # PyMuPDF
+        import base64
         doc = fitz.open(file_path)
         for page_num in range(len(doc)):
             page = doc[page_num]
             image_list = page.get_images(full=True)
             for img_index, img_info in enumerate(image_list):
-                xref = img_info[0]
-                base_image = doc.extract_image(xref)
-                image_bytes = base_image["image"]
-                image_ext = base_image["ext"]
-                
-                # Mock public URL structure for agency assets storage
-                img_name = f"vault_page{page_num+1}_img{img_index+1}.{image_ext}"
-                mock_url = f"https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80"
-                
-                # Assign default entity link based on page position / index heuristics
-                entity_type = "destination"
-                if img_index == 1: entity_type = "hotel"
-                elif img_index == 2: entity_type = "activity"
-                elif img_index == 3: entity_type = "meal"
-                
-                images_list.append({
-                    "image_id": f"img_p{page_num+1}_{img_index+1}",
-                    "page": page_num + 1,
-                    "url": mock_url,
-                    "linked_entity_type": entity_type
-                })
+                try:
+                    xref = img_info[0]
+                    base_image = doc.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    image_ext = base_image["ext"]
+                    
+                    b64_str = base64.b64encode(image_bytes).decode("utf-8")
+                    real_url = f"data:image/{image_ext};base64,{b64_str}"
+                    
+                    entity_type = "destination"
+                    if img_index == 1: entity_type = "hotel"
+                    elif img_index == 2: entity_type = "activity"
+                    elif img_index == 3: entity_type = "meal"
+                    
+                    images_list.append({
+                        "image_id": f"img_p{page_num+1}_{img_index+1}",
+                        "page": page_num + 1,
+                        "url": real_url,
+                        "linked_entity_type": entity_type
+                    })
+                except Exception as img_err:
+                    logger.warning(f"Failed to extract image xref {img_info[0]}: {img_err}")
         doc.close()
     except Exception as e:
-        logger.debug(f"[Image Extraction] PyMuPDF fallback or error: {e}. Providing sample images.")
-        # Fallback sample images for testing
-        images_list = [
-            {"image_id": "img_p1_1", "page": 1, "url": "https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=800&auto=format&fit=crop&q=80", "linked_entity_type": "destination"},
-            {"image_id": "img_p2_1", "page": 2, "url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=80", "linked_entity_type": "hotel"},
-            {"image_id": "img_p3_1", "page": 3, "url": "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800&auto=format&fit=crop&q=80", "linked_entity_type": "activity"},
-            {"image_id": "img_p4_1", "page": 4, "url": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=80", "linked_entity_type": "meal"}
-        ]
+        logger.debug(f"[Image Extraction] PyMuPDF error: {e}. No images extracted.")
+        images_list = []
         
     return images_list

@@ -13,8 +13,8 @@ export default function TemplatePreviewPage() {
     return <div className="p-xl text-center">Template not found. <Link to="/templates" className="text-primary underline">Go back</Link></div>;
   }
 
-  // Construct incredibly realistic mock data for the preview based on the template
-  const mockProposal = {
+  // Construct realistic sample data for the gallery preview based on the template
+  const sampleProposal = {
     name: template.title,
     client_name: 'The Henderson Family',
     destination: template.id === 't2' ? 'Japan' : (template.id === 't3' ? 'Italy' : 'Paris & Loire Valley'),
@@ -55,7 +55,7 @@ export default function TemplatePreviewPage() {
     }
   };
 
-  const mockItems = {
+  const sampleItems = {
     hotel: [
       { id: 'h1', kind: 'hotel', label: 'Grand Luxury Resort & Spa', qty: 1, unit_price: 1250, meta: { day: 1 } },
       { id: 'h2', kind: 'hotel', label: 'Boutique Heritage Hotel', qty: 1, unit_price: 950, meta: { day: 3 } }
@@ -69,15 +69,15 @@ export default function TemplatePreviewPage() {
     ]
   };
 
-  const mockTotals = {
+  const sampleTotals = {
     subtotal: 14500,
     currency: 'USD'
   };
 
-  const mockData = {
-    proposal: mockProposal,
-    items_by_kind: mockItems,
-    totals: mockTotals
+  const sampleData = {
+    proposal: sampleProposal,
+    items_by_kind: sampleItems,
+    totals: sampleTotals
   };
 
   const startEditing = () => {
@@ -112,7 +112,7 @@ export default function TemplatePreviewPage() {
         <div className="bg-white shadow-2xl relative" style={{ minHeight: '297mm' }}>
            <TemplateRenderer 
              style={template.theme} 
-             data={mockData} 
+             data={sampleData} 
              include={ALL} 
              viewMode="document"
            />

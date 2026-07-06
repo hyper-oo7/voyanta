@@ -7,6 +7,26 @@ import cors from 'cors';
 import puppeteer from 'puppeteer';
 import rateLimit from 'express-rate-limit';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  const envConfig = fs.readFileSync(envPath, 'utf8');
+  envConfig.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const idx = trimmed.indexOf('=');
+      if (idx !== -1) {
+        const key = trimmed.substring(0, idx).trim();
+        const value = trimmed.substring(idx + 1).trim();
+        if (!process.env[key]) process.env[key] = value;
+      }
+    }
+  });
+}
 
 const PORT = process.env.PDF_PORT || 8002;
 const app = express();
@@ -22,13 +42,16 @@ const limiter = rateLimit({
 });
 app.use('/generate', limiter);
 
-const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'voyanta-internal-secret';
+if (!process.env.INTERNAL_API_KEY) {
+  console.error("FATAL: INTERNAL_API_KEY environment variable must be set.");
+  process.exit(1);
+}
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+
 app.use('/generate', (req, res, next) => {
-  if (process.env.NODE_ENV === 'production' || process.env.REQUIRE_INTERNAL_AUTH === 'true') {
-    const authHeader = req.headers['x-internal-api-key'] || req.headers['authorization'];
-    if (!authHeader || (authHeader !== INTERNAL_API_KEY && authHeader !== `Bearer ${INTERNAL_API_KEY}`)) {
-      return res.status(401).json({ error: 'Unauthorized: Invalid internal API key' });
-    }
+  const authHeader = req.headers['x-internal-api-key'] || req.headers['authorization'];
+  if (!authHeader || (authHeader !== INTERNAL_API_KEY && authHeader !== `Bearer ${INTERNAL_API_KEY}`)) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid internal API key' });
   }
   next();
 });

@@ -2,23 +2,25 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext.jsx';
 import { useProposalStore } from '../store/proposalStore.js';
+import { supabase } from '../lib/supabaseClient.js';
 
 function expandToFullDays(rec, defaultDur, budget) {
   const dur = Number(rec.duration_days || defaultDur || 7);
   let days = Array.isArray(rec.days) ? [...rec.days] : [];
   if (days.length < dur) {
-    const subDests = rec.sub_destinations && rec.sub_destinations.length > 0 ? rec.sub_destinations : ['Zurich', 'Lucerne', 'Interlaken', 'Zermatt', 'Geneva', 'St. Moritz', 'Montreux'];
+    const dest = rec.destination || 'Selected Destination';
+    const subDests = rec.sub_destinations && rec.sub_destinations.length > 0 ? rec.sub_destinations : [dest, `${dest} Center`, `${dest} Highlights`];
     const titles = [
-      'Arrival & VIP Lakeside Promenade',
-      'Alpine Lake Exploration & Guided Old Town',
-      'Scenic Train Excursion & Mountain Panorama',
-      'Glacier Express & Summit Experience',
-      'Historic Valley Walk & Artisanal Cheese Tasting',
-      'Top of Europe Alpine Adventure',
-      'Farewell Gourmet Breakfast & Chauffeur Transfer',
-      'Luxury Spa Sanctuary & Wellness Day',
-      'Private Vineyard Tour & Vintage Sommelier Tasting',
-      'Helicopter Scenic Flight Over Alpine Glaciers'
+      'Arrival & VIP Welcome',
+      'City Highlights & Cultural Exploration',
+      'Scenic Landscapes & Guided Discovery',
+      'Artisanal Experience & Local Heritage',
+      'Exclusive Landmark Excursion',
+      'Signature Luxury Day Tour',
+      'Farewell Gourmet Experience & Transfer',
+      'Wellness & Private Spa Discovery',
+      'Private Sommelier Tasting & Dining',
+      'Helicopter / Private Aerial Panorama'
     ];
     const newDays = [];
     for (let i = 1; i <= dur; i++) {
@@ -35,11 +37,11 @@ function expandToFullDays(rec, defaultDur, budget) {
           sub_destination: subDest,
           hotels: [
             {
-              name: `Grand Palace & Spa ${subDest}`,
+              name: `Luxury Hotel & Spa ${subDest}`,
               category: '5 Star Luxury',
               price_per_night: Math.round((budget || 10000) * 0.08),
-              location: `${subDest} Lakeside`,
-              image_url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=80',
+              location: `${subDest} Prime District`,
+              image_url: '',
               inclusions: ['Gourmet Breakfast', 'Private Spa Access', 'Chauffeur Transfer']
             }
           ],
@@ -49,7 +51,7 @@ function expandToFullDays(rec, defaultDur, budget) {
               duration: '4 hours',
               price: Math.round((budget || 10000) * 0.025),
               location: subDest,
-              image_url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=800&auto=format&fit=crop&q=80',
+              image_url: '',
               description: 'Exclusive private guide and skip-the-line VIP access.'
             }
           ],
@@ -64,19 +66,19 @@ function expandToFullDays(rec, defaultDur, budget) {
           meals: [
             {
               type: i % 2 === 0 ? 'Lunch' : 'Dinner',
-              venue: 'Michelin Star Tasting Venue',
+              venue: 'Signature Gourmet Dining Venue',
               description: 'Multi-course chef tasting menu paired with sommelier selected wines.',
               price: Math.round((budget || 10000) * 0.025),
-              image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=80'
+              image_url: ''
             }
           ],
           cruises: i === 1 || i === dur ? [
             {
-              name: 'Sunset Yacht Welcome Cruise',
+              name: 'Sunset Welcome Cruise',
               cabin_type: "VIP Lounge Deck",
               price: Math.round((budget || 10000) * 0.03),
               notes: 'Includes champagne welcome and gourmet canapés',
-              image_url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80'
+              image_url: ''
             }
           ] : []
         });
@@ -86,6 +88,7 @@ function expandToFullDays(rec, defaultDur, budget) {
   }
   return { ...rec, days, duration_days: dur };
 }
+
 
 function detectDestination(filename, fallbackDest) {
   const lower = (filename || '').toLowerCase();
@@ -174,6 +177,11 @@ export default function MyVaultPage() {
 
       if (!resultData) {
         try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const token = session?.access_token;
+          const headers = {};
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+
           const formData = new FormData();
           formData.append('file', currentF);
           formData.append('destination', detectedDest);
@@ -183,117 +191,28 @@ export default function MyVaultPage() {
 
           const response = await fetch('/api/v1/pdf/vault-process', {
             method: 'POST',
+            headers,
             body: formData
           });
           if (response.ok) {
             resultData = await response.json();
+          } else {
+            let errText = response.statusText;
+            try {
+              const errJson = await response.json();
+              errText = errJson.detail || errJson.message || errText;
+            } catch {}
+            throw new Error(`Server returned ${response.status}: ${errText}`);
           }
         } catch (err) {
-          console.warn('Backend endpoint unreachable, using high-fidelity local simulation for:', currentF.name);
+          console.error('Failed to process PDF via backend:', err);
+          toast.error(`Error processing ${currentF.name}: ${err.message || 'Server unreachable'}`);
+          continue;
         }
 
         if (!resultData || !resultData.data) {
-          await new Promise(resolve => setTimeout(resolve, Math.min(1200, 3000 / targetFiles.length)));
-          const optCost = round(budget * (0.9 + (idx * 0.03) % 0.2));
-          
-          resultData = {
-            status: 'success',
-            cache_hit: false,
-            cost_incurred: 'Optimized via Model Cascading ($0.002 avg)',
-            storage_meta: { filename: currentF.name, expires_at: new Date(Date.now() + 15 * 86400000).toLocaleDateString() },
-            compression_metrics: { original_chars: 14500 + (idx * 1200), compressed_chars: 5200 + (idx * 400), savings_percentage: '64.1%' },
-            data: {
-              success: true,
-              model_used: 'claude-3-5-sonnet (Model Cascading Routing)',
-              recommendations: [
-                {
-                  option_id: `rec_${Date.now()}_${idx}`,
-                  option_title: `${detectedDest} Signature Luxury Package (${currentF.name.replace(/\.[^/.]+$/, "")})`,
-                  destination: detectedDest,
-                  sub_destinations: detectedDest === 'Switzerland' ? ['Zurich', 'Lucerne', 'Interlaken'] : detectedDest === 'Bali, Indonesia' ? ['Ubud', 'Seminyak', 'Nusa Dua'] : [detectedDest, `${detectedDest} Central`],
-                  duration_days: duration,
-                  target_budget: budget,
-                  total_estimated_cost: optCost,
-                  cost_variance_percentage: `${optCost <= budget ? '-' : '+'}${Math.abs(round(((optCost - budget)/budget)*100))}%`,
-                  currency: currency,
-                  status: 'Recommended',
-                  days: [
-                    {
-                      day_number: 1,
-                      title: `Arrival in ${detectedDest} & VIP Check-In`,
-                      description: `Executive chauffeur transfer from airport to your 5-star resort in ${detectedDest}. Welcome champagne and private evening promenade.`,
-                      sub_destination: detectedDest,
-                      hotels: [
-                        {
-                          name: `Grand Luxury Palace ${detectedDest}`,
-                          category: '5 Star Luxury',
-                          price_per_night: Math.round(budget * 0.08),
-                          location: `${detectedDest} Prime District`,
-                          image_url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=80',
-                          inclusions: ['Gourmet Breakfast', 'Private Spa Access', 'Airport Transfer']
-                        }
-                      ],
-                      activities: [
-                        {
-                          name: `VIP Private Guided ${detectedDest} Promenade`,
-                          duration: '3 hours',
-                          price: Math.round(budget * 0.02),
-                          location: detectedDest,
-                          image_url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=800&auto=format&fit=crop&q=80',
-                          description: 'Exclusive private guide through iconic landmarks.'
-                        }
-                      ],
-                      transfers: [
-                        {
-                          name: 'VIP Sedan Chauffeur',
-                          vehicle_type: 'Mercedes-Benz S-Class / Maybach',
-                          price: Math.round(budget * 0.015),
-                          notes: 'Meet and greet at arrival gate'
-                        }
-                      ],
-                      meals: [
-                        {
-                          type: 'Dinner',
-                          venue: `Signature Michelin Star Dining ${detectedDest}`,
-                          description: '7-course seasonal tasting menu paired with curated wines.',
-                          price: Math.round(budget * 0.025),
-                          image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&auto=format&fit=crop&q=80'
-                        }
-                      ]
-                    }
-                  ],
-                  extra_sections: [
-                    {
-                      section_title: 'What We Provide (Inclusions)',
-                      content: [
-                        '24/7 Dedicated Concierge Assistance',
-                        'All First-Class Travel Passes & seat reservations',
-                        'Private luxury SUV and sedan transfers',
-                        'All VIP museum and landmark entry passes'
-                      ]
-                    },
-                    {
-                      section_title: 'What You Have To Take (Packing & Visa)',
-                      content: [
-                        'Seasonal layers and waterproof windbreaker',
-                        'Smart casual / formal attire for fine dining',
-                        'Valid Travel Visa (Must be valid for 3+ months beyond departure)',
-                        'Universal travel power adapters'
-                      ]
-                    },
-                    {
-                      section_title: 'Important Guidelines & Advisory',
-                      content: [
-                        'Private excursions are strictly scheduled; please arrive 15 mins prior.',
-                        'Hotel check-in is at 15:00 local time; early check-in requested.',
-                        'Custom dietary requirements have been pre-advised to all venues.'
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-          };
+          toast.error(`Failed to parse valid recommendations from ${currentF.name}`);
+          continue;
         }
 
         try {

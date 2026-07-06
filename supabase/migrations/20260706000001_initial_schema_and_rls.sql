@@ -393,5 +393,11 @@ create policy "notifications_agency" on public.notifications for all using (agen
 
 -- STORAGE BUCKETS
 insert into storage.buckets (id, name, public) values ('agency-assets', 'agency-assets', true) on conflict (id) do nothing;
-insert into storage.buckets (id, name, public) values ('proposal-assets', 'proposal-assets', true) on conflict (id) do nothing;
-insert into storage.buckets (id, name, public) values ('generated-documents', 'generated-documents', true) on conflict (id) do nothing;
+insert into storage.buckets (id, name, public) values ('proposal-assets', 'proposal-assets', false) on conflict (id) do update set public = false;
+insert into storage.buckets (id, name, public) values ('generated-documents', 'generated-documents', false) on conflict (id) do update set public = false;
+
+create policy "Authenticated read proposal assets" on storage.objects for select using (bucket_id in ('proposal-assets', 'generated-documents') and auth.uid() is not null);
+create policy "Authenticated upload proposal assets" on storage.objects for insert with check (bucket_id in ('proposal-assets', 'generated-documents') and auth.uid() is not null);
+create policy "Authenticated update proposal assets" on storage.objects for update using (bucket_id in ('proposal-assets', 'generated-documents') and auth.uid() is not null);
+create policy "Authenticated delete proposal assets" on storage.objects for delete using (bucket_id in ('proposal-assets', 'generated-documents') and auth.uid() is not null);
+
