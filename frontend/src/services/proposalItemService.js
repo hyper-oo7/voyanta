@@ -3,6 +3,15 @@ import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 // Proposal items (junction): hotels/flights/activities/transfers/etc on a proposal.
 // Pricing fields (qty * unit_price) are summed by the cost calculator.
 
+function notifyDbError(resource, error) {
+  console.error(`Supabase DB Error in ${resource}:`, error);
+  window.dispatchEvent(
+    new CustomEvent('voyanta:database-error', {
+      detail: { resource, error: error?.message || String(error) },
+    })
+  );
+}
+
 export async function listItems(proposalId) {
   if (!proposalId) return [];
   if (supabase) {
@@ -23,14 +32,14 @@ export async function listItems(proposalId) {
 
 export async function addItem(proposalId, item) {
   if (supabase) {
-    try {
-      const { data, error } = await supabase.from('proposal_items').insert({
-        proposal_id: proposalId, ...item,
-      }).select().single();
-      if (!error && data) return data;
-    } catch (e) {
-      console.warn('addItem Supabase error, falling back to localStorage:', e);
+    const { data, error } = await supabase.from('proposal_items').insert({
+      proposal_id: proposalId, ...item,
+    }).select().single();
+    if (error) {
+      notifyDbError('proposal_items', error);
+      throw error;
     }
+    if (data) return data;
   }
   const newItem = {
     id: item.id || crypto.randomUUID(),
@@ -51,12 +60,12 @@ export async function addItem(proposalId, item) {
 
 export async function updateItem(id, patch) {
   if (supabase) {
-    try {
-      const { data, error } = await supabase.from('proposal_items').update(patch).eq('id', id).select().single();
-      if (!error && data) return data;
-    } catch (e) {
-      console.warn('updateItem Supabase error, falling back to localStorage:', e);
+    const { data, error } = await supabase.from('proposal_items').update(patch).eq('id', id).select().single();
+    if (error) {
+      notifyDbError('proposal_items', error);
+      throw error;
     }
+    if (data) return data;
   }
   let updatedItem = { id, ...patch };
   try {
@@ -81,11 +90,10 @@ export async function updateItem(id, patch) {
 
 export async function removeItem(id) {
   if (supabase) {
-    try {
-      const { error } = await supabase.from('proposal_items').delete().eq('id', id);
-      if (!error) return;
-    } catch (e) {
-      console.warn('removeItem Supabase error, falling back to localStorage:', e);
+    const { error } = await supabase.from('proposal_items').delete().eq('id', id);
+    if (error) {
+      notifyDbError('proposal_items', error);
+      throw error;
     }
   }
   try {

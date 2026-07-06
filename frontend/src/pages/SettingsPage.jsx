@@ -2,36 +2,37 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext.jsx';
-import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
+import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { settingsService } from '../services/resourceService.js';
 import ImageUploadInput from '../components/common/ImageUploadInput.jsx';
 import { getActivityLogs, clearActivityLogs, logActivity } from '../services/activityLogService.js';
 import { resetAllDataToZero } from '../services/proposalService.js';
+import { getTeam, inviteMember, removeMember, updateMemberRole } from '../services/teamService.js';
 
 // ---- Fetch Functions ----
 const fetchAgency = async () => {
-  const { data, error } = await supabase.from('agencies').select('*').eq('id', DEFAULT_AGENCY_ID).single();
+  if (!supabase) return { name: 'Demo Agency', slug: 'voyanta-demo' };
+  const agencyId = getAgencyId();
+  const { data, error } = await supabase.from('agencies').select('*').eq('id', agencyId).maybeSingle();
   if (error) throw error;
-  return data;
+  return data || { name: 'My Agency', slug: 'my-agency' };
 };
 
 const fetchSubscription = async () => {
-  const { data, error } = await supabase.from('subscriptions').select('*').eq('agency_id', DEFAULT_AGENCY_ID).maybeSingle();
+  if (!supabase) return { plan: localStorage.getItem('voyanta_active_plan') || 'Starter' };
+  const agencyId = getAgencyId();
+  const { data, error } = await supabase.from('subscriptions').select('*').eq('agency_id', agencyId).maybeSingle();
   if (error) throw error;
-  return data || { plan: 'Starter' }; // Mock fallback
-};
-
-const fetchTeam = async () => {
-  const { data, error } = await supabase.from('users').select('*').eq('agency_id', DEFAULT_AGENCY_ID);
-  if (error) throw error;
-  return data;
+  return data || { plan: localStorage.getItem('voyanta_active_plan') || 'Starter' };
 };
 
 const fetchActivityLogs = async () => {
-  const { data, error } = await supabase.from('activity_logs').select('*').eq('agency_id', DEFAULT_AGENCY_ID).order('created_at', { ascending: false }).limit(20);
+  if (!supabase) return getActivityLogs();
+  const agencyId = getAgencyId();
+  const { data, error } = await supabase.from('activity_logs').select('*').eq('agency_id', agencyId).order('created_at', { ascending: false }).limit(20);
   if (error) throw error;
-  return data;
+  return data || [];
 };
 
 // ---- Components ----
@@ -199,19 +200,46 @@ function PlanSettings({ subscription }) {
 }
 
 function ProfileSettings({ user, signOut, isDemo }) {
+  const agencyId = getAgencyId();
+  const voyantaId = user?.id || '00000000-0000-0000-0000-000000000001';
+
   return (
     <div className="space-y-6">
       <h3 className="text-2xl font-serif font-bold">My Profile</h3>
       <div className="p-6 bg-surface-container rounded-xl border border-outline-variant space-y-4">
-        <div>
-          <label className="text-sm font-medium text-on-surface-variant">Name</label>
-          <div className="mt-1 text-on-surface font-medium">{user?.user_metadata?.full_name || (isDemo ? 'Demo User' : 'Voyanta Agent')}</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium text-on-surface-variant">Name</label>
+            <div className="mt-1 text-on-surface font-medium">{user?.user_metadata?.full_name || (isDemo ? 'Demo User' : 'Voyanta Agent')}</div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-on-surface-variant">Email</label>
+            <div className="mt-1 text-on-surface font-medium">{user?.email || 'Demo Session'}</div>
+          </div>
         </div>
-        <div>
-          <label className="text-sm font-medium text-on-surface-variant">Email</label>
-          <div className="mt-1 text-on-surface font-medium">{user?.email || 'Demo Session'}</div>
+
+        <div className="pt-4 border-t border-outline-variant space-y-4">
+          <div className="text-xs font-semibold uppercase tracking-wider text-primary">Unique Identifiers (Read-Only)</div>
+          <p className="text-xs text-on-surface-variant">These unique IDs identify your account and agency for administrative and backend operations.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-3 bg-surface rounded-lg border border-outline-variant">
+              <div className="text-xs font-medium text-on-surface-variant mb-1 flex items-center justify-between">
+                <span>Voyanta ID (User ID)</span>
+                <span className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-mono">Unique</span>
+              </div>
+              <div className="font-mono text-xs text-on-surface select-all break-all">{voyantaId}</div>
+            </div>
+            <div className="p-3 bg-surface rounded-lg border border-outline-variant">
+              <div className="text-xs font-medium text-on-surface-variant mb-1 flex items-center justify-between">
+                <span>Agency ID (Tenant ID)</span>
+                <span className="text-[10px] px-1.5 py-0.5 bg-secondary/10 text-secondary rounded font-mono">Agency</span>
+              </div>
+              <div className="font-mono text-xs text-on-surface select-all break-all">{agencyId}</div>
+            </div>
+          </div>
         </div>
-        <div className="pt-4 border-t border-outline-variant">
+
+        <div className="pt-4 border-t border-outline-variant flex justify-end">
           <button onClick={signOut} className="text-error font-medium hover:underline">
             Sign Out
           </button>
@@ -223,19 +251,19 @@ function ProfileSettings({ user, signOut, isDemo }) {
 
 function TeamSettings() {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const [activePlan, setActivePlan] = useState(() => localStorage.getItem('voyanta_active_plan') || 'Starter');
   const isEnterprise = activePlan === 'Enterprise';
 
-  const [team, setTeam] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('voyanta_team_members'));
-      if (saved && Array.isArray(saved) && saved.length > 0) {
-        const filtered = saved.filter(m => !m.email.includes('raman@voyanta.com') && !m.email.includes('priya@voyanta.com'));
-        if (filtered.length > 0) return filtered;
-      }
-    } catch {}
-    return [];
+  const { data: teamData, isLoading } = useQuery({
+    queryKey: ['team'],
+    queryFn: () => getTeam(),
   });
+
+  const teamMembers = teamData?.members || [];
+  const teamInvites = teamData?.invitations || [];
+  const combinedTeam = [...teamMembers, ...teamInvites];
+
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
   const [inviteRole, setInviteRole] = useState('Editor');
@@ -246,32 +274,56 @@ function TeamSettings() {
     return () => window.removeEventListener('voyanta:plan-updated', handler);
   }, []);
 
+  const inviteMutation = useMutation({
+    mutationFn: (newMember) => inviteMember(newMember),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(['team']);
+      logActivity('team', `Invited team member ${res.email} with role ${res.role}`);
+      toast.success(`Invitation sent to ${res.email} as ${res.role}!`);
+      setInviteEmail('');
+      setInviteName('');
+    },
+    onError: (err) => {
+      toast.error(err.message || 'Failed to send invitation');
+    }
+  });
+
   const handleInvite = (e) => {
     e.preventDefault();
     if (!inviteEmail) return;
-    const next = [...team, { id: 'u_' + Date.now(), name: inviteName || inviteEmail.split('@')[0], email: inviteEmail, role: inviteRole, status: 'Invited' }];
-    setTeam(next);
-    localStorage.setItem('voyanta_team_members', JSON.stringify(next));
-    logActivity('team', `Invited team member ${inviteEmail} with role ${inviteRole}`);
-    toast.success(`Invitation sent to ${inviteEmail} as ${inviteRole}!`);
-    setInviteEmail('');
-    setInviteName('');
+    inviteMutation.mutate({ email: inviteEmail, name: inviteName, role: inviteRole });
   };
 
-  const handleRemove = (id) => {
-    const next = team.filter((m) => m.id !== id);
-    setTeam(next);
-    localStorage.setItem('voyanta_team_members', JSON.stringify(next));
-    logActivity('team', `Removed team member (ID: ${id})`);
-    toast.info('Team member removed.');
+  const removeMutation = useMutation({
+    mutationFn: ({ id, isInvite }) => removeMember(id, isInvite),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries(['team']);
+      logActivity('team', `Removed team member (ID: ${id})`);
+      toast.info('Team member removed.');
+    },
+    onError: (err) => {
+      toast.error(err.message || 'Failed to remove team member');
+    }
+  });
+
+  const handleRemove = (id, isInvite) => {
+    removeMutation.mutate({ id, isInvite });
   };
 
-  const handleRoleChange = (id, newRole) => {
-    const next = team.map((m) => m.id === id ? { ...m, role: newRole } : m);
-    setTeam(next);
-    localStorage.setItem('voyanta_team_members', JSON.stringify(next));
-    logActivity('team', `Updated role for team member to ${newRole}`);
-    toast.success(`Role updated to ${newRole}.`);
+  const roleMutation = useMutation({
+    mutationFn: ({ id, newRole, isInvite }) => updateMemberRole(id, newRole, isInvite),
+    onSuccess: (_, { newRole }) => {
+      queryClient.invalidateQueries(['team']);
+      logActivity('team', `Updated role for team member to ${newRole}`);
+      toast.success(`Role updated to ${newRole}.`);
+    },
+    onError: (err) => {
+      toast.error(err.message || 'Failed to update role');
+    }
+  });
+
+  const handleRoleChange = (id, newRole, isInvite) => {
+    roleMutation.mutate({ id, newRole, isInvite });
   };
 
   if (!isEnterprise) {
@@ -400,16 +452,31 @@ function TeamSettings() {
             </tr>
           </thead>
           <tbody className="divide-y divide-outline-variant">
-            {team.map(member => (
+            {isLoading ? (
+              <tr>
+                <td colSpan="4" className="p-8 text-center text-on-surface-variant font-medium">
+                  Loading team members...
+                </td>
+              </tr>
+            ) : combinedTeam.length === 0 ? (
+              <tr>
+                <td colSpan="4" className="p-8 text-center text-on-surface-variant font-medium">
+                  No team members found.
+                </td>
+              </tr>
+            ) : combinedTeam.map(member => (
               <tr key={member.id} className="hover:bg-surface-container-highest/50 transition-colors">
                 <td className="p-4">
-                  <div className="font-bold text-on-surface text-sm">{member.name}</div>
+                  <div className="font-bold text-on-surface text-sm flex items-center gap-2">
+                    {member.name}
+                    {member.isInvite && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded uppercase font-bold">Pending</span>}
+                  </div>
                   <div className="text-xs text-on-surface-variant">{member.email}</div>
                 </td>
                 <td className="p-4">
                   <select
                     value={member.role}
-                    onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                    onChange={(e) => handleRoleChange(member.id, e.target.value, member.isInvite)}
                     className="px-2 py-1 rounded bg-white border border-outline text-xs font-bold text-primary cursor-pointer"
                   >
                     <option value="Editor">Editor (No Delete)</option>
@@ -425,9 +492,9 @@ function TeamSettings() {
                   </span>
                 </td>
                 <td className="p-4 text-right">
-                  {member.email !== 'raman@voyanta.com' && (
-                    <button type="button" onClick={() => handleRemove(member.id)} className="text-error text-xs font-bold hover:underline">
-                      Revoke Access
+                  {member.email !== 'raman@voyanta.com' && member.role !== 'Owner' && (
+                    <button type="button" onClick={() => handleRemove(member.id, member.isInvite)} className="text-error text-xs font-bold hover:underline">
+                      {member.isInvite ? 'Revoke Invite' : 'Revoke Access'}
                     </button>
                   )}
                 </td>

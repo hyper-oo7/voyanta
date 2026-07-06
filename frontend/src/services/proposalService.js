@@ -7,6 +7,15 @@ const TABLE = 'proposals';
 const CACHE_KEY = 'voyanta_proposals_list_cache';
 const PAGE_SIZE = 10;
 
+function notifyDbError(resource, error) {
+  console.error(`Supabase DB Error in ${resource}:`, error);
+  window.dispatchEvent(
+    new CustomEvent('voyanta:database-error', {
+      detail: { resource, error: error?.message || String(error) },
+    })
+  );
+}
+
 // Lightweight projection: Exclude heavy JSONB columns (itinerary, trip_details, brief)
 const LIST_COLUMNS = 'id, agency_id, created_by, client_id, name, client_name, status, destination, start_date, end_date, travelers, budget_min, budget_max, currency, total_cost, is_archived, arrival_city, arrival_airport, departure_city, departure_airport, created_at, updated_at, preferences';
 
@@ -103,16 +112,16 @@ export async function createProposal(payload) {
   };
 
   if (supabase) {
-    try {
-      const { data, error } = await supabase.from(TABLE).insert(row).select().single();
-      if (!error && data) {
-        const norm = normalize(data);
-        try { localStorage.setItem(`voyanta_proposal_${norm.id}`, JSON.stringify(norm)); } catch {}
-        try { upsertClientFromProposal(norm).catch(() => {}); } catch {}
-        return norm;
-      }
-    } catch (e) {
-      console.warn('Supabase createProposal error, falling back to localStorage:', e);
+    const { data, error } = await supabase.from(TABLE).insert(row).select().single();
+    if (error) {
+      notifyDbError(TABLE, error);
+      throw error;
+    }
+    if (data) {
+      const norm = normalize(data);
+      try { localStorage.setItem(`voyanta_proposal_${norm.id}`, JSON.stringify(norm)); } catch {}
+      try { upsertClientFromProposal(norm).catch(() => {}); } catch {}
+      return norm;
     }
   }
 
@@ -132,17 +141,17 @@ export async function createProposal(payload) {
 
 export async function updateProposal(id, patch) {
   if (supabase) {
-    try {
-      const { data, error } = await supabase.from(TABLE).update(patch).eq('id', id).select().single();
-      if (!error && data) {
-        const norm = normalize(data);
-        try { localStorage.setItem(`voyanta_proposal_${id}`, JSON.stringify(norm)); } catch {}
-        try { upsertClientFromProposal(norm).catch(() => {}); } catch {}
-        window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
-        return norm;
-      }
-    } catch (e) {
-      console.warn('Supabase updateProposal error, falling back to localStorage:', e);
+    const { data, error } = await supabase.from(TABLE).update(patch).eq('id', id).select().single();
+    if (error) {
+      notifyDbError(TABLE, error);
+      throw error;
+    }
+    if (data) {
+      const norm = normalize(data);
+      try { localStorage.setItem(`voyanta_proposal_${id}`, JSON.stringify(norm)); } catch {}
+      try { upsertClientFromProposal(norm).catch(() => {}); } catch {}
+      window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
+      return norm;
     }
   }
 
@@ -173,10 +182,10 @@ export async function updateProposal(id, patch) {
 
 export async function deleteProposal(id) {
   if (supabase) {
-    try {
-      await supabase.from(TABLE).delete().eq('id', id);
-    } catch (err) {
-      console.warn('Supabase deleteProposal failed, cleaning up offline cache:', err);
+    const { error } = await supabase.from(TABLE).delete().eq('id', id);
+    if (error) {
+      notifyDbError(TABLE, error);
+      throw error;
     }
   }
   try {
@@ -190,12 +199,10 @@ export async function deleteProposal(id) {
 export async function deleteAllProposals() {
   const agencyId = getAgencyId();
   if (supabase) {
-    try {
-      await supabase.from('proposal_items').delete().neq('id', 0);
-      await supabase.from(TABLE).delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    } catch (e) {
-      console.warn('Supabase deleteAll failed:', e);
-    }
+    const { error: err1 } = await supabase.from('proposal_items').delete().neq('id', 0);
+    if (err1) { notifyDbError('proposal_items', err1); throw err1; }
+    const { error: err2 } = await supabase.from(TABLE).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (err2) { notifyDbError(TABLE, err2); throw err2; }
   }
   try {
     localStorage.removeItem(CACHE_KEY);

@@ -7,7 +7,8 @@ create extension if not exists "pgcrypto";
 -- Grant schema usage to standard roles to prevent "permission denied for schema public"
 grant usage on schema public to postgres, anon, authenticated, service_role;
 grant all privileges on all tables in schema public to postgres, service_role;
-grant select, insert, update, delete on all tables in schema public to anon, authenticated;
+grant select on all tables in schema public to anon;
+grant select, insert, update, delete on all tables in schema public to authenticated;
 
 -- AGENCIES --------------------------------------------------------------------
 create table if not exists public.agencies (
@@ -58,10 +59,7 @@ create table if not exists public.users (
 -- RLS helper function
 create or replace function public.current_agency_id()
 returns uuid as $$
-  select coalesce(
-    (select agency_id from public.users where id = auth.uid()),
-    '00000000-0000-0000-0000-000000000001'::uuid
-  );
+  select (select agency_id from public.users where id = auth.uid());
 $$ language sql stable security definer;
 
 -- CLIENTS ---------------------------------------------------------------------
@@ -326,10 +324,75 @@ create trigger itineraries_touch before update on public.itineraries for each ro
 drop trigger if exists itinerary_blocks_touch on public.itinerary_blocks;
 create trigger itinerary_blocks_touch before update on public.itinerary_blocks for each row execute function public.touch_updated_at();
 
+-- Automated User Provisioning Trigger -----------------------------------------
+create or replace function public.handle_new_user()
+returns trigger as $$
+declare
+  v_invite_record record;
+  v_new_agency_id uuid;
+  v_full_name text;
+begin
+  v_full_name := coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1));
+
+  -- Check if there is a pending team invitation for this email
+  select * into v_invite_record
+  from public.team_invitations
+  where email = new.email and status = 'pending'
+  limit 1;
+
+  if found then
+    -- Link user to the inviting agency with the invited role
+    insert into public.users (id, agency_id, email, full_name, role)
+    values (new.id, v_invite_record.agency_id, new.email, v_full_name, coalesce(v_invite_record.role, 'agent'))
+    on conflict (id) do update
+    set agency_id = excluded.agency_id,
+        role = excluded.role,
+        full_name = excluded.full_name;
+
+    -- Mark invitation as accepted
+    update public.team_invitations
+    set status = 'accepted'
+    where id = v_invite_record.id;
+  else
+    -- Create a new agency for this user
+    insert into public.agencies (name, slug, contact_email)
+    values (
+      v_full_name || '''s Agency',
+      lower(regexp_replace(v_full_name, '[^a-zA-Z0-9]', '-', 'g')) || '-' || substring(new.id::text, 1, 8),
+      new.email
+    )
+    returning id into v_new_agency_id;
+
+    -- Create default Enterprise subscription
+    insert into public.subscriptions (agency_id, plan, status)
+    values (v_new_agency_id, 'Enterprise', 'active')
+    on conflict do nothing;
+
+    -- Create user row as owner
+    insert into public.users (id, agency_id, email, full_name, role)
+    values (new.id, v_new_agency_id, new.email, v_full_name, 'owner')
+    on conflict (id) do nothing;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer;
+
+do $$
+begin
+  if exists (select 1 from pg_namespace where nspname = 'auth') then
+    execute 'drop trigger if exists on_auth_user_created on auth.users;';
+    execute 'create trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user();';
+  end if;
+end
+$$;
+
 -- RLS & POLICIES (Agency-Level — Enterprise Only) ----------------------------
 
 -- Enable RLS on all tables
 alter table public.agencies enable row level security;
+alter table public.subscriptions enable row level security;
+alter table public.team_invitations enable row level security;
 alter table public.users enable row level security;
 alter table public.clients enable row level security;
 alter table public.proposals enable row level security;
@@ -363,6 +426,13 @@ create policy "users_update" on public.users for update using (id = auth.uid());
 -- Clients policy
 drop policy if exists "clients_agency" on public.clients;
 create policy "clients_agency" on public.clients for all using (agency_id = public.current_agency_id());
+
+-- Subscriptions & Team Invitations policies
+drop policy if exists "subscriptions_agency" on public.subscriptions;
+create policy "subscriptions_agency" on public.subscriptions for all using (agency_id = public.current_agency_id());
+
+drop policy if exists "team_invitations_agency" on public.team_invitations;
+create policy "team_invitations_agency" on public.team_invitations for all using (agency_id = public.current_agency_id());
 
 -- Proposals policy (Agency-level: all agents see all proposals in their agency)
 drop policy if exists "proposals_agency" on public.proposals;

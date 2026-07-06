@@ -6,6 +6,15 @@ import { upsertClientFromProposal } from './crmService.js';
 const INVOICE_CACHE_KEY = 'voyanta_invoices_data';
 const RECEIPT_CACHE_KEY = 'voyanta_receipts_data';
 
+function notifyDbError(resource, error) {
+  console.error(`Supabase DB Error in ${resource}:`, error);
+  window.dispatchEvent(
+    new CustomEvent('voyanta:database-error', {
+      detail: { resource, error: error?.message || String(error) },
+    })
+  );
+}
+
 export const INVOICE_STATUSES = [
   { id: 'Draft', label: 'Draft', color: 'bg-slate-500/10 text-slate-500 border-slate-500/20' },
   { id: 'Sent', label: 'Sent', color: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
@@ -303,28 +312,16 @@ export async function saveInvoiceRecord(invoice, isNew = false) {
 
   if (supabase) {
     const syncTask = (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('invoices')
-          .upsert([updated])
-          .select()
-          .single();
-        if (!error && data) {
-          return data;
-        }
-      } catch (e) {
-        try {
-          await supabase
-            .from('templates')
-            .upsert([{
-              id: updated.id,
-              agency_id: agencyId,
-              name: `Invoice ${updated.invoice_number}`,
-              category: 'Invoice',
-              data: updated
-            }]);
-        } catch {}
+      const { data, error } = await supabase
+        .from('invoices')
+        .upsert([updated])
+        .select()
+        .single();
+      if (error) {
+        notifyDbError('invoices', error);
+        throw error;
       }
+      if (data) return data;
       return null;
     })();
 
@@ -383,8 +380,11 @@ export async function deleteInvoice(id) {
   const agencyId = getAgencyId();
 
   if (supabase) {
-    try { await supabase.from('invoices').delete().eq('id', id).eq('agency_id', agencyId); } catch {}
-    try { await supabase.from('templates').delete().eq('id', id).eq('agency_id', agencyId); } catch {}
+    const { error } = await supabase.from('invoices').delete().eq('id', id).eq('agency_id', agencyId);
+    if (error) {
+      notifyDbError('invoices', error);
+      throw error;
+    }
   }
 
   const list = getLocalList(INVOICE_CACHE_KEY);

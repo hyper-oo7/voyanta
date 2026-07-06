@@ -3,7 +3,7 @@
 // to inlining the file as a base64 data URL so branding still works in dev.
 
 import { useRef, useState } from 'react';
-import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
+import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 
 const BUCKET = 'agency-assets';
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -109,7 +109,8 @@ export async function uploadOrEmbed(file, folder) {
   if (supabase) {
     try {
       const ext = (processedFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const path = `${folder}/${DEFAULT_AGENCY_ID}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const agencyId = getAgencyId();
+      const path = `${folder}/${agencyId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       const { error } = await supabase.storage.from(BUCKET).upload(path, processedFile, {
         cacheControl: '3600', upsert: false, contentType: processedFile.type,
       });

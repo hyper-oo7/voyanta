@@ -6,11 +6,12 @@ from fastapi.responses import Response, JSONResponse
 from typing import Any
 
 from src.models.api_models import PDFGenerateRequest
-from src.core.security import verify_token, verify_token_optional
+from src.core.security import verify_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pdf")
 PDF_SERVICE_URL = os.environ.get("PDF_SERVICE_URL", "http://127.0.0.1:8002")
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "voyanta-internal-secret")
 
 @router.get("/health")
 async def pdf_health():
@@ -23,14 +24,15 @@ async def pdf_health():
             return JSONResponse(status_code=503, content={"ok": False, "error": str(e)})
 
 @router.post("/generate")
-async def pdf_generate(request: PDFGenerateRequest, user: Any = Depends(verify_token_optional)):
+async def pdf_generate(request: PDFGenerateRequest, user: Any = Depends(verify_token)):
     payload = request.model_dump(exclude_none=True)
     if not payload.get("proposal_id") and not payload.get("html"):
         raise HTTPException(status_code=400, detail="Missing proposal_id or html")
 
+    headers = {"x-internal-api-key": INTERNAL_API_KEY}
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
-            res = await client.post(f"{PDF_SERVICE_URL}/generate", json=payload)
+            res = await client.post(f"{PDF_SERVICE_URL}/generate", json=payload, headers=headers)
             if res.status_code != 200:
                 raise HTTPException(status_code=res.status_code, detail=res.text)
             

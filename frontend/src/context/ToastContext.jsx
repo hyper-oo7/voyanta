@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useState, useEffect } from 'react';
 
 const ToastContext = createContext(null);
 
@@ -9,6 +9,16 @@ export function ToastProvider({ children }) {
     setToasts((t) => [...t, { id, ...toast }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), toast.duration || 3500);
   }, []);
+
+  useEffect(() => {
+    const handleDbError = (e) => {
+      const { resource, error } = e.detail || {};
+      push({ type: 'error', msg: `Database Error (${resource || 'System'}): ${error || 'Unknown error'}` });
+    };
+    window.addEventListener('voyanta:database-error', handleDbError);
+    return () => window.removeEventListener('voyanta:database-error', handleDbError);
+  }, [push]);
+
   const api = {
     success: (msg, opts = {}) => push({ type: 'success', msg, ...opts }),
     error: (msg, opts = {}) => push({ type: 'error', msg, ...opts }),

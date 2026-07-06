@@ -5,6 +5,15 @@ import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 
 const DEFAULT_PAGE_SIZE = 100;
 
+function notifyDbError(resource, error) {
+  console.error(`Supabase DB Error in ${resource}:`, error);
+  window.dispatchEvent(
+    new CustomEvent('voyanta:database-error', {
+      detail: { resource, error: error?.message || String(error) },
+    })
+  );
+}
+
 export function makeResourceService(resource) {
   return {
     list: async (filters = {}, force = false, { page = 0, pageSize = DEFAULT_PAGE_SIZE } = {}) => {
@@ -70,14 +79,14 @@ export function makeResourceService(resource) {
       const newId = row.id || crypto.randomUUID();
       const fullRow = { id: newId, agency_id: agencyId, created_at: new Date().toISOString(), ...row };
       if (supabase) {
-        try {
-          const { data, error } = await supabase.from(resource).insert(fullRow).select().single();
-          if (!error && data) {
-            try { localStorage.setItem(`voyanta_res_${resource}_${data.id}`, JSON.stringify(data)); } catch {}
-            return data;
-          }
-        } catch (e) {
-          console.warn(`Supabase create error for ${resource}, falling back to localStorage:`, e);
+        const { data, error } = await supabase.from(resource).insert(fullRow).select().single();
+        if (error) {
+          notifyDbError(resource, error);
+          throw error;
+        }
+        if (data) {
+          try { localStorage.setItem(`voyanta_res_${resource}_${data.id}`, JSON.stringify(data)); } catch {}
+          return data;
         }
       }
       try {
@@ -97,14 +106,14 @@ export function makeResourceService(resource) {
     },
     update: async (id, patch) => {
       if (supabase) {
-        try {
-          const { data, error } = await supabase.from(resource).update(patch).eq('id', id).select().single();
-          if (!error && data) {
-            try { localStorage.setItem(`voyanta_res_${resource}_${id}`, JSON.stringify(data)); } catch {}
-            return data;
-          }
-        } catch (e) {
-          console.warn(`Supabase update error for ${resource}, falling back to localStorage:`, e);
+        const { data, error } = await supabase.from(resource).update(patch).eq('id', id).select().single();
+        if (error) {
+          notifyDbError(resource, error);
+          throw error;
+        }
+        if (data) {
+          try { localStorage.setItem(`voyanta_res_${resource}_${id}`, JSON.stringify(data)); } catch {}
+          return data;
         }
       }
       try {
@@ -129,7 +138,11 @@ export function makeResourceService(resource) {
     },
     remove: async (id) => {
       if (supabase) {
-        try { await supabase.from(resource).delete().eq('id', id); } catch {}
+        const { error } = await supabase.from(resource).delete().eq('id', id);
+        if (error) {
+          notifyDbError(resource, error);
+          throw error;
+        }
       }
       try {
         localStorage.removeItem(`voyanta_res_${resource}_${id}`);
@@ -147,7 +160,11 @@ export function makeResourceService(resource) {
     removeMany: async (ids) => {
       if (!ids?.length) return;
       if (supabase) {
-        try { await supabase.from(resource).delete().in('id', ids); } catch {}
+        const { error } = await supabase.from(resource).delete().in('id', ids);
+        if (error) {
+          notifyDbError(resource, error);
+          throw error;
+        }
       }
       try {
         const idSet = new Set(ids.map(String));
@@ -343,8 +360,8 @@ export const settingsService = {
         return finalRes;
       }
     } catch (e) {
-      console.error('Failed to update settings:', e);
-      return cleanSettings;
+      notifyDbError('settings', e);
+      throw e;
     }
   }
 };

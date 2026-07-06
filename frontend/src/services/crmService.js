@@ -4,6 +4,15 @@ const TABLE = 'clients';
 const CACHE_KEY = 'voyanta_crm_clients';
 const PAGE_SIZE = 10;
 
+function notifyDbError(resource, error) {
+  console.error(`Supabase DB Error in ${resource}:`, error);
+  window.dispatchEvent(
+    new CustomEvent('voyanta:database-error', {
+      detail: { resource, error: error?.message || String(error) },
+    })
+  );
+}
+
 export const TRIP_STATUSES = [
   { id: 'Inquiry', label: 'Inquiry', color: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
   { id: 'Proposal Sent', label: 'Proposal Sent', color: 'bg-purple-500/10 text-purple-500 border-purple-500/20' },
@@ -78,16 +87,16 @@ export async function createClient(clientData) {
   };
 
   if (supabase) {
-    try {
-      const { data, error } = await supabase.from(TABLE).insert([newClient]).select().single();
-      if (!error && data) {
-        const list = getLocalClients();
-        saveLocalClients([data, ...list]);
-        try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
-        return data;
-      }
-    } catch (e) {
-      console.warn('Supabase createClient failed, falling back to localStorage:', e);
+    const { data, error } = await supabase.from(TABLE).insert([newClient]).select().single();
+    if (error) {
+      notifyDbError(TABLE, error);
+      throw error;
+    }
+    if (data) {
+      const list = getLocalClients();
+      saveLocalClients([data, ...list]);
+      try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
+      return data;
     }
   }
 
@@ -103,16 +112,16 @@ export async function updateClient(id, patch) {
   const updatePayload = { ...patch, updated_at: now };
 
   if (supabase) {
-    try {
-      const { data, error } = await supabase.from(TABLE).update(updatePayload).eq('id', id).select().single();
-      if (!error && data) {
-        const list = getLocalClients().map(c => c.id === id ? { ...c, ...data } : c);
-        saveLocalClients(list);
-        try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
-        return data;
-      }
-    } catch (e) {
-      console.warn('Supabase updateClient failed, falling back to localStorage:', e);
+    const { data, error } = await supabase.from(TABLE).update(updatePayload).eq('id', id).select().single();
+    if (error) {
+      notifyDbError(TABLE, error);
+      throw error;
+    }
+    if (data) {
+      const list = getLocalClients().map(c => c.id === id ? { ...c, ...data } : c);
+      saveLocalClients(list);
+      try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
+      return data;
     }
   }
 
@@ -125,10 +134,10 @@ export async function updateClient(id, patch) {
 
 export async function deleteClient(id) {
   if (supabase) {
-    try {
-      await supabase.from(TABLE).delete().eq('id', id);
-    } catch (e) {
-      console.warn('Supabase deleteClient failed, falling back to localStorage:', e);
+    const { error } = await supabase.from(TABLE).delete().eq('id', id);
+    if (error) {
+      notifyDbError(TABLE, error);
+      throw error;
     }
   }
   const list = getLocalClients().filter(c => c.id !== id);

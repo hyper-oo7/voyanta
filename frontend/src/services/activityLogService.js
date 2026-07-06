@@ -5,6 +5,15 @@ import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 const PAGE_SIZE = 50;
 const LOCAL_STORAGE_KEY = 'voyanta_activity_logs';
 
+function notifyDbError(resource, error) {
+  console.error(`Supabase DB Error in ${resource}:`, error);
+  window.dispatchEvent(
+    new CustomEvent('voyanta:database-error', {
+      detail: { resource, error: error?.message || String(error) },
+    })
+  );
+}
+
 function getLocalLogs() {
   try {
     const str = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -63,7 +72,7 @@ export async function logActivity(type, description, clientName = 'Agency Team',
         userId = user?.id || null;
       } catch {}
 
-      await supabase.from('activity_logs').insert({
+      const { error } = await supabase.from('activity_logs').insert({
         agency_id: agencyId,
         user_id: userId,
         action: type,
@@ -71,6 +80,9 @@ export async function logActivity(type, description, clientName = 'Agency Team',
         entity_type: entityType,
         entity_id: entityId,
       });
+      if (error) {
+        notifyDbError('activity_logs', error);
+      }
     } catch (err) {
       console.warn('Supabase logActivity failed, saving to localStorage:', err);
     }
@@ -87,9 +99,11 @@ export async function logActivity(type, description, clientName = 'Agency Team',
 export async function clearActivityLogs() {
   const agencyId = getAgencyId();
   if (supabase) {
-    try {
-      await supabase.from('activity_logs').delete().eq('agency_id', agencyId);
-    } catch {}
+    const { error } = await supabase.from('activity_logs').delete().eq('agency_id', agencyId);
+    if (error) {
+      notifyDbError('activity_logs', error);
+      throw error;
+    }
   }
   try {
     localStorage.removeItem(LOCAL_STORAGE_KEY);

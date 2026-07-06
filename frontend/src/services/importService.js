@@ -1,4 +1,4 @@
-import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
+import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 
 // Persists a parsed file into the imports table, then bulk-inserts mapped
 // records into the destination resource table (hotels/flights/activities/templates).
@@ -6,10 +6,11 @@ import { supabase, DEFAULT_AGENCY_ID } from '../lib/supabaseClient.js';
 
 export async function saveImport({ resource, filename, fileFormat, columns, rows, mapping }) {
   if (!supabase) throw new Error('Supabase not configured');
+  const agencyId = getAgencyId();
 
   // 1) record the import itself
   const { data: imp, error: impErr } = await supabase.from('imports').insert({
-    agency_id: DEFAULT_AGENCY_ID,
+    agency_id: agencyId,
     resource,
     filename,
     file_format: fileFormat,
@@ -22,7 +23,7 @@ export async function saveImport({ resource, filename, fileFormat, columns, rows
 
   // 2) build records using mapping ({ source_col: target_field })
   const records = rows.map((row) => {
-    const r = { agency_id: DEFAULT_AGENCY_ID, raw: row };
+    const r = { agency_id: agencyId, raw: row };
     for (const [src, tgt] of Object.entries(mapping)) {
       if (!tgt) continue;
       const v = row[src];
@@ -44,7 +45,7 @@ export async function saveImport({ resource, filename, fileFormat, columns, rows
   // 4) update import row + remember mapping
   await supabase.from('imports').update({ status: 'imported', imported_count: inserted.length }).eq('id', imp.id);
   await supabase.from('field_mappings').upsert({
-    agency_id: DEFAULT_AGENCY_ID, resource, name: 'default', mapping,
+    agency_id: agencyId, resource, name: 'default', mapping,
   }, { onConflict: 'agency_id,resource,name' });
 
   return { import_id: imp.id, inserted_count: inserted.length };
@@ -52,9 +53,10 @@ export async function saveImport({ resource, filename, fileFormat, columns, rows
 
 export async function loadSavedMapping(resource) {
   if (!supabase) return {};
+  const agencyId = getAgencyId();
   const { data } = await supabase.from('field_mappings')
     .select('mapping')
-    .eq('agency_id', DEFAULT_AGENCY_ID).eq('resource', resource).eq('name', 'default').maybeSingle();
+    .eq('agency_id', agencyId).eq('resource', resource).eq('name', 'default').maybeSingle();
   return data?.mapping || {};
 }
 

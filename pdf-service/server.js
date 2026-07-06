@@ -22,6 +22,17 @@ const limiter = rateLimit({
 });
 app.use('/generate', limiter);
 
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'voyanta-internal-secret';
+app.use('/generate', (req, res, next) => {
+  if (process.env.NODE_ENV === 'production' || process.env.REQUIRE_INTERNAL_AUTH === 'true') {
+    const authHeader = req.headers['x-internal-api-key'] || req.headers['authorization'];
+    if (!authHeader || (authHeader !== INTERNAL_API_KEY && authHeader !== `Bearer ${INTERNAL_API_KEY}`)) {
+      return res.status(401).json({ error: 'Unauthorized: Invalid internal API key' });
+    }
+  }
+  next();
+});
+
 // ─── Browser & Page Pool Management ─────────────────────────────────────────
 let browserPromise = null;
 let jobsProcessed = 0;
