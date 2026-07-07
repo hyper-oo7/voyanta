@@ -67,7 +67,8 @@ export async function fetchDashboardSummary() {
   }
 }
 
-function fallbackSummary(proposals) {
+function fallbackSummary(proposalsParam) {
+  const proposals = Array.isArray(proposalsParam) ? proposalsParam : [];
   const recentProposals = proposals.slice(0, 4);
   return {
     totalProposals: proposals.length,

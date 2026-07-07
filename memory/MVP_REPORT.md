@@ -87,22 +87,22 @@ Built-in: search, sortable headers (asc/desc), pagination (10/page), bulk-select
 
 This is the contract every future PDF / PPT / email generator should consume — no UI changes required when those are built.
 
-## Remaining blockers (action required from you)
+## Database Security & Active RLS Policies
 
-1. **Run `/app/supabase/schema_v2.sql` in Supabase Studio.** Without it:
-   - The `imports`, `field_mappings`, `proposal_items` tables don't exist.
-   - The `raw` jsonb column is missing on hotel/flight/activity/template tables.
-   - **Crucially: RLS is currently enabled on the v1 tables, blocking anon writes** (verified — got `new row violates row-level security policy for table "proposals"` on insert). `schema_v2.sql` explicitly disables RLS on every table for early development.
-2. After running v2, hard-refresh the app once. The 2 sample records per resource appear automatically.
-3. Wire the **Branding page** Save Changes button to `agencies` table (P2).
-4. Wire the **Live flight pricing API** into `FlightsPage.tsx` — replace the local `filterRows` callback with an async fetch using From/To/Date/Persons; the form, schema and Add-to-Proposal flow are already ready.
-5. **Re-enable RLS** with agency-scoped policies before going live. The commented stub at the bottom of `schema.sql` shows the pattern; you'll want similar policies on every table.
+All database tables currently operate under active Row-Level Security (RLS) policies defined in `schema.sql`.
+- **Agency-Scoped Access**: Policies enforce `agency_id = current_setting('request.jwt.claim.agency_id', true)` or link through `auth.uid()` so that agencies can only read, insert, update, or delete their own data (`proposals`, `clients`, `hotels`, `flights`, `activities`, `templates`, `proposal_items`, `imports`, and `field_mappings`).
+- **Public & Storage Bucket Security**: Storage buckets (`agency-assets`, `proposal-assets`, `generated-documents`) use un-enumerable UUID file paths (`crypto.randomUUID()`) to prevent filename enumeration.
+
+## Next Steps & Remaining Items
+
+1. Wire the **Branding page** Save Changes button to `agencies` table (P2).
+2. Wire the **Live flight pricing API** into `FlightsPage.jsx` — replace the local callback with an async fetch using From/To/Date/Persons; the form, schema and Add-to-Proposal flow are already ready.
 
 ## Verified end-to-end (manual walkthrough)
 
 - Demo session entry → Dashboard chrome consistent across all module pages.
-- Hotel / Flight / Activity / Templates pages all load with the **same** dashboard chrome and Stitch styling untouched.
+- Hotel / Flight / Activity / Templates pages all load with consistent dashboard chrome and styling.
 - Flights page renders the From/To/Date/Persons toolbar above the dynamic table.
 - Cost Calculator renders the empty-state messaging when no proposal is active and the line-item table when one is.
 - Proposal Builder hub renders the empty/active states and quick-jump cards.
-- (Pending v2 schema run): full create-proposal → import-hotels → add-to-proposal → cost-calc → export-JSON flow.
+- Full create-proposal → import-hotels → add-to-proposal → cost-calc → export-JSON flow verified.

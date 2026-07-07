@@ -304,17 +304,6 @@ export default function MyVaultPage() {
         </div>
       </div>
 
-      {/* API Infrastructure Notice */}
-      <div className="bg-gradient-to-r from-amber-500/10 to-blue-500/10 border border-amber-500/30 p-md rounded-xl flex items-start gap-md">
-        <span className="material-symbols-outlined text-amber-500 mt-0.5">info</span>
-        <div className="text-xs text-on-surface space-y-1">
-          <p className="font-bold text-sm text-amber-600 dark:text-amber-400">AI Infrastructure & Model Cascading Prepared</p>
-          <p>
-            Your complete infrastructure (Token Compression, Semantic Vector Cache, Model Cascading routing between <code className="bg-surface px-1 py-0.5 rounded">gpt-4o-mini</code> and <code className="bg-surface px-1 py-0.5 rounded">claude-3-5-sonnet</code>) is live and ready. Because no API key is currently attached, the system operates in high-fidelity simulated mode. When ready, provide your API key in settings or backend <code className="bg-surface px-1 py-0.5 rounded">.env</code> to activate live LLM tokens instantly.
-          </p>
-        </div>
-      </div>
-
       {/* Upload & Configure Card */}
       <div className="bg-surface p-lg rounded-2xl border border-outline-variant shadow-sm grid grid-cols-1 md:grid-cols-12 gap-lg">
         {/* Left column: Parameters */}
@@ -423,8 +412,23 @@ export default function MyVaultPage() {
                   </p>
                   <div className="flex flex-wrap justify-center gap-1.5 mt-2 max-h-24 overflow-y-auto">
                     {(files.length > 0 ? files : [file]).map((f, i) => (
-                      <span key={i} className="text-[11px] bg-white dark:bg-slate-800 border px-2 py-1 rounded-md font-mono flex items-center gap-1 shadow-sm">
-                        <span className="text-primary">✦</span> {f.name} ({(f.size / 1024 / 1024).toFixed(2)} MB)
+                      <span key={i} className="text-[11px] bg-white dark:bg-slate-800 border px-2 py-1 rounded-md font-mono flex items-center gap-1.5 shadow-sm group">
+                        <span className="text-primary">✦</span>
+                        <span>{f.name} ({(f.size / 1024 / 1024).toFixed(2)} MB)</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const currentList = files.length > 0 ? files : [file];
+                            const next = currentList.filter((_, idx) => idx !== i);
+                            setFiles(next);
+                            if (file && file.name === f.name) setFile(next[0] || null);
+                          }}
+                          className="ml-0.5 text-on-surface-variant/60 hover:text-error transition-colors font-bold flex items-center justify-center p-0.5 rounded"
+                          title="Remove PDF"
+                        >
+                          ×
+                        </button>
                       </span>
                     ))}
                   </div>

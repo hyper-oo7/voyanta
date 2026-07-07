@@ -106,7 +106,8 @@ export async function uploadBlob(blob, filename, folder, options = {}) {
 
 function buildPath(folder, filename) {
   const ext = (String(filename).split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
-  return `${folder}/${getAgencyId()}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const uuid = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  return `${folder}/${getAgencyId()}/${Date.now()}-${uuid}.${ext}`;
 }
 
 function readAsDataURL(file) {

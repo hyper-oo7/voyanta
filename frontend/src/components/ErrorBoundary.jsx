@@ -13,6 +13,7 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     logger.error('Uncaught error:', error, errorInfo);
+    logger.captureException(error, errorInfo);
   }
 
   render() {

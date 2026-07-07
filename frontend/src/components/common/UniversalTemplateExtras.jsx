@@ -1,7 +1,8 @@
 import React from 'react';
 import { incrementAnalytics } from '../../services/analyticsService.js';
+import { getLabel as getI18nLabel } from '../../lib/i18n.js';
 
-export default function UniversalTemplateExtras({ proposal = {}, branding = {}, customBlocks = [], order = [], style = 'classic', theme = {}, renderedKeys = [] }) {
+export default function UniversalTemplateExtras({ proposal = {}, branding = {}, customBlocks = [], order = [], style = 'classic', theme = {}, renderedKeys = [], lang = 'en' }) {
   const fontHeadline = branding.font_headline || theme.typography?.headline || 'serif';
   const fontBody = branding.font_body || theme.typography?.body || 'sans-serif';
   const fontSubhead = branding.font_subhead || fontHeadline;

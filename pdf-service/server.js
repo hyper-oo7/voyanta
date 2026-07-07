@@ -120,7 +120,6 @@ async function getBrowser() {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--font-render-hinting=none',
-        '--disable-web-security',
         '--disable-gpu',
         '--no-first-run',
         '--no-default-browser-check',
@@ -175,6 +174,15 @@ app.get('/health', (_req, res) => res.json({
   jobsProcessed
 }));
 
+function sanitizeHtmlForPdf(htmlStr) {
+  if (!htmlStr || typeof htmlStr !== 'string') return '';
+  let cleaned = htmlStr.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  cleaned = cleaned.replace(/<(iframe|object|embed|applet)\b[^<]*(?:(?!<\/\1>)<[^<]*)*<\/\1>/gi, '');
+  cleaned = cleaned.replace(/\s+on[a-z]+\s*=\s*(?:["'][^"']*["']|[^\s>]+)/gi, '');
+  cleaned = cleaned.replace(/(href|src|data)\s*=\s*(?:["']\s*javascript:[^"']*["']|javascript:[^\s>]+)/gi, '$1="#"');
+  return cleaned;
+}
+
 app.post('/generate', async (req, res) => {
   const { html, name, proposal_id, style, local_storage } = req.body || {};
   if (!html && !proposal_id) return res.status(400).json({ error: 'missing html or proposal_id payload' });
@@ -197,8 +205,9 @@ app.post('/generate', async (req, res) => {
     }
     
     if (html) {
+      const cleanHtml = sanitizeHtmlForPdf(html);
       try {
-        await page.setContent(html, { waitUntil: ['domcontentloaded', 'networkidle2'], timeout: 25000 });
+        await page.setContent(cleanHtml, { waitUntil: ['domcontentloaded', 'networkidle2'], timeout: 25000 });
       } catch (err) {
         console.warn('[pdf-service] setContent timeout warning (proceeding with rendered DOM):', err.message);
       }

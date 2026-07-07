@@ -86,9 +86,16 @@ class DistributedRateLimiterMiddleware(BaseHTTPMiddleware):
         if request.url.path in ("/api/health", "/api/pdf/health", "/api/ppt/health"):
             return await call_next(request)
 
-        # Identity key: Prefer X-Forwarded-For or authenticated User ID over raw client IP
-        client_ip = request.headers.get("x-forwarded-for") or (request.client.host if request.client else "127.0.0.1")
-        key = client_ip.split(",")[0].strip()
+        # Identity key: Only inspect X-Forwarded-For if immediate peer is a verified trusted proxy
+        immediate_ip = request.client.host if request.client else "127.0.0.1"
+        trusted_proxies_str = os.environ.get("TRUSTED_PROXIES", "127.0.0.1,::1,localhost")
+        trusted_proxies = {p.strip() for p in trusted_proxies_str.split(",") if p.strip()}
+        
+        if immediate_ip in trusted_proxies and request.headers.get("x-forwarded-for"):
+            key = request.headers.get("x-forwarded-for").split(",")[0].strip()
+        else:
+            key = immediate_ip
+            
         now = time.time()
 
         allowed = True

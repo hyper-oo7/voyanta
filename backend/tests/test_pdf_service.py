@@ -1,4 +1,6 @@
 """Backend tests for /api/pdf/* proxy."""
+import os
+os.environ.setdefault("INTERNAL_API_KEY", "test-internal-key")
 import pytest
 from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient

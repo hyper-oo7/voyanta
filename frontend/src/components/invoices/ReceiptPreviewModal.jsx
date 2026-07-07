@@ -61,18 +61,51 @@ export function ReceiptPreviewModal({ invoice, onClose }) {
       window.print();
       return;
     }
-    const htmlContent = printRef.current.innerHTML;
+    const clone = printRef.current.cloneNode(true);
+    
+    // Convert all form controls (input, textarea, select) to static divs so browser print never renders scrollbars, arrows, or horizontal clipping
+    const origFormElements = printRef.current.querySelectorAll('input, textarea, select');
+    const cloneFormElements = clone.querySelectorAll('input, textarea, select');
+    
+    cloneFormElements.forEach((el, idx) => {
+      const orig = origFormElements[idx];
+      if (!orig) return;
+      if (el.type === 'file' || el.type === 'button' || el.type === 'submit' || el.type === 'checkbox') {
+        el.remove();
+        return;
+      }
+      const val = orig.value || orig.innerText || '';
+      const staticDiv = document.createElement('div');
+      staticDiv.className = el.className;
+      staticDiv.style.cssText = 'white-space: pre-wrap !important; word-break: break-word !important; overflow: visible !important; height: auto !important; min-height: 1.2em !important; border: none !important; background: transparent !important; display: block !important; width: 100% !important; font-family: inherit !important; font-size: inherit !important; font-weight: inherit !important; color: inherit !important; line-height: 1.5 !important;';
+      staticDiv.innerText = val;
+      if (el.parentNode) el.parentNode.replaceChild(staticDiv, el);
+    });
+
+    // Remove print:hidden elements from clone
+    clone.querySelectorAll('.print\\:hidden, .no-print, [type="file"]').forEach(el => el.remove());
+
+    const htmlContent = clone.innerHTML;
     const title = `Receipt_${receiptNumber}`;
-    const win = window.open('', '_blank', 'width=900,height=1100');
-    if (!win) {
-      window.print();
-      return;
-    }
     const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
       .map(el => el.outerHTML)
       .join('\n');
 
-    win.document.write(`
+    let iframe = document.getElementById('voyanta-print-iframe');
+    if (iframe) document.body.removeChild(iframe);
+    iframe = document.createElement('iframe');
+    iframe.id = 'voyanta-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`
       <!DOCTYPE html>
       <html>
       <head>
@@ -81,30 +114,38 @@ export function ReceiptPreviewModal({ invoice, onClose }) {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         ${styles}
         <style>
-          @page { size: A4; margin: 15mm; }
-          body { background: #ffffff !important; color: #000000 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; padding: 20px; font-family: sans-serif; }
+          @page { size: A4; margin: 0 !important; }
+          body { background: #ffffff !important; color: #000000 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; padding: 12mm !important; margin: 0 !important; font-family: sans-serif; }
           .print\\:hidden, .no-print { display: none !important; }
           .print\\:bg-white { background: #ffffff !important; }
           .print\\:text-black { color: #000000 !important; }
           .print\\:border-none { border: none !important; }
-          input { border: none !important; background: transparent !important; font-family: inherit !important; font-size: inherit !important; font-weight: inherit !important; color: inherit !important; width: auto !important; display: inline-block !important; }
+          .print\\:border-black { border-color: #000000 !important; }
+          .print\\:shadow-none { box-shadow: none !important; }
+          .print\\:p-0 { padding: 0 !important; }
+          .print\\:overflow-visible { overflow: visible !important; }
+          .overflow-x-auto, .overflow-y-auto, .overflow-hidden { overflow: visible !important; }
+          table { width: 100% !important; border-collapse: collapse !important; table-layout: auto !important; }
+          th, td { padding: 8px 10px !important; word-break: break-word !important; white-space: normal !important; }
         </style>
       </head>
-      <body class="bg-white text-slate-900 p-8">
+      <body class="bg-white text-slate-900">
         <div class="max-w-3xl mx-auto bg-white">
           ${htmlContent}
         </div>
-        <script>
-          window.onload = () => {
-            setTimeout(() => {
-              window.print();
-            }, 600);
-          };
-        </script>
       </body>
       </html>
     `);
-    win.document.close();
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (e) {
+        window.print();
+      }
+    }, 600);
   };
 
   return (
@@ -167,12 +208,12 @@ export function ReceiptPreviewModal({ invoice, onClose }) {
         <div ref={printRef} className="p-8 md:p-12 bg-white text-slate-900 space-y-6 relative rounded-b-3xl overflow-hidden print:p-4 print:rounded-none">
           
           {/* Watermark */}
-          <div className="absolute -right-12 -top-12 opacity-5 pointer-events-none transform rotate-12 text-[140px] font-black font-serif text-emerald-900 select-none print:opacity-[0.03]">
-            PAID
+          <div className="absolute -right-12 -top-12 opacity-5 pointer-events-none transform rotate-12 text-[120px] font-black font-serif text-emerald-900 select-none print:opacity-[0.03] whitespace-nowrap">
+            {invoice?.branding?.watermark_text || invoice?.watermark_text || 'PAID'}
           </div>
 
           {/* Header */}
-          <div className="flex items-start justify-between pb-6 border-b-2 border-emerald-600">
+          <div className="flex items-start justify-between pb-6 border-b-2 border-emerald-600 relative z-10">
             <div>
               {invoice?.branding?.logo_url ? (
                 <img src={invoice.branding.logo_url} alt="Logo" className="max-h-14 max-w-[160px] object-contain mb-2" />
@@ -182,6 +223,9 @@ export function ReceiptPreviewModal({ invoice, onClose }) {
                 </div>
               )}
               {contactLine && <p className="text-xs text-slate-500 m-0">{contactLine}</p>}
+              {(invoice?.branding?.gst_number || invoice?.gst_number) && <p className="text-[11px] font-mono font-bold text-slate-700 m-0 mt-0.5">GSTIN: {invoice?.branding?.gst_number || invoice?.gst_number}</p>}
+              {(invoice?.branding?.trade_code || invoice?.trade_code) && <p className="text-[11px] font-mono text-slate-600 m-0">Reg/Trade Code: {invoice?.branding?.trade_code || invoice?.trade_code}</p>}
+              {(invoice?.branding?.trademarks || invoice?.trademarks) && <p className="text-[10px] italic text-slate-500 m-0 mt-0.5">{invoice?.branding?.trademarks || invoice?.trademarks}</p>}
             </div>
             <div className="text-right">
               <div className="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-xs uppercase tracking-widest border border-emerald-300">
@@ -297,7 +341,7 @@ export function ReceiptPreviewModal({ invoice, onClose }) {
                     const customQr = localStorage.getItem('voyanta_payment_qr_code');
                     if (customQr) return <img src={customQr} alt="Authentic Receipt QR" className="w-full h-full object-contain" />;
                   } catch {}
-                  return <div dangerouslySetInnerHTML={{ __html: verificationQr }} />;
+                  return <img src={`data:image/svg+xml;utf8,${encodeURIComponent(verificationQr)}`} alt="Receipt Verification QR Code" className="w-full h-full object-contain" />;
                 })()}
               </div>
               <div>

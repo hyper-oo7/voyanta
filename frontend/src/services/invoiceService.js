@@ -90,6 +90,9 @@ function filterList(list, { clientName, status, destination, currency }) {
     } else if (copy.remaining_balance === undefined || copy.remaining_balance === null) {
       copy.remaining_balance = Math.max(0, Number(copy.total_amount || 0) - Number(copy.paid_amount || 0));
     }
+    if (!Array.isArray(copy.taxes) || copy.taxes.length === 0) {
+      copy.taxes = [{ id: 'tax-1', name: 'GST / Tax', rate: Number(copy.tax_rate !== undefined ? copy.tax_rate : 5), amount: Number(copy.tax_amount || 0) }];
+    }
     return copy;
   });
   return normalized.filter(inv => {
@@ -178,8 +181,17 @@ export async function createInvoiceFromProposal(proposal, customBranding = null)
   }
 
   const subtotal = invoiceItems.reduce((acc, item) => acc + (Number(item.amount) || 0), 0);
-  const taxRate = Number(settings.default_tax_rate || 5);
-  const taxAmount = Math.round((subtotal * taxRate) / 100);
+  const defaultTaxes = Array.isArray(settings.default_taxes) && settings.default_taxes.length > 0
+    ? settings.default_taxes
+    : [{ id: 'tax-1', name: 'GST / Tax', rate: Number(settings.default_tax_rate || 5) }];
+  const taxes = defaultTaxes.map((t, idx) => ({
+    id: t.id || `tax_${Date.now()}_${idx}`,
+    name: t.name || 'GST / Tax',
+    rate: Number(t.rate !== undefined ? t.rate : 5),
+    amount: Math.round((subtotal * Number(t.rate !== undefined ? t.rate : 5)) / 100)
+  }));
+  const taxRate = taxes.length > 0 ? Number(taxes[0].rate || 0) : Number(settings.default_tax_rate || 5);
+  const taxAmount = taxes.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
   const totalAmount = subtotal + taxAmount;
 
   const newInvoice = {
@@ -203,6 +215,7 @@ export async function createInvoiceFromProposal(proposal, customBranding = null)
     remaining_balance: totalAmount,
     parent_invoice_id: null,
     items: invoiceItems,
+    taxes: taxes,
     notes: settings?.invoice_default_notes || 'Thank you for choosing Voyanta Luxury Travel for your upcoming journey.',
     terms: settings?.terms_conditions || '1. Payment is due within the specified timeframe.\n2. All bookings are subject to availability upon payment receipt.',
     upi_id: branding?.upi_id || settings?.upi_id || 'voyantatravel@okaxis',
@@ -252,8 +265,19 @@ export async function createInvoice(customData = {}) {
   dueDate.setDate(now.getDate() + 10);
 
   const subtotal = Number(customData.subtotal || 0);
-  const taxRate = Number(customData.tax_rate ?? settings.default_tax_rate ?? 5);
-  const taxAmount = Number(customData.tax_amount ?? Math.round((subtotal * taxRate) / 100));
+  const defaultTaxes = Array.isArray(customData.taxes) && customData.taxes.length > 0
+    ? customData.taxes
+    : (Array.isArray(settings.default_taxes) && settings.default_taxes.length > 0
+        ? settings.default_taxes
+        : [{ id: 'tax-1', name: 'GST / Tax', rate: Number(customData.tax_rate ?? settings.default_tax_rate ?? 5) }]);
+  const taxes = defaultTaxes.map((t, idx) => ({
+    id: t.id || `tax_${Date.now()}_${idx}`,
+    name: t.name || 'GST / Tax',
+    rate: Number(t.rate !== undefined ? t.rate : 5),
+    amount: Number(t.amount !== undefined && customData.taxes ? t.amount : Math.round((subtotal * Number(t.rate !== undefined ? t.rate : 5)) / 100))
+  }));
+  const taxRate = taxes.length > 0 ? Number(taxes[0].rate || 0) : Number(customData.tax_rate ?? settings.default_tax_rate ?? 5);
+  const taxAmount = Number(customData.tax_amount ?? taxes.reduce((acc, t) => acc + (Number(t.amount) || 0), 0));
   const totalAmount = Number(customData.total_amount ?? (subtotal + taxAmount));
 
   const newInvoice = {
@@ -277,6 +301,7 @@ export async function createInvoice(customData = {}) {
     remaining_balance: Number(customData.remaining_balance ?? totalAmount),
     parent_invoice_id: customData.parent_invoice_id || null,
     items: customData.items || [],
+    taxes: taxes,
     notes: customData.notes || settings?.invoice_default_notes || 'Thank you for choosing Voyanta Luxury Travel.',
     terms: customData.terms || settings?.terms_conditions || '1. Payment is due within the specified timeframe.\n2. All bookings are subject to availability upon payment receipt.',
     upi_id: customData.upi_id || settings?.upi_id || 'voyantatravel@okaxis',
@@ -322,34 +347,25 @@ export async function saveInvoiceRecord(invoice, isNew = false) {
     }
   } catch {}
 
+  // Save to DB asynchronously
   if (supabase) {
-    const syncTask = (async () => {
-      const { data, error } = await supabase
-        .from('invoices')
-        .upsert([updated])
-        .select()
-        .single();
-      if (error) {
-        if (!error.message?.includes('schema cache') && !error.message?.includes('does not exist') && !error.message?.includes('Could not find the table')) {
-          notifyDbError('invoices', error);
-        }
-        console.warn('Supabase upsert invoice failed, falling back to local storage:', error.message);
-        return null;
+    try {
+      if (isNew) {
+        supabase.from('invoices').insert([updated]).then(({ error }) => {
+          if (error) notifyDbError('invoices', error);
+        });
+      } else {
+        supabase.from('invoices').update(updated).eq('id', updated.id).then(({ error }) => {
+          if (error) notifyDbError('invoices', error);
+        });
       }
-      if (data) return data;
-      return null;
-    })();
-
-    const timeoutGuard = new Promise(resolve => setTimeout(() => resolve(null), 1000));
-    const result = await Promise.race([syncTask, timeoutGuard]);
-    if (result) {
-      const curList = getLocalList(INVOICE_CACHE_KEY);
-      const syncedList = isNew ? [result, ...curList.filter(i => i.id !== result.id)] : curList.map(i => i.id === result.id ? result : i);
-      saveLocalList(INVOICE_CACHE_KEY, syncedList);
-      return result;
+    } catch (e) {
+      notifyDbError('invoices', e);
     }
   }
 
+  // Notify UI via CustomEvent
+  window.dispatchEvent(new CustomEvent('voyanta:invoices-updated', { detail: updated }));
   return updated;
 }
 
@@ -359,11 +375,22 @@ export async function updateInvoice(id, patch, actionLog = null) {
 
   const updated = { ...existing, ...patch };
   
-  // Recalculate totals if items or tax_rate changed
-  if (patch.items || patch.tax_rate !== undefined) {
+  // Recalculate totals if items or tax_rate or taxes changed
+  if (patch.items || patch.tax_rate !== undefined || patch.taxes) {
     const sub = (updated.items || []).reduce((acc, item) => acc + (Number(item.amount) || 0), 0);
-    const tr = Number(updated.tax_rate || 0);
-    const tax = Math.round((sub * tr) / 100);
+    let tax = 0;
+    if (Array.isArray(updated.taxes) && updated.taxes.length > 0) {
+      updated.taxes = updated.taxes.map(t => {
+        const amt = t.rate !== undefined && t.rate !== null && t.rate !== '' ? Math.round((sub * Number(t.rate)) / 100) : Number(t.amount || 0);
+        return { ...t, amount: amt };
+      });
+      tax = updated.taxes.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+      updated.tax_rate = updated.taxes.length === 1 ? Number(updated.taxes[0].rate || 0) : Number(updated.tax_rate || 0);
+    } else {
+      const tr = Number(updated.tax_rate || 0);
+      tax = Math.round((sub * tr) / 100);
+      updated.taxes = [{ id: 'tax-1', name: 'GST / Tax', rate: tr, amount: tax }];
+    }
     const tot = sub + tax;
     updated.subtotal = sub;
     updated.tax_amount = tax;

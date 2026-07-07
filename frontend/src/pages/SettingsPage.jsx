@@ -715,6 +715,46 @@ function BrandingSettings() {
                 className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm"
               />
             </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">GST Number / Tax ID</label>
+              <input
+                type="text"
+                placeholder="e.g. 07AAAAA0000A1Z5"
+                value={safeStr(current.gst_number)}
+                onChange={upd('gst_number')}
+                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-mono font-bold text-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Trade Code / Registration No.</label>
+              <input
+                type="text"
+                placeholder="e.g. LIC-DL-2026-8890"
+                value={safeStr(current.trade_code)}
+                onChange={upd('trade_code')}
+                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Trademarks & Accreditations</label>
+              <input
+                type="text"
+                placeholder="e.g. IATA Approved Agency • TAFI Member • ISO 9001 Certified"
+                value={safeStr(current.trademarks)}
+                onChange={upd('trademarks')}
+                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Document Watermark Text</label>
+              <input
+                type="text"
+                placeholder="e.g. APPROVED or CONFIDENTIAL or VOYANTA LUXURY"
+                value={safeStr(current.watermark_text)}
+                onChange={upd('watermark_text')}
+                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-bold tracking-widest uppercase text-slate-700"
+              />
+            </div>
             <div className="md:col-span-2 pt-2 border-t border-outline-variant/40">
               <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Authentic Payment / UPI QR Code Image</label>
               <p className="text-xs text-on-surface-variant mb-2">Upload your official agency Bank or UPI payment QR code image. This authentic QR code will be embedded directly on all generated invoices and receipts.</p>
@@ -728,6 +768,49 @@ function BrandingSettings() {
                   }}
                 />
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Social Media Links */}
+        <div className="pt-4 border-t border-outline-variant">
+          <h4 className="text-lg font-serif font-bold text-on-surface mb-3 flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">share</span>
+            Social Media & Communication Links
+          </h4>
+          <p className="text-xs text-on-surface-variant mb-4">
+            Add your social media URLs here. When sharing invoices or proposals via email, interactive social logo buttons will automatically appear at the bottom of the email body for the links you provide.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">
+                <span>📘 Facebook URL</span>
+              </label>
+              <input type="url" placeholder="https://facebook.com/youragency" value={safeStr(current.social_facebook)} onChange={upd('social_facebook')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">
+                <span>📸 Instagram URL</span>
+              </label>
+              <input type="url" placeholder="https://instagram.com/youragency" value={safeStr(current.social_instagram)} onChange={upd('social_instagram')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">
+                <span>💼 LinkedIn URL</span>
+              </label>
+              <input type="url" placeholder="https://linkedin.com/company/youragency" value={safeStr(current.social_linkedin)} onChange={upd('social_linkedin')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">
+                <span>🐦 Twitter / X URL</span>
+              </label>
+              <input type="url" placeholder="https://twitter.com/youragency" value={safeStr(current.social_twitter)} onChange={upd('social_twitter')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">
+                <span>▶️ YouTube Channel URL</span>
+              </label>
+              <input type="url" placeholder="https://youtube.com/@youragency" value={safeStr(current.social_youtube)} onChange={upd('social_youtube')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
             </div>
           </div>
         </div>

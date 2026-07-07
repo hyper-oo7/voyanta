@@ -106,3 +106,87 @@ async def extract_itinerary(text: str) -> dict:
         logger.exception("parse itinerary failed")
         raise e
 
+async def translate_proposal_content(proposal_data: dict, target_lang: str) -> dict:
+    import json
+    lang_names = {
+        "bn": "Bengali (বাংলা)",
+        "hi": "Hindi (हिंदी)",
+        "gu": "Gujarati (ગુજરાતી)",
+        "mr": "Marathi (मराठी)",
+        "es": "Spanish (Español)",
+        "fr": "French (Français)",
+        "en": "English"
+    }
+    target_name = lang_names.get(target_lang, target_lang)
+    if target_lang == "en" or not target_name:
+        return proposal_data
+
+    api_key_gemini = os.environ.get("GEMINI_API_KEY")
+    api_key_openai = os.environ.get("OPENAI_API_KEY")
+    
+    if not api_key_gemini and not api_key_openai:
+        logger.warning("[AI Translate] No API keys configured; returning original proposal structure for fallback UI translation.")
+        return proposal_data
+
+    to_translate = {
+        "title": proposal_data.get("title", ""),
+        "highlights": proposal_data.get("highlights", []),
+        "inclusions": proposal_data.get("inclusions", []),
+        "exclusions": proposal_data.get("exclusions", []),
+        "terms_of_payment": proposal_data.get("terms_of_payment", []),
+        "days": []
+    }
+    for d in proposal_data.get("days", []):
+        to_translate["days"].append({
+            "title": d.get("title", ""),
+            "description": d.get("description", "")
+        })
+
+    prompt = (
+        f"You are a professional luxury travel translator. Translate all string values in this JSON object into {target_name}.\n"
+        "RULES:\n"
+        "1. Keep exact JSON structure and keys intact.\n"
+        "2. Do not translate numbers, currency symbols, or dates.\n"
+        "3. Maintain warm, professional hospitality tone.\n"
+        f"JSON to translate:\n{json.dumps(to_translate, ensure_ascii=False)}"
+    )
+
+    try:
+        if api_key_gemini:
+            payload = {
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": {"responseMimeType": "application/json", "temperature": 0.2}
+            }
+            res = await call_gemini_with_retry(payload, api_key_gemini)
+            translated_dict = json.loads(res["candidates"][0]["content"]["parts"][0]["text"])
+        else:
+            headers = {"Authorization": f"Bearer {api_key_openai}", "Content-Type": "application/json"}
+            payload = {
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.2
+            }
+            res = await call_openai_with_retry(payload, headers)
+            translated_dict = json.loads(res["choices"][0]["message"]["content"])
+
+        merged = dict(proposal_data)
+        if "title" in translated_dict: merged["title"] = translated_dict["title"]
+        if "highlights" in translated_dict: merged["highlights"] = translated_dict["highlights"]
+        if "inclusions" in translated_dict: merged["inclusions"] = translated_dict["inclusions"]
+        if "exclusions" in translated_dict: merged["exclusions"] = translated_dict["exclusions"]
+        if "terms_of_payment" in translated_dict: merged["terms_of_payment"] = translated_dict["terms_of_payment"]
+        
+        if "days" in translated_dict and len(translated_dict["days"]) == len(merged.get("days", [])):
+            new_days = []
+            for idx, d in enumerate(merged.get("days", [])):
+                d_copy = dict(d)
+                d_copy["title"] = translated_dict["days"][idx].get("title", d_copy.get("title", ""))
+                d_copy["description"] = translated_dict["days"][idx].get("description", d_copy.get("description", ""))
+                new_days.append(d_copy)
+            merged["days"] = new_days
+            
+        return merged
+    except Exception as e:
+        logger.exception(f"[AI Translate] Translation failed: {e}. Returning original data.")
+        return proposal_data

@@ -386,6 +386,35 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           <option value="corporate">Corporate Executive</option>
         </select>
         
+        <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest ml-2">Language</span>
+        <select value={proposal?.language || proposal?.lang || 'en'} onChange={async (e) => {
+          const newLang = e.target.value;
+          const updatedProp = { ...proposal, language: newLang, lang: newLang };
+          setProposal(updatedProp);
+          toast.info(`Language set to ${newLang.toUpperCase()}. Updating UI labels...`);
+          if (newLang !== 'en') {
+            try {
+              toast.info("AI Translating proposal text...");
+              const res = await api.post('/api/ai/translate-proposal', { proposal: updatedProp, target_lang: newLang });
+              if (res && res.success && res.translated_proposal) {
+                setProposal({ ...res.translated_proposal, language: newLang, lang: newLang });
+                toast.success("Proposal text translated successfully!");
+              }
+            } catch (err) {
+              console.warn("AI translation failed, using offline terms:", err);
+            }
+          }
+        }} data-testid="preview-language"
+          className="px-md py-sm bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md">
+          <option value="en">English</option>
+          <option value="hi">Hindi (हिंदी)</option>
+          <option value="bn">Bengali (বাংলা)</option>
+          <option value="gu">Gujarati (ગુજરાતી)</option>
+          <option value="mr">Marathi (मराठी)</option>
+          <option value="es">Spanish (Español)</option>
+          <option value="fr">French (Français)</option>
+        </select>
+
         <button type="button" onClick={() => {
           const dest = json?.proposal?.destination || 'Destination';
           const travelers = json?.proposal?.travelers || 2;
@@ -395,14 +424,10 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           console.log("AI PROMPT:", prompt);
           toast.info("AI Prompt Generated. Hook up your API here!");
           
-          // For now, simulate AI response
-          setJson(j => ({
-            ...j, 
-            proposal: { 
-              ...j.proposal, 
-              name: `The ${dest} Experience` 
-            } 
-          }));
+          setProposal({ 
+            ...proposal, 
+            name: `The ${dest} Experience` 
+          });
         }}
         className="px-md py-sm bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg font-label-md flex items-center gap-2 transition-colors">
           <span className="material-symbols-outlined text-[18px]">magic_button</span>

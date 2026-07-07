@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import uuid
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Tuple
@@ -14,10 +15,12 @@ os.makedirs(TEMP_PDF_DIR, exist_ok=True)
 def save_temporary_pdf(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     """
     Saves raw supplier PDF to temporary vault storage with a 15-day expiration timestamp.
+    Uses secure UUID to prevent filename enumeration.
     """
     timestamp = int(time.time())
     safe_name = "".join(c if c.isalnum() or c in (".", "_", "-") else "_" for c in filename)
-    file_path = os.path.join(TEMP_PDF_DIR, f"{timestamp}_{safe_name}")
+    file_path = os.path.join(TEMP_PDF_DIR, f"{timestamp}_{uuid.uuid4().hex[:16]}_{safe_name}")
+
     
     with open(file_path, "wb") as f:
         f.write(file_bytes)

@@ -4,7 +4,7 @@ import { formatCurrency } from './UpiQrGenerator.jsx';
 import { logActivity } from '../../services/activityLogService.js';
 import SmartContactCaptureModal from '../common/SmartContactCaptureModal.jsx';
 
-export function InvoiceShareModal({ invoice, onClose, onShared }) {
+export function InvoiceShareModal({ invoice, onClose, onShared, onDownloadPdf }) {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState('whatsapp');
   const [smartContact, setSmartContact] = useState(null);
@@ -16,18 +16,46 @@ export function InvoiceShareModal({ invoice, onClose, onShared }) {
   const upiId = invoice?.upi_id || invoice?.branding?.upi_id || 'voyantatravel@okaxis';
   
   const payNowLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(agencyName)}&am=${encodeURIComponent(invoice?.total_amount || 0)}&cu=INR`;
-  const docLink = `${window.location.origin}/invoices`;
+  const docLink = `${window.location.origin}/invoices?view=${invoice?.id || ''}`;
+
+  const settings = JSON.parse(localStorage.getItem('voyanta_settings') || '{}');
+  const socials = [
+    { name: 'Website', url: settings.social_website },
+    { name: 'Instagram', url: settings.social_instagram },
+    { name: 'Facebook', url: settings.social_facebook },
+    { name: 'LinkedIn', url: settings.social_linkedin },
+    { name: 'Twitter/X', url: settings.social_twitter },
+    { name: 'YouTube', url: settings.social_youtube }
+  ].filter(s => s.url && s.url.trim() !== '');
+
+  const socialsWaText = socials.length > 0 
+    ? `\n\n🌐 *Connect With Us:*\n` + socials.map(s => `• ${s.name}: ${s.url.startsWith('http') ? s.url : 'https://'+s.url}`).join('\n')
+    : '';
+
+  const socialsEmailText = socials.length > 0
+    ? `\n\n--- CONNECT WITH US ---\n` + socials.map(s => `${s.name}: ${s.url.startsWith('http') ? s.url : 'https://'+s.url}`).join('\n')
+    : '';
 
   // Default WhatsApp text
   const [waText, setWaText] = useState(() => {
-    return `Hello ${invoice?.client_name || 'Valued Client'},\n\nGreetings from *${agencyName}*! ✨\n\nWe have generated your official Invoice *#${invoice?.invoice_number}* for your upcoming travel concierge experience (*${invoice?.destination || 'Luxury Package'}*).\n\n*Amount Due:* ${amountFormatted}\n*Due Date:* ${invoice?.due_date || 'Upon receipt'}\n\n⚡ *INSTANT ONE-CLICK UPI PAY NOW:* \n${payNowLink}\n\n*Instant UPI Payment ID:* \`${upiId}\`\n\nYou can also pay directly via any UPI app (GPay, PhonePe, Paytm) using our verified VPA.\n\nThank you for choosing ${agencyName}. Please let us know if you have any questions!\n\nWarm regards,\n*${agencyName} Concierge Team*`;
+    return `Hello ${invoice?.client_name || 'Valued Client'},\n\nGreetings from *${agencyName}*! ✨\n\nWe have generated your official Invoice *#${invoice?.invoice_number}* for your upcoming travel concierge experience (*${invoice?.destination || 'Luxury Package'}*).\n\n*Amount Due:* ${amountFormatted}\n*Due Date:* ${invoice?.due_date || 'Upon receipt'}\n\n━━━━━━━━━━━━━━━━━━━━━━\n⚡ *[ INSTANT ONE-CLICK UPI PAY NOW ]* ⚡\n👉 Click to Open GPay / PhonePe / Paytm:\n${payNowLink}\n━━━━━━━━━━━━━━━━━━━━━━\n\n*Instant UPI Payment ID:* \`${upiId}\`\n\nYou can also pay directly via any UPI app using our verified VPA.\n\nThank you for choosing ${agencyName}. Please let us know if you have any questions!\n\nWarm regards,\n*${agencyName} Concierge Team*${socialsWaText}`;
   });
 
   // Default Email Subject & Body
   const [emailSubject, setEmailSubject] = useState(`Official Invoice #${invoice?.invoice_number} - ${agencyName}`);
   const [emailBody, setEmailBody] = useState(() => {
-    return `Dear ${invoice?.client_name || 'Valued Client'},\n\nWe hope this email finds you well.\n\nPlease find your official invoice #${invoice?.invoice_number} for ${invoice?.destination || 'your travel package'} from ${agencyName}.\n\n--- INVOICE SUMMARY ---\nInvoice Number: #${invoice?.invoice_number}\nTotal Amount: ${amountFormatted}\nPayment Status: ${invoice?.status || 'Sent'}\nDue Date: ${invoice?.due_date || 'Immediate'}\n\n⚡ INSTANT ONE-CLICK UPI PAY NOW LINK (Opens GPay / PhonePe / Paytm):\n${payNowLink}\n\n--- PAYMENT VPA ---\nYou can make an instant zero-fee transfer to our verified UPI ID: ${upiId}\n\n📄 VIEW & ATTACHED DOCUMENTS:\nAccess your live Invoice & Payment Receipt portal online: ${docLink}\n(Note: Official PDF document is attached to this email or downloadable via portal).\n\nThank you for choosing ${agencyName}.\n\nSincerely,\n${agencyName} Concierge Team`;
+    return `Dear ${invoice?.client_name || 'Valued Client'},\n\nWe hope this email finds you well.\n\nPlease find your official invoice #${invoice?.invoice_number} for ${invoice?.destination || 'your travel package'} from ${agencyName}.\n\n--- INVOICE SUMMARY ---\nInvoice Number: #${invoice?.invoice_number}\nTotal Amount: ${amountFormatted}\nPayment Status: ${invoice?.status || 'Sent'}\nDue Date: ${invoice?.due_date || 'Immediate'}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n⚡ [ BUTTON: INSTANT ONE-CLICK UPI PAY NOW ] ⚡\n👉 Click link to Open GPay / PhonePe / Paytm:\n${payNowLink}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n--- PAYMENT VPA ---\nYou can make an instant zero-fee transfer to our verified UPI ID: ${upiId}\n\n📄 VIEW & ATTACHED DOCUMENTS:\nAccess your live interactive Invoice & Payment Receipt portal online (with direct pay button): ${docLink}\n(Note: Official PDF document is attached to this email or downloadable via portal).\n\nThank you for choosing ${agencyName}.\n\nSincerely,\n${agencyName} Concierge Team${socialsEmailText}`;
   });
+
+  const handleDownloadPdf = () => {
+    if (onDownloadPdf) {
+      toast.success('Opening clean document print window...');
+      onDownloadPdf();
+    } else {
+      toast.info('Opening document preview for clean PDF export...');
+      window.open(docLink, '_blank');
+    }
+  };
 
   const handleOpenWhatsApp = async () => {
     try {
@@ -161,10 +189,7 @@ export function InvoiceShareModal({ invoice, onClose, onShared }) {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      toast.success('Opening clean print window to save PDF...');
-                      window.print();
-                    }}
+                    onClick={handleDownloadPdf}
                     className="px-3 py-1.5 rounded-xl bg-white text-emerald-700 font-bold border border-emerald-300 hover:bg-emerald-100 transition-colors flex items-center gap-1 shadow-xs"
                   >
                     <span className="material-symbols-outlined text-[15px]">download</span> Download PDF
@@ -234,10 +259,7 @@ export function InvoiceShareModal({ invoice, onClose, onShared }) {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      toast.success('Opening clean print window to save PDF...');
-                      window.print();
-                    }}
+                    onClick={handleDownloadPdf}
                     className="px-3 py-1.5 rounded-xl bg-white text-primary font-bold border border-primary/30 hover:bg-primary/10 transition-colors flex items-center gap-1 shadow-xs"
                   >
                     <span className="material-symbols-outlined text-[15px]">download</span> Download PDF

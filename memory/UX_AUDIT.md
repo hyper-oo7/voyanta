@@ -6,12 +6,12 @@ Date: Jan 2026 · Scope: every interactive element across all Stitch screens.
 1. Programmatic scan of each Stitch HTML body (`scripts/audit_stitch.mjs`) to count `<button>`, `<a>`, `<form>`, `<input>` per page and dump every button label.
 2. Live Playwright traversal of each rendered route, counting elements at runtime (post-mount, including the React-added wrappers like ProposalsListPage's table).
 3. Classified each anchor as **routed**, **section anchor**, or **placeholder** (`href="#"`).
-4. Wired everything through a single delegated handler on `StitchPage` so future Stitch screens automatically get the same behaviour.
+4. Wired everything through universal layout navigation handlers so future screens automatically get the same behaviour.
 
 ## 2. What was fixed (and how)
 
 ### a. Smooth-scrolling section anchors (Landing)
-The landing page's top-nav has `<a href="#features">`, `<a href="#mockups">` (labelled "Solutions"), `<a href="#pricing">`. Added a `HASH_SECTION_MAP` in `/src/lib/navMap.js` and a `scrollIntoView({ behavior: 'smooth' })` interceptor in `StitchPage`. Verified: clicking `#pricing` scrolls window from y=0 → y=2606, `#features` → y=680. The map also covers `#testimonials` and `#faq` even though those IDs aren't in the current HTML, so future Stitch revisions get the behaviour for free.
+The landing page's top-nav has `<a href="#features">`, `<a href="#mockups">` (labelled "Solutions"), `<a href="#pricing">`. Added a `HASH_SECTION_MAP` in `/src/lib/navMap.js` and a `scrollIntoView({ behavior: 'smooth' })` interceptor in layout navigation. Verified: clicking `#pricing` scrolls window from y=0 → y=2606, `#features` → y=680. The map also covers `#testimonials` and `#faq` even though those IDs aren't in the current HTML, so future revisions get the behaviour for free.
 
 ### b. Sidebar / application routes
 Extended `NAV_MAP` with **all** sidebar labels found across the dashboard / itinerary / library shells:
@@ -21,10 +21,10 @@ Extended `NAV_MAP` with **all** sidebar labels found across the dashboard / itin
 | Dashboard | `/dashboard` |
 | New Proposal | `/proposals/brief` |
 | Proposals | `/proposals` |
-| Templates | `/templates` *(new alias → LibrariesPage)* |
+| Templates | `/templates` |
 | Hotels | `/libraries/hotels` |
 | Flights | `/libraries` |
-| Activities | `/activities` *(new alias → AssetsLibraryPage)* |
+| Activities | `/activities` |
 | Cost Calculator | `/cost-calculator` |
 | Branding / Agency Branding / Settings | `/branding` |
 
@@ -129,8 +129,7 @@ These currently surface a *"… — coming soon"* toast instead of doing real wo
 ## 5. Files changed in this phase
 
 - `/app/frontend/src/lib/navMap.js` — extended with all sidebar + CTA labels, added `HASH_SECTION_MAP` and `COMING_SOON_LABELS`.
-- `/app/frontend/src/components/StitchPage.jsx` — universal click delegate: smooth scroll for hash anchors, label-based routing for `<a>` and `<button>`, polite toast for unmapped placeholders. Submit buttons (`type="submit"`) are explicitly skipped so form handlers keep working.
-- `/app/frontend/src/App.jsx` — added `/activities` and `/templates` routes (aliases to `AssetsLibraryPage` and `LibrariesPage`).
+- `/app/frontend/src/App.jsx` — added `/activities` and `/templates` routes and module navigations.
 
 ## 6. Verification
 

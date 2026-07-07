@@ -80,12 +80,46 @@ async def route_model_cascading(
     is_simple_package = len(compressed_text) < 3000 and "extra_section" not in compressed_text.lower()
 
     if is_simple_package and api_key_openai:
-        logger.info("[Model Cascading] Routed task to high-speed small model (gpt-4o-mini).")
-        pass
+        try:
+            from src.services.ai_service import call_openai_with_retry
+            logger.info("[Model Cascading] Routed task to high-speed small model (gpt-4o-mini).")
+            prompt = (
+                f"You are an expert luxury travel planner. Create 3 distinct travel package recommendation options "
+                f"for {destination} lasting {duration} days, based on this document summary:\n{compressed_text}\n\n"
+                f"CRITICAL RULES:\n"
+                f"1. Every option's total_estimated_cost MUST be strictly between {min_budget} and {max_budget} {currency} (±20% rule).\n"
+                f"2. Return ONLY valid JSON with a 'recommendations' list containing 3 options.\n"
+                f"3. Do not include flights. Sub-destinations must bring hotels, activities, transfers, and meals.\n"
+                f"4. Each day in 'days' must have 'day_number', 'title', 'description', 'sub_destination', 'hotels', 'activities', 'transfers', and 'meals'.\n"
+            )
+            headers = {
+                "Authorization": f"Bearer {api_key_openai}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.3
+            }
+            result = await call_openai_with_retry(payload, headers)
+            content = result["choices"][0]["message"]["content"]
+            parsed_res = json.loads(content)
+            recs = parsed_res.get("recommendations", [])
+            if len(recs) > 0:
+                recs = assign_images_to_recommendations(recs, images)
+                return {
+                    "success": True,
+                    "recommendations": recs,
+                    "model_used": "gpt-4o-mini",
+                    "budget_window": f"{currency} {min_budget} to {currency} {max_budget} (±20% rule applied)"
+                }
+        except Exception as op_e:
+            logger.exception(f"[Model Cascading] OpenAI generation failed: {op_e}, falling back to structured generator.")
     elif api_key_anthropic:
         logger.info("[Model Cascading] Routed complex unstructured task to frontier model (claude-3-5-sonnet).")
         pass
-    else:
+
     logger.info("[Model Cascading] Serving dynamic structured AI recommendations adhering to +-20% budget rule.")
 
     # Dynamically derive sub-destinations based on target destination

@@ -44,6 +44,20 @@ export default function InvoicesPage() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (invoices.length > 0 && !activeInvoice && !receiptInvoice && !shareInvoice) {
+      const params = new URLSearchParams(window.location.search);
+      const viewId = params.get('view');
+      if (viewId) {
+        const target = invoices.find(i => String(i.id) === String(viewId) || String(i.invoice_number) === String(viewId));
+        if (target) {
+          setActiveInvoice(target);
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      }
+    }
+  }, [invoices, activeInvoice, receiptInvoice, shareInvoice]);
+
   const [remindersTick, setRemindersTick] = useState(0);
   useEffect(() => {
     const handleUpd = () => setRemindersTick(t => t + 1);
@@ -423,6 +437,11 @@ export default function InvoicesPage() {
         <InvoiceShareModal
           invoice={shareInvoice}
           onClose={() => setShareInvoice(null)}
+          onDownloadPdf={() => {
+            const inv = shareInvoice;
+            setShareInvoice(null);
+            setActiveInvoice(inv);
+          }}
           onTriggerSmartContact={(props) => {
             setShareInvoice(null);
             setSmartContactProps(props);

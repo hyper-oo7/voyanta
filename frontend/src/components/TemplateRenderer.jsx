@@ -2,8 +2,8 @@ import React, { memo, useState, useEffect, Suspense } from 'react';
 import { TEMPLATE_REGISTRY } from '../templates/registry.js';
 import { formatPrice } from '../lib/currency.js';
 import { fetchContextualImage } from '../services/imageService.js';
-import { incrementAnalytics } from '../services/analyticsService.js';
 import UniversalTemplateExtras from './common/UniversalTemplateExtras.jsx';
+import { getLabel as getI18nLabel, translateCommonTermsOffline } from '../lib/i18n.js';
 
 export const ALL = {
   hero: true, highlights: true, itinerary: true, hotels: true,
@@ -50,8 +50,8 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
 
   const p = data.proposal || {};
   const b = (p.preferences && p.preferences.branding) || {};
-  // Merge explicit branding prop (from Step7Preview) with proposal-embedded branding
   const branding = brandingProp || b || {};
+  const lang = p.language || p.lang || branding.language || 'en';
   const items = data.items_by_kind || {};
   const total = data.totals?.subtotal || 0;
   const currency = data.totals?.currency || 'INR';
@@ -66,7 +66,10 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
   const fontSubhead = '"Cormorant Garamond", serif';
   const fontBody = '"Inter", sans-serif';
 
-  const safeText = (val) => Array.isArray(val) ? val.join('\n') : (val && typeof val === 'object' ? JSON.stringify(val) : (val ?? ''));
+  const safeText = (val) => {
+    const raw = Array.isArray(val) ? val.join('\n') : (val && typeof val === 'object' ? JSON.stringify(val) : (val ?? ''));
+    return translateCommonTermsOffline(raw, lang);
+  };
 
   const renderSection = (key, index) => {
     if (!include[key]) return null;
@@ -133,7 +136,7 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
                 </h1>
                 {clientName ? (
                   <p className="text-2xl md:text-3xl text-white/95 font-light italic mb-5 tracking-wide drop-shadow" style={{ fontFamily: fontSubhead }}>
-                    Curated For {clientName}
+                    {getI18nLabel('curatedFor', lang)} {clientName}
                   </p>
                 ) : null}
                 <p className="text-xl md:text-2xl max-w-2xl text-white/90 font-light drop-shadow" style={{ fontFamily: fontSubhead }}>
@@ -147,7 +150,7 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
       case 'highlights':
         return (
           <section key={key} className={sectionClass} style={sectionStyle}>
-            <Title>Destination Overview</Title>
+            <Title>{getI18nLabel('destinationOverview', lang)}</Title>
             <div className="text-lg leading-relaxed whitespace-pre-wrap" style={{ fontFamily: fontBody }}>{b.highlights || '—'}</div>
           </section>
         );
@@ -161,7 +164,7 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
 
         return (
           <section key={key} className={sectionClass} style={sectionStyle}>
-            <Title>Daily Itinerary</Title>
+            <Title>{getI18nLabel('dailyItinerary', lang)}</Title>
             <ol className="space-y-8">
               {list.map((d, i) => {
                 const dayNum = d.day || i + 1;
@@ -173,9 +176,9 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
 
                 return (
                 <li key={i} className="flex flex-col md:flex-row gap-6 break-inside-avoid p-6 rounded-2xl mb-8 shadow-sm" style={{ backgroundColor: theme.alt }}>
-                  <span className="flex-shrink-0 w-24 text-2xl font-bold" style={{ color: theme.accent, fontFamily: fontSubhead }}>Day {String(dayNum).padStart(2, '0')}</span>
+                  <span className="flex-shrink-0 w-24 text-2xl font-bold" style={{ color: theme.accent, fontFamily: fontSubhead }}>{getI18nLabel('day', lang)} {String(dayNum).padStart(2, '0')}</span>
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-2xl mb-3 font-bold" style={{ fontFamily: fontSubhead }}>{d.title || d.label || 'Free time'}</h3>
+                    <h3 className="text-2xl mb-3 font-bold" style={{ fontFamily: fontSubhead }}>{d.title || d.label || getI18nLabel('freeTime', lang)}</h3>
                     {d.description && typeof d.description === 'string' && contentBlocks.length === 0 && (
                       <p className="text-base opacity-80 whitespace-pre-wrap mb-4 leading-relaxed" style={{ fontFamily: fontBody }}>{d.description}</p>
                     )}
@@ -274,7 +277,7 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
         if (!items.hotel?.length) return null;
         return (
           <section key={key} className={sectionClass} style={sectionStyle}>
-            <Title>Luxury Accommodation</Title>
+            <Title>{getI18nLabel('luxuryAccommodation', lang)}</Title>
             <ul className="space-y-8">
               {items.hotel.map((it) => {
                 const imgUrl = it.meta?.image_url || (it.meta?.selected_images && it.meta.selected_images[0]) || '';
@@ -282,7 +285,7 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
                 return (
                 <li key={it.id} className="flex items-stretch gap-6 pb-6 break-inside-avoid page-break-inside-avoid border-b border-opacity-10" style={{ borderColor: theme.text }}>
                   <div className="flex-1 min-w-0 flex flex-col justify-center py-1">
-                    <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded w-max mb-2" style={{ backgroundColor: theme.alt, color: theme.accent }}>Hotel Reservation</span>
+                    <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded w-max mb-2" style={{ backgroundColor: theme.alt, color: theme.accent }}>{getI18nLabel('hotelReservation', lang)}</span>
                     <span className="text-2xl font-bold mb-1" style={{ fontFamily: fontSubhead }}>{it.label}</span>
                     {it.meta?.details && <p className="text-sm opacity-80 mb-2" style={{ fontFamily: fontBody }}>{it.meta.details}</p>}
                     <span className="text-lg font-bold mt-auto" style={{ color: theme.accent }}>{priceStr}</span>
@@ -302,7 +305,7 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
         const groups = Object.entries(items);
         return (
           <section key={key} className={sectionClass} style={sectionStyle}>
-            <Title>Budget</Title>
+            <Title>{getI18nLabel('budget', lang)}</Title>
             <div className="space-y-4">
               {groups.map(([kind, list]) => {
                 const sub = list.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0);
@@ -314,28 +317,28 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
                 );
               })}
               <div className="flex justify-between pt-8 text-3xl font-bold" style={{ color: theme.accent, fontFamily: fontHeadline }}>
-                <span>Total</span><span>{formatPrice(total, currency)}</span>
+                <span>{getI18nLabel('total', lang)}</span><span>{formatPrice(total, currency)}</span>
               </div>
             </div>
           </section>
         );
 
       case 'inclusions':
-        return <section key={key} className={sectionClass} style={sectionStyle}><Title>What's Included</Title><div className="whitespace-pre-wrap">{safeText(b.inclusions) || '—'}</div></section>;
+        return <section key={key} className={sectionClass} style={sectionStyle}><Title>{getI18nLabel('whatsIncluded', lang)}</Title><div className="whitespace-pre-wrap">{safeText(b.inclusions) || '—'}</div></section>;
       case 'exclusions':
-        return <section key={key} className={sectionClass} style={sectionStyle}><Title>What's Excluded</Title><div className="whitespace-pre-wrap">{safeText(b.exclusions) || '—'}</div></section>;
+        return <section key={key} className={sectionClass} style={sectionStyle}><Title>{getI18nLabel('whatsExcluded', lang)}</Title><div className="whitespace-pre-wrap">{safeText(b.exclusions) || '—'}</div></section>;
       case 'terms':
-        return <section key={key} className={sectionClass} style={sectionStyle}><Title>Terms of Payment</Title><div className="whitespace-pre-wrap">{safeText(b.terms_of_payment) || '—'}</div></section>;
+        return <section key={key} className={sectionClass} style={sectionStyle}><Title>{getI18nLabel('termsOfPayment', lang)}</Title><div className="whitespace-pre-wrap">{safeText(b.terms_of_payment) || '—'}</div></section>;
       
       case 'contacts':
         return (
           <section key={key} className={sectionClass} style={sectionStyle}>
-            <Title>Contact</Title>
+            <Title>{getI18nLabel('contact', lang)}</Title>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-lg">
-              {b.contact_email && <div className="break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">mail</span>Email</span><a href={`mailto:${safeText(b.contact_email)}`} className="underline hover:opacity-80 font-medium" style={{ color: theme.text }}>{safeText(b.contact_email)}</a></div>}
-              {b.contact_phone && <div className="break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">call</span>Phone</span><a href={`tel:${safeText(b.contact_phone).replace(/[^0-9+]/g, '')}`} className="underline hover:opacity-80 font-medium" style={{ color: theme.text }}>{safeText(b.contact_phone)}</a></div>}
-              {b.website       && <div className="break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">language</span>Website</span><a href={safeText(b.website).startsWith('http') ? safeText(b.website) : `https://${safeText(b.website)}`} target="_blank" rel="noreferrer" className="underline hover:opacity-80 font-medium" style={{ color: theme.text }}>{safeText(b.website)}</a></div>}
-              {b.address       && <div className="md:col-span-2 break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">location_on</span>Address</span>{safeText(b.address)}</div>}
+              {b.contact_email && <div className="break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">mail</span>{getI18nLabel('email', lang)}</span><a href={`mailto:${safeText(b.contact_email)}`} className="underline hover:opacity-80 font-medium" style={{ color: theme.text }}>{safeText(b.contact_email)}</a></div>}
+              {b.contact_phone && <div className="break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">call</span>{getI18nLabel('phone', lang)}</span><a href={`tel:${safeText(b.contact_phone).replace(/[^0-9+]/g, '')}`} className="underline hover:opacity-80 font-medium" style={{ color: theme.text }}>{safeText(b.contact_phone)}</a></div>}
+              {b.website       && <div className="break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">language</span>{getI18nLabel('website', lang)}</span><a href={safeText(b.website).startsWith('http') ? safeText(b.website) : `https://${safeText(b.website)}`} target="_blank" rel="noreferrer" className="underline hover:opacity-80 font-medium" style={{ color: theme.text }}>{safeText(b.website)}</a></div>}
+              {b.address       && <div className="md:col-span-2 break-inside-avoid"><span className="opacity-60 flex items-center gap-2 text-sm mb-1 uppercase tracking-widest"><span className="material-symbols-outlined text-[18px]">location_on</span>{getI18nLabel('address', lang)}</span>{safeText(b.address)}</div>}
             </div>
           </section>
         );
@@ -396,7 +399,8 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
         order={order} 
         style={style} 
         theme={theme} 
-        renderedKeys={activeKeys} 
+        renderedKeys={activeKeys}
+        lang={lang}
       />
     </article>
   );

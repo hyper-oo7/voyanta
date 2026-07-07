@@ -84,7 +84,7 @@ export function UpiQrGenerator({
         {customQrImage ? (
           <img src={customQrImage} alt="Authentic Payment QR Code" style={{ width: size, height: size }} className="object-contain" />
         ) : (
-          <div dangerouslySetInnerHTML={{ __html: qrSvgHtml }} />
+          <img src={`data:image/svg+xml;utf8,${encodeURIComponent(qrSvgHtml)}`} alt="UPI Payment QR Code" style={{ width: size, height: size }} className="object-contain" />
         )}
       </div>
 

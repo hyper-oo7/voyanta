@@ -57,7 +57,7 @@ export async function fetchClients({ page = 0, pageSize = PAGE_SIZE, status = nu
         
         const mergedData = data.map(dbC => {
           if (localMap.has(String(dbC.id))) {
-            return { ...dbC, ...localMap.get(String(dbC.id)) };
+            return { ...localMap.get(String(dbC.id)), ...dbC };
           }
           return dbC;
         });
@@ -87,6 +87,21 @@ export async function fetchClients({ page = 0, pageSize = PAGE_SIZE, status = nu
 }
 
 export async function createClient(clientData) {
+  const normEmail = (clientData.email || '').trim().toLowerCase();
+  const normName = (clientData.name || '').trim().toLowerCase();
+  
+  const list = getLocalClients();
+  let existing = null;
+  if (normEmail) {
+    existing = list.find(c => c.email && c.email.trim().toLowerCase() === normEmail);
+  }
+  if (!existing && normName && normName !== 'unnamed client' && normName !== 'valued client') {
+    existing = list.find(c => c.name && c.name.trim().toLowerCase() === normName);
+  }
+  if (existing) {
+    return updateClient(existing.id, clientData);
+  }
+
   const agencyId = getAgencyId();
   const now = new Date().toISOString();
   const newClient = {
@@ -107,8 +122,8 @@ export async function createClient(clientData) {
     try {
       const { data, error } = await supabase.from(TABLE).insert([newClient]).select().single();
       if (!error && data) {
-        const list = getLocalClients();
-        saveLocalClients([data, ...list]);
+        const updatedList = getLocalClients();
+        saveLocalClients([data, ...updatedList]);
         try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
         return data;
       }
@@ -120,8 +135,7 @@ export async function createClient(clientData) {
     }
   }
 
-  const list = getLocalClients();
-  const updated = [newClient, ...list];
+  const updated = [newClient, ...getLocalClients()];
   saveLocalClients(updated);
   try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
   return newClient;
@@ -149,13 +163,27 @@ export async function updateClient(id, patch) {
   }
 
   let list = getLocalClients();
-  const exists = list.some(c => String(c.id) === String(id));
-  if (!exists) {
-    list = [{ id, updated_at: now, ...patch }, ...list];
-  } else {
-    list = list.map(c => String(c.id) === String(id) ? { ...c, ...updatePayload } : c);
+  let existingIndex = list.findIndex(c => String(c.id) === String(id));
+  if (existingIndex === -1 && patch.name) {
+    existingIndex = list.findIndex(c => c.name && c.name.trim().toLowerCase() === patch.name.trim().toLowerCase());
   }
-  saveLocalClients(list);
+  if (existingIndex === -1 && patch.email) {
+    existingIndex = list.findIndex(c => c.email && c.email.trim().toLowerCase() === patch.email.trim().toLowerCase());
+  }
+
+  if (existingIndex === -1) {
+    if (patch.name || patch.email) {
+      list = [{ id, updated_at: now, ...patch }, ...list];
+      saveLocalClients(list);
+    }
+  } else {
+    const targetId = list[existingIndex].id;
+    list = list.map(c => String(c.id) === String(targetId) ? { ...c, ...updatePayload } : c);
+    saveLocalClients(list);
+    if (supabase && !String(targetId).startsWith('inv_client_') && String(targetId) !== String(id)) {
+      try { await supabase.from(TABLE).update(updatePayload).eq('id', targetId); } catch {}
+    }
+  }
   try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
   const updated = list.find(c => String(c.id) === String(id));
   return updated || { id, ...updatePayload };
@@ -185,18 +213,38 @@ export async function upsertClientFromProposal(proposal) {
   const phone = proposal.client_phone || proposal.phone || proposal.brief?.client_phone || proposal.brief?.phone || '';
   const destination = proposal.destination || proposal.brief?.destination || '';
 
+  const normEmail = email.trim().toLowerCase();
+  const normName = name.trim().toLowerCase();
+  const normPhone = phone.replace(/\D/g, '');
+
   const list = getLocalClients();
   let existing = null;
-  if (email) {
-    existing = list.find(c => c.email && c.email.toLowerCase() === email.toLowerCase());
+  if (normEmail) {
+    existing = list.find(c => c.email && c.email.trim().toLowerCase() === normEmail);
   }
-  if (!existing && name && name !== 'Valued Client') {
-    existing = list.find(c => c.name && c.name.toLowerCase() === name.toLowerCase());
+  if (!existing && normName && normName !== 'valued client') {
+    existing = list.find(c => c.name && c.name.trim().toLowerCase() === normName);
+  }
+  if (!existing && normPhone && normPhone.length >= 7) {
+    existing = list.find(c => c.phone && c.phone.replace(/\D/g, '') === normPhone);
+  }
+
+  if (!existing && supabase) {
+    try {
+      if (normEmail) {
+        const { data } = await supabase.from(TABLE).select('*').ilike('email', normEmail).limit(1);
+        if (data && data.length > 0) existing = data[0];
+      }
+      if (!existing && normName && normName !== 'valued client') {
+        const { data } = await supabase.from(TABLE).select('*').ilike('name', normName).limit(1);
+        if (data && data.length > 0) existing = data[0];
+      }
+    } catch {}
   }
 
   if (existing) {
     return updateClient(existing.id, {
-      status: 'Proposal Sent',
+      status: proposal.status || 'Proposal Sent',
       destination: destination || existing.destination,
       phone: phone || existing.phone
     });
@@ -206,7 +254,7 @@ export async function upsertClientFromProposal(proposal) {
       email,
       phone,
       destination,
-      status: 'Proposal Sent',
+      status: proposal.status || 'Proposal Sent',
       notes: `Generated proposal: ${proposal.name || 'Safari Adventure'}`
     });
   }

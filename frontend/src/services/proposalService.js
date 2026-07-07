@@ -42,16 +42,21 @@ export async function fetchProposals({ page = 0, pageSize = PAGE_SIZE } = {}) {
   
   let localList = [];
   try {
-    localList = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]');
+    const parsed = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]');
+    localList = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.data) ? parsed.data : []);
   } catch {}
-  localList = localList.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  localList = (Array.isArray(localList) ? localList : []).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   return { data: localList, count: localList.length, page: 0, pageSize: localList.length };
 }
 
 // Legacy compat: return flat array for hooks that don't support pagination yet
 export async function fetchProposalsFlat() {
-  const result = await fetchProposals({ page: 0, pageSize: 500 });
-  return result.data;
+  try {
+    const result = await fetchProposals({ page: 0, pageSize: 500 });
+    if (result && Array.isArray(result.data)) return result.data;
+    if (Array.isArray(result)) return result;
+  } catch {}
+  return [];
 }
 
 export async function fetchProposalById(id) {

@@ -200,6 +200,11 @@ const DEFAULT_SETTINGS = {
   contact_phone: '',
   website: '',
   gst_number: '',
+  trade_code: '',
+  trademarks: '',
+  watermark_text: '',
+  default_tax_rate: 5,
+  default_taxes: [{ id: 'tax-1', name: 'GST / Tax', rate: 5, amount: 0 }],
   default_currency: 'INR',
   default_proposal_validity: 30,
   theme_preferences: 'light',
@@ -211,7 +216,9 @@ const DEFAULT_SETTINGS = {
   },
   social_facebook: '',
   social_instagram: '',
-  social_linkedin: ''
+  social_linkedin: '',
+  social_twitter: '',
+  social_youtube: ''
 };
 
 export function sanitizeBrandingObject(raw) {
@@ -219,8 +226,8 @@ export function sanitizeBrandingObject(raw) {
   const cleaned = {};
   for (const k in raw) {
     const val = raw[k];
-    if (k === 'custom_fields' || k === 'custom_blocks' || k === 'notification_preferences' || k === 'itinerary' || k === 'preferences' || k === 'computed_totals' || k === 'items' || typeof val === 'boolean' || typeof val === 'number') {
-      if ((k === 'custom_fields' || k === 'custom_blocks') && !Array.isArray(val)) {
+    if (k === 'custom_fields' || k === 'custom_blocks' || k === 'notification_preferences' || k === 'itinerary' || k === 'preferences' || k === 'computed_totals' || k === 'items' || k === 'taxes' || k === 'default_taxes' || typeof val === 'boolean' || typeof val === 'number') {
+      if ((k === 'custom_fields' || k === 'custom_blocks' || k === 'taxes' || k === 'default_taxes') && !Array.isArray(val)) {
         cleaned[k] = [];
       } else {
         cleaned[k] = val;
@@ -249,6 +256,25 @@ export const settingsService = {
     const cacheKey = `voyanta_settings_cache_${agencyId}`;
     let cached = null;
     try { cached = JSON.parse(localStorage.getItem(cacheKey)); } catch {}
+    if (cached) {
+      if (supabase) {
+        supabase.from('templates').select('*').eq('category', 'AgencySettings').eq('agency_id', agencyId).limit(1)
+          .then(({ data }) => {
+            if (data && data.length > 0 && data[0].data) {
+              const fresh = sanitizeBrandingObject({ ...DEFAULT_SETTINGS, ...data[0].data });
+              try {
+                const prevStr = localStorage.getItem(cacheKey);
+                const freshStr = JSON.stringify(fresh);
+                if (prevStr !== freshStr) {
+                  localStorage.setItem(cacheKey, freshStr);
+                  window.dispatchEvent(new CustomEvent('voyanta:settings-updated', { detail: fresh }));
+                }
+              } catch {}
+            }
+          }).catch(() => {});
+      }
+      return sanitizeBrandingObject(cached);
+    }
     if (!supabase) return sanitizeBrandingObject(cached || DEFAULT_SETTINGS);
     try {
       const { data, error } = await supabase
@@ -259,7 +285,6 @@ export const settingsService = {
         .limit(1);
 
       if (error) throw error;
-      
       const row = data && data.length > 0 ? data[0] : null;
 
       if (!row) {
@@ -292,12 +317,18 @@ export const settingsService = {
 
         const created = createdRows && createdRows.length > 0 ? createdRows[0] : null;
         const finalRes = created ? sanitizeBrandingObject({ ...sanitizedInitial, ...created.data }) : sanitizedInitial;
-        try { localStorage.setItem(cacheKey, JSON.stringify(finalRes)); } catch {}
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(finalRes));
+          window.dispatchEvent(new CustomEvent('voyanta:settings-updated', { detail: finalRes }));
+        } catch {}
         return finalRes;
       }
 
       const finalRes = sanitizeBrandingObject({ ...DEFAULT_SETTINGS, ...row.data });
-      try { localStorage.setItem(cacheKey, JSON.stringify(finalRes)); } catch {}
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(finalRes));
+        window.dispatchEvent(new CustomEvent('voyanta:settings-updated', { detail: finalRes }));
+      } catch {}
       return finalRes;
     } catch (e) {
       console.error('Failed to load settings:', e);
@@ -308,56 +339,35 @@ export const settingsService = {
     const agencyId = getAgencyId();
     const cacheKey = `voyanta_settings_cache_${agencyId}`;
     const cleanSettings = sanitizeBrandingObject(settings);
-    try { localStorage.setItem(cacheKey, JSON.stringify(cleanSettings)); } catch {}
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(cleanSettings));
+      window.dispatchEvent(new CustomEvent('voyanta:settings-updated', { detail: cleanSettings }));
+    } catch {}
     if (!supabase) return cleanSettings;
     try {
       const agencyPatch = {
         name: cleanSettings.agency_name,
         logo_url: cleanSettings.logo_url || null,
       };
-      await supabase.from('agencies').update(agencyPatch).eq('id', agencyId);
+      supabase.from('agencies').update(agencyPatch).eq('id', agencyId).catch(() => {});
 
-      const { data: existingRows } = await supabase
-        .from('templates')
-        .select('*')
-        .eq('category', 'AgencySettings')
-        .eq('agency_id', agencyId)
-        .limit(1);
-
-      const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
-
-      if (existing) {
-        const { data: updatedRows, error } = await supabase
-          .from('templates')
-          .update({ data: cleanSettings })
-          .eq('id', existing.id)
-          .select()
-          .limit(1);
-        if (error) throw error;
-        const updated = updatedRows && updatedRows.length > 0 ? updatedRows[0] : null;
-        const finalRes = updated ? sanitizeBrandingObject(updated.data) : cleanSettings;
-        try { localStorage.setItem(cacheKey, JSON.stringify(finalRes)); } catch {}
-        return finalRes;
-      } else {
-        const { data: insertedRows, error } = await supabase
-          .from('templates')
-          .insert({
-            agency_id: agencyId,
-            name: 'Agency Settings',
-            category: 'AgencySettings',
-            data: cleanSettings
-          })
-          .select()
-          .limit(1);
-        if (error) throw error;
-        const inserted = insertedRows && insertedRows.length > 0 ? insertedRows[0] : null;
-        const finalRes = inserted ? sanitizeBrandingObject(inserted.data) : cleanSettings;
-        try { localStorage.setItem(cacheKey, JSON.stringify(finalRes)); } catch {}
-        return finalRes;
-      }
+      supabase.from('templates').select('id').eq('category', 'AgencySettings').eq('agency_id', agencyId).limit(1)
+        .then(({ data: existingRows }) => {
+          const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
+          if (existing) {
+            supabase.from('templates').update({ data: cleanSettings }).eq('id', existing.id).catch(() => {});
+          } else {
+            supabase.from('templates').insert({
+              agency_id: agencyId,
+              name: 'Agency Settings',
+              category: 'AgencySettings',
+              data: cleanSettings
+            }).catch(() => {});
+          }
+        }).catch(() => {});
     } catch (e) {
-      notifyDbError('settings', e);
-      throw e;
+      console.warn('Background settings update error:', e);
     }
+    return cleanSettings;
   }
 };

@@ -219,12 +219,12 @@ export default function DashboardPage() {
                       <tr>
                         <td colSpan="5" className="px-xl py-xxl text-center text-on-surface-variant font-body-md">Loading proposals...</td>
                       </tr>
-                    ) : proposals.length === 0 ? (
+                    ) : safeProposalsList.length === 0 ? (
                       <tr>
                         <td colSpan="5" className="px-xl py-xxl text-center text-on-surface-variant font-body-md">No proposals found. Create your first one above!</td>
                       </tr>
                     ) : (
-                      proposals.map(p => (
+                      safeProposalsList.map(p => (
                         <tr 
                           key={p.id} 
                           onClick={() => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=5`)}
@@ -335,7 +335,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <h3 className="font-display text-2xl font-bold text-on-surface m-0">All Client Proposals</h3>
-                  <p className="text-xs text-on-surface-variant m-0 mt-0.5">Showing {filteredProposals.length} of {proposals.length} proposals</p>
+                  <p className="text-xs text-on-surface-variant m-0 mt-0.5">Showing {filteredProposals.length} of {safeProposalsList.length} proposals</p>
                 </div>
               </div>
               

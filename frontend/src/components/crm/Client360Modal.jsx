@@ -33,18 +33,18 @@ export function Client360Modal({ client, onClose }) {
       const cName = (client?.name || '').trim().toLowerCase();
       const cEmail = (client?.email || '').trim().toLowerCase();
 
-      const matchedProps = (allProps || []).filter(p => {
-        const pName = (p.client_name || p.clientName || '').trim().toLowerCase();
-        const pEmail = (p.client_email || p.clientEmail || '').trim().toLowerCase();
-        return (cName && pName === cName) || (cEmail && pEmail === cEmail) || p.client_id === client?.id;
+      const matchedProps = (Array.isArray(allProps) ? allProps : []).filter(p => {
+        const pName = (p?.client_name || p?.clientName || '').trim().toLowerCase();
+        const pEmail = (p?.client_email || p?.clientEmail || '').trim().toLowerCase();
+        return (cName && pName === cName) || (cEmail && pEmail === cEmail) || p?.client_id === client?.id;
       });
       setProposals(matchedProps);
 
       // Match invoices for this client
-      const matchedInvs = (allInvs || []).filter(inv => {
-        const iName = (inv.client_name || '').trim().toLowerCase();
-        const iEmail = (inv.client_email || '').trim().toLowerCase();
-        return (cName && iName === cName) || (cEmail && iEmail === cEmail) || inv.client_id === client?.id || inv.client_id === client?.name;
+      const matchedInvs = (Array.isArray(allInvs) ? allInvs : []).filter(inv => {
+        const iName = (inv?.client_name || '').trim().toLowerCase();
+        const iEmail = (inv?.client_email || '').trim().toLowerCase();
+        return (cName && iName === cName) || (cEmail && iEmail === cEmail) || inv?.client_id === client?.id || inv?.client_id === client?.name;
       });
       setInvoices(matchedInvs);
     } catch (err) {
@@ -56,6 +56,9 @@ export function Client360Modal({ client, onClose }) {
 
   useEffect(() => {
     loadData();
+    const handleSettings = (e) => { if (e.detail) setSettings(e.detail); };
+    window.addEventListener('voyanta:settings-updated', handleSettings);
+    return () => window.removeEventListener('voyanta:settings-updated', handleSettings);
   }, [loadData]);
 
   const handleGenerateFromProposal = async (proposal) => {

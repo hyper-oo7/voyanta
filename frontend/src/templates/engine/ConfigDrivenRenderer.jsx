@@ -26,7 +26,8 @@ const ConfigDrivenRenderer = memo(function ConfigDrivenRenderer(props) {
   // 1. Extract proposal data and items
   const proposal = proposalProp || data?.proposal || {};
   const branding = brandingProp || proposal.preferences?.branding || proposal.branding || {};
-  const mergedProposal = { ...proposal, preferences: { ...proposal.preferences, branding } };
+  const lang = proposal.language || proposal.lang || branding.language || 'en';
+  const mergedProposal = { ...proposal, preferences: { ...proposal.preferences, branding }, language: lang };
 
   // Flatten items from items_by_kind or items array
   const itemsByKind = data?.items_by_kind || props.items_by_kind || {};
@@ -75,7 +76,7 @@ const ConfigDrivenRenderer = memo(function ConfigDrivenRenderer(props) {
     };
   }, [style]);
 
-  // 3. Resolve Theme Tokens
+  // 3. Resolve Theme Tokens and Layout
   const theme = useMemo(() => {
     return resolveTheme({
       themeId: config.theme || config.themeId || 'desert_opulence',
@@ -83,40 +84,30 @@ const ConfigDrivenRenderer = memo(function ConfigDrivenRenderer(props) {
       tourType: mergedProposal.preferences?.tour_type || mergedProposal.tour_type,
       overrides: config.themeOverrides
     });
-  }, [config, mergedProposal.destination, mergedProposal.preferences?.tour_type, mergedProposal.tour_type]);
+  }, [config, mergedProposal]);
 
-  // 4. Resolve Layout Hierarchy & Variants
-  const days = mergedProposal.itinerary?.days || mergedProposal.days || [];
-  const dayCount = Array.isArray(days) && days.length > 0 ? days.length : (allItems.filter(i => (i.kind || '').toLowerCase() === 'day' || i.day || i.day_number).length || 5);
+  const layout = useMemo(() => resolveLayout(config.layoutId), [config.layoutId]);
 
-  const layout = useMemo(() => {
-    return resolveLayout(config, dayCount);
-  }, [config, dayCount]);
-
-  // Generate CSS custom properties for inline binding
+  // Set CSS variables on the root element
   const rootStyle = useMemo(() => {
-    const colors = theme.colors || {};
     const typography = theme.typography || {};
-    const effects = theme.effects || {};
-    const decorations = theme.decorations || {};
-
+    const colors = theme.colors || {};
     return {
-      '--engine-primary': colors.primary || '#1a1a2e',
-      '--engine-accent': colors.accent || '#c41e3a',
-      '--engine-surface': colors.surface || '#ffffff',
-      '--engine-surface-alt': colors.surfaceAlt || '#f8fafc',
-      '--engine-text': colors.text || '#1a1a1a',
-      '--engine-text-secondary': colors.textSecondary || '#64748b',
-      '--engine-border': colors.border || '#e2e8f0',
-      '--engine-font-headline': typography.headline || '"Playfair Display", serif',
-      '--engine-font-subhead': typography.subhead || '"Cormorant Garamond", serif',
-      '--engine-font-body': typography.body || '"Inter", sans-serif',
-      '--engine-glass-bg': effects.glassBackground || 'rgba(255, 255, 255, 0.75)',
-      '--engine-glass-blur': effects.glassBlur || '12px',
-      '--engine-radius': effects.borderRadius || '1rem',
-      backgroundColor: colors.background || '#ffffff',
-      color: colors.text || '#1a1a1a',
-      fontFamily: typography.body || '"Inter", sans-serif',
+      '--color-primary': colors.primary || '#1a1a2e',
+      '--color-secondary': colors.secondary || '#16213e',
+      '--color-accent': colors.accent || '#c41e3a',
+      '--color-bg': colors.bg || '#ffffff',
+      '--color-surface': colors.surface || '#f8fafc',
+      '--color-text': colors.text || '#1e293b',
+      '--color-text-secondary': colors.textSecondary || '#64748b',
+      '--color-border': colors.border || '#e2e8f0',
+      '--font-headline': typography.headline || '"Playfair Display", serif',
+      '--font-subhead': typography.subhead || '"Cormorant Garamond", serif',
+      '--font-body': typography.body || '"Inter", sans-serif',
+      '--font-accent': typography.accent || '"Montserrat", sans-serif',
+      backgroundColor: colors.bg || '#ffffff',
+      color: colors.text || '#1e293b',
+      fontFamily: typography.body || '"Inter", sans-serif'
     };
   }, [theme]);
 
@@ -128,24 +119,24 @@ const ConfigDrivenRenderer = memo(function ConfigDrivenRenderer(props) {
 
     switch (key) {
       case 'hero':
-        return <Sections.HeroBanner key="hero" proposal={mergedProposal} theme={theme} variant={variant} items={allItems} />;
+        return <Sections.HeroBanner key="hero" proposal={mergedProposal} theme={theme} variant={variant} items={allItems} lang={lang} />;
       case 'highlights':
-        return <Sections.HighlightsSection key="highlights" proposal={mergedProposal} theme={theme} variant={variant} />;
+        return <Sections.HighlightsSection key="highlights" proposal={mergedProposal} theme={theme} variant={variant} lang={lang} />;
       case 'itinerary':
-        return <Sections.ItinerarySection key="itinerary" proposal={mergedProposal} items={allItems} theme={theme} layoutConfig={layout} currency={currency} />;
+        return <Sections.ItinerarySection key="itinerary" proposal={mergedProposal} items={allItems} theme={theme} layoutConfig={layout} currency={currency} lang={lang} />;
       case 'hotels':
-        return <Sections.AccommodationSection key="hotels" items={allItems} theme={theme} variant={variant} currency={currency} />;
+        return <Sections.AccommodationSection key="hotels" items={allItems} theme={theme} variant={variant} currency={currency} lang={lang} />;
       case 'costing':
-        return <Sections.CostingSection key="costing" items={allItems} proposal={mergedProposal} theme={theme} variant={variant} currency={currency} />;
+        return <Sections.CostingSection key="costing" items={allItems} proposal={mergedProposal} theme={theme} variant={variant} currency={currency} lang={lang} />;
       case 'inclusions':
       case 'exclusions':
-        return <Sections.InclusionsSection key="inclusions" proposal={mergedProposal} theme={theme} variant={variant} />;
+        return <Sections.InclusionsSection key="inclusions" proposal={mergedProposal} theme={theme} variant={variant} lang={lang} />;
       case 'terms':
-        return <Sections.TermsSection key="terms" proposal={mergedProposal} theme={theme} variant={variant} />;
+        return <Sections.TermsSection key="terms" proposal={mergedProposal} theme={theme} variant={variant} lang={lang} />;
       case 'contacts':
       case 'socials':
       case 'cta':
-        return <Sections.CTASection key="cta" proposal={mergedProposal} theme={theme} variant={variant} />;
+        return <Sections.CTASection key="cta" proposal={mergedProposal} theme={theme} variant={variant} lang={lang} />;
       default: {
         const cb = (props.customBlocks || []).find(c => c.id === key);
         if (cb && include[key] !== false) {
@@ -222,6 +213,7 @@ const ConfigDrivenRenderer = memo(function ConfigDrivenRenderer(props) {
         style={style} 
         theme={theme} 
         renderedKeys={activeOrder} 
+        lang={lang}
       />
     </div>
   );

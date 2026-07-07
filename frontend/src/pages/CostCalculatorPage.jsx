@@ -32,7 +32,7 @@ export default function CostCalculatorPage() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await fetchProposals(); setProposals(list);
+      const list = await fetchProposals(); setProposals(Array.isArray(list) ? list : (list?.data || []));
       if (activeId) {
         const [p, its] = await Promise.all([fetchProposalById(activeId), listItems(activeId)]);
         setProposal(p); setItems(its);
@@ -117,7 +117,7 @@ export default function CostCalculatorPage() {
             <select value={activeId || ''} onChange={(e) => setActiveId(e.target.value || null)} data-testid="active-proposal-select"
               className="flex-1 min-w-[240px] px-md py-sm bg-white border border-outline-variant rounded-lg font-body-md">
               <option value="">— none —</option>
-              {proposals.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {(Array.isArray(proposals) ? proposals : []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
             {proposal && <span className="font-label-sm text-on-surface-variant">{items.length} item(s)</span>}
             <button onClick={() => navigate('/proposals/brief')} data-testid="new-prop-btn"
