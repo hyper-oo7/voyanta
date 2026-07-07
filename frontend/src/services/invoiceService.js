@@ -1,4 +1,4 @@
-import { supabase, getAgencyId } from '../lib/supabaseClient.js';
+import { supabase, getAgencyId, DEMO_AGENCY_ID } from '../lib/supabaseClient.js';
 import { logActivity } from './activityLogService.js';
 import { settingsService } from './resourceService.js';
 import { upsertClientFromProposal } from './crmService.js';
@@ -48,7 +48,9 @@ function saveLocalList(key, list) {
 
 export async function fetchInvoices({ clientName = null, status = null, destination = null, currency = null } = {}) {
   const agencyId = getAgencyId();
-  if (supabase) {
+  const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
+
+  if (isProd) {
     try {
       let query = supabase.from('invoices').select('*').eq('agency_id', agencyId).order('created_at', { ascending: false });
       if (status && status !== 'ALL') query = query.eq('status', status);
@@ -75,6 +77,7 @@ export async function fetchInvoices({ clientName = null, status = null, destinat
     }
   }
 
+  // Demo fallback or offline
   const list = getLocalList(INVOICE_CACHE_KEY);
   return filterList(list, { clientName, status, destination, currency });
 }
@@ -133,7 +136,6 @@ export async function getNextInvoiceNumber() {
   const numStr = String(nextSeq).padStart(padLen, '0');
   const invoiceNo = `${prefix}${numStr}`;
 
-  // Increment sequence asynchronously without blocking
   try {
     settingsService.update({ ...settings, invoice_next_sequence: nextSeq + 1 }).catch(() => {});
   } catch {}
@@ -151,7 +153,6 @@ export async function createInvoiceFromProposal(proposal, customBranding = null)
   const dueDate = new Date();
   dueDate.setDate(now.getDate() + 10);
 
-  // Parse items from proposal
   const propItems = proposal?.items || proposal?.itinerary || [];
   const invoiceItems = [];
   
@@ -169,7 +170,6 @@ export async function createInvoiceFromProposal(proposal, customBranding = null)
       });
     });
   } else {
-    // Default item if proposal has no itemized breakdown
     const totalPropPrice = Number(proposal?.price || proposal?.total_price || proposal?.computed_totals?.total || 5000);
     invoiceItems.push({
       id: `item_${Date.now()}_0`,
@@ -216,7 +216,7 @@ export async function createInvoiceFromProposal(proposal, customBranding = null)
     parent_invoice_id: null,
     items: invoiceItems,
     taxes: taxes,
-    notes: settings?.invoice_default_notes || 'Thank you for choosing Voyanta Luxury Travel for your upcoming journey.',
+    notes: settings?.invoice_default_notes || 'Thank you for choosing Voyanta Luxury Travel.',
     terms: settings?.terms_conditions || '1. Payment is due within the specified timeframe.\n2. All bookings are subject to availability upon payment receipt.',
     upi_id: branding?.upi_id || settings?.upi_id || 'voyantatravel@okaxis',
     upi_payee_name: branding?.upi_payee_name || branding?.agency_name || settings?.agency_name || 'Voyanta Luxury Travel',
@@ -326,10 +326,27 @@ export async function createInvoice(customData = {}) {
 
 export async function saveInvoiceRecord(invoice, isNew = false) {
   const agencyId = getAgencyId();
+  const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
   const now = new Date().toISOString();
   const updated = { ...invoice, updated_at: now };
 
-  // Always save to localStorage immediately for instant UI response and offline-resilience
+  if (isProd) {
+    if (isNew) {
+      const { error } = await supabase.from('invoices').insert([updated]);
+      if (error) {
+        notifyDbError('invoices', error);
+        throw error;
+      }
+    } else {
+      const { error } = await supabase.from('invoices').update(updated).eq('id', updated.id);
+      if (error) {
+        notifyDbError('invoices', error);
+        throw error;
+      }
+    }
+  }
+
+  // Update local cache for fast reads
   const list = getLocalList(INVOICE_CACHE_KEY);
   const nextList = isNew ? [updated, ...list] : list.map(i => i.id === updated.id ? updated : i);
   saveLocalList(INVOICE_CACHE_KEY, nextList);
@@ -347,24 +364,6 @@ export async function saveInvoiceRecord(invoice, isNew = false) {
     }
   } catch {}
 
-  // Save to DB asynchronously
-  if (supabase) {
-    try {
-      if (isNew) {
-        supabase.from('invoices').insert([updated]).then(({ error }) => {
-          if (error) notifyDbError('invoices', error);
-        });
-      } else {
-        supabase.from('invoices').update(updated).eq('id', updated.id).then(({ error }) => {
-          if (error) notifyDbError('invoices', error);
-        });
-      }
-    } catch (e) {
-      notifyDbError('invoices', e);
-    }
-  }
-
-  // Notify UI via CustomEvent
   window.dispatchEvent(new CustomEvent('voyanta:invoices-updated', { detail: updated }));
   return updated;
 }
@@ -375,7 +374,6 @@ export async function updateInvoice(id, patch, actionLog = null) {
 
   const updated = { ...existing, ...patch };
   
-  // Recalculate totals if items or tax_rate or taxes changed
   if (patch.items || patch.tax_rate !== undefined || patch.taxes) {
     const sub = (updated.items || []).reduce((acc, item) => acc + (Number(item.amount) || 0), 0);
     let tax = 0;
@@ -420,18 +418,15 @@ export async function updateInvoice(id, patch, actionLog = null) {
 export async function deleteInvoice(id) {
   const existing = await getInvoiceById(id);
   const agencyId = getAgencyId();
+  const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
 
-  if (supabase) {
-    try {
-      const { error } = await supabase.from('invoices').delete().eq('id', id).eq('agency_id', agencyId);
-      if (error) {
-        if (!error.message?.includes('schema cache') && !error.message?.includes('does not exist') && !error.message?.includes('Could not find the table')) {
-          notifyDbError('invoices', error);
-        }
-        console.warn('Supabase delete invoice failed, falling back to local storage:', error.message);
+  if (isProd) {
+    const { error } = await supabase.from('invoices').delete().eq('id', id).eq('agency_id', agencyId);
+    if (error) {
+      if (!error.message?.includes('schema cache') && !error.message?.includes('does not exist') && !error.message?.includes('Could not find the table')) {
+        notifyDbError('invoices', error);
+        throw error;
       }
-    } catch (e) {
-      console.warn('Supabase delete invoice exception, falling back to local storage:', e.message);
     }
   }
 
@@ -459,7 +454,7 @@ export async function generateRemainingBalanceInvoice(parentInvoice, customAmoun
     issue_date: now.toISOString().split('T')[0],
     due_date: dueDate.toISOString().split('T')[0],
     subtotal: remaining,
-    tax_rate: 0, // Assume tax was already calculated/included or apply clean balance
+    tax_rate: 0, 
     tax_amount: 0,
     total_amount: remaining,
     paid_amount: 0,
@@ -483,7 +478,6 @@ export async function generateRemainingBalanceInvoice(parentInvoice, customAmoun
 
   const savedChild = await saveInvoiceRecord(childInvoice, true);
   
-  // Log on parent
   await updateInvoice(parentInvoice.id, {}, { action: 'Split Invoice Generated', details: `Generated balance invoice #${invoiceNumber} for ${parentInvoice.currency} ${remaining}` });
 
   return savedChild;
@@ -497,6 +491,7 @@ export async function fetchReceipts() {
 
 export async function createReceiptFromInvoice(invoice, paymentMethod = 'UPI', transactionRef = '') {
   const agencyId = getAgencyId();
+  const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
   const now = new Date();
   const receiptNo = `REC-${String(Date.now()).slice(-6)}`;
   
@@ -522,22 +517,23 @@ export async function createReceiptFromInvoice(invoice, paymentMethod = 'UPI', t
     created_at: now.toISOString()
   };
 
+  if (isProd) {
+    const { error } = await supabase.from('templates').upsert([{
+      id: receipt.id,
+      agency_id: agencyId,
+      name: `Receipt ${receiptNo}`,
+      category: 'Receipt',
+      data: receipt
+    }]);
+    if (error) {
+      notifyDbError('templates', error);
+      throw error; // prevent split brain
+    }
+  }
+
   const list = getLocalList(RECEIPT_CACHE_KEY);
   saveLocalList(RECEIPT_CACHE_KEY, [receipt, ...list]);
 
-  if (supabase) {
-    try {
-      await supabase.from('templates').upsert([{
-        id: receipt.id,
-        agency_id: agencyId,
-        name: `Receipt ${receiptNo}`,
-        category: 'Receipt',
-        data: receipt
-      }]);
-    } catch {}
-  }
-
-  // Update invoice activity log
   await updateInvoice(invoice.id, {
     status: (invoice.remaining_balance <= 0) ? 'Paid' : 'Partially Paid'
   }, {

@@ -1,6 +1,6 @@
 # Voyanta · Travel OS — MVP Production Readiness Report
 
-Date: Jan 2026
+Date: July 2026
 
 ## Functional pages (UI + state + service layer wired)
 
@@ -23,7 +23,6 @@ Date: Jan 2026
 
 | Page | Status |
 |---|---|
-| `/proposals/preview` | Stitch HTML preview — no live data binding (export-prep returns the structured JSON instead) |
 | `/libraries` | Hub UI only — superseded by direct module routes |
 | `/branding` | Saving agency brand to `agencies` table not wired |
 
@@ -54,20 +53,11 @@ Reusable across all 4 supplier modules. Pipeline:
 5. On confirm: writes raw upload to `imports`, bulk-inserts records (with `raw` payload + agency scope), upserts the mapping into `field_mappings` for future uploads.
 6. Toast: "Imported N {resource}".
 
-## Dynamic Tables
+## Caching Strategy (Stale-While-Revalidate / Fast Loading)
 
-`<DynamicTable />` auto-derives columns from the first record's keys, so:
-
-- Upload a 5-column file → 5 columns shown.
-- Upload a 50-column file → 50 columns shown (horizontal scroll).
-- Hidden internal fields: `id`, `agency_id`, `created_at`, `updated_at`, `raw`, `created_by`.
-
-Built-in: search, sortable headers (asc/desc), pagination (10/page), bulk-select, row-action slot, "Add to Active Proposal" bulk bar.
-
-## Cost Calculator behaviour
-
-- Reactive: any item added from Hotels / Flights / Activities pages, or any line added directly in the calculator (`+ Add line…` dropdown), instantly appears with editable qty + unit price. Subtotal recalculates live; per-kind aggregates shown as cards.
-- Supports kinds: `hotel`, `flight`, `activity`, `transfer`, `visa`, `tax`, `margin`, `custom`.
+To support fast-loading interfaces while preventing split-brain data issues in concurrent multi-user environments:
+- **Production Mode**: CRM, Invoices, and Team services strictly treat Supabase as the source of truth. Fetches retrieve live data and overwrite the local `localStorage` cache. Mutations (creates, updates, deletes) wait for Supabase confirmation before updating the local cache and broadcasting sync events to the UI.
+- **Demo Mode**: Completely isolated. If `getAgencyId()` is the demo ID, operations route strictly through `localStorage` without touching Supabase, allowing instantaneous offline demonstrations.
 
 ## Export Preparation
 
@@ -100,6 +90,7 @@ All database tables currently operate under active Row-Level Security (RLS) poli
 
 ## Verified end-to-end (manual walkthrough)
 
+- Tailwind pipeline is fully functional via Vite PostCSS (`@tailwindcss/postcss`). No CDN is utilized.
 - Demo session entry → Dashboard chrome consistent across all module pages.
 - Hotel / Flight / Activity / Templates pages all load with consistent dashboard chrome and styling.
 - Flights page renders the From/To/Date/Persons toolbar above the dynamic table.

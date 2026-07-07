@@ -293,8 +293,22 @@ export function translateCommonTermsOffline(text, lang = 'en') {
   const code = (lang || 'en').toLowerCase().split('-')[0];
   if (code === 'en') return text;
   
-  // Comprehensive offline dictionary for travel, itinerary, proposal, and invoice terms
-  const dicts = {
+  const map = OFFLINE_GLOSSARY[code];
+  if (!map) return text;
+  
+  let translated = text;
+  // Sort keys by length descending to match longer terms first
+  const sortedKeys = Object.keys(map).sort((a, b) => b.length - a.length);
+  for (const eng of sortedKeys) {
+    const loc = map[eng];
+    const regex = new RegExp(`\\b${eng}\\b`, 'gi');
+    translated = translated.replace(regex, loc);
+  }
+  return translated;
+}
+
+// Comprehensive offline dictionary for travel, itinerary, proposal, and invoice terms
+export const OFFLINE_GLOSSARY = {
     bn: {
       'Arrival': 'আগমন',
       'Departure': 'প্রস্থান',
@@ -494,17 +508,3 @@ export function translateCommonTermsOffline(text, lang = 'en') {
       'Receipt': 'Reçu'
     }
   };
-  
-  const map = dicts[code];
-  if (!map) return text;
-  
-  let translated = text;
-  // Sort keys by length descending to match longer terms first
-  const sortedKeys = Object.keys(map).sort((a, b) => b.length - a.length);
-  for (const eng of sortedKeys) {
-    const loc = map[eng];
-    const regex = new RegExp(`\\b${eng}\\b`, 'gi');
-    translated = translated.replace(regex, loc);
-  }
-  return translated;
-}

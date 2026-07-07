@@ -219,7 +219,7 @@ export function suggestMapping(resource, columns) {
     const match = columns.find((c) => {
       if (used.has(c)) return false;
       const lower = c.toLowerCase().replace(/\s+/g, '_');
-      return alts.some((a) => lower === a || lower.includes(a));
+      return alts.some((a) => lower === a || lower.split('_').includes(a));
     });
     if (match) { out[match] = target; used.add(match); }
   }

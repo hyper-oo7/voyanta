@@ -321,7 +321,7 @@ export default function ProposalWizard() {
                   label: label,
                   qty: defaultQtyFor(k),
                   unit_price: price,
-                  currency: raw.currency || proposal?.currency || 'INR',
+                  currency: sanitizeCurrency(raw.currency || proposal?.currency),
                   meta: { source: `${k}s`, day: dayNum, details: block.data.details || '' }
                 });
               }
@@ -367,7 +367,7 @@ export default function ProposalWizard() {
 
                     itemsToInsert.push({
                       kind: item.kind, ref_id: item.ref_id, label: item.label,
-                      qty: 1, unit_price: item.unit_price, currency: item.currency, meta: { ...item.meta, day: targetDay }
+                      qty: 1, unit_price: item.unit_price, currency: sanitizeCurrency(item.currency), meta: { ...item.meta, day: targetDay }
                     });
                   }
                 }

@@ -13,6 +13,7 @@ import InlineStudioPopover from '../../components/common/InlineStudioPopover.jsx
 import { upsertClientFromProposal } from '../../services/crmService.js';
 import { createProposal, updateProposal } from '../../services/proposalService.js';
 import SmartContactCaptureModal from '../../components/common/SmartContactCaptureModal.jsx';
+import { OFFLINE_GLOSSARY } from '../../lib/i18n.js';
 
 function A4Preview({ children, style = 'classic', isInteractiveStudio, onStudioClick }) {
   const themeBg = THEMES[style]?.bg || '#ffffff';
@@ -395,7 +396,11 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           if (newLang !== 'en') {
             try {
               toast.info("AI Translating proposal text...");
-              const res = await api.post('/api/ai/translate-proposal', { proposal: updatedProp, target_lang: newLang });
+              const res = await api.post('/api/ai/translate-proposal', { 
+                proposal: updatedProp, 
+                target_lang: newLang,
+                glossary: OFFLINE_GLOSSARY[newLang] || {}
+              });
               if (res && res.success && res.translated_proposal) {
                 setProposal({ ...res.translated_proposal, language: newLang, lang: newLang });
                 toast.success("Proposal text translated successfully!");

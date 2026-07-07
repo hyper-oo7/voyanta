@@ -106,7 +106,7 @@ async def extract_itinerary(text: str) -> dict:
         logger.exception("parse itinerary failed")
         raise e
 
-async def translate_proposal_content(proposal_data: dict, target_lang: str) -> dict:
+async def translate_proposal_content(proposal_data: dict, target_lang: str, glossary: dict = None) -> dict:
     import json
     lang_names = {
         "bn": "Bengali (বাংলা)",
@@ -142,12 +142,17 @@ async def translate_proposal_content(proposal_data: dict, target_lang: str) -> d
             "description": d.get("description", "")
         })
 
+    glossary_text = ""
+    if glossary:
+        glossary_text = "4. Use the following exact terminology for these specific words to ensure consistency with our UI:\n" + json.dumps(glossary, ensure_ascii=False) + "\n"
+
     prompt = (
         f"You are a professional luxury travel translator. Translate all string values in this JSON object into {target_name}.\n"
         "RULES:\n"
         "1. Keep exact JSON structure and keys intact.\n"
         "2. Do not translate numbers, currency symbols, or dates.\n"
         "3. Maintain warm, professional hospitality tone.\n"
+        f"{glossary_text}"
         f"JSON to translate:\n{json.dumps(to_translate, ensure_ascii=False)}"
     )
 

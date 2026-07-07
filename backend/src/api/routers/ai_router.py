@@ -13,6 +13,7 @@ router = APIRouter()
 class TranslateProposalInput(BaseModel):
     proposal: Dict[str, Any]
     target_lang: str
+    glossary: Dict[str, str] = {}
 
 @router.post("/parse-itinerary")
 async def parse_itinerary(input: ParseItineraryInput, user: Any = Depends(verify_token_optional)):
@@ -25,7 +26,7 @@ async def parse_itinerary(input: ParseItineraryInput, user: Any = Depends(verify
 @router.post("/translate-proposal")
 async def translate_proposal(input: TranslateProposalInput, user: Any = Depends(verify_token_optional)):
     try:
-        translated = await translate_proposal_content(input.proposal, input.target_lang)
+        translated = await translate_proposal_content(input.proposal, input.target_lang, input.glossary)
         return {"success": True, "translated_proposal": translated}
     except Exception as e:
         logger.exception("AI proposal translation failed")
