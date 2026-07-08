@@ -22,6 +22,7 @@ const queryClient = new QueryClient({
 // Only the page the user navigates to is downloaded — cutting initial bundle size.
 const LandingPage = lazy(() => import('./pages/LandingPage.jsx'));
 const AuthenticationPage = lazy(() => import('./pages/AuthenticationPage.jsx'));
+const WebViewPage = lazy(() => import('./pages/WebViewPage.jsx'));
 const ProposalPrintRoute = lazy(() => import('./pages/ProposalPrintRoute.jsx'));
 const ProposalActionRoute = lazy(() => import('./pages/ProposalActionRoute.jsx'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'));
@@ -75,6 +76,7 @@ export default function App() {
               {/* Public routes for PDF printing & client action tracking */}
               <Route path="/proposals/:id/print" element={<ProposalPrintRoute />} />
               <Route path="/proposal-action" element={<ProposalActionRoute />} />
+              <Route path="/view/:token" element={<WebViewPage />} />
 
               {/* Wrapped all authenticated routes in AppLayout */}
               <Route element={<Protected><AppLayout /></Protected>}>

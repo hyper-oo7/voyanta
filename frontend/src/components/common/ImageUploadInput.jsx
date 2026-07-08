@@ -1,7 +1,9 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
+import ImageSearchPicker from './ImageSearchPicker.jsx';
 
 export default function ImageUploadInput({ value = '', onChange, placeholder = 'https://example.com/image.jpg', label, className = '' }) {
   const fileInputRef = useRef(null);
+  const [showPicker, setShowPicker] = useState(false);
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -24,9 +26,19 @@ export default function ImageUploadInput({ value = '', onChange, placeholder = '
   return (
     <div className={`space-y-2 ${className}`}>
       {label && <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider">{label}</label>}
+      {showPicker && (
+        <ImageSearchPicker 
+          onClose={() => setShowPicker(false)} 
+          onSelect={(url) => {
+            if (typeof onChange === 'function') onChange(url);
+            setShowPicker(false);
+          }} 
+          defaultQuery="luxury travel" 
+        />
+      )}
       
-      <div className="flex flex-col sm:flex-row gap-2 items-center">
-        <div className="relative flex-1 w-full">
+      <div className="flex flex-col gap-2">
+        <div className="relative w-full">
           <input
             type="text"
             value={value}
@@ -37,7 +49,7 @@ export default function ImageUploadInput({ value = '', onChange, placeholder = '
           <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-[18px] text-on-surface-variant">link</span>
         </div>
 
-        <div className="w-full sm:w-auto flex items-center gap-2">
+        <div className="grid grid-cols-2 gap-2 w-full">
           <input
             type="file"
             ref={fileInputRef}
@@ -47,11 +59,19 @@ export default function ImageUploadInput({ value = '', onChange, placeholder = '
           />
           <button
             type="button"
+            onClick={() => setShowPicker(true)}
+            className="w-full px-2 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer whitespace-nowrap"
+          >
+            <span className="material-symbols-outlined text-[16px] text-primary">search</span>
+            Unsplash
+          </button>
+          <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-full sm:w-auto px-4 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer whitespace-nowrap"
+            className="w-full px-2 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer whitespace-nowrap"
           >
             <span className="material-symbols-outlined text-[16px] text-primary">upload_file</span>
-            Upload Image
+            Upload
           </button>
         </div>
       </div>

@@ -189,7 +189,7 @@ export default function MyVaultPage() {
           formData.append('duration', duration);
           formData.append('currency', currency);
 
-          const response = await fetch('/api/v1/pdf/vault-process', {
+          const response = await fetch('/api/pdf/vault-process', {
             method: 'POST',
             headers,
             body: formData
@@ -305,73 +305,14 @@ export default function MyVaultPage() {
       </div>
 
       {/* Upload & Configure Card */}
-      <div className="bg-surface p-lg rounded-2xl border border-outline-variant shadow-sm grid grid-cols-1 md:grid-cols-12 gap-lg">
-        {/* Left column: Parameters */}
-        <div className="md:col-span-5 space-y-md">
-          <h2 className="text-base font-bold text-on-surface flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-lg">tune</span>
-            1. Client Target Parameters
-          </h2>
-          
-          <div>
-            <label className="block text-xs font-semibold text-on-surface-variant mb-1">Target Destination</label>
-            <input
-              type="text"
-              value={destination}
-              onChange={e => setDestination(e.target.value)}
-              placeholder="e.g., Switzerland, Bali, Japan"
-              className="w-full bg-surface-container-low border border-outline rounded-xl px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-md">
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Target Budget (X)</label>
-              <input
-                type="number"
-                value={budget}
-                onChange={e => setBudget(Number(e.target.value))}
-                className="w-full bg-surface-container-low border border-outline rounded-xl px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary font-mono font-bold"
-              />
-              <span className="text-[10px] text-primary font-semibold mt-0.5 block">
-                $\pm 20\%$ Filter: {currency} {round(budget * 0.8)} - {round(budget * 1.2)}
-              </span>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1">Currency</label>
-              <select
-                value={currency}
-                onChange={e => setCurrency(e.target.value)}
-                className="w-full bg-surface-container-low border border-outline rounded-xl px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary font-bold"
-              >
-                <option value="USD">USD ($)</option>
-                <option value="EUR">EUR (€)</option>
-                <option value="GBP">GBP (£)</option>
-                <option value="INR">INR (₹)</option>
-                <option value="AED">AED</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-on-surface-variant mb-1">Trip Duration (Days)</label>
-            <input
-              type="number"
-              value={duration}
-              onChange={e => setDuration(Number(e.target.value))}
-              min={1} max={30}
-              className="w-full bg-surface-container-low border border-outline rounded-xl px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
-            />
-          </div>
-        </div>
-
-        {/* Right column: Drop Zone & Process */}
-        <div className="md:col-span-7 flex flex-col justify-between space-y-md">
+      <div className="bg-surface p-lg rounded-2xl border border-outline-variant shadow-sm flex flex-col gap-lg">
+        {/* Drop Zone & Process */}
+        <div className="w-full flex flex-col justify-between space-y-md">
           <div>
             <h2 className="text-base font-bold text-on-surface flex items-center justify-between mb-2">
               <span className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-lg">upload_file</span>
-                2. Supplier PDF / Brochure Batch Ingestion
+                Supplier PDF / Brochure Batch Ingestion
               </span>
               <span className="text-xs font-semibold bg-primary/10 text-primary px-2.5 py-0.5 rounded-full">Up to 10 PDFs</span>
             </h2>

@@ -396,7 +396,7 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           if (newLang !== 'en') {
             try {
               toast.info("AI Translating proposal text...");
-              const res = await api.post('/api/ai/translate-proposal', { 
+              const res = await api.post('/api/translate-proposal', { 
                 proposal: updatedProp, 
                 target_lang: newLang,
                 glossary: OFFLINE_GLOSSARY[newLang] || {}

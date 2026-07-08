@@ -128,8 +128,25 @@ export const useProposalStore = create((set, get) => ({
         get().setActiveId(p.id || id);
         const b = p.brief || {};
         
+        const { settingsService } = await import('../services/resourceService.js');
+        const defaultSettings = await settingsService.get().catch(() => ({})) || {};
+        
         const rawBranding = { ...get().branding, ...(p.preferences?.branding || {}) };
-        const cleanBranding = sanitizeBrandingObject(rawBranding);
+        
+        // Fallback to global settings if branding fields are missing/empty
+        const mergedBranding = {
+          ...rawBranding,
+          agency_name: rawBranding.agency_name || defaultSettings.agency_name || '',
+          logo_url: rawBranding.logo_url || defaultSettings.logo_url || '',
+          address: rawBranding.address || defaultSettings.address || '',
+          contact_email: rawBranding.contact_email || defaultSettings.contact_email || '',
+          contact_phone: rawBranding.contact_phone || defaultSettings.contact_phone || '',
+          website: rawBranding.website || defaultSettings.website || '',
+          social_facebook: rawBranding.social_facebook || defaultSettings.social_facebook || '',
+          social_instagram: rawBranding.social_instagram || defaultSettings.social_instagram || '',
+          social_linkedin: rawBranding.social_linkedin || defaultSettings.social_linkedin || '',
+        };
+        const cleanBranding = sanitizeBrandingObject(mergedBranding);
 
         set({
           proposal: p,

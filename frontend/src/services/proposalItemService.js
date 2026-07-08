@@ -34,7 +34,7 @@ export async function addItem(proposalId, item) {
   if (supabase) {
     const { data, error } = await supabase.from('proposal_items').insert({
       proposal_id: proposalId, ...item,
-    }).select().single();
+    }).select().maybeSingle();
     if (error) {
       notifyDbError('proposal_items', error);
       throw error;
@@ -60,7 +60,7 @@ export async function addItem(proposalId, item) {
 
 export async function updateItem(id, patch) {
   if (supabase) {
-    const { data, error } = await supabase.from('proposal_items').update(patch).eq('id', id).select().single();
+    const { data, error } = await supabase.from('proposal_items').update(patch).eq('id', id).select().maybeSingle();
     if (error) {
       notifyDbError('proposal_items', error);
       throw error;
@@ -161,5 +161,39 @@ export async function buildProposalExport(proposalId) {
     items_by_kind: grouped,
     items,
     totals: { subtotal: total, currency: proposal?.currency || 'INR' },
+  };
+}
+
+export async function fetchSharedProposalByToken(token) {
+  if (!supabase) throw new Error("Supabase is required for public shares");
+  const { data: proposal, error } = await supabase
+    .from('proposals')
+    .select('*')
+    .eq('share_token', token)
+    .maybeSingle();
+    
+  if (error || !proposal) throw new Error("Proposal not found or expired");
+  
+  // also fetch items
+  const { data: items } = await supabase
+    .from('proposal_items')
+    .select('*')
+    .eq('proposal_id', proposal.id)
+    .order('position', { ascending: true });
+    
+  const grouped = {};
+  for (const it of items || []) {
+    const k = (it.kind || 'custom').toLowerCase();
+    (grouped[k] ||= []).push(it);
+  }
+  const total = (items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
+  
+  return {
+    schema_version: 1,
+    generated_at: new Date().toISOString(),
+    proposal: proposal,
+    items_by_kind: grouped,
+    items: items || [],
+    totals: { subtotal: total, currency: proposal.currency || 'INR' },
   };
 }

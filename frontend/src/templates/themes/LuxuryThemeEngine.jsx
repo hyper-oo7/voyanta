@@ -303,49 +303,7 @@ export default function LuxuryThemeEngine(props) {
         </section>
       )}
 
-      {/* ─── Interactive WhatsApp Approval & Modification Footer ────────────── */}
-      <section className="theme-section text-center p-[14mm]">
-        <div className="max-w-2xl mx-auto p-8 rounded-3xl border shadow-lg relative overflow-hidden" style={{ backgroundColor: '#f8fafc', borderColor: accentColor + '40' }}>
-          <h3 className="text-3xl mb-3 uppercase tracking-widest font-semibold" style={{ fontFamily: headlineFont, color: primaryColor }}>
-            Ready to Begin Your Journey?
-          </h3>
-          <p className="text-base text-slate-600 max-w-xl mx-auto mb-8 font-light leading-relaxed">
-            Connect with your dedicated travel curator instantly via WhatsApp to approve this proposal or request customized adjustments.
-          </p>
-          {(() => {
-            const originUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'http://localhost:3000';
-            const cleanPhone = (b.contact_phone || '+919876543210').replace(/[^0-9]/g, '');
-            const pid = p?.id || p?.proposal_id || '';
-            const cname = p?.client_name || p?.client || 'Client';
-            const dest = p?.destination || 'Trip';
-            const pname = p?.name || 'Custom Plan';
-            const approveUrl = `${originUrl}/proposal-action?type=approval&id=${pid}&client=${encodeURIComponent(cname)}&dest=${encodeURIComponent(dest)}&phone=${cleanPhone}&name=${encodeURIComponent(pname)}`;
-            const modifyUrl = `${originUrl}/proposal-action?type=modification&id=${pid}&client=${encodeURIComponent(cname)}&dest=${encodeURIComponent(dest)}&phone=${cleanPhone}&name=${encodeURIComponent(pname)}`;
-            return (
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a
-                  onClick={() => incrementAnalytics('approval', pid, dest, cname)}
-                  href={approveUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full sm:w-auto px-8 py-4 bg-emerald-600 text-white font-bold rounded-2xl shadow-lg hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 text-base no-underline"
-                >
-                  <span className="material-symbols-outlined text-[20px]">check_circle</span> Approve Proposal via WhatsApp
-                </a>
-                <a
-                  onClick={() => incrementAnalytics('modification', pid, dest, cname)}
-                  href={modifyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full sm:w-auto px-8 py-4 bg-white text-slate-800 font-bold rounded-2xl border border-slate-300 shadow hover:bg-slate-50 transition-all flex items-center justify-center gap-2 text-base no-underline"
-                >
-                  <span className="material-symbols-outlined text-[20px]">edit_note</span> Request Modifications
-                </a>
-              </div>
-            );
-          })()}
-        </div>
-      </section>
+
       <UniversalTemplateExtras proposal={p} branding={b} customBlocks={customBlocks} order={order} style={themeSlug} theme={{ typography: { headline: headlineFont, body: fontFamily }, colors: { primary: primaryColor, accent: accentColor } }} />
     </div>
   );

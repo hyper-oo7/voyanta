@@ -658,6 +658,3 @@ begin
 end;
 $$ language plpgsql stable security definer;
 
--- SEED DATA -------------------------------------------------------------------
--- Demo agency acts as default agency for local dev/testing
-insert into public.agencies (id, name, slug) values ('00000000-0000-0000-0000-000000000001', 'Voyanta Demo Agency', 'voyanta-demo') on conflict do nothing;

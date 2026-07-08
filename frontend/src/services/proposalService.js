@@ -117,7 +117,7 @@ export async function createProposal(payload) {
   };
 
   if (supabase) {
-    const { data, error } = await supabase.from(TABLE).insert(row).select().single();
+    const { data, error } = await supabase.from(TABLE).insert(row).select().maybeSingle();
     if (error) {
       notifyDbError(TABLE, error);
       throw error;
@@ -146,7 +146,7 @@ export async function createProposal(payload) {
 
 export async function updateProposal(id, patch) {
   if (supabase) {
-    const { data, error } = await supabase.from(TABLE).update(patch).eq('id', id).select().single();
+    const { data, error } = await supabase.from(TABLE).update(patch).eq('id', id).select().maybeSingle();
     if (error) {
       notifyDbError(TABLE, error);
       throw error;
