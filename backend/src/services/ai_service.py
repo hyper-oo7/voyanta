@@ -18,7 +18,7 @@ async def call_openai_with_retry(payload: dict, headers: dict):
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
 async def call_gemini_with_retry(payload: dict, api_key: str):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=60.0) as client:
         r = await client.post(url, json=payload, headers=headers)

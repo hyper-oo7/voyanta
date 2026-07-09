@@ -177,10 +177,22 @@ export default function MyVaultPage() {
 
       if (!resultData) {
         try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const token = session?.access_token;
-          const headers = {};
-          if (token) headers['Authorization'] = `Bearer ${token}`;
+          // Safely get auth token — never send expired/invalid tokens
+          let token = null;
+          try {
+            if (supabase && supabase.auth) {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.access_token && session?.expires_at) {
+                // Only use token if it hasn't expired (with 30s buffer)
+                const expiresAt = session.expires_at * 1000; // convert to ms
+                if (Date.now() < expiresAt - 30000) {
+                  token = session.access_token;
+                }
+              }
+            }
+          } catch (authErr) {
+            console.warn('[MyVault] Auth session retrieval failed (proceeding without auth):', authErr.message);
+          }
 
           const formData = new FormData();
           formData.append('file', currentF);
@@ -189,11 +201,35 @@ export default function MyVaultPage() {
           formData.append('duration', duration);
           formData.append('currency', currency);
 
-          const response = await fetch('/api/pdf/vault-process', {
-            method: 'POST',
-            headers,
-            body: formData
-          });
+          // Attempt with auth token if available
+          const makeRequest = async (authToken) => {
+            const reqHeaders = {};
+            if (authToken) reqHeaders['Authorization'] = `Bearer ${authToken}`;
+            return fetch('/api/pdf/vault-process', {
+              method: 'POST',
+              headers: reqHeaders,
+              body: formData
+            });
+          };
+
+          let response = await makeRequest(token);
+
+          // If 401/403 and we sent a token, retry WITHOUT the token (stale token scenario)
+          if ((response.status === 401 || response.status === 403) && token) {
+            console.warn(`[MyVault] Auth token rejected (${response.status}), retrying without auth...`);
+            // Re-create FormData since body stream was consumed
+            const retryFormData = new FormData();
+            retryFormData.append('file', currentF);
+            retryFormData.append('destination', detectedDest);
+            retryFormData.append('budget', budget);
+            retryFormData.append('duration', duration);
+            retryFormData.append('currency', currency);
+            response = await fetch('/api/pdf/vault-process', {
+              method: 'POST',
+              body: retryFormData
+            });
+          }
+
           if (response.ok) {
             resultData = await response.json();
           } else {

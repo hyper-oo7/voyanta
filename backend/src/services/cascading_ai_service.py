@@ -47,7 +47,7 @@ async def route_model_cascading(
     if api_key_gemini:
         try:
             from src.services.ai_service import call_gemini_with_retry
-            logger.info("[Model Cascading] Routed task to Gemini (gemini-1.5-flash).")
+            logger.info("[Model Cascading] Routed task to Gemini (gemini-2.5-flash).")
             prompt = (
                 f"You are an expert luxury travel planner. Create 3 distinct travel package recommendation options "
                 f"for {destination} lasting {duration} days, based on this document summary:\n{compressed_text}\n\n"
@@ -70,7 +70,7 @@ async def route_model_cascading(
                 return {
                     "success": True,
                     "recommendations": recs,
-                    "model_used": "gemini-1.5-flash",
+                    "model_used": "gemini-2.5-flash",
                     "budget_window": f"{currency} {min_budget} to {currency} {max_budget} (±20% rule applied)"
                 }
         except Exception as gem_e:

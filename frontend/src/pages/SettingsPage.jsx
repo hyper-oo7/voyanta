@@ -543,6 +543,7 @@ function BrandingSettings() {
   const queryClient = useQueryClient();
   const { data: settings, isLoading } = useQuery({ queryKey: ['agency_settings'], queryFn: () => settingsService.get() });
   const [form, setForm] = useState(null);
+  const [activeSubTab, setActiveSubTab] = useState('general');
 
   const current = form || settings || {};
   const upd = (k) => (e) => setForm((s) => ({ ...(s || settings || {}), [k]: e.target.value }));
@@ -559,267 +560,232 @@ function BrandingSettings() {
 
   if (isLoading) return <div>Loading agency branding...</div>;
 
+  const SubTab = ({ id, label, icon }) => (
+    <button
+      onClick={() => setActiveSubTab(id)}
+      className={`px-4 py-2 text-sm font-bold flex items-center gap-2 border-b-2 transition-colors ${activeSubTab === id ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'}`}
+    >
+      <span className="material-symbols-outlined text-[18px]">{icon}</span>
+      {label}
+    </button>
+  );
+
   return (
     <div className="space-y-6">
-      <h3 className="text-2xl font-serif font-bold">Agency Branding & Default Template</h3>
-      <div className="p-6 bg-surface-container rounded-xl border border-outline-variant space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-on-surface-variant mb-1">Agency Name</label>
-            <input type="text" value={safeStr(current.agency_name)} onChange={upd('agency_name')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
-          </div>
-          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ImageUploadInput
-              label="Agency Logo"
-              value={safeStr(current.logo_url)}
-              onChange={(val) => setForm(s => ({ ...(s || settings || {}), logo_url: val }))}
-              placeholder="https://example.com/logo.png or upload..."
-            />
-            <ImageUploadInput
-              label="Cover Image"
-              value={safeStr(current.cover_image_url)}
-              onChange={(val) => setForm(s => ({ ...(s || settings || {}), cover_image_url: val }))}
-              placeholder="https://example.com/cover.jpg or upload..."
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-on-surface-variant mb-1">Contact Email</label>
-            <input type="email" value={safeStr(current.contact_email)} onChange={upd('contact_email')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-on-surface-variant mb-1">Contact Phone</label>
-            <input type="text" value={safeStr(current.contact_phone)} onChange={upd('contact_phone')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-on-surface-variant mb-1">Website</label>
-          <input type="text" value={safeStr(current.website)} onChange={upd('website')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-on-surface-variant mb-1">Address</label>
-          <input type="text" value={safeStr(current.address)} onChange={upd('address')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-on-surface-variant mb-1">Default Inclusions</label>
-          <textarea rows="3" value={safeStr(current.inclusions)} onChange={upd('inclusions')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-on-surface-variant mb-1">Default Exclusions</label>
-          <textarea rows="3" value={safeStr(current.exclusions)} onChange={upd('exclusions')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-on-surface-variant mb-1">Default Terms of Payment</label>
-          <textarea rows="3" value={safeStr(current.terms_of_payment)} onChange={upd('terms_of_payment')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
-        </div>
+      <div className="flex justify-between items-end">
+        <h3 className="text-2xl font-serif font-bold">Agency Branding</h3>
+        <button onClick={() => mutation.mutate(current)} disabled={mutation.isPending} className="px-6 py-2 bg-primary text-on-primary rounded-lg font-bold shadow-md hover:shadow-lg hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center gap-2">
+          <span className="material-symbols-outlined text-[18px]">save</span>
+          {mutation.isPending ? 'Saving...' : 'Save Settings'}
+        </button>
+      </div>
 
-        {/* Billing, Invoicing & UPI Payment Configuration */}
-        <div className="pt-4 border-t border-outline-variant">
-          <h4 className="text-lg font-serif font-bold text-on-surface mb-3 flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">account_balance_wallet</span>
-            Invoicing, UPI Payment & Billing Settings
-          </h4>
-          <p className="text-xs text-on-surface-variant mb-4">
-            These settings link directly with your proposal branding and automatically populate all generated invoices and receipts.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">UPI ID / VPA (For Instant Payments)</label>
-              <input
-                type="text"
-                placeholder="e.g. voyantatravel@okaxis or 9876543210@upi"
-                value={safeStr(current.upi_id)}
-                onChange={upd('upi_id')}
-                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-mono"
-              />
-              <span className="text-[10px] text-on-surface-variant/70 mt-0.5 block">Used for generating direct "Pay Now" UPI deep links & verification QR codes.</span>
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">UPI Payee Name</label>
-              <input
-                type="text"
-                placeholder="e.g. Voyanta Luxury Travel"
-                value={safeStr(current.upi_payee_name || current.agency_name)}
-                onChange={upd('upi_payee_name')}
-                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Invoice Numbering Format</label>
-              <select
-                value={current.invoice_number_format || 'INV-000001'}
-                onChange={upd('invoice_number_format')}
-                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-medium"
-              >
-                <option value="INV-000001">INV-000001 (Recommended Standard)</option>
-                <option value="2026-00054">2026-00054 (Yearly Sequence)</option>
-                <option value="VOY-DEL-1045">VOY-DEL-1045 (Agency Prefix)</option>
-                <option value="CUSTOM">CUSTOM (Type Custom Prefix Below)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Custom Invoice Prefix & Next No.</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Prefix (e.g. INV- or MYAGENCY-)"
-                  value={safeStr(current.invoice_custom_prefix || (current.invoice_number_format === 'CUSTOM-0001' || current.invoice_number_format === 'CUSTOM' ? 'INV-' : current.invoice_number_format ? current.invoice_number_format.split('-')[0] + '-' : 'INV-'))}
-                  onChange={upd('invoice_custom_prefix')}
-                  className="w-2/3 px-3 py-2 border border-outline rounded-lg bg-white text-sm font-mono font-bold text-primary"
-                />
-                <input
-                  type="number"
-                  placeholder="Next #"
-                  value={current.invoice_next_sequence || 1}
-                  onChange={upd('invoice_next_sequence')}
-                  className="w-1/3 px-3 py-2 border border-outline rounded-lg bg-white text-sm font-mono font-bold text-center"
-                />
+      <div className="flex border-b border-outline-variant mb-6 overflow-x-auto hide-scrollbar">
+        <SubTab id="general" label="General Info" icon="storefront" />
+        <SubTab id="theme" label="Theme & Layout" icon="palette" />
+        <SubTab id="legal" label="Legal & Tax" icon="gavel" />
+        <SubTab id="social" label="Social Links" icon="share" />
+      </div>
+
+      <div className="p-6 bg-surface-container rounded-xl border border-outline-variant min-h-[400px]">
+        {activeSubTab === 'general' && (
+          <div className="space-y-6 animate-fade-in">
+            <h4 className="text-lg font-serif font-bold text-on-surface mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">storefront</span>
+              Basic Information
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-on-surface-variant mb-1">Agency Name</label>
+                <input type="text" value={safeStr(current.agency_name)} onChange={upd('agency_name')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
               </div>
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Default Currency</label>
-              <select
-                value={current.default_currency || 'INR'}
-                onChange={upd('default_currency')}
-                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-bold text-primary"
-              >
-                <option value="INR">₹ INR - Indian Rupee (Recommended Default)</option>
-                <option value="USD">$ USD - US Dollar</option>
-                <option value="EUR">€ EUR - Euro</option>
-                <option value="GBP">£ GBP - British Pound</option>
-                <option value="AUD">$ AUD - Australian Dollar</option>
-                <option value="CAD">$ CAD - Canadian Dollar</option>
-                <option value="AED">AED - UAE Dirham</option>
-                <option value="SGD">$ SGD - Singapore Dollar</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Default Tax Rate (%)</label>
-              <input
-                type="number"
-                min="0"
-                max="50"
-                step="0.5"
-                placeholder="e.g. 5 for GST 5%"
-                value={safeStr(current.default_tax_rate !== undefined ? current.default_tax_rate : 5)}
-                onChange={upd('default_tax_rate')}
-                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Invoice Default Notes</label>
-              <input
-                type="text"
-                placeholder="e.g. Thank you for booking with Voyanta Concierge."
-                value={safeStr(current.invoice_default_notes)}
-                onChange={upd('invoice_default_notes')}
-                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">GST Number / Tax ID</label>
-              <input
-                type="text"
-                placeholder="e.g. 07AAAAA0000A1Z5"
-                value={safeStr(current.gst_number)}
-                onChange={upd('gst_number')}
-                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-mono font-bold text-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Trade Code / Registration No.</label>
-              <input
-                type="text"
-                placeholder="e.g. LIC-DL-2026-8890"
-                value={safeStr(current.trade_code)}
-                onChange={upd('trade_code')}
-                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Trademarks & Accreditations</label>
-              <input
-                type="text"
-                placeholder="e.g. IATA Approved Agency • TAFI Member • ISO 9001 Certified"
-                value={safeStr(current.trademarks)}
-                onChange={upd('trademarks')}
-                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Document Watermark Text</label>
-              <input
-                type="text"
-                placeholder="e.g. APPROVED or CONFIDENTIAL or VOYANTA LUXURY"
-                value={safeStr(current.watermark_text)}
-                onChange={upd('watermark_text')}
-                className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-bold tracking-widest uppercase text-slate-700"
-              />
-            </div>
-            <div className="md:col-span-2 pt-2 border-t border-outline-variant/40">
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Authentic Payment / UPI QR Code Image</label>
-              <p className="text-xs text-on-surface-variant mb-2">Upload your official agency Bank or UPI payment QR code image. This authentic QR code will be embedded directly on all generated invoices and receipts.</p>
-              <div className="max-w-xs">
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <ImageUploadInput
-                  label="Upload Payment QR Code"
-                  value={safeStr(current.payment_qr_code || localStorage.getItem('voyanta_payment_qr_code') || '')}
-                  onChange={(val) => {
-                    setForm(s => ({ ...(s || settings || {}), payment_qr_code: val }));
-                    try { localStorage.setItem('voyanta_payment_qr_code', val || ''); } catch {}
-                  }}
+                  label="Agency Logo"
+                  value={safeStr(current.logo_url)}
+                  onChange={(val) => setForm(s => ({ ...(s || settings || {}), logo_url: val }))}
+                  placeholder="https://example.com/logo.png or upload..."
                 />
+                <ImageUploadInput
+                  label="Cover Image"
+                  value={safeStr(current.cover_image_url)}
+                  onChange={(val) => setForm(s => ({ ...(s || settings || {}), cover_image_url: val }))}
+                  placeholder="https://example.com/cover.jpg or upload..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-on-surface-variant mb-1">Contact Email</label>
+                <input type="email" value={safeStr(current.contact_email)} onChange={upd('contact_email')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-on-surface-variant mb-1">Contact Phone</label>
+                <input type="text" value={safeStr(current.contact_phone)} onChange={upd('contact_phone')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-on-surface-variant mb-1">Website</label>
+              <input type="text" value={safeStr(current.website)} onChange={upd('website')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-on-surface-variant mb-1">Address</label>
+              <input type="text" value={safeStr(current.address)} onChange={upd('address')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white" />
+            </div>
+          </div>
+        )}
+
+        {activeSubTab === 'theme' && (
+          <div className="space-y-6 animate-fade-in">
+            <h4 className="text-lg font-serif font-bold text-on-surface mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">palette</span>
+              Brand Colors & Typography
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Primary Brand Color (Hex)</label>
+                <div className="flex gap-2">
+                  <input type="color" value={safeStr(current.theme_color)} onChange={upd('theme_color')} className="w-10 h-10 rounded border border-outline cursor-pointer bg-white p-1" />
+                  <input type="text" placeholder="#115E59" value={safeStr(current.theme_color)} onChange={upd('theme_color')} className="flex-1 px-4 py-2 border border-outline rounded-lg bg-white text-sm font-mono uppercase" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Secondary / Accent Color</label>
+                <div className="flex gap-2">
+                  <input type="color" value={safeStr(current.secondary_color)} onChange={upd('secondary_color')} className="w-10 h-10 rounded border border-outline cursor-pointer bg-white p-1" />
+                  <input type="text" placeholder="#CBA365" value={safeStr(current.secondary_color)} onChange={upd('secondary_color')} className="flex-1 px-4 py-2 border border-outline rounded-lg bg-white text-sm font-mono uppercase" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Header Font (Serif/Display)</label>
+                <input type="text" placeholder="Playfair Display, serif" value={safeStr(current.font_header)} onChange={upd('font_header')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Body Font (Sans)</label>
+                <input type="text" placeholder="Inter, sans-serif" value={safeStr(current.font_body)} onChange={upd('font_body')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+              </div>
+            </div>
+
+            <h4 className="text-lg font-serif font-bold text-on-surface mt-6 mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">article</span>
+              Document Layout Defaults
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Default Base Template</label>
+                <select value={safeStr(current.default_template) || 'EditorialTemplate'} onChange={upd('default_template')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-semibold text-primary focus:outline-none focus:border-primary">
+                  <option value="EditorialTemplate">Editorial Vogue (Classic)</option>
+                  <option value="LuxuryThemeEngine">Luxury Theme Engine (Dynamic Config)</option>
+                  <option value="ZenTemplate">Zen Minimalist (Clean)</option>
+                  <option value="BaseTemplate">Standard Corporate</option>
+                  <option value="EcoSanctuaryTemplate">Eco Sanctuary (Nature)</option>
+                  <option value="AlpineTemplate">Alpine Retreat (Snow/Mountains)</option>
+                  <option value="DesertTemplate">Desert Mirage (Warm/Sands)</option>
+                  <option value="TropicTemplate">Tropic Paradise (Beaches)</option>
+                  <option value="AegeanTemplate">Aegean Coastal (Blue/White)</option>
+                  <option value="SafariTemplate">Safari Expedition (Earthy)</option>
+                  <option value="MaharajaTemplate">Maharaja Heritage (Royal Indian)</option>
+                  <option value="NordicTemplate">Nordic Aurora (Dark Minimal)</option>
+                  <option value="CosmopolitanTemplate">Cosmopolitan (City Chic)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Margin Size</label>
+                <select value={safeStr(current.margin_size)} onChange={upd('margin_size')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm">
+                  <option value="Small">Small (Compact)</option>
+                  <option value="Standard">Standard (Recommended)</option>
+                  <option value="Large">Large (Spacious/Editorial)</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Document Watermark Text</label>
+                <input type="text" placeholder="e.g. APPROVED or CONFIDENTIAL or VOYANTA LUXURY" value={safeStr(current.watermark_text)} onChange={upd('watermark_text')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-bold tracking-widest uppercase text-slate-700" />
               </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Social Media Links */}
-        <div className="pt-4 border-t border-outline-variant">
-          <h4 className="text-lg font-serif font-bold text-on-surface mb-3 flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">share</span>
-            Social Media & Communication Links
-          </h4>
-          <p className="text-xs text-on-surface-variant mb-4">
-            Add your social media URLs here. When sharing invoices or proposals via email, interactive social logo buttons will automatically appear at the bottom of the email body for the links you provide.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">
-                <span>📘 Facebook URL</span>
-              </label>
-              <input type="url" placeholder="https://facebook.com/youragency" value={safeStr(current.social_facebook)} onChange={upd('social_facebook')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">
-                <span>📸 Instagram URL</span>
-              </label>
-              <input type="url" placeholder="https://instagram.com/youragency" value={safeStr(current.social_instagram)} onChange={upd('social_instagram')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">
-                <span>💼 LinkedIn URL</span>
-              </label>
-              <input type="url" placeholder="https://linkedin.com/company/youragency" value={safeStr(current.social_linkedin)} onChange={upd('social_linkedin')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">
-                <span>🐦 Twitter / X URL</span>
-              </label>
-              <input type="url" placeholder="https://twitter.com/youragency" value={safeStr(current.social_twitter)} onChange={upd('social_twitter')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">
-                <span>▶️ YouTube Channel URL</span>
-              </label>
-              <input type="url" placeholder="https://youtube.com/@youragency" value={safeStr(current.social_youtube)} onChange={upd('social_youtube')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+        {activeSubTab === 'legal' && (
+          <div className="space-y-6 animate-fade-in">
+            <h4 className="text-lg font-serif font-bold text-on-surface mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">gavel</span>
+              Business Legal & Registration Details
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Company Legal Name</label>
+                <input type="text" placeholder="e.g. Voyanta Luxury Travel Ltd." value={safeStr(current.company_legal_name)} onChange={upd('company_legal_name')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Default Tax Rate (%)</label>
+                <input type="number" max="50" step="0.5" placeholder="e.g. 5 for GST 5%" value={safeStr(current.default_tax_rate !== undefined ? current.default_tax_rate : 5)} onChange={upd('default_tax_rate')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">GST Number / Tax ID</label>
+                <input type="text" placeholder="e.g. 07AAAAA0000A1Z5" value={safeStr(current.gst_number)} onChange={upd('gst_number')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-mono font-bold text-primary" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Trade Code / Registration No.</label>
+                <input type="text" placeholder="e.g. LIC-DL-2026-8890" value={safeStr(current.trade_code)} onChange={upd('trade_code')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-mono" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Trademarks & Accreditations</label>
+                <input type="text" placeholder="e.g. IATA Approved Agency • TAFI Member • ISO 9001 Certified" value={safeStr(current.trademarks)} onChange={upd('trademarks')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Invoice Default Notes</label>
+                <input type="text" placeholder="e.g. Thank you for booking with Voyanta Concierge." value={safeStr(current.invoice_default_notes)} onChange={upd('invoice_default_notes')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+              </div>
+              
+              <div className="md:col-span-2 pt-4 border-t border-outline-variant/40">
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Authentic Payment / UPI QR Code Image</label>
+                <p className="text-xs text-on-surface-variant mb-2">Upload your official agency Bank or UPI payment QR code image. This authentic QR code will be embedded directly on all generated invoices and receipts.</p>
+                <div className="max-w-xs">
+                  <ImageUploadInput
+                    label="Upload Payment QR Code"
+                    value={safeStr(current.payment_qr_code || localStorage.getItem('voyanta_payment_qr_code') || '')}
+                    onChange={(val) => {
+                      setForm(s => ({ ...(s || settings || {}), payment_qr_code: val }));
+                      try { localStorage.setItem('voyanta_payment_qr_code', val || ''); } catch {}
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        <div className="pt-4">
-          <button onClick={() => mutation.mutate(current)} disabled={mutation.isPending} className="px-6 py-2 bg-primary text-on-primary rounded-lg font-medium shadow-md hover:bg-primary/90 transition-colors disabled:opacity-50">
-            {mutation.isPending ? 'Saving...' : 'Save Brand Guidelines & Billing Settings'}
-          </button>
-        </div>
+        {activeSubTab === 'social' && (
+          <div className="space-y-6 animate-fade-in">
+            <h4 className="text-lg font-serif font-bold text-on-surface mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">share</span>
+              Social Media Links
+            </h4>
+            <p className="text-xs text-on-surface-variant mb-4">
+              Add your social media URLs here. When sharing invoices or proposals via email, interactive social logo buttons will automatically appear at the bottom of the email body for the links you provide.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">📘 Facebook URL</label>
+                <input type="url" placeholder="https://facebook.com/youragency" value={safeStr(current.social_facebook)} onChange={upd('social_facebook')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">📸 Instagram URL</label>
+                <input type="url" placeholder="https://instagram.com/youragency" value={safeStr(current.social_instagram)} onChange={upd('social_instagram')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">💼 LinkedIn URL</label>
+                <input type="url" placeholder="https://linkedin.com/company/youragency" value={safeStr(current.social_linkedin)} onChange={upd('social_linkedin')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">🐦 Twitter / X URL</label>
+                <input type="url" placeholder="https://twitter.com/youragency" value={safeStr(current.social_twitter)} onChange={upd('social_twitter')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1 flex items-center gap-1">▶️ YouTube Channel URL</label>
+                <input type="url" placeholder="https://youtube.com/@youragency" value={safeStr(current.social_youtube)} onChange={upd('social_youtube')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

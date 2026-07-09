@@ -6,7 +6,7 @@ from fastapi.responses import Response, JSONResponse
 from typing import Any, Optional
 
 from src.models.api_models import PDFGenerateRequest
-from src.core.security import verify_token
+from src.core.security import verify_token, verify_token_optional
 from src.services.pdf_vault_service import save_temporary_pdf, deterministic_pre_parse_and_compress, extract_images_and_link_spatially, cleanup_expired_pdfs
 from src.services.semantic_cache_service import compute_content_hash, get_cached_recommendation, store_cached_recommendation
 from src.services.cascading_ai_service import route_model_cascading
@@ -62,7 +62,7 @@ async def process_vault_pdf(
     budget: float = Form(10000.0),
     duration: int = Form(7),
     currency: str = Form("INR"),
-    user: Any = Depends(verify_token)
+    user: Any = Depends(verify_token_optional)
 ):
     """
     100% Efficient Pipeline:
@@ -76,6 +76,9 @@ async def process_vault_pdf(
         agency_id = None
         if isinstance(user, dict):
             agency_id = (user.get("user_metadata") or {}).get("agency_id") or (user.get("app_metadata") or {}).get("agency_id") or user.get("agency_id")
+            logger.info(f"[VaultProcess] Authenticated user (agency_id={agency_id})")
+        else:
+            logger.info("[VaultProcess] Processing as unauthenticated/demo user (no valid token)")
 
         file_bytes = await file.read()
         storage_meta = save_temporary_pdf(file_bytes, file.filename or "supplier_package.pdf")
