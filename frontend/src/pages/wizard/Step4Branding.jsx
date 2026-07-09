@@ -2,6 +2,7 @@ import { memo, useState, useEffect } from 'react';
 import { useToast } from '../../context/ToastContext.jsx';
 import LogoUploader from '../../components/LogoUploader.jsx';
 import { TEMPLATE_LIST } from '../../templates/registry.js';
+import { api } from '../../services/api.js';
 
 const safeStr = (v) => Array.isArray(v) ? v.join('\n') : (v && typeof v === 'object' ? JSON.stringify(v) : (v ?? ''));
 
@@ -42,7 +43,7 @@ function TextareaWithAI({ label, value, onChange, testid, onAI }) {
   );
 }
 
-export function Step6Branding({ branding, setBranding, customBlocks, proposal, client }) {
+export function Step4Branding({ branding, setBranding, customBlocks, proposal, client }) {
   const toast = useToast();
   const [activeCategory, setActiveCategory] = useState('All');
   const [showFieldMenu, setShowFieldMenu] = useState(false);
@@ -87,8 +88,26 @@ export function Step6Branding({ branding, setBranding, customBlocks, proposal, c
   const isStarter = !currentPlan || currentPlan.toLowerCase() === 'starter';
 
   const upd = (k) => (e) => setBranding((s) => ({ ...s, [k]: e.target.value }));
-  const aiDraft = (field, label) => () => {
-    toast.info(`AI ${label} draft coming soon — for now, type your own.`);
+  const aiDraft = (field, label) => async () => {
+    const currentText = branding?.[field] || '';
+    if (!currentText) {
+      toast.info(`Please type initial ${label} points first so AI can check grammar and enhance.`);
+      return;
+    }
+    toast.info(`AI checking grammar and rewriting ${label} into luxury agency style...`);
+    try {
+      const res = await api.post('/api/enhance-text', {
+        text: currentText,
+        mode: field,
+        destination: client?.destination || proposal?.destination || ''
+      });
+      if (res?.enhanced_text) {
+        setBranding((s) => ({ ...s, [field]: res.enhanced_text }));
+        toast.success(`Rewrote ${label} successfully!`);
+      }
+    } catch (err) {
+      toast.error(`Failed to enhance ${label}`);
+    }
   };
 
   const categories = ['All', 'Basic Tier', 'Luxury Magazine', 'Minimalist', 'Corporate', 'Honeymoon', 'Family & Adventure'];
@@ -192,6 +211,22 @@ export function Step6Branding({ branding, setBranding, customBlocks, proposal, c
             );
           })}
         </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-md bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60">
+        <label className="flex flex-col gap-xs">
+          <span className="font-label-md text-label-md text-on-surface">Primary Theme Accent Color</span>
+          <div className="flex items-center gap-2">
+            <input type="color" value={branding?.primary_color || '#1A365D'} onChange={upd('primary_color')} className="w-12 h-10 rounded cursor-pointer border border-outline-variant" />
+            <span className="font-mono text-xs text-on-surface-variant">{branding?.primary_color || '#1A365D'}</span>
+          </div>
+        </label>
+        <label className="flex flex-col gap-xs">
+          <span className="font-label-md text-label-md text-on-surface">Secondary Theme Accent Color</span>
+          <div className="flex items-center gap-2">
+            <input type="color" value={branding?.secondary_color || '#C5A059'} onChange={upd('secondary_color')} className="w-12 h-10 rounded cursor-pointer border border-outline-variant" />
+            <span className="font-mono text-xs text-on-surface-variant">{branding?.secondary_color || '#C5A059'}</span>
+          </div>
+        </label>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
         <LogoUploader value={branding?.logo_url} onChange={(v) => setBranding((s) => ({ ...s, logo_url: v }))} label="Agency Logo" testid="brand-logo-uploader" folder="logos" />
@@ -402,4 +437,4 @@ export function Step6Branding({ branding, setBranding, customBlocks, proposal, c
   );
 }
 
-export default Step6Branding;
+export default Step4Branding;

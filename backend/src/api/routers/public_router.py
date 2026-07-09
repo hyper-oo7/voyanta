@@ -59,29 +59,79 @@ async def client_proposal_action(token: str, input: ProposalActionInput, request
 @router.get("/images/search")
 async def search_images(query: str):
     """
-    Unsplash & Pexels high-resolution curated imagery search endpoint.
+    Live Unsplash & Pexels high-resolution stock imagery search endpoint.
+    Uses Unsplash primary API with Pexels automatic fallback.
     """
-    import urllib.parse
-    q = urllib.parse.quote(query)
-    # Return curated travel quality images for galleries
-    results = [
-        {
-            "id": f"img_{i}",
-            "url": f"https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=1200&q=80",
-            "thumb": f"https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=400&q=80",
-            "author": "Unsplash Travel"
-        },
-        {
-          "id": f"img_2",
-          "url": f"https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=1200&q=80",
-          "thumb": f"https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=400&q=80",
-          "author": "Unsplash Palace"
-        },
-        {
-          "id": f"img_3",
-          "url": f"https://images.unsplash.com/photo-1599661046289-e31897846e41?w=1200&q=80",
-          "thumb": f"https://images.unsplash.com/photo-1599661046289-e31897846e41?w=400&q=80",
-          "author": "Unsplash Heritage"
-        }
-    ]
+    import os
+    import httpx
+    
+    unsplash_key = os.environ.get("UNSPLASH_ACCESS_KEY", "siZY4H_ZJXFAfmG6oUbzazfIkZZ-aV0S6LgkWB3Z9GE")
+    pexels_key = os.environ.get("PEXELS_API_KEY", "MSmdcbIpmIVVcIrS4Hrg0fBPxZxGb8Q7P3Y9Iq0c9EAIEZTbHuSehv5T")
+
+    results = []
+
+    # 1. Try Unsplash API
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                "https://api.unsplash.com/search/photos",
+                params={"query": query, "per_page": 12, "orientation": "landscape"},
+                headers={"Authorization": f"Client-ID {unsplash_key}"}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                for item in data.get("results", []):
+                    results.append({
+                        "id": str(item.get("id")),
+                        "url": item.get("urls", {}).get("regular") or item.get("urls", {}).get("full"),
+                        "thumb": item.get("urls", {}).get("small"),
+                        "author": item.get("user", {}).get("name", "Stock Photo")
+                    })
+    except Exception as e:
+        logger.warning(f"Unsplash API search error: {e}")
+
+    # 2. Try Pexels API fallback if Unsplash returned empty
+    if not results:
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(
+                    "https://api.pexels.com/v1/search",
+                    params={"query": query, "per_page": 12, "orientation": "landscape"},
+                    headers={"Authorization": pexels_key}
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for photo in data.get("photos", []):
+                        results.append({
+                            "id": f"pexels_{photo.get('id')}",
+                            "url": photo.get("src", {}).get("large") or photo.get("src", {}).get("original"),
+                            "thumb": photo.get("src", {}).get("medium"),
+                            "author": photo.get("photographer", "Stock Photo")
+                        })
+        except Exception as e:
+            logger.warning(f"Pexels API search error: {e}")
+
+    # 3. Safe offline/default fallback
+    if not results:
+        results = [
+            {
+                "id": "fallback_1",
+                "url": "https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=1200&q=80",
+                "thumb": "https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=400&q=80",
+                "author": "Taj Heritage Resort"
+            },
+            {
+                "id": "fallback_2",
+                "url": "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=1200&q=80",
+                "thumb": "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=400&q=80",
+                "author": "Palace Collection"
+            },
+            {
+                "id": "fallback_3",
+                "url": "https://images.unsplash.com/photo-1599661046289-e31897846e41?w=1200&q=80",
+                "thumb": "https://images.unsplash.com/photo-1599661046289-e31897846e41?w=400&q=80",
+                "author": "Luxury Escape"
+            }
+        ]
+
     return {"success": True, "results": results}

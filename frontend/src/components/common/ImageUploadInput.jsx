@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import ImageSearchPicker from './ImageSearchPicker.jsx';
 
-export default function ImageUploadInput({ value = '', onChange, placeholder = 'https://example.com/image.jpg', label, className = '' }) {
+export default function ImageUploadInput({ value = '', onChange, placeholder = 'https://example.com/image.jpg', label, className = '', hideStockSearch = false }) {
   const fileInputRef = useRef(null);
   const [showPicker, setShowPicker] = useState(false);
 
@@ -25,7 +25,14 @@ export default function ImageUploadInput({ value = '', onChange, placeholder = '
 
   return (
     <div className={`space-y-2 ${className}`}>
-      {label && <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider">{label}</label>}
+      {label && (
+        <div className="flex items-center gap-1.5">
+          <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider">{label}</label>
+          {label.toLowerCase().includes('cover') && (
+            <span className="material-symbols-outlined text-[15px] text-primary cursor-pointer" title="Default hero/cover background image across all proposal templates when a custom proposal cover photo is not specified.">info</span>
+          )}
+        </div>
+      )}
       {showPicker && (
         <ImageSearchPicker 
           onClose={() => setShowPicker(false)} 
@@ -49,7 +56,7 @@ export default function ImageUploadInput({ value = '', onChange, placeholder = '
           <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-[18px] text-on-surface-variant">link</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 w-full">
+        <div className={`grid ${hideStockSearch ? 'grid-cols-1' : 'grid-cols-2'} gap-2 w-full`}>
           <input
             type="file"
             ref={fileInputRef}
@@ -57,14 +64,16 @@ export default function ImageUploadInput({ value = '', onChange, placeholder = '
             accept="image/*"
             className="hidden"
           />
-          <button
-            type="button"
-            onClick={() => setShowPicker(true)}
-            className="w-full px-2 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer whitespace-nowrap"
-          >
-            <span className="material-symbols-outlined text-[16px] text-primary">search</span>
-            Unsplash
-          </button>
+          {!hideStockSearch && (
+            <button
+              type="button"
+              onClick={() => setShowPicker(true)}
+              className="w-full px-2 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] text-primary">search</span>
+              Stock Photos
+            </button>
+          )}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}

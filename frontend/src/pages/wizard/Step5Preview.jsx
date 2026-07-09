@@ -71,7 +71,7 @@ function A4Preview({ children, style = 'classic', isInteractiveStudio, onStudioC
   );
 }
 
-export function Step7Preview({ proposalId, branding, customBlocks, proposalName, onAddCustomBlock }) {
+export function Step5Preview({ proposalId, branding, customBlocks, proposalName, onAddCustomBlock }) {
   const toast = useToast();
   const { isHealthy } = useBackendHealth();
   const { proposal, items, saveDraftBackground, setProposal } = useProposalStore();
@@ -172,7 +172,6 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
     return branding?.template_style || 'classic';
   });
   const [generating, setGenerating] = useState(false);
-  const [designStudioOpen, setDesignStudioOpen] = useState(false);
 
   const [sectionOrder, setSectionOrder] = useState(() => {
     try {
@@ -394,6 +393,27 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           setProposal(updatedProp);
           toast.info(`Language set to ${newLang.toUpperCase()}. Updating UI labels...`);
           if (newLang !== 'en') {
+            const cacheKey = `voyanta_translation_cache_${proposal?.id || 'draft'}_${newLang}`;
+            try {
+              const cached = localStorage.getItem(cacheKey);
+              if (cached) {
+                const parsed = JSON.parse(cached);
+                const existingPrefs = proposal?.preferences || {};
+                const existingBranding = existingPrefs.branding || branding || {};
+                setProposal({
+                  ...parsed,
+                  language: newLang,
+                  lang: newLang,
+                  preferences: {
+                    ...existingPrefs,
+                    ...(parsed.preferences || {}),
+                    branding: { ...existingBranding, ...(parsed.preferences?.branding || {}) }
+                  }
+                });
+                toast.success("Applied saved translation");
+                return;
+              }
+            } catch {}
             try {
               toast.info("AI Translating proposal text...");
               const res = await api.post('/api/translate-proposal', { 
@@ -402,7 +422,21 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
                 glossary: OFFLINE_GLOSSARY[newLang] || {}
               });
               if (res && res.success && res.translated_proposal) {
-                setProposal({ ...res.translated_proposal, language: newLang, lang: newLang });
+                const existingPrefs = proposal?.preferences || {};
+                const existingBranding = existingPrefs.branding || branding || {};
+                const trans = res.translated_proposal;
+                const mergedProposal = {
+                  ...trans,
+                  language: newLang,
+                  lang: newLang,
+                  preferences: {
+                    ...existingPrefs,
+                    ...(trans.preferences || {}),
+                    branding: { ...existingBranding, ...(trans.preferences?.branding || {}) }
+                  }
+                };
+                setProposal(mergedProposal);
+                try { localStorage.setItem(cacheKey, JSON.stringify(mergedProposal)); } catch {}
                 toast.success("Proposal text translated successfully!");
               }
             } catch (err) {
@@ -420,28 +454,28 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
           <option value="fr">French (Français)</option>
         </select>
 
-        <button type="button" onClick={() => {
+        <button type="button" onClick={async () => {
           const dest = json?.proposal?.destination || 'Destination';
-          const travelers = json?.proposal?.travelers || 2;
           const tType = json?.proposal?.preferences?.tour_type || 'Luxury';
-          
-          const prompt = `Generate a highly luxurious and captivating proposal title for a ${tType} trip to ${dest} designed for ${travelers} travelers. The title should be 3-6 words, evocative, and matching the tone of an ultra-premium travel agency. Return only the title.`;
-          console.log("AI PROMPT:", prompt);
-          toast.info("AI Prompt Generated. Hook up your API here!");
-          
-          setProposal({ 
-            ...proposal, 
-            name: `The ${dest} Experience` 
-          });
+          const duration = json?.proposal?.itinerary?.days?.length || 7;
+          toast.info('Generating luxury title via AI...');
+          try {
+            const res = await api.post('/api/generate-title', {
+              destination: dest,
+              tour_type: tType,
+              duration: duration
+            });
+            if (res?.title) {
+              setProposal({ ...proposal, name: res.title });
+              toast.success('Generated title: ' + res.title);
+            }
+          } catch (err) {
+            toast.error('Failed to generate title');
+          }
         }}
         className="px-md py-sm bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg font-label-md flex items-center gap-2 transition-colors">
           <span className="material-symbols-outlined text-[18px]">magic_button</span>
           AI Auto-Title
-        </button>
-
-        <button type="button" onClick={() => setDesignStudioOpen(true)} data-testid="open-design-studio"
-          className="px-lg py-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 rounded-lg font-label-md flex items-center gap-xs shadow-sm ml-auto transition-all">
-          <span className="material-symbols-outlined text-[18px]">palette</span> 🎨 Brand & Design Studio
         </button>
 
         <button type="button" onClick={() => setIsInteractiveStudio(!isInteractiveStudio)} data-testid="toggle-wysiwyg"
@@ -509,9 +543,6 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
             <span>🎨 WYSIWYG Interactive Studio Active — Click any text, price, image, or section below to edit inline!</span>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setDesignStudioOpen(true)} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-white font-bold transition-colors">
-              ⚙️ Open Drawer
-            </button>
             <button type="button" onClick={() => { setIsInteractiveStudio(false); setStudioTarget(null); }} className="px-3 py-1 bg-white text-primary rounded-lg font-bold hover:bg-white/90 transition-colors">
               ✕ Exit Studio
             </button>
@@ -758,4 +789,4 @@ export function Step7Preview({ proposalId, branding, customBlocks, proposalName,
   );
 }
 
-export default Step7Preview;
+export default Step5Preview;

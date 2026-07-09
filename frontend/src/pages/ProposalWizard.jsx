@@ -22,12 +22,12 @@ const cleanPrice = (val) => {
 import { ProgressBar, STEPS } from './wizard/ProgressBar.jsx';
 import { Step1Client } from './wizard/Step1Client.jsx';
 import { Step2Itinerary } from './wizard/Step2Itinerary.jsx';
-import { Step5Costing } from './wizard/Step5Costing.jsx';
+import { Step3Costing } from './wizard/Step3Costing.jsx';
 import { lazy, Suspense } from 'react';
 
 // Lazy load the heavier wizard steps
-const Step6Branding = lazy(() => import('./wizard/Step6Branding.jsx').then(m => ({ default: m.default || m.Step6Branding })));
-const Step7Preview = lazy(() => import('./wizard/Step7Preview.jsx').then(m => ({ default: m.default || m.Step7Preview })));
+const Step4Branding = lazy(() => import('./wizard/Step4Branding.jsx').then(m => ({ default: m.default || m.Step4Branding })));
+const Step5Preview = lazy(() => import('./wizard/Step5Preview.jsx').then(m => ({ default: m.default || m.Step5Preview })));
 
 export default function ProposalWizard() {
   const wrapperRef = useRef(null);
@@ -140,8 +140,8 @@ export default function ProposalWizard() {
 
   // Eagerly preload heavy steps so they are instantly ready when the user reaches them
   useEffect(() => {
-    import('./wizard/Step6Branding.jsx');
-    import('./wizard/Step7Preview.jsx');
+    import('./wizard/Step4Branding.jsx');
+    import('./wizard/Step5Preview.jsx');
   }, []);
 
   const [mountNode, setMountNode] = useState(null);
@@ -577,11 +577,11 @@ export default function ProposalWizard() {
                   <Suspense fallback={<div className="p-xl text-center"><span className="material-symbols-outlined animate-spin text-2xl">progress_activity</span></div>}>
                     {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} />}
                     {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={() => loadProposal(proposal?.id)} itineraries={itineraries} onApplyItinerary={triggerApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft} />}
-                    {stepParam === 3 && <Step5Costing proposal={proposal} setProposal={setProposal} proposalId={proposal?.id} items={items} setItems={setItems}
+                    {stepParam === 3 && <Step3Costing proposal={proposal} setProposal={setProposal} proposalId={proposal?.id} items={items} setItems={setItems}
                       onPatchItem={onPatchItem} onRemoveItem={onRemoveItem} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft}
                       proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
-                    {stepParam === 4 && <Step6Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} proposal={proposal} client={client} />}
-                    {stepParam === 5 && <Step7Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} onAddCustomBlock={(cb) => {
+                    {stepParam === 4 && <Step4Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} proposal={proposal} client={client} />}
+                    {stepParam === 5 && <Step5Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} onAddCustomBlock={(cb) => {
                       setGlobalCustomBlocks(s => {
                         const next = [...s, cb];
                         try { localStorage.setItem('voyanta_global_custom_blocks', JSON.stringify(next)); } catch {}

@@ -605,12 +605,14 @@ function BrandingSettings() {
                   value={safeStr(current.logo_url)}
                   onChange={(val) => setForm(s => ({ ...(s || settings || {}), logo_url: val }))}
                   placeholder="https://example.com/logo.png or upload..."
+                  hideStockSearch={true}
                 />
                 <ImageUploadInput
                   label="Cover Image"
                   value={safeStr(current.cover_image_url)}
                   onChange={(val) => setForm(s => ({ ...(s || settings || {}), cover_image_url: val }))}
                   placeholder="https://example.com/cover.jpg or upload..."
+                  hideStockSearch={true}
                 />
               </div>
               <div>

@@ -90,7 +90,7 @@ export default function ProposalsListPage() {
           loading={loading}
           error={error}
           highlightId={params.get('highlight')}
-          onView={(p) => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=7`)}
+          onView={(p) => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=5`)}
           onEdit={(p) => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=1`)}
           onDuplicate={async (p) => {
             try {

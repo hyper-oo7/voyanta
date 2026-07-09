@@ -406,19 +406,40 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
   );
 });
 const TemplateRenderer = memo(function TemplateRenderer(props) {
-  const { style = 'classic' } = props;
+  const { style = 'classic', branding } = props;
+  const primaryColor = branding?.primary_color;
+  const secondaryColor = branding?.secondary_color;
+  const fontFamily = branding?.font_family;
+
   const registryEntry = TEMPLATE_REGISTRY[style];
-  
-  if (registryEntry && registryEntry.component) {
-    const RegistryComponent = registryEntry.component;
-    return (
-      <Suspense fallback={<div className="p-12 text-center text-on-surface-variant font-body-md animate-pulse">Loading {registryEntry.name} layout...</div>}>
-        <RegistryComponent {...props} />
-      </Suspense>
-    );
-  }
-  
-  return <ClassicTemplateRenderer {...props} />;
+
+  const content = (registryEntry && registryEntry.component) ? (
+    <Suspense fallback={<div className="p-12 text-center text-on-surface-variant font-body-md animate-pulse">Loading {registryEntry.name} layout...</div>}>
+      {React.createElement(registryEntry.component, props)}
+    </Suspense>
+  ) : (
+    <ClassicTemplateRenderer {...props} />
+  );
+
+  return (
+    <div 
+      className="voyanta-template-wrapper w-full h-full" 
+      style={{
+        ...(primaryColor ? { '--color-primary': primaryColor, '--primary': primaryColor } : {}),
+        ...(secondaryColor ? { '--color-secondary': secondaryColor } : {}),
+        ...(fontFamily ? { fontFamily } : {})
+      }}
+    >
+      {primaryColor && (
+        <style dangerouslySetInnerHTML={{ __html: `
+          .voyanta-template-wrapper .text-primary { color: ${primaryColor} !important; }
+          .voyanta-template-wrapper .border-primary { border-color: ${primaryColor} !important; }
+          .voyanta-template-wrapper .bg-primary { background-color: ${primaryColor} !important; }
+        `}} />
+      )}
+      {content}
+    </div>
+  );
 });
 
 export default TemplateRenderer;

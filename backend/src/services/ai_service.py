@@ -195,3 +195,55 @@ async def translate_proposal_content(proposal_data: dict, target_lang: str, glos
     except Exception as e:
         logger.exception(f"[AI Translate] Translation failed: {e}. Returning original data.")
         return proposal_data
+
+async def generate_luxury_title(destination: str, tour_type: str, duration: int) -> str:
+    api_key_gemini = os.environ.get("GEMINI_API_KEY")
+    prompt = (
+        f"Generate a captivating, luxury travel proposal title for a {duration}-day trip to {destination or 'Your Destination'}"
+        f"{' (' + tour_type + ')' if tour_type else ''}. "
+        "Return ONLY the title string, no quotes, no extra text. Example: Enchanting Amalfi Coast: 7 Days of Executive Coastal Luxury"
+    )
+    if api_key_gemini:
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.7}
+        }
+        res = await call_gemini_with_retry(payload, api_key_gemini)
+        return res["candidates"][0]["content"]["parts"][0]["text"].strip().strip('"').strip("'")
+    else:
+        return f"{destination or 'Luxury'} Collection: A Curated {duration}-Day {tour_type or 'Journey'}"
+
+async def enhance_luxury_text(text: str, mode: str, destination: str = "") -> str:
+    api_key_gemini = os.environ.get("GEMINI_API_KEY")
+    if not api_key_gemini:
+        return text
+
+    if mode == "day_description":
+        prompt = (
+            f"You are a luxury travel curator writing about {destination or 'this destination'}. "
+            "Expand and rewrite the following itinerary day description to create an immersive, sensory luxury experience. "
+            "Make the traveler feel like they are personally in that place experiencing the sights, sounds, and executive comforts. "
+            "Return ONLY the expanded paragraph text, no quotes or intro.\n\n"
+            f"Original text: {text}"
+        )
+    else:
+        label_map = {
+            "inclusions": "What's Included (luxury inclusions)",
+            "exclusions": "What's Excluded (clear professional exclusions)",
+            "what_to_pack": "What to Pack (luxury travel essentials)",
+            "terms_of_payment": "Terms of Payment (professional executive terms)"
+        }
+        section_name = label_map.get(mode, mode)
+        prompt = (
+            f"Check the following text for grammar and errors, correct any mistakes, and rewrite it in an elegant, polished, professional luxury agency style for the section '{section_name}'. "
+            "Keep itemized bullet points or line breaks clean. Return ONLY the rewritten text, no commentary or markdown code blocks.\n\n"
+            f"Original text:\n{text}"
+        )
+
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.4}
+    }
+    res = await call_gemini_with_retry(payload, api_key_gemini)
+    return res["candidates"][0]["content"]["parts"][0]["text"].strip()
+

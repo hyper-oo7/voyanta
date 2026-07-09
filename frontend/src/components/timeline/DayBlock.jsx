@@ -15,8 +15,11 @@ import {
 } from '@dnd-kit/sortable';
 import SortableContentBlock from '../itinerary/SortableContentBlock.jsx';
 import ResourcePickerModal from '../itinerary/ResourcePickerModal.jsx';
+import { api } from '../../services/api.js';
+import { useToast } from '../../context/ToastContext.jsx';
 
 export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, removeDay, items = [], onRemoveItem, onAddResourceItem }) {
+  const toast = useToast();
   const upd = (key) => (e) => updateDay(index, { [key]: e.target.value });
   const [showBlockMenu, setShowBlockMenu] = useState(false);
   const [pickerType, setPickerType] = useState(null);
@@ -87,6 +90,46 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
               placeholder="e.g. Arrival & Welcome to the Amalfi Coast"
               className="w-full font-headline-sm text-on-surface font-bold bg-transparent border-b-2 border-transparent hover:border-outline-variant focus:border-primary outline-none transition-colors py-xs"
             />
+            <div className="pt-2 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Day Experience & Narrative</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const txt = dayData.description || dayData.title || '';
+                    if (!txt) {
+                      toast.info('Please enter a brief day title or description first.');
+                      return;
+                    }
+                    toast.info('Expanding day into luxury sensory experience via AI...');
+                    try {
+                      const res = await api.post('/api/enhance-text', {
+                        text: txt,
+                        mode: 'day_description',
+                        destination: dayData.title || ''
+                      });
+                      if (res?.enhanced_text) {
+                        updateDay(index, { description: res.enhanced_text });
+                        toast.success('Day expanded beautifully!');
+                      }
+                    } catch (e) {
+                      toast.error('AI expansion failed');
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2.5 py-1 rounded-full transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
+                  AI Expand Luxury Experience
+                </button>
+              </div>
+              <textarea
+                value={dayData.description || ''}
+                onChange={upd('description')}
+                placeholder="Describe the day's luxury itinerary, private chauffeur transfers, VIP reservations, and sensory atmosphere..."
+                rows={2}
+                className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg font-body-sm focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
           </div>
           <button onClick={() => removeDay(index)} title="Remove Day" data-testid={`remove-day-${index}`}
             className="w-9 h-9 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-error-container hover:text-error transition-colors opacity-0 group-hover:opacity-100">

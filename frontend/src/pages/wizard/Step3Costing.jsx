@@ -78,7 +78,7 @@ const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveI
   );
 });
 
-export function Step5Costing({ proposal, setProposal, proposalId, items, setItems, onPatchItem, onRemoveItem, addItemsOptimistic, saveDraft, proposalCurrency = 'INR', costingPrefs, setCostingPrefs }) {
+export function Step3Costing({ proposal, setProposal, proposalId, items, setItems, onPatchItem, onRemoveItem, addItemsOptimistic, saveDraft, proposalCurrency = 'INR', costingPrefs, setCostingPrefs }) {
   const itemsRef = useRef(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
 
