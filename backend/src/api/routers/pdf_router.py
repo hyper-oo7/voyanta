@@ -7,7 +7,13 @@ from typing import Any, Optional
 
 from src.models.api_models import PDFGenerateRequest
 from src.core.security import verify_token, verify_token_optional
-from src.services.pdf_vault_service import save_temporary_pdf, deterministic_pre_parse_and_compress, extract_images_and_link_spatially, cleanup_expired_pdfs
+from src.services.pdf_vault_service import (
+    save_temporary_pdf,
+    extract_text_from_pdf,
+    deterministic_pre_parse_and_compress,
+    extract_images_and_link_spatially,
+    cleanup_expired_pdfs
+)
 from src.services.semantic_cache_service import compute_content_hash, get_cached_recommendation, store_cached_recommendation
 from src.services.cascading_ai_service import route_model_cascading
 
@@ -58,7 +64,7 @@ async def pdf_generate(request: PDFGenerateRequest, user: Any = Depends(verify_t
 @router.post("/vault-process")
 async def process_vault_pdf(
     file: UploadFile = File(...),
-    destination: str = Form("Switzerland"),
+    destination: str = Form(""),
     budget: float = Form(10000.0),
     duration: int = Form(7),
     currency: str = Form("INR"),
@@ -82,18 +88,26 @@ async def process_vault_pdf(
 
         file_bytes = await file.read()
         storage_meta = save_temporary_pdf(file_bytes, file.filename or "supplier_package.pdf")
-        
-        # Extract raw text & compress tokens deterministically
-        raw_text = f"Supplier package for {destination}. Budget target: {budget} {currency} for {duration} days.\n"
+
+        # ── Multi-strategy PDF text extraction ───────────────────────────────
+        context_prefix = f"Supplier package for {destination}. Budget target: {budget} {currency} for {duration} days.\n" if destination else ""
         try:
-            import fitz
-            doc = fitz.open(storage_meta["file_path"])
-            for page in doc:
-                raw_text += page.get_text() + "\n"
-            doc.close()
-        except Exception as e:
-            logger.error(f"Failed to read PDF file text: {e}")
-            raise HTTPException(status_code=400, detail="Unable to extract text from PDF file. Ensure the PDF is valid and not encrypted.")
+            extracted_text, extraction_metrics = extract_text_from_pdf(storage_meta["file_path"])
+            raw_text = context_prefix + extracted_text
+            logger.info(
+                f"[VaultProcess] Extraction complete — strategy={extraction_metrics.get('winning_strategy')}, "
+                f"chars={extraction_metrics.get('chars_extracted')}"
+            )
+        except ValueError as extract_err:
+            logger.error(f"[VaultProcess] All extraction strategies failed: {extract_err}")
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Unable to extract text from this PDF. This usually means the PDF is "
+                    "fully image-based (a scanned document). Please use a digitally-created PDF "
+                    "or export the itinerary as a text-based PDF from Word/Google Docs."
+                )
+            )
             
         compressed_text, compression_metrics = deterministic_pre_parse_and_compress(raw_text)
         

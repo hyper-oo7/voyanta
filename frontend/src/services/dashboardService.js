@@ -1,11 +1,11 @@
-import { supabase, getAgencyId } from '../lib/supabaseClient.js';
+import { supabase, getAgencyId, isDemoSession } from '../lib/supabaseClient.js';
 import { fetchProposalsFlat } from './proposalService.js';
 import { getActivityLogs } from './activityLogService.js';
 
 export async function fetchDashboardSummary() {
   const agencyId = getAgencyId();
 
-  if (!supabase) {
+  if (!supabase || isDemoSession() || !agencyId) {
     const proposals = await fetchProposalsFlat();
     return fallbackSummary(proposals);
   }

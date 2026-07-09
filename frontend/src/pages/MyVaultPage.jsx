@@ -264,7 +264,10 @@ export default function MyVaultPage() {
           id: fullRec.option_id || `rec_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
           created_at: new Date().toISOString(),
           pdf_name: currentF.name,
-          destination: r.destination || detectedDest
+          destination: r.destination || resultData.data?.detected_destination || detectedDest,
+          sub_destinations: r.sub_destinations || resultData.data?.sub_destinations || [],
+          what_to_pack: r.what_to_pack || resultData.data?.what_to_pack || '',
+          custom_fields: r.custom_fields || resultData.data?.custom_fields || []
         };
       });
 
@@ -302,8 +305,29 @@ export default function MyVaultPage() {
     setProposalField('budget', rec.total_estimated_cost || rec.target_budget);
     setProposalField('itineraryDays', rec.days || []);
     setProposalField('extraSections', rec.extra_sections || []);
+    setProposalField('what_to_pack', rec.what_to_pack || '');
+    setProposalField('custom_fields', rec.custom_fields || []);
     setProposalField('recommendationStatus', 'Recommended');
     
+    // Auto-save what_to_pack into agency memory
+    if (rec.what_to_pack && rec.destination) {
+      const headers = { 'Content-Type': 'application/json' };
+      try {
+        const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+      } catch {}
+      fetch('/api/packing-rules/upsert', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          destination_keyword: rec.destination,
+          section_type: 'what_to_pack',
+          section_title: 'What to Pack',
+          content: rec.what_to_pack
+        })
+      }).catch(e => console.warn('Failed to save packing rule to agency memory:', e));
+    }
+
     // Add as option to store
     if (addRecommendationOption) {
       addRecommendationOption(rec);

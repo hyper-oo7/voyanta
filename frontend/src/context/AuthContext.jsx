@@ -5,7 +5,7 @@ import { useAuthStore } from '../store/authStore.js';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const { user, isLoading: loading, setUser, setLoading, clearAuth, setAgencyId } = useAuthStore();
+  const { user, isDemo, isLoading: loading, setUser, setLoading, clearAuth, setAgencyId, setIsDemo } = useAuthStore();
 
   // Look up the user's agency_id from the public.users table
   const resolveAgencyId = useCallback(async (authUser) => {
@@ -31,22 +31,29 @@ export function AuthProvider({ children }) {
       if (!supabase) { setLoading(false); return; }
       const { data: { session } } = await supabase.auth.getSession();
       const authUser = session?.user ?? null;
-      setUser(authUser, session);
-      if (authUser) await resolveAgencyId(authUser);
+      if (authUser) {
+        setIsDemo(false);
+        setUser(authUser, session, false);
+        await resolveAgencyId(authUser);
+      }
       setLoading(false);
       
       const { data: sub } = supabase.auth.onAuthStateChange(async (_e, session) => {
         const newUser = session?.user ?? null;
-        setUser(newUser, session);
-        if (newUser) await resolveAgencyId(newUser);
+        if (newUser) {
+          setIsDemo(false);
+          setUser(newUser, session, false);
+          await resolveAgencyId(newUser);
+        }
       });
       if (sub?.subscription) unsub = () => sub.subscription.unsubscribe();
     })();
     return () => unsub();
-  }, [setUser, setLoading, resolveAgencyId]);
+  }, [setUser, setLoading, resolveAgencyId, setIsDemo]);
 
   const signUp = useCallback(async ({ email, password, fullName }) => {
     if (!supabase) throw new Error('Supabase not configured');
+    setIsDemo(false);
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -54,16 +61,17 @@ export function AuthProvider({ children }) {
     });
     if (error) throw error;
     return data;
-  }, []);
+  }, [setIsDemo]);
 
   const signIn = useCallback(async ({ email, password }) => {
     if (!supabase) throw new Error('Supabase not configured');
+    setIsDemo(false);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     // Resolve agency after sign in
     if (data?.user) await resolveAgencyId(data.user);
     return data;
-  }, [resolveAgencyId]);
+  }, [resolveAgencyId, setIsDemo]);
 
   const signOut = useCallback(async () => {
     clearAuth();
@@ -79,6 +87,7 @@ export function AuthProvider({ children }) {
 
   const signInWithProvider = useCallback(async (provider) => {
     if (!supabase) throw new Error('Supabase not configured');
+    setIsDemo(false);
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
@@ -87,10 +96,11 @@ export function AuthProvider({ children }) {
     });
     if (error) throw error;
     return data;
-  }, []);
+  }, [setIsDemo]);
 
   const value = {
     user,
+    isDemo,
     loading,
     signUp,
     signIn,

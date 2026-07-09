@@ -20,11 +20,13 @@ export default function AuthenticationPage() {
   const redirectTo = location.state?.from || '/dashboard';
 
   const handleDemoBypass = () => {
+    useAuthStore.getState().setIsDemo(true);
+    useAuthStore.getState().setAgencyId('00000000-0000-0000-0000-000000000001');
     useAuthStore.getState().setUser({
       id: '00000000-0000-0000-0000-000000000001',
       email: 'demo@voyanta.com',
       user_metadata: { full_name: 'Demo User' }
-    });
+    }, null, true);
     toast.success('Welcome to Demo Mode!');
     navigate(redirectTo, { replace: true });
   };

@@ -1,6 +1,6 @@
 // Production-mode proposalService: always reads/writes Supabase.
 // Uses dynamic agency_id from auth store, sets created_by on creation.
-import { supabase, getAgencyId } from '../lib/supabaseClient.js';
+import { supabase, getAgencyId, isDemoSession } from '../lib/supabaseClient.js';
 import { upsertClientFromProposal } from './crmService.js';
 
 const TABLE = 'proposals';
@@ -21,7 +21,7 @@ const LIST_COLUMNS = 'id, agency_id, created_by, client_id, name, client_name, s
 
 export async function fetchProposals({ page = 0, pageSize = PAGE_SIZE } = {}) {
   const agencyId = getAgencyId();
-  if (supabase) {
+  if (supabase && !isDemoSession() && agencyId) {
     try {
       const from = page * pageSize;
       const to = from + pageSize - 1;
@@ -61,9 +61,10 @@ export async function fetchProposalsFlat() {
 
 export async function fetchProposalById(id) {
   if (!id) return null;
-  if (supabase) {
+  const agencyId = getAgencyId();
+  if (supabase && !isDemoSession() && agencyId) {
     try {
-      const { data, error } = await supabase.from(TABLE).select('*').eq('id', id).maybeSingle();
+      const { data, error } = await supabase.from(TABLE).select('*').eq('id', id).eq('agency_id', agencyId).maybeSingle();
       if (!error && data) {
         const norm = normalize(data);
         try { localStorage.setItem(`voyanta_proposal_${id}`, JSON.stringify(norm)); } catch {}
@@ -83,7 +84,7 @@ export async function createProposal(payload) {
   
   // Get current user for created_by
   let userId = null;
-  if (supabase) {
+  if (supabase && !isDemoSession()) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       userId = user?.id || null;
@@ -116,7 +117,7 @@ export async function createProposal(payload) {
     updated_at: new Date().toISOString(),
   };
 
-  if (supabase) {
+  if (supabase && !isDemoSession() && agencyId) {
     const { data, error } = await supabase.from(TABLE).insert(row).select().maybeSingle();
     if (error) {
       notifyDbError(TABLE, error);
@@ -145,8 +146,9 @@ export async function createProposal(payload) {
 
 
 export async function updateProposal(id, patch) {
-  if (supabase) {
-    const { data, error } = await supabase.from(TABLE).update(patch).eq('id', id).select().maybeSingle();
+  const agencyId = getAgencyId();
+  if (supabase && !isDemoSession() && agencyId) {
+    const { data, error } = await supabase.from(TABLE).update(patch).eq('id', id).eq('agency_id', agencyId).select().maybeSingle();
     if (error) {
       notifyDbError(TABLE, error);
       throw error;
@@ -186,8 +188,9 @@ export async function updateProposal(id, patch) {
 }
 
 export async function deleteProposal(id) {
-  if (supabase) {
-    const { error } = await supabase.from(TABLE).delete().eq('id', id);
+  const agencyId = getAgencyId();
+  if (supabase && !isDemoSession() && agencyId) {
+    const { error } = await supabase.from(TABLE).delete().eq('id', id).eq('agency_id', agencyId);
     if (error) {
       notifyDbError(TABLE, error);
       throw error;
@@ -203,10 +206,14 @@ export async function deleteProposal(id) {
 
 export async function deleteAllProposals() {
   const agencyId = getAgencyId();
-  if (supabase) {
-    const { error: err1 } = await supabase.from('proposal_items').delete().neq('id', 0);
-    if (err1) { notifyDbError('proposal_items', err1); throw err1; }
-    const { error: err2 } = await supabase.from(TABLE).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if (supabase && !isDemoSession() && agencyId) {
+    const { data: myProposals } = await supabase.from(TABLE).select('id').eq('agency_id', agencyId);
+    const myIds = (myProposals || []).map(p => p.id);
+    if (myIds.length > 0) {
+      const { error: err1 } = await supabase.from('proposal_items').delete().in('proposal_id', myIds);
+      if (err1) { notifyDbError('proposal_items', err1); throw err1; }
+    }
+    const { error: err2 } = await supabase.from(TABLE).delete().eq('agency_id', agencyId);
     if (err2) { notifyDbError(TABLE, err2); throw err2; }
   }
   try {

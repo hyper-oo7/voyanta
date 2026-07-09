@@ -1,4 +1,4 @@
-import { supabase, getAgencyId } from '../lib/supabaseClient.js';
+import { supabase, getAgencyId, isDemoSession } from '../lib/supabaseClient.js';
 
 // Proposal items (junction): hotels/flights/activities/transfers/etc on a proposal.
 // Pricing fields (qty * unit_price) are summed by the cost calculator.
@@ -14,7 +14,7 @@ function notifyDbError(resource, error) {
 
 export async function listItems(proposalId) {
   if (!proposalId) return [];
-  if (supabase) {
+  if (supabase && !isDemoSession()) {
     try {
       const { data, error } = await supabase.from('proposal_items')
         .select('*').eq('proposal_id', proposalId).order('position', { ascending: true });
@@ -31,7 +31,7 @@ export async function listItems(proposalId) {
 }
 
 export async function addItem(proposalId, item) {
-  if (supabase) {
+  if (supabase && !isDemoSession()) {
     const { data, error } = await supabase.from('proposal_items').insert({
       proposal_id: proposalId, ...item,
     }).select().maybeSingle();
@@ -59,7 +59,7 @@ export async function addItem(proposalId, item) {
 }
 
 export async function updateItem(id, patch) {
-  if (supabase) {
+  if (supabase && !isDemoSession()) {
     const { data, error } = await supabase.from('proposal_items').update(patch).eq('id', id).select().maybeSingle();
     if (error) {
       notifyDbError('proposal_items', error);
@@ -89,7 +89,7 @@ export async function updateItem(id, patch) {
 }
 
 export async function removeItem(id) {
-  if (supabase) {
+  if (supabase && !isDemoSession()) {
     const { error } = await supabase.from('proposal_items').delete().eq('id', id);
     if (error) {
       notifyDbError('proposal_items', error);
@@ -118,7 +118,7 @@ export async function removeItem(id) {
 export async function buildProposalExport(proposalId) {
   let proposal = null;
   let items = [];
-  if (supabase) {
+  if (supabase && !isDemoSession()) {
     try {
       const [pRes, itemsRes] = await Promise.all([
         supabase.from('proposals').select('*').eq('id', proposalId).maybeSingle(),

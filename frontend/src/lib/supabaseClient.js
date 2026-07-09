@@ -20,11 +20,19 @@ export const DEMO_AGENCY_ID = '00000000-0000-0000-0000-000000000001';
 // DEPRECATED: Do not use for queries or storage paths. Use getAgencyId() instead.
 export const DEFAULT_AGENCY_ID = DEMO_AGENCY_ID;
 
-// Dynamic agency ID — resolves from auth store, falls back to demo
+export function isDemoSession() {
+  try {
+    return Boolean(useAuthStore.getState().isDemo);
+  } catch {
+    return false;
+  }
+}
+
+// Dynamic agency ID — resolves from auth store
 export function getAgencyId() {
   try {
     return useAuthStore.getState().getAgencyId();
   } catch {
-    return DEMO_AGENCY_ID;
+    return null;
   }
 }

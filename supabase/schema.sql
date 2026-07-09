@@ -66,11 +66,17 @@ $$ language sql stable security definer;
 create table if not exists public.clients (
   id uuid primary key default gen_random_uuid(),
   agency_id uuid references public.agencies(id) on delete cascade,
-  full_name text not null,
+  name text not null,
   email text,
   phone text,
+  destination text,
+  status text default 'Inquiry' check (status in ('Inquiry', 'Proposal Sent', 'Approved', 'Booked', 'Completed', 'Cancelled')),
+  notes text,
+  tags text[],
+  total_spend numeric default 0,
   preferences jsonb,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
 );
 
 -- STATUS CHECKS (Replaces MongoDB) --------------------------------------------
@@ -109,6 +115,9 @@ create table if not exists public.proposals (
   arrival_airport text,
   departure_city text,
   departure_airport text,
+  share_token uuid unique,
+  share_expires_at timestamptz,
+  signature_data text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -154,6 +163,7 @@ create table if not exists public.invoices (
   remaining_balance numeric default 0,
   parent_invoice_id uuid references public.invoices(id) on delete set null,
   items jsonb default '[]'::jsonb,
+  taxes jsonb default '[]'::jsonb,
   notes text,
   terms text,
   upi_id text,
@@ -500,6 +510,18 @@ create policy "proposals_agency" on public.proposals for all using (agency_id = 
 drop policy if exists "proposal_items_agency" on public.proposal_items;
 create policy "proposal_items_agency" on public.proposal_items for all using (proposal_id in (select id from public.proposals where agency_id = public.current_agency_id()));
 
+drop policy if exists "proposals_public_share" on public.proposals;
+create policy "proposals_public_share" on public.proposals for select using (
+  share_token is not null and (share_expires_at is null or share_expires_at > now())
+);
+
+drop policy if exists "proposal_items_public_share" on public.proposal_items;
+create policy "proposal_items_public_share" on public.proposal_items for select using (
+  proposal_id in (
+    select id from public.proposals where share_token is not null and (share_expires_at is null or share_expires_at > now())
+  )
+);
+
 drop policy if exists "invoices_agency" on public.invoices;
 create policy "invoices_agency" on public.invoices for all using (agency_id = public.current_agency_id());
 
@@ -547,6 +569,28 @@ create policy "semantic_cache_agency" on public.semantic_cache for all using (ag
 
 drop policy if exists "supplier_pdfs_agency" on public.supplier_pdfs;
 create policy "supplier_pdfs_agency" on public.supplier_pdfs for all using (agency_id = public.current_agency_id() or agency_id is null);
+
+-- AGENCY PACKING RULES (Memory for What to Pack & Extra Sections) ------------
+create table if not exists public.agency_packing_rules (
+    id uuid primary key default gen_random_uuid(),
+    agency_id uuid not null references public.agencies(id) on delete cascade,
+    destination_keyword text not null,
+    section_type text not null default 'what_to_pack',
+    section_title text not null default 'What to Pack',
+    content text not null,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now(),
+    unique(agency_id, destination_keyword, section_type)
+);
+
+create index if not exists idx_agency_packing_rules_agency_dest 
+on public.agency_packing_rules(agency_id, destination_keyword);
+
+alter table public.agency_packing_rules enable row level security;
+
+drop policy if exists "agency_packing_rules_agency" on public.agency_packing_rules;
+create policy "agency_packing_rules_agency" on public.agency_packing_rules 
+for all using (agency_id = public.current_agency_id());
 
 -- STORAGE BUCKET (v3) ---------------------------------------------------------
 insert into storage.buckets (id, name, public) values ('agency-assets', 'agency-assets', true) on conflict (id) do nothing;

@@ -291,6 +291,21 @@ export default function LuxuryThemeEngine(props) {
         </section>
       )}
 
+      {/* ─── What to Pack & Trip Essentials ─────────────────────────────────── */}
+      {(p.what_to_pack || b.what_to_pack) && (
+        <section className="theme-section">
+          <div className="max-w-4xl mx-auto theme-card border-l-4" style={{ borderLeftColor: primaryColor }}>
+            <h3 className="text-lg font-bold mb-4 uppercase tracking-wider flex items-center gap-2" style={{ color: primaryColor }}>
+              <span className="material-symbols-outlined text-[22px]" style={{ color: primaryColor }}>backpack</span>
+              Packing & Trip Essentials
+            </h3>
+            <div className="text-sm text-slate-600 whitespace-pre-line leading-relaxed pl-2 font-medium">
+              {safeText(p.what_to_pack || b.what_to_pack)}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ─── Terms & Conditions ─────────────────────────────────────────────── */}
       {(include.terms ?? true) && (
         <section className="theme-section">

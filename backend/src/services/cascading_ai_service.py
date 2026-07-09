@@ -1,7 +1,9 @@
 import os
+import re
 import json
 import logging
 from typing import Dict, Any, List
+from src.services.pdf_vault_service import parse_destination_and_extra_sections
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +15,15 @@ async def route_model_cascading(
     duration: int,
     currency: str = "INR"
 ) -> Dict[str, Any]:
+    # ── Deterministic PDF Parsing & Extra Sections Check ─────────────────────
+    parsed_meta = parse_destination_and_extra_sections(compressed_text)
+    effective_dest = destination
+    if not effective_dest or (effective_dest.lower() == "switzerland" and parsed_meta.get("detected_destination") and parsed_meta.get("detected_destination").lower() != "switzerland"):
+        effective_dest = parsed_meta.get("detected_destination") or destination
+    sub_destinations = parsed_meta.get("sub_destinations", [])
+    extra_sections = parsed_meta.get("extra_sections", {})
+    what_to_pack = parsed_meta.get("what_to_pack", "")
+    custom_fields = parsed_meta.get("custom_fields", [])
     """
     Model Cascading (Small-to-Large Routing):
     Routes simpler extraction jobs to ultra-cheap high-speed models (gpt-4o-mini).
@@ -71,7 +82,12 @@ async def route_model_cascading(
                     "success": True,
                     "recommendations": recs,
                     "model_used": "gemini-2.5-flash",
-                    "budget_window": f"{currency} {min_budget} to {currency} {max_budget} (±20% rule applied)"
+                    "budget_window": f"{currency} {min_budget} to {currency} {max_budget} (±20% rule applied)",
+                    "detected_destination": effective_dest,
+                    "sub_destinations": sub_destinations,
+                    "what_to_pack": what_to_pack,
+                    "extra_sections": extra_sections,
+                    "custom_fields": custom_fields
                 }
         except Exception as gem_e:
             logger.exception(f"[Model Cascading] Gemini generation failed: {gem_e}, falling back to structured generator.")
@@ -112,7 +128,12 @@ async def route_model_cascading(
                     "success": True,
                     "recommendations": recs,
                     "model_used": "gpt-4o-mini",
-                    "budget_window": f"{currency} {min_budget} to {currency} {max_budget} (±20% rule applied)"
+                    "budget_window": f"{currency} {min_budget} to {currency} {max_budget} (±20% rule applied)",
+                    "detected_destination": effective_dest,
+                    "sub_destinations": sub_destinations,
+                    "what_to_pack": what_to_pack,
+                    "extra_sections": extra_sections,
+                    "custom_fields": custom_fields
                 }
         except Exception as op_e:
             logger.exception(f"[Model Cascading] OpenAI generation failed: {op_e}, falling back to structured generator.")
@@ -275,6 +296,11 @@ async def route_model_cascading(
         "success": True,
         "recommendations": recommendations,
         "model_used": "cascading-dynamic-routing",
-        "budget_window": f"{currency} {min_budget} to {currency} {max_budget} (±20% rule applied)"
+        "budget_window": f"{currency} {min_budget} to {currency} {max_budget} (±20% rule applied)",
+        "detected_destination": effective_dest,
+        "sub_destinations": sub_destinations,
+        "what_to_pack": what_to_pack,
+        "extra_sections": extra_sections,
+        "custom_fields": custom_fields
     }
 

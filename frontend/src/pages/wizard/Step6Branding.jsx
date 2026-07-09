@@ -42,7 +42,7 @@ function TextareaWithAI({ label, value, onChange, testid, onAI }) {
   );
 }
 
-export function Step6Branding({ branding, setBranding, customBlocks }) {
+export function Step6Branding({ branding, setBranding, customBlocks, proposal, client }) {
   const toast = useToast();
   const [activeCategory, setActiveCategory] = useState('All');
   const [showFieldMenu, setShowFieldMenu] = useState(false);
@@ -57,6 +57,32 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
       window.removeEventListener('storage', handler);
     };
   }, []);
+
+  // Agency-Exclusive What to Pack Auto-Fill Memory
+  useEffect(() => {
+    const dest = client?.destination || proposal?.destination || '';
+    const subDests = proposal?.subDestinations || proposal?.sub_destinations || [];
+    if (!dest || branding?.what_to_pack) return;
+
+    const subStr = Array.isArray(subDests) ? subDests.join(',') : subDests;
+    const headers = {};
+    try {
+      const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    } catch {}
+
+    fetch(`/api/packing-rules/match?destination=${encodeURIComponent(dest)}&sub_destinations=${encodeURIComponent(subStr)}`, { headers })
+      .then(r => r.json())
+      .then(res => {
+        if (res && Array.isArray(res.rules) && res.rules.length > 0) {
+          const matched = res.rules.find(r => r.section_type === 'what_to_pack') || res.rules[0];
+          if (matched && matched.content) {
+            setBranding(s => ({ ...s, what_to_pack: matched.content }));
+          }
+        }
+      })
+      .catch(err => console.warn('Packing rules lookup failed:', err));
+  }, [client?.destination, proposal?.destination, proposal?.subDestinations, proposal?.sub_destinations, branding?.what_to_pack, setBranding]);
 
   const isStarter = !currentPlan || currentPlan.toLowerCase() === 'starter';
 
@@ -184,6 +210,7 @@ export function Step6Branding({ branding, setBranding, customBlocks }) {
       <Textarea label="Highlights" value={branding?.highlights} onChange={upd('highlights')} testid="brand-highlights" placeholder="Bullet points of the trip's standout moments…" />
       <TextareaWithAI label="What's Included" value={branding?.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" onAI={aiDraft('inclusions', 'inclusions')} />
       <TextareaWithAI label="What's Excluded" value={branding?.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" onAI={aiDraft('exclusions', 'exclusions')} />
+      <TextareaWithAI label="What to Pack (Packing & Trip Essentials)" value={branding?.what_to_pack} onChange={upd('what_to_pack')} testid="brand-what-to-pack" onAI={aiDraft('what_to_pack', 'what to pack')} />
       <TextareaWithAI label="Terms of Payment" value={branding?.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" onAI={aiDraft('terms_of_payment', 'terms')} />
       
       {/* Custom Branding Fields */}
