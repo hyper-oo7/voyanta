@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, forwardRef, memo } from 'react';
+import { useEffect, useState, useImperativeHandle, forwardRef, memo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -85,6 +85,55 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient }
   const date_mode = watch('date_mode');
   const start_date = watch('start_date');
   const end_date = watch('end_date');
+  const destination = watch('destination');
+
+  const [seasonalWarnings, setSeasonalWarnings] = useState([]);
+
+  useEffect(() => {
+    if (!destination || !start_date) {
+      setSeasonalWarnings([]);
+      return;
+    }
+
+    let isMounted = true;
+    let month = null;
+    try {
+      const dt = new Date(start_date);
+      if (!isNaN(dt.getTime())) {
+        month = dt.getMonth() + 1; // 1-indexed
+      }
+    } catch {}
+
+    if (!month) {
+      setSeasonalWarnings([]);
+      return;
+    }
+
+    (async () => {
+      try {
+        let token = null;
+        try {
+          const supa = (await import('../../lib/supabaseClient.js')).supabase;
+          const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+          if (session?.access_token) token = session.access_token;
+        } catch {}
+
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/seasonal-rules?destination=${encodeURIComponent(destination)}&month=${month}`, { headers });
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          const warnRules = (data.rules || []).filter(r => r.rule_type === 'warn');
+          setSeasonalWarnings(warnRules);
+        }
+      } catch (err) {
+        console.error("Failed to fetch seasonal rules:", err);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [destination, start_date]);
 
   const handleDateModeChange = (mode) => setValue('date_mode', mode, { shouldValidate: true });
   
@@ -99,6 +148,19 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient }
 
   return (
     <div className="glass-card rounded-xl p-lg space-y-md text-on-surface" data-testid="step-1">
+      {seasonalWarnings.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 px-lg py-md rounded-xl flex items-start gap-md animate-fade-in no-print mb-4">
+          <span className="material-symbols-outlined text-amber-600 mt-xs">warning</span>
+          <div className="flex-1 space-y-xs">
+            <h4 className="font-label-md font-bold text-amber-900">Seasonal Advisory</h4>
+            <ul className="list-disc list-inside space-y-1 text-xs text-amber-800">
+              {seasonalWarnings.map((w, idx) => (
+                <li key={idx} className="font-medium">{w.message}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
       <h3 className="font-headline-sm text-headline-sm text-primary">Client Information</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
         <Field label="Customer Name *" name="customer_name" register={register} error={errors.customer_name} testid="customer-name" />

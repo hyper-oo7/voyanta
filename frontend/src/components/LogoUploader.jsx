@@ -4,6 +4,7 @@
 
 import { useRef, useState } from 'react';
 import { supabase, getAgencyId } from '../lib/supabaseClient.js';
+import { api } from '../services/api.js';
 
 const BUCKET = 'agency-assets';
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -106,21 +107,19 @@ export async function resizeImage(file, maxWidth = 1000, maxHeight = 1000) {
 export async function uploadOrEmbed(file, folder) {
   const processedFile = await resizeImage(file);
   
-  if (supabase) {
-    try {
-      const ext = (processedFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const agencyId = getAgencyId();
-      const path = `${folder}/${agencyId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error } = await supabase.storage.from(BUCKET).upload(path, processedFile, {
-        cacheControl: '3600', upsert: false, contentType: processedFile.type,
-      });
-      if (!error) {
-        const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-        if (data?.publicUrl) return data.publicUrl;
-      }
-      // fallthrough on error → embed
-    } catch { /* fallthrough */ }
+  try {
+    const formData = new FormData();
+    formData.append('file', processedFile);
+    formData.append('folder', folder);
+    
+    const res = await api.post('/api/storage/upload', formData);
+    if (res?.url) {
+      return res.url;
+    }
+  } catch (err) {
+    console.error('[LogoUploader] Upload to R2 via backend failed, using base64 fallback:', err);
   }
+
   // Fallback: embed as data URL.
   return await new Promise((resolve, reject) => {
     const r = new FileReader();

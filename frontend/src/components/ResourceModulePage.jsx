@@ -246,6 +246,7 @@ export default function ResourceModulePage({
               <div className="p-lg flex-1 flex flex-col justify-between">
                 <div>
                   <h3 className="font-display text-lg text-on-surface mb-xs m-0 leading-tight truncate">{item.name}</h3>
+                  <BestRateChip objId={item.id} />
                   <div className="flex items-center gap-xs text-on-surface-variant font-body-md text-xs mb-sm">
                     <span className="material-symbols-outlined text-[16px]">location_on</span>
                     <span className="truncate">{item.location}{item.country ? `, ${item.country}` : ''}</span>
@@ -355,6 +356,7 @@ export default function ResourceModulePage({
                     <div className="min-w-0">
                       <h4 className="font-display text-sm font-semibold m-0 text-on-surface">{item.name}</h4>
                       <p className="font-body-md text-xs text-on-surface-variant m-0">{item.location}</p>
+                      <BestRateChip objId={item.id} />
                     </div>
                   </div>
                 )}
@@ -442,6 +444,54 @@ export default function ResourceModulePage({
           }}
         />
       )}
+    </div>
+  );
+}
+
+function BestRateChip({ objId }) {
+  const [bestRate, setBestRate] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!objId) return;
+    let isMounted = true;
+    setLoading(true);
+
+    (async () => {
+      try {
+        let token = null;
+        try {
+          const supa = (await import('../lib/supabaseClient.js')).supabase;
+          const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+          if (session?.access_token) token = session.access_token;
+        } catch {}
+
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/knowledge-objects/${objId}/best-rate`, { headers });
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (data.best_rate) {
+            setBestRate(data.best_rate);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load best rate:", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [objId]);
+
+  if (loading || !bestRate) return null;
+
+  return (
+    <div className="inline-flex items-center gap-xs px-2 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded border border-emerald-200 shadow-sm animate-fade-in no-print mt-1">
+      <span className="material-symbols-outlined text-[12px] text-emerald-600">auto_awesome</span>
+      <span>best rate: {bestRate.currency === 'INR' ? '₹' : bestRate.currency}{bestRate.rate.toLocaleString()} via {bestRate.supplier_name}</span>
     </div>
   );
 }

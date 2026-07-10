@@ -2,7 +2,7 @@
 import os
 import time
 import pytest
-from src.services.pdf_vault_service import save_temporary_pdf, cleanup_expired_pdfs, TEMP_PDF_DIR
+from src.services.pdf_vault_service import save_temporary_pdf, TEMP_PDF_DIR
 
 def test_save_temporary_pdf_generates_uuid_filename(tmp_path, monkeypatch):
     monkeypatch.setattr("src.services.pdf_vault_service.TEMP_PDF_DIR", str(tmp_path))
@@ -26,20 +26,94 @@ def test_save_temporary_pdf_generates_uuid_filename(tmp_path, monkeypatch):
     assert len(parts) >= 3
     assert len(parts[1]) == 16  # uuid hex slice
 
-def test_cleanup_expired_pdfs(tmp_path, monkeypatch):
+def test_permanent_pdf_storage_after_time_passage(tmp_path, monkeypatch):
     monkeypatch.setattr("src.services.pdf_vault_service.TEMP_PDF_DIR", str(tmp_path))
     
-    # Create an old file (16 days old)
-    old_file = tmp_path / "old_doc.pdf"
-    old_file.write_bytes(b"old")
-    old_time = time.time() - (16 * 24 * 3600)
-    os.utime(old_file, (old_time, old_time))
+    # Create a PDF file via save_temporary_pdf
+    res = save_temporary_pdf(b"supplier PDF content", "supplier_itinerary.pdf")
+    file_path = res["file_path"]
+    assert os.path.exists(file_path)
     
-    # Create a fresh file
-    fresh_file = tmp_path / "fresh_doc.pdf"
-    fresh_file.write_bytes(b"fresh")
+    # Simulate passage of 30 days (set access & modification time to 30 days ago)
+    thirty_days_ago = time.time() - (30 * 24 * 3600)
+    os.utime(file_path, (thirty_days_ago, thirty_days_ago))
     
-    res = cleanup_expired_pdfs()
-    assert res["deleted"] == 1
-    assert not os.path.exists(old_file)
-    assert os.path.exists(fresh_file)
+    # Verify that the PDF still exists and is not deleted from disk
+    assert os.path.exists(file_path)
+    with open(file_path, "rb") as f:
+        content = f.read()
+    assert content == b"supplier PDF content"
+
+
+def test_permanent_pdf_db_storage_and_query_retention():
+    """
+    Test that when a supplier PDF is uploaded/saved in vault_packages,
+    even if we simulate 30 days passing (by modifying the mock record's
+    created_at / expires_at values), the package remains active, queryable,
+    and retrievable (not deleted).
+    """
+    from unittest.mock import MagicMock, patch
+    from src.services.vault_knowledge_service import save_vault_package, list_vault_packages
+
+    # Create mock Supabase response/client
+    mock_sb = MagicMock()
+    mock_table = MagicMock()
+    mock_sb.table.return_value = mock_table
+    
+    # Mock search/dedup query to return empty data (new insert)
+    mock_query = MagicMock()
+    mock_table.select.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+    mock_query.execute.return_value = MagicMock(data=[])
+    
+    # Mock insert to return a created record
+    mock_inserted_record = {
+        "id": "mock-pkg-uuid-12345",
+        "destination": "Ladakh",
+        "pdf_filename": "supplier_package.pdf",
+        "source_pdf_hash": "abc123hash",
+        "status": "active",
+        "created_at": "2026-06-10T20:00:00.000000",  # 30 days in the past
+        "expires_at": None,  # Expiration is disabled/None
+        "pdf_url": "https://pub-5b335169d19649a18c149e3e1de3a858.r2.dev/supplier-pdfs/default/xyz.pdf"
+    }
+    mock_table.insert.return_value = mock_query
+    mock_query.execute.return_value = MagicMock(data=[mock_inserted_record])
+
+    with patch("src.services.supabase_client.get_supabase_client", return_value=mock_sb):
+        # 1. Save vault package (simulating upload)
+        parsed_data = {
+            "destination": "Ladakh",
+            "total_price": 50000,
+            "duration_days": 5,
+        }
+        res = save_vault_package(
+            parsed_data=parsed_data,
+            pdf_filename="supplier_package.pdf",
+            pdf_hash="abc123hash",
+            agency_id="agency-123",
+            user_id="user-123",
+            pdf_url="https://pub-5b335169d19649a18c149e3e1de3a858.r2.dev/supplier-pdfs/default/xyz.pdf"
+        )
+        
+        assert res is not None
+        assert res["id"] == "mock-pkg-uuid-12345"
+        assert res["status"] == "active"
+        assert res.get("expires_at") is None  # Check that expiration is disabled
+        assert res["pdf_url"] == "https://pub-5b335169d19649a18c149e3e1de3a858.r2.dev/supplier-pdfs/default/xyz.pdf"
+
+        # 2. Simulate 30 days passing, query list of packages
+        mock_list_query = MagicMock()
+        mock_table.select.return_value = mock_list_query
+        mock_list_query.eq.return_value = mock_list_query
+        mock_list_query.order.return_value = mock_list_query
+        # The list query should successfully retrieve the active package after 30 days
+        mock_list_query.execute.return_value = MagicMock(data=[mock_inserted_record])
+        
+        packages = list_vault_packages(agency_id="agency-123")
+        assert len(packages) == 1
+        assert packages[0]["id"] == "mock-pkg-uuid-12345"
+        assert packages[0]["status"] == "active"
+        assert packages[0]["pdf_filename"] == "supplier_package.pdf"
+
+

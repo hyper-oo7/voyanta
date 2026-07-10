@@ -22,11 +22,16 @@ async function fetchWithRetry(endpoint, options = {}, retries = 1) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeout || DEFAULT_TIMEOUT_MS);
   
+  const defaultHeaders = {};
+  if (!(options.body instanceof FormData) && !(options.body && options.body instanceof FormData)) {
+    defaultHeaders['Content-Type'] = 'application/json';
+  }
+  
   const config = {
     ...options,
     signal: options.signal || controller.signal,
     headers: {
-      'Content-Type': 'application/json',
+      ...defaultHeaders,
       ...options.headers,
     },
   };

@@ -8,6 +8,7 @@
 // handle a real upload error in that case.
 
 import { supabase, getAgencyId } from '../lib/supabaseClient.js';
+import { api } from './api.js';
 
 export const BUCKET = 'agency-assets';
 export const PRIVATE_BUCKETS = Object.freeze({
@@ -40,10 +41,9 @@ function getTargetBucket(folder) {
 }
 
 export async function getSignedUrl(path, bucket = PRIVATE_BUCKETS.GENERATED_DOCS, expiresIn = 3600) {
-  if (!supabase) throw new Error('Supabase storage not configured');
-  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
-  if (error || !data?.signedUrl) throw new Error(error?.message || 'Failed to generate signed URL');
-  return data.signedUrl;
+  const res = await api.get(`/api/storage/sign?path=${encodeURIComponent(path)}&expires_in=${expiresIn}`);
+  if (res?.url) return res.url;
+  throw new Error('Failed to generate signed URL');
 }
 
 // Upload an image and return its public URL. Falls back to a data URL when
@@ -53,22 +53,13 @@ export async function uploadImage(file, folder, { maxBytes = DEFAULT_MAX_IMAGE_B
   if (!file.type?.startsWith('image/')) throw new Error('Only image files');
   if (file.size > maxBytes) throw new Error(`Max ${Math.round(maxBytes / 1024 / 1024)} MB`);
 
-  if (supabase) {
-    try {
-      const targetBucket = getTargetBucket(folder);
-      const path = buildPath(folder, file.name);
-      const { error } = await supabase.storage.from(targetBucket).upload(path, file, {
-        cacheControl: '3600', upsert: false, contentType: file.type,
-      });
-      if (!error) {
-        if (targetBucket !== BUCKET) {
-          return await getSignedUrl(path, targetBucket, 3600);
-        }
-        const { data } = supabase.storage.from(targetBucket).getPublicUrl(path);
-        if (data?.publicUrl) return data.publicUrl;
-      }
-    } catch { /* fallthrough → embed */ }
-  }
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', folder);
+    const res = await api.post('/api/storage/upload', formData);
+    if (res?.url) return res.url;
+  } catch { /* fallthrough → embed */ }
   return await readAsDataURL(file);
 }
 
@@ -78,24 +69,14 @@ export async function uploadImage(file, folder, { maxBytes = DEFAULT_MAX_IMAGE_B
 export async function uploadFile(file, folder, { maxBytes = DEFAULT_MAX_FILE_BYTES, expiresIn = 3600 } = {}) {
   if (!file) throw new Error('No file');
   if (file.size > maxBytes) throw new Error(`Max ${Math.round(maxBytes / 1024 / 1024)} MB`);
-  if (!supabase) throw new Error('Supabase storage not configured');
 
-  const targetBucket = getTargetBucket(folder);
-  const path = buildPath(folder, file.name);
-  const { error } = await supabase.storage.from(targetBucket).upload(path, file, {
-    cacheControl: '3600', upsert: false, contentType: file.type || 'application/octet-stream',
-  });
-  if (error) throw new Error(error.message);
-
-  let url;
-  if (targetBucket !== BUCKET) {
-    url = await getSignedUrl(path, targetBucket, expiresIn);
-  } else {
-    const { data } = supabase.storage.from(targetBucket).getPublicUrl(path);
-    if (!data?.publicUrl) throw new Error('Failed to derive public URL');
-    url = data.publicUrl;
-  }
-  return { url, path, bucket: targetBucket, name: file.name, size: file.size, type: file.type };
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('folder', folder);
+  const res = await api.post('/api/storage/upload', formData);
+  if (!res?.url) throw new Error('Failed to upload file');
+  
+  return { url: res.url, path: res.path, bucket: res.bucket, name: file.name, size: file.size, type: file.type };
 }
 
 // Convenience for generated artefacts (PDF blobs we want to archive).

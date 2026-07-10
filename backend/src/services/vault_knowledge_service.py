@@ -29,6 +29,7 @@ def save_vault_package(
     pdf_hash: str,
     agency_id: Optional[str] = None,
     user_id: Optional[str] = None,
+    pdf_url: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Persist a parsed vault package to Supabase.
@@ -46,6 +47,7 @@ def save_vault_package(
         "overview": parsed_data.get("overview", ""),
         "cover_image_url": parsed_data.get("cover_image_url", ""),
         "pdf_filename": pdf_filename,
+        "pdf_url": pdf_url,
         "source_pdf_hash": pdf_hash,
         "parsed_data": json.dumps(parsed_data),
         "extra_sections": json.dumps(parsed_data.get("extra_sections", {})),
@@ -76,6 +78,19 @@ def save_vault_package(
             logger.info(f"[VaultKnowledge] Updated existing vault package id={pkg_id}")
             return {"id": pkg_id, **record}
         else:
+            # Mark previous versions of the same file for the same agency as superseded
+            try:
+                prev_query = sb.table("vault_packages").select("id").eq("pdf_filename", pdf_filename).eq("status", "active")
+                if agency_id:
+                    prev_query = prev_query.eq("agency_id", agency_id)
+                prev_res = prev_query.execute()
+                if prev_res.data:
+                    for prev_pkg in prev_res.data:
+                        sb.table("vault_packages").update({"status": "superseded"}).eq("id", prev_pkg["id"]).execute()
+                        logger.info(f"[VaultKnowledge] Superseded old vault package version id={prev_pkg['id']}")
+            except Exception as e:
+                logger.error(f"[VaultKnowledge] Failed to supersede old versions: {e}")
+
             # Insert new
             res = sb.table("vault_packages").insert(record).execute()
             if res.data:

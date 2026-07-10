@@ -23,7 +23,6 @@ from src.services.pdf_vault_service import (
     extract_text_from_pdf,
     deterministic_pre_parse_and_compress,
     extract_images_and_link_spatially,
-    cleanup_expired_pdfs,
 )
 from src.services.semantic_cache_service import compute_content_hash, get_cached_recommendation, store_cached_recommendation
 from src.services.cascading_ai_service import route_model_cascading
@@ -31,6 +30,9 @@ from src.services.vault_knowledge_service import (
     save_vault_package,
     accumulate_destination_knowledge,
 )
+from src.services.r2_storage_service import upload_file_to_r2
+from src.services.knowledge_extraction_service import extract_knowledge_objects, save_knowledge_objects
+from src.services.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pdf")
@@ -113,10 +115,40 @@ async def process_vault_pdf(
         else:
             logger.info("[VaultProcess] Processing as unauthenticated/demo user")
 
-        # ── Step 1: Save PDF ───────────────────────────────────────────────
+        # ── Step 1: Save PDF & Upload to R2 ─────────────────────────────────
         file_bytes = await file.read()
         pdf_hash = hashlib.sha256(file_bytes).hexdigest()
         storage_meta = save_temporary_pdf(file_bytes, file.filename or "supplier_package.pdf")
+        
+        r2_upload_res = upload_file_to_r2(
+            file_bytes=file_bytes,
+            filename=file.filename or "supplier_package.pdf",
+            folder="supplier-pdfs",
+            agency_id=agency_id,
+            content_type="application/pdf"
+        )
+        pdf_url = r2_upload_res.get("url") if r2_upload_res else None
+
+        # Insert upload trace to public.supplier_pdfs
+        source_pdf_id = None
+        sb = get_supabase_client()
+        if sb:
+            try:
+                pdf_record = {
+                    "filename": file.filename or "supplier_package.pdf",
+                    "file_path": pdf_url or storage_meta["file_path"],
+                    "size_bytes": storage_meta["size_bytes"],
+                    "status": "active"
+                }
+                if agency_id:
+                    pdf_record["agency_id"] = agency_id
+                
+                pdf_insert_res = sb.table("supplier_pdfs").insert(pdf_record).execute()
+                if pdf_insert_res.data:
+                    source_pdf_id = pdf_insert_res.data[0]["id"]
+                    logger.info(f"[VaultProcess] Created supplier_pdfs row: id={source_pdf_id}")
+            except Exception as pdf_err:
+                logger.error(f"[VaultProcess] Failed to insert supplier_pdfs row: {pdf_err}")
 
         # ── Step 2: Text extraction ────────────────────────────────────────
         context_prefix = f"Destination hint: {destination}.\n" if destination else ""
@@ -138,6 +170,14 @@ async def process_vault_pdf(
                 )
             )
 
+        # ── Step 2b: Extract atomic knowledge objects ──────────────────────
+        try:
+            extracted_objs = await extract_knowledge_objects(raw_text)
+            if extracted_objs:
+                save_knowledge_objects(extracted_objs, agency_id=agency_id, source_pdf_id=source_pdf_id)
+        except Exception as ke_err:
+            logger.error(f"[VaultProcess] Knowledge extraction failed: {ke_err}")
+
         # ── Step 3: Deterministic pre-parse (strip only boilerplate) ───────
         compressed_text, compression_metrics = deterministic_pre_parse_and_compress(raw_text)
 
@@ -154,7 +194,7 @@ async def process_vault_pdf(
                 "status": "success",
                 "cache_hit": True,
                 "cost_incurred": "$0.00 (Served instantly from Semantic Cache)",
-                "storage_meta": storage_meta,
+                "storage_meta": {**storage_meta, "pdf_url": pdf_url},
                 "compression_metrics": compression_metrics,
                 "pdf_hash": pdf_hash,
                 "data": cached_result,
@@ -181,6 +221,7 @@ async def process_vault_pdf(
                 pdf_hash=pdf_hash,
                 agency_id=agency_id,
                 user_id=user_id,
+                pdf_url=pdf_url,
             )
             if saved:
                 ai_result["vault_package_id"] = saved.get("id")
@@ -204,7 +245,7 @@ async def process_vault_pdf(
             "status": "success",
             "cache_hit": False,
             "cost_incurred": "Optimized via Gemini Faithful Extraction",
-            "storage_meta": storage_meta,
+            "storage_meta": {**storage_meta, "pdf_url": pdf_url},
             "compression_metrics": compression_metrics,
             "pdf_hash": pdf_hash,
             "data": ai_result,
@@ -218,10 +259,3 @@ async def process_vault_pdf(
             status_code=500,
             content={"status": "error", "message": str(e)}
         )
-
-
-@router.post("/vault-cleanup")
-async def run_vault_cleanup(user: Any = Depends(verify_token)):
-    """Scheduled script endpoint to delete temporary PDF files older than 15 days."""
-    result = cleanup_expired_pdfs()
-    return JSONResponse(content={"status": "success", "cleanup_summary": result})

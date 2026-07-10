@@ -539,7 +539,15 @@ export default function ProposalWizard() {
   };
 
   const onRemoveItem = async (id) => {
-    try { await removeItemOptimistic(id); toast.success('Removed'); }
+    try {
+      const itemToRemove = items.find(x => x.id === id);
+      await removeItemOptimistic(id);
+      toast.success('Removed');
+      if (itemToRemove && itemToRemove.ref_id) {
+        const { logActivity } = await import('../services/activityLogService.js');
+        logActivity('item_deleted_after_add', `Suggested item deleted: ${itemToRemove.label}`, 'Agency Team', 'knowledge_object', itemToRemove.ref_id);
+      }
+    }
     catch (e) { toast.error(e.message); }
   };
 

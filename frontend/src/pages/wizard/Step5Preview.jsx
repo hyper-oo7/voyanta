@@ -89,6 +89,46 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
   const [studioTarget, setStudioTarget] = useState(null);
   const [smartContact, setSmartContact] = useState(null);
 
+  const [warnings, setWarnings] = useState([]);
+  const [showWarnings, setShowWarnings] = useState(false);
+
+  // Trigger validation check automatically when the preview page loads
+  useEffect(() => {
+    if (!proposalId) return;
+
+    let isMounted = true;
+    (async () => {
+      try {
+        let token = null;
+        try {
+          const supa = (await import('../../lib/supabaseClient.js')).supabase;
+          const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+          if (session?.access_token) token = session.access_token;
+        } catch {}
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/proposals/${proposalId}/validate`, {
+          method: 'POST',
+          headers
+        });
+
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (data.warnings && data.warnings.length > 0) {
+            setWarnings(data.warnings);
+            setShowWarnings(true);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to run proposal validation check:", err);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [proposalId]);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
@@ -557,6 +597,26 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
       )}
 
       <div className="flex-1 relative flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
+        {showWarnings && warnings.length > 0 && (
+          <div className="bg-amber-50 border-b border-amber-200 px-lg py-md flex items-start gap-md no-print animate-fade-in">
+            <span className="material-symbols-outlined text-amber-600 mt-xs">warning</span>
+            <div className="flex-1 space-y-xs">
+              <h4 className="font-label-md font-bold text-amber-900">Itinerary Validation Warnings</h4>
+              <ul className="list-disc list-inside space-y-1 text-xs text-amber-850">
+                {warnings.map((w, idx) => (
+                  <li key={idx} className="font-medium">{w.message}</li>
+                ))}
+              </ul>
+            </div>
+            <button 
+              type="button"
+              onClick={() => setShowWarnings(false)} 
+              className="text-amber-500 hover:text-amber-700 p-1 inline-flex items-center justify-center rounded-full hover:bg-amber-100/50"
+            >
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          </div>
+        )}
         <A4Preview style={style} isInteractiveStudio={isInteractiveStudio} onStudioClick={(el) => setStudioTarget(el)}>
           <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={localCustomBlocks} viewMode="document" branding={branding} />
         </A4Preview>

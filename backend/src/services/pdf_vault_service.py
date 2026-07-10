@@ -19,7 +19,7 @@ MIN_VIABLE_TEXT_LENGTH = 50
 
 def save_temporary_pdf(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     """
-    Saves raw supplier PDF to temporary vault storage with a 15-day expiration timestamp.
+    Saves raw supplier PDF to permanent vault storage.
     Uses secure UUID to prevent filename enumeration.
     """
     timestamp = int(time.time())
@@ -29,43 +29,15 @@ def save_temporary_pdf(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     with open(file_path, "wb") as f:
         f.write(file_bytes)
 
-    expires_at = (datetime.utcnow() + timedelta(days=15)).isoformat()
-    logger.info(f"[Vault Storage] Saved temporary PDF to {file_path}. Expires at {expires_at} (15 days).")
+    logger.info(f"[Vault Storage] Saved PDF to {file_path}. Permanent storage.")
 
     return {
         "file_path": file_path,
         "filename": safe_name,
         "size_bytes": len(file_bytes),
         "created_at": datetime.utcnow().isoformat(),
-        "expires_at": expires_at
+        "expires_at": None
     }
-
-
-def cleanup_expired_pdfs() -> Dict[str, int]:
-    """
-    Scheduled script / function to purge supplier PDFs older than 15 days.
-    Can be invoked via cron or backend endpoint.
-    """
-    now = time.time()
-    fifteen_days_sec = 15 * 24 * 3600
-    deleted_count = 0
-    scanned_count = 0
-
-    if os.path.exists(TEMP_PDF_DIR):
-        for fname in os.listdir(TEMP_PDF_DIR):
-            fpath = os.path.join(TEMP_PDF_DIR, fname)
-            if os.path.isfile(fpath):
-                scanned_count += 1
-                try:
-                    mtime = os.path.getmtime(fpath)
-                    if now - mtime > fifteen_days_sec:
-                        os.remove(fpath)
-                        deleted_count += 1
-                        logger.info(f"[15-Day Cleanup] Deleted expired PDF: {fname}")
-                except Exception as e:
-                    logger.error(f"[15-Day Cleanup] Error deleting {fname}: {e}")
-
-    return {"scanned": scanned_count, "deleted": deleted_count}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

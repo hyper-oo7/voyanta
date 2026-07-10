@@ -1,9 +1,10 @@
-import { useCallback, useState, useEffect, useMemo } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import { DayBlock } from '../../components/timeline/DayBlock.jsx';
 import { hotelsService, flightsService, activitiesService } from '../../services/resourceService.js';
 import { addItem, removeItem } from '../../services/proposalItemService.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useProposalStore } from '../../store/proposalStore.js';
+import { logActivity } from '../../services/activityLogService.js';
 
 const cleanPrice = (val) => {
   if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
@@ -24,6 +25,83 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   const [search, setSearch] = useState('');
 
   const [vaultItems, setVaultItems] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+
+  const shownRef = useRef(new Set());
+  const addedRef = useRef(new Set());
+
+  // Load ranked suggestions from vault for this proposal
+  useEffect(() => {
+    if (!proposal?.id) return;
+    
+    let isMounted = true;
+    setSuggestionsLoading(true);
+
+    (async () => {
+      try {
+        let token = null;
+        try {
+          const supa = (await import('../../lib/supabaseClient.js')).supabase;
+          const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+          if (session?.access_token) token = session.access_token;
+        } catch {}
+
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        // Fetch suggestions for both hotels and activities
+        const [resHotels, resActivities] = await Promise.all([
+          fetch(`/api/proposals/${proposal.id}/suggestions?step=hotels`, { headers }),
+          fetch(`/api/proposals/${proposal.id}/suggestions?step=activities`, { headers })
+        ]);
+
+        let hotels = [];
+        let activities = [];
+
+        if (resHotels.ok) {
+          const data = await resHotels.json();
+          hotels = data.suggestions || [];
+        }
+        if (resActivities.ok) {
+          const data = await resActivities.json();
+          activities = data.suggestions || [];
+        }
+
+        if (isMounted) {
+          const merged = [...hotels, ...activities];
+          setSuggestions(merged);
+          
+          // Log suggestion_shown for any newly shown suggestions
+          merged.forEach(sug => {
+            if (!shownRef.current.has(sug.id)) {
+              shownRef.current.add(sug.id);
+              logActivity('suggestion_shown', `Suggestion shown: ${sug.name}`, 'Agency Team', 'knowledge_object', sug.id);
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch suggestions:", err);
+      } finally {
+        if (isMounted) setSuggestionsLoading(false);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [proposal?.id]);
+
+  // Log suggestion_rejected when the builder step unmounts (closes/finishes)
+  useEffect(() => {
+    return () => {
+      const shown = shownRef.current;
+      const added = addedRef.current;
+      shown.forEach(id => {
+        if (!added.has(id)) {
+          logActivity('suggestion_rejected', `Suggestion shown but not added`, 'Agency Team', 'knowledge_object', id);
+        }
+      });
+    };
+  }, []);
 
   // Load vault items from Supabase API — filtered by destination and budget for smart matching
   useEffect(() => {
@@ -255,10 +333,14 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   };
 
   const onRemoveProposalItem = async (itemId) => {
-    try { 
-      await removeItem(itemId); 
-      setItems(s => s.filter(x => x.id !== itemId)); 
-      toast.success('Removed item'); 
+    try {
+      const itemToRemove = items.find(x => x.id === itemId);
+      await removeItem(itemId);
+      setItems(s => s.filter(x => x.id !== itemId));
+      toast.success('Removed item');
+      if (itemToRemove && itemToRemove.ref_id) {
+        logActivity('item_deleted_after_add', `Suggested item deleted: ${itemToRemove.label}`, 'Agency Team', 'knowledge_object', itemToRemove.ref_id);
+      }
     } catch (e) { toast.error(e.message); }
   };
 
@@ -430,7 +512,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
       {/* Right Column: Inventory Library Sidebar */}
       <div className="lg:col-span-4 sticky top-6 space-y-md h-[calc(100vh-120px)] flex flex-col">
-        <div className="glass-card rounded-2xl border border-outline-variant/50 overflow-hidden flex flex-col h-full shadow-lg">
+        <div className="glass-card rounded-2xl border border-outline-variant/50 overflow-hidden flex flex-col h-[55%] shadow-lg">
           <div className="p-md border-b border-outline-variant/50 bg-white/50 backdrop-blur-md">
             <h4 className="font-label-md text-on-surface uppercase tracking-widest mb-sm">Library</h4>
             <div className="flex bg-surface-container rounded-lg p-1">
@@ -492,8 +574,140 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
             ))}
           </div>
         </div>
-      </div>
 
+        {/* Suggested from your Vault Panel */}
+        <div className="glass-card rounded-2xl border border-outline-variant/50 overflow-hidden flex flex-col h-[45%] shadow-lg">
+          <div className="p-md border-b border-outline-variant/50 bg-white/50 backdrop-blur-md flex items-center justify-between">
+            <h4 className="font-label-md text-on-surface uppercase tracking-widest flex items-center gap-xs font-semibold">
+              <span className="material-symbols-outlined text-[18px] text-primary">auto_awesome</span>
+              Suggested from Vault
+            </h4>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-md space-y-sm bg-gradient-to-b from-white/50 to-transparent">
+            {suggestionsLoading ? (
+              <div className="space-y-sm">
+                {[1, 2].map(n => (
+                  <div key={n} className="bg-white border border-outline-variant rounded-xl p-md animate-pulse space-y-sm">
+                    <div className="h-3 w-16 bg-outline-variant rounded"></div>
+                    <div className="h-4 w-3/4 bg-outline-variant rounded"></div>
+                    <div className="flex gap-xs">
+                      <div className="h-4 w-12 bg-outline-variant rounded-full"></div>
+                      <div className="h-4 w-12 bg-outline-variant rounded-full"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : suggestions.length === 0 ? (
+              <div className="text-center py-lg text-on-surface-variant bg-surface-container-lowest/50 rounded-xl border border-dashed border-outline-variant p-md">
+                <p className="text-xs leading-relaxed">No vault matches yet for this destination — add hotels/activities manually and they'll be remembered next time.</p>
+              </div>
+            ) : (
+              suggestions.map(sug => (
+                <div key={sug.id} className="bg-white border border-outline-variant rounded-xl p-md shadow-sm hover:shadow-md transition-all flex flex-col gap-xs group">
+                  <div className="flex items-center justify-between">
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${sug.object_type === 'hotel' ? 'bg-blue-50 text-blue-600 border border-blue-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>
+                      {sug.object_type}
+                    </span>
+                    {sug.area && <span className="text-[10px] text-on-surface-variant font-medium">{sug.area}</span>}
+                  </div>
+                  <p className="font-label-md text-on-surface font-semibold">{sug.name}</p>
+                  <BestRateChip objId={sug.id} />
+                  
+                  {sug.matched_tags && sug.matched_tags.length > 0 && (
+                    <div className="flex flex-wrap gap-xs my-1">
+                      {sug.matched_tags.map(tag => (
+                        <span key={tag} className="px-2 py-0.5 bg-surface-container text-on-surface text-[10px] rounded-full border border-outline-variant/30 font-medium">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  
+                  <div className="mt-xs pt-xs border-t border-outline-variant/50">
+                    <select 
+                      className="w-full text-xs py-1 px-2 bg-primary/10 hover:bg-primary/20 rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-bold"
+                      onChange={(e) => {
+                        if(e.target.value !== '') {
+                          const resItem = {
+                            id: sug.id,
+                            name: sug.name,
+                            currency: sug.attributes?.currency || 'INR',
+                            price_per_night: sug.attributes?.price_per_night || sug.attributes?.price || 0,
+                            price: sug.attributes?.price || sug.attributes?.cost || 0,
+                            location: sug.destination || '',
+                            category: sug.attributes?.star_rating || '',
+                            duration_hours: sug.attributes?.duration || ''
+                          };
+                          addedRef.current.add(sug.id);
+                          logActivity('suggestion_added', `Suggestion added: ${sug.name}`, 'Agency Team', 'knowledge_object', sug.id);
+                          onAddItemToDay(resItem, sug.object_type, parseInt(e.target.value));
+                          e.target.value = '';
+                        }
+                      }}
+                    >
+                      <option value="">+ Add to Day...</option>
+                      {days.map((d, i) => (
+                        <option key={i} value={i}>Day {d.day}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  );
+}
+
+function BestRateChip({ objId }) {
+  const [bestRate, setBestRate] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!objId) return;
+    let isMounted = true;
+    setLoading(true);
+
+    (async () => {
+      try {
+        let token = null;
+        try {
+          const supa = (await import('../../lib/supabaseClient.js')).supabase;
+          const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+          if (session?.access_token) token = session.access_token;
+        } catch {}
+
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/knowledge-objects/${objId}/best-rate`, { headers });
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (data.best_rate) {
+            setBestRate(data.best_rate);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load best rate:", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [objId]);
+
+  if (loading || !bestRate) return null;
+
+  return (
+    <div className="inline-flex items-center gap-xs px-2 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded border border-emerald-200 shadow-sm animate-fade-in no-print mt-1">
+      <span className="material-symbols-outlined text-[12px] text-emerald-600">auto_awesome</span>
+      <span>best rate: {bestRate.currency === 'INR' ? '₹' : bestRate.currency}{bestRate.rate.toLocaleString()} via {bestRate.supplier_name}</span>
     </div>
   );
 }
