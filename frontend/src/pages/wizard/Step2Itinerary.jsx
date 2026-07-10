@@ -23,26 +23,77 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   const [libraryData, setLibraryData] = useState({ hotels: [], flights: [], itinerary: [] });
   const [search, setSearch] = useState('');
 
-  const [vaultItems, setVaultItems] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]'); } catch { return []; }
-  });
+  const [vaultItems, setVaultItems] = useState([]);
+
+  // Load vault items from Supabase API — filtered by destination and budget for smart matching
+  useEffect(() => {
+    const dest = client?.destination || proposal?.destination || '';
+    const budgetVal = client?.budget || proposal?.budget || 0;
+    const params = new URLSearchParams();
+    if (dest) params.set('destination', dest);
+    if (budgetVal) params.set('budget', budgetVal);
+
+    let isMounted = true;
+
+    (async () => {
+      try {
+        let token = null;
+        try {
+          const supa = (await import('../../lib/supabaseClient.js')).supabase;
+          const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+          if (session?.access_token) token = session.access_token;
+        } catch {}
+
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/vault/packages?${params.toString()}`, { headers });
+        if (res.ok && isMounted) {
+          const json = await res.json();
+          const items = (json.packages || []).map(pkg => ({
+            ...pkg,
+            parsed_data: typeof pkg.parsed_data === 'string' ? JSON.parse(pkg.parsed_data) : pkg.parsed_data,
+            extra_sections: typeof pkg.extra_sections === 'string' ? JSON.parse(pkg.extra_sections) : pkg.extra_sections,
+          }));
+          setVaultItems(items);
+        }
+      } catch {
+        // Fallback to localStorage for offline demo
+        try {
+          const raw = JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]');
+          if (isMounted) setVaultItems(raw);
+        } catch {}
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [client?.destination, client?.budget, proposal?.destination]);
 
   const subDestinationsList = useMemo(() => {
     const set = new Set();
+    // Collect actual sub-destinations from vault packages for this destination
     (vaultItems || []).forEach(vt => {
+      const data = vt.parsed_data || vt;
+      if (Array.isArray(data.sub_destinations)) data.sub_destinations.forEach(sd => set.add(sd));
       if (Array.isArray(vt.sub_destinations)) vt.sub_destinations.forEach(sd => set.add(sd));
     });
-    if (set.size === 0) {
-      const dest = proposal?.destination || 'City Center';
-      [dest, `${dest} Historic District`, `${dest} Waterfront`, `${dest} Highlands`].forEach(sd => set.add(sd));
-    }
     return Array.from(set).map((name, idx) => ({
       id: `sub_${idx}_${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
       name: name,
-      location: proposal?.destination || 'Selected Destination District',
-      description: `Brings 5★ Hotel, VIP Tour, Private Chauffeur Transfer & Gourmet Dining in ${name}.`
+      location: client?.destination || proposal?.destination || '',
+      description: `Real data from your vault — hotels, activities, meals, and transfers for ${name} will be imported from your uploaded PDFs.`,
+      // Lookup vault data for this sub-destination for import
+      vaultData: (() => {
+        for (const vt of vaultItems) {
+          const data = vt.parsed_data || vt;
+          const matchDays = (data.days || []).filter(d => d.sub_destination === name || (d.title || '').includes(name));
+          if (matchDays.length > 0) return { days: matchDays, currency: data.currency || vt.currency || 'INR' };
+        }
+        return null;
+      })()
     }));
-  }, [vaultItems, proposal?.destination]);
+  }, [vaultItems, client?.destination, proposal?.destination]);
+
 
   // Duration-Driven Builder: Prepopulate days if empty
   useEffect(() => {
@@ -219,28 +270,59 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         return;
       }
       const currentDay = days[dayIndex] || {};
-      const newTitle = `VIP Experience in ${subDestName}`;
-      const newDesc = `Executive private luxury tour, 5-star hotel check-in, and gourmet Michelin dining in ${subDestName}.`;
-      
-      const hotelBlock = { id: crypto.randomUUID(), type: 'hotel', data: { name: `Luxury Hotel & Spa ${subDestName}`, category: '5 Star Luxury', price_per_night: 800, location: `${subDestName} Center`, image_url: '' } };
-      const actBlock = { id: crypto.randomUUID(), type: 'activity', data: { name: `VIP Private Guided Tour (${subDestName})`, duration: '4 hours', price: 250, location: subDestName, image_url: '' } };
-      const transBlock = { id: crypto.randomUUID(), type: 'transfer', data: { name: `VIP Chauffeur Transfer in ${subDestName}`, vehicle_type: 'Mercedes-Benz S-Class / Maybach', price: 150 } };
-      const mealBlock = { id: crypto.randomUUID(), type: 'meal', data: { venue: `Signature Gourmet Dining (${subDestName})`, type: 'Dinner', price: 200, image_url: '' } };
 
-      const currentContent = Array.isArray(currentDay.content) ? [...currentDay.content] : [];
-      updateDay(dayIndex, { title: newTitle, description: newDesc, content: [...currentContent, hotelBlock, actBlock, transBlock, mealBlock] });
+      // Find real vault data for this sub-destination
+      const subDest = subDestinationsList.find(s => s.name === subDestName);
+      const vaultDayData = subDest?.vaultData?.days?.[0];
 
-      if (addItemsOptimistic) {
-        addItemsOptimistic([
-          { id: crypto.randomUUID(), proposal_id: pid, kind: 'hotel', label: hotelBlock.data.name, details: hotelBlock.data.location, qty: 1, unit_price: 800, total_price: 800, currency: proposalCurrency, meta: { day: dayIndex + 1 } },
-          { id: crypto.randomUUID(), proposal_id: pid, kind: 'activity', label: actBlock.data.name, details: actBlock.data.location, qty: 1, unit_price: 250, total_price: 250, currency: proposalCurrency, meta: { day: dayIndex + 1 } },
-          { id: crypto.randomUUID(), proposal_id: pid, kind: 'transfer', label: transBlock.data.name, details: transBlock.data.vehicle_type, qty: 1, unit_price: 150, total_price: 150, currency: proposalCurrency, meta: { day: dayIndex + 1 } },
-          { id: crypto.randomUUID(), proposal_id: pid, kind: 'meal', label: mealBlock.data.venue, details: '7-Course Gourmet Dinner', qty: 1, unit_price: 200, total_price: 200, currency: proposalCurrency, meta: { day: dayIndex + 1 } }
-        ]);
+      if (vaultDayData) {
+        // ── Real vault data path — import ACTUAL hotel/activity/meal/transfer from PDF ──
+        const vaultCurrency = subDest.vaultData?.currency || proposalCurrency;
+        const contentBlocks = [];
+        const newItems = [];
+
+        (vaultDayData.hotels || []).forEach(h => {
+          const price = h.price_per_night || 0;
+          contentBlocks.push({ id: crypto.randomUUID(), type: 'hotel', data: { name: h.name, category: h.category, price_per_night: price, location: h.location, image_url: h.image_url || '' } });
+          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'hotel', label: h.name, details: h.location || '', qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+        });
+        (vaultDayData.activities || []).forEach(a => {
+          const price = a.price || 0;
+          contentBlocks.push({ id: crypto.randomUUID(), type: 'activity', data: { name: a.name, duration: a.duration, timing: a.timing, price, location: a.location, image_url: a.image_url || '', description: a.description } });
+          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'activity', label: a.name, details: a.location || '', qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+        });
+        (vaultDayData.transfers || []).forEach(tr => {
+          const price = tr.price || 0;
+          contentBlocks.push({ id: crypto.randomUUID(), type: 'transfer', data: { name: tr.type || 'Transfer', vehicle_type: tr.vehicle, price, from: tr.from, to: tr.to, timing: tr.timing } });
+          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'transfer', label: tr.type || 'Transfer', details: `${tr.from || ''} → ${tr.to || ''}`, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+        });
+        (vaultDayData.meals || []).forEach(m => {
+          const price = m.price || 0;
+          contentBlocks.push({ id: crypto.randomUUID(), type: 'meal', data: { venue: m.venue || m.type, type: m.type, price, image_url: m.image_url || '' } });
+          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'meal', label: m.venue || m.type, details: m.cuisine || '', qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+        });
+
+        const currentContent = Array.isArray(currentDay.content) ? [...currentDay.content] : [];
+        updateDay(dayIndex, {
+          title: vaultDayData.title || `Day in ${subDestName}`,
+          description: vaultDayData.description || '',
+          content: [...currentContent, ...contentBlocks]
+        });
+        if (addItemsOptimistic && newItems.length > 0) addItemsOptimistic(newItems);
+        toast.success(`Imported REAL vault data for ${subDestName} (${contentBlocks.length} items from PDF)!`);
+      } else {
+        // ── Fallback: no vault data — create placeholder so user can edit ──
+        const currentContent = Array.isArray(currentDay.content) ? [...currentDay.content] : [];
+        updateDay(dayIndex, {
+          title: `Day in ${subDestName}`,
+          description: `Itinerary for ${subDestName}. Add hotels, activities, meals, and transfers.`,
+          content: currentContent
+        });
+        toast.info(`No vault data for "${subDestName}" yet. Upload a PDF for this destination to auto-fill!`);
       }
-      toast.success(`Imported ${subDestName} (Hotel, Activity, Transfer & Meal) to Day ${dayIndex + 1}!`);
     } catch (err) { toast.error('Failed to import: ' + err.message); }
   };
+
 
   const handleReferenceChange = (val) => {
     if (!val) {

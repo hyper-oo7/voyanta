@@ -200,7 +200,49 @@ create table if not exists public.supplier_pdfs (
 );
 create index if not exists supplier_pdfs_expires_at_idx on public.supplier_pdfs (expires_at);
 
--- HOTELS ----------------------------------------------------------------------
+-- VAULT PACKAGES V2 — Persistent parsed PDF packages per agent ---------------
+create table if not exists public.vault_packages (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid references public.agencies(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  destination text not null,
+  sub_destinations text[] default '{}',
+  currency text default 'INR',
+  total_price numeric,
+  duration_days int,
+  overview text,
+  cover_image_url text,
+  pdf_filename text,
+  source_pdf_hash text,
+  parsed_data jsonb not null default '{}'::jsonb,
+  extra_sections jsonb default '{}'::jsonb,
+  status text default 'active',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists vault_packages_agency_idx on public.vault_packages(agency_id);
+create index if not exists vault_packages_user_idx on public.vault_packages(user_id);
+create index if not exists vault_packages_dest_idx on public.vault_packages(destination);
+create index if not exists vault_packages_hash_idx on public.vault_packages(source_pdf_hash);
+
+-- DESTINATION KNOWLEDGE — Accumulated static sections per destination per agent
+create table if not exists public.destination_knowledge (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid references public.agencies(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  destination text not null,
+  section_type text not null,
+  section_title text not null,
+  content text not null,
+  source_count int default 1,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique(agency_id, user_id, destination, section_type)
+);
+create index if not exists dest_knowledge_agency_idx on public.destination_knowledge(agency_id);
+create index if not exists dest_knowledge_dest_idx on public.destination_knowledge(destination);
+
+
 create table if not exists public.hotels (
   id uuid primary key default gen_random_uuid(),
   agency_id uuid references public.agencies(id) on delete cascade,
@@ -477,6 +519,16 @@ alter table public.field_mappings enable row level security;
 alter table public.analytics_events enable row level security;
 alter table public.activity_logs enable row level security;
 alter table public.notifications enable row level security;
+alter table public.vault_packages enable row level security;
+alter table public.destination_knowledge enable row level security;
+
+-- Vault V2 policies
+drop policy if exists "vault_packages_agency_rls" on public.vault_packages;
+create policy "vault_packages_agency_rls" on public.vault_packages for all using (agency_id = public.current_agency_id() or agency_id is null);
+
+drop policy if exists "dest_knowledge_agency_rls" on public.destination_knowledge;
+create policy "dest_knowledge_agency_rls" on public.destination_knowledge for all using (agency_id = public.current_agency_id() or agency_id is null);
+
 
 -- Agency policy: Users can only see their own agency
 drop policy if exists "users_agency_select" on public.agencies;
@@ -701,4 +753,34 @@ begin
   );
 end;
 $$ language plpgsql stable security definer;
+
+
+-- ============================================================================
+-- GLOBAL GRANTS & DEFAULT PRIVILEGES
+-- Ensures all standard tables/sequences get correct permissions.
+-- ============================================================================
+
+-- Grant schema usage
+grant usage on schema public to postgres, anon, authenticated, service_role;
+
+-- Grant permissions on ALL existing tables
+grant all privileges on all tables in schema public to postgres, service_role;
+grant all privileges on all sequences in schema public to postgres, service_role;
+
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant usage, select, update on all sequences in schema public to authenticated;
+
+grant select on all tables in schema public to anon;
+grant select on all sequences in schema public to anon;
+
+-- Configure DEFAULT PRIVILEGES for any tables created in the future
+alter default privileges in schema public grant all privileges on tables to postgres, service_role;
+alter default privileges in schema public grant all privileges on sequences to postgres, service_role;
+
+alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
+alter default privileges in schema public grant usage, select, update on sequences to authenticated;
+
+alter default privileges in schema public grant select on tables to anon;
+alter default privileges in schema public grant select on sequences to anon;
+
 

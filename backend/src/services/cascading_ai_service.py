@@ -1,11 +1,269 @@
+"""
+cascading_ai_service.py — Vault V2
+====================================
+FAITHFUL PDF EXTRACTION — Never fabricates, never generates content that isn't in the PDF.
+
+Key changes from V1:
+- Extraction prompt instructs AI to extract EXACTLY what's in the document
+- Prices come from the PDF, not from budget calculations
+- Currency auto-detected from PDF text (₹ = INR, $ = USD, € = EUR, £ = GBP)
+- Returns a single parsed package per PDF (not "3 recommendations")
+- Removed ALL hardcoded fallback content (fake hotel names, fabricated prices, generic descriptions)
+- Budget-match logic moved to vault_knowledge_service.list_vault_packages()
+"""
+
 import os
 import re
 import json
+import hashlib
 import logging
-from typing import Dict, Any, List
-from src.services.pdf_vault_service import parse_destination_and_extra_sections
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CURRENCY DETECTION
+# ─────────────────────────────────────────────────────────────────────────────
+
+def detect_currency_from_text(text: str) -> str:
+    """
+    Detect the primary currency used in the PDF text.
+    Returns ISO 4217 code (INR, USD, EUR, GBP, AED, etc.)
+    Defaults to INR (India-first product).
+    """
+    text_lower = text.lower()
+    # Count occurrences to find dominant currency
+    scores = {
+        "INR": 0, "USD": 0, "EUR": 0, "GBP": 0,
+        "AED": 0, "SGD": 0, "THB": 0, "JPY": 0,
+    }
+
+    # Indian Rupee patterns
+    inr_matches = len(re.findall(r'(?:₹|rs\.?|inr|rupee)', text_lower))
+    scores["INR"] = inr_matches * 3  # Weight INR higher (India-first)
+
+    # USD patterns
+    usd_matches = len(re.findall(r'(?:\$\s*\d|\busd\b|\bu\.s\.\s*dollar)', text_lower))
+    scores["USD"] = usd_matches
+
+    # EUR patterns
+    eur_matches = len(re.findall(r'(?:€|euro|\beur\b)', text_lower))
+    scores["EUR"] = eur_matches
+
+    # GBP patterns
+    gbp_matches = len(re.findall(r'(?:£|\bgbp\b|\bpound)', text_lower))
+    scores["GBP"] = gbp_matches
+
+    # AED (UAE Dirham)
+    aed_matches = len(re.findall(r'(?:\baed\b|dirham)', text_lower))
+    scores["AED"] = aed_matches
+
+    # Return currency with highest score; default INR
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else "INR"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FAITHFUL EXTRACTION PROMPT
+# ─────────────────────────────────────────────────────────────────────────────
+
+EXTRACTION_PROMPT_TEMPLATE = """You are an expert travel document parser. Your ONLY job is to extract structured data from the travel itinerary text below.
+
+CRITICAL RULES — VIOLATING THESE IS UNACCEPTABLE:
+1. Extract ONLY what is explicitly written in the document. Do NOT invent, generate, or hallucinate ANY content.
+2. Preserve exact hotel names, exact activity names, exact meal venue names — word for word.
+3. Prices MUST come directly from the document. If a document says "₹41,000" extract {{price: 41000, currency: "INR"}}. Never calculate prices from percentages.
+4. If a price is not mentioned for an item, set it to null — NEVER make up a number.
+5. If a timing is mentioned (e.g. "09:00 AM Transfer"), preserve it in the "timing" field.
+6. Extract the FULL overview/introduction text from the first page verbatim.
+7. Extract every day exactly as described — day number, title, full description text, sub-destination.
+8. For each day extract: every hotel (name, category, exact price, location), every activity (name, timing, price, duration, full description), every transfer (type, vehicle, from, to, timing, price), every meal (type, venue name, cuisine, price).
+9. Extract ALL sections at the end of the document — Inclusions, Exclusions, What to Pack, Visa Guidelines, Important Notes, Do's and Don'ts, Cancellation Policy, Damages, Terms & Conditions. Whatever sections exist, extract them all.
+10. Detect currency from the document — look for ₹, Rs, INR, $, USD, €, EUR, £, GBP, AED, etc. Return ISO 4217 code.
+11. If something is not mentioned, set it to null — never fabricate.
+
+The document language is English only.
+
+Return ONLY a valid JSON object with this exact schema — no markdown, no code blocks, just raw JSON:
+{{
+  "destination": "primary destination name",
+  "sub_destinations": ["list of sub-destinations mentioned"],
+  "overview": "full verbatim overview/introduction from page 1",
+  "duration_days": N,
+  "currency": "INR",
+  "total_price": N or null,
+  "price_per_person": N or null,
+  "days": [
+    {{
+      "day_number": 1,
+      "title": "exact title",
+      "description": "full description text verbatim",
+      "sub_destination": "city/area for this day",
+      "schedule": "any timing info mentioned for the day",
+      "hotels": [
+        {{
+          "name": "exact hotel name",
+          "category": "star rating or type",
+          "price_per_night": N or null,
+          "location": "location",
+          "meal_plan": "e.g. CP/MAP/AP",
+          "inclusions": ["list of inclusions if mentioned"],
+          "image_url": ""
+        }}
+      ],
+      "activities": [
+        {{
+          "name": "exact activity name",
+          "duration": "e.g. 2 hours",
+          "timing": "e.g. 10:00 AM",
+          "price": N or null,
+          "location": "location",
+          "description": "full description",
+          "image_url": ""
+        }}
+      ],
+      "transfers": [
+        {{
+          "type": "e.g. Airport Transfer, Sightseeing",
+          "vehicle": "e.g. Innova Crysta, Tempo Traveller",
+          "from": "origin",
+          "to": "destination",
+          "timing": "e.g. 06:00 AM",
+          "price": N or null,
+          "notes": "any additional notes"
+        }}
+      ],
+      "meals": [
+        {{
+          "type": "Breakfast/Lunch/Dinner/Snacks",
+          "venue": "restaurant or hotel name",
+          "cuisine": "type of cuisine",
+          "price": N or null,
+          "notes": "any special notes",
+          "image_url": ""
+        }}
+      ]
+    }}
+  ],
+  "inclusions": ["exact list from document"],
+  "exclusions": ["exact list from document"],
+  "extra_sections": {{
+    "what_to_pack": "verbatim content if present, else null",
+    "visa_guidelines": "verbatim content if present, else null",
+    "important_notes": "verbatim content if present, else null",
+    "damages": "verbatim content if present, else null",
+    "cancellation_policy": "verbatim content if present, else null",
+    "dos_and_donts": "verbatim content if present, else null",
+    "terms_of_payment": "verbatim content if present, else null"
+  }}
+}}
+
+DOCUMENT TEXT TO PARSE:
+{document_text}"""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN EXTRACTION FUNCTION
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def extract_vault_package_from_text(
+    full_text: str,
+    destination_hint: str = "",
+    images: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """
+    Extract a structured vault package from PDF text using Gemini.
+    This is the ONLY place AI is called for vault processing.
+    
+    Returns a structured JSON matching the extraction schema above.
+    Raises an exception if extraction fails — NO fake fallback.
+    """
+    from src.services.ai_service import call_gemini_with_retry
+
+    api_key_gemini = os.environ.get("GEMINI_API_KEY")
+    if not api_key_gemini:
+        raise RuntimeError("GEMINI_API_KEY not configured — cannot extract vault package.")
+
+    # Detect currency from the raw text BEFORE sending to AI
+    detected_currency = detect_currency_from_text(full_text)
+    logger.info(f"[VaultExtract] Detected currency: {detected_currency}")
+
+    # Build prompt with full document text (Gemini 2.5 Flash has 1M token context)
+    prompt = EXTRACTION_PROMPT_TEMPLATE.format(document_text=full_text)
+
+    payload = {
+        "contents": [{
+            "role": "user",
+            "parts": [{"text": prompt}]
+        }],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "temperature": 0.0,  # Zero temperature = fully deterministic, no hallucination
+            "maxOutputTokens": 8192,
+        }
+    }
+
+    logger.info("[VaultExtract] Sending to Gemini 2.5 Flash for faithful extraction...")
+    result = await call_gemini_with_retry(payload, api_key_gemini)
+    content = result["candidates"][0]["content"]["parts"][0]["text"]
+
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError as e:
+        # Try to extract JSON from the response
+        json_match = re.search(r'\{[\s\S]+\}', content)
+        if json_match:
+            parsed = json.loads(json_match.group())
+        else:
+            raise ValueError(f"Gemini returned invalid JSON: {e}\nResponse preview: {content[:500]}")
+
+    # Apply detected currency if AI missed it or defaulted to USD
+    if parsed.get("currency", "USD") == "USD" and detected_currency != "USD":
+        logger.info(f"[VaultExtract] Correcting currency from USD to {detected_currency}")
+        parsed["currency"] = detected_currency
+
+    # Use destination hint if AI didn't extract a destination
+    if not parsed.get("destination") and destination_hint:
+        parsed["destination"] = destination_hint
+
+    # Attach cover image (first extracted image from PDF page 1)
+    if images and len(images) > 0:
+        parsed["cover_image_url"] = images[0].get("url", "")
+        # Assign images to day activities/hotels where image_url is empty
+        img_idx = 1
+        for day in (parsed.get("days") or []):
+            for hotel in (day.get("hotels") or []):
+                if not hotel.get("image_url") and img_idx < len(images):
+                    hotel["image_url"] = images[img_idx]["url"]
+                    img_idx += 1
+            for activity in (day.get("activities") or []):
+                if not activity.get("image_url") and img_idx < len(images):
+                    activity["image_url"] = images[img_idx]["url"]
+                    img_idx += 1
+            for meal in (day.get("meals") or []):
+                if not meal.get("image_url") and img_idx < len(images):
+                    meal["image_url"] = images[img_idx]["url"]
+                    img_idx += 1
+
+    # Clean up null extra_sections
+    extra = parsed.get("extra_sections") or {}
+    parsed["extra_sections"] = {k: v for k, v in extra.items() if v and isinstance(v, str) and v.strip()}
+
+    logger.info(
+        f"[VaultExtract] Extraction complete — destination={parsed.get('destination')}, "
+        f"days={len(parsed.get('days', []))}, currency={parsed.get('currency')}, "
+        f"total_price={parsed.get('total_price')}, extra_sections={list(parsed['extra_sections'].keys())}"
+    )
+
+    return parsed
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LEGACY COMPATIBILITY — route_model_cascading
+# Still called by pdf_router.py for the /vault-process endpoint.
+# Now wraps extract_vault_package_from_text.
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def route_model_cascading(
     compressed_text: str,
@@ -13,294 +271,78 @@ async def route_model_cascading(
     destination: str,
     budget: float,
     duration: int,
-    currency: str = "INR"
+    currency: str = "INR",
 ) -> Dict[str, Any]:
-    # ── Deterministic PDF Parsing & Extra Sections Check ─────────────────────
-    parsed_meta = parse_destination_and_extra_sections(compressed_text)
-    effective_dest = destination
-    if not effective_dest or (effective_dest.lower() == "switzerland" and parsed_meta.get("detected_destination") and parsed_meta.get("detected_destination").lower() != "switzerland"):
-        effective_dest = parsed_meta.get("detected_destination") or destination
-    sub_destinations = parsed_meta.get("sub_destinations", [])
-    extra_sections = parsed_meta.get("extra_sections", {})
-    what_to_pack = parsed_meta.get("what_to_pack", "")
-    custom_fields = parsed_meta.get("custom_fields", [])
     """
-    Model Cascading (Small-to-Large Routing):
-    Routes simpler extraction jobs to ultra-cheap high-speed models (gpt-4o-mini).
-    Only triggers larger frontier models (claude-3-5-sonnet) when encountering
-    complex unstructured custom packages with tricky extra sections (~60% cost savings).
+    Backward-compatible wrapper.
+    Calls the new faithful extraction function and returns in a format
+    compatible with the existing pdf_router.py response structure.
     """
-    api_key_gemini = os.environ.get("GEMINI_API_KEY")
-    api_key_openai = os.environ.get("OPENAI_API_KEY")
-    api_key_anthropic = os.environ.get("ANTHROPIC_API_KEY")
-
-    min_budget = round(budget * 0.8)
-    max_budget = round(budget * 1.2)
-
-    def assign_images_to_recommendations(recs: List[Dict[str, Any]], img_list: List[Dict[str, Any]]):
-        idx = 0
-        for r in recs:
-            for d in r.get("days", []):
-                for h in d.get("hotels", []):
-                    h["image_url"] = img_list[idx % len(img_list)].get("url", "") if img_list else ""
-                    idx += 1
-                for a in d.get("activities", []):
-                    a["image_url"] = img_list[idx % len(img_list)].get("url", "") if img_list else ""
-                    idx += 1
-                for m in d.get("meals", []):
-                    m["image_url"] = img_list[idx % len(img_list)].get("url", "") if img_list else ""
-                    idx += 1
-                for c in d.get("cruises", []):
-                    c["image_url"] = img_list[idx % len(img_list)].get("url", "") if img_list else ""
-                    idx += 1
-        return recs
-
-    if api_key_gemini:
-        try:
-            from src.services.ai_service import call_gemini_with_retry
-            logger.info("[Model Cascading] Routed task to Gemini (gemini-2.5-flash).")
-            prompt = (
-                f"You are an expert luxury travel planner. Create 3 distinct travel package recommendation options "
-                f"for {destination} lasting {duration} days, based on this document summary:\n{compressed_text}\n\n"
-                f"CRITICAL RULES:\n"
-                f"1. Every option's total_estimated_cost MUST be strictly between {min_budget} and {max_budget} {currency} (±20% rule).\n"
-                f"2. Return ONLY valid JSON with a 'recommendations' list containing 3 options.\n"
-                f"3. Do not include flights. Sub-destinations must bring hotels, activities, transfers, and meals.\n"
-                f"4. Each day in 'days' must have 'day_number', 'title', 'description', 'sub_destination', 'hotels', 'activities', 'transfers', and 'meals'.\n"
-            )
-            payload = {
-                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                "generationConfig": {"responseMimeType": "application/json", "temperature": 0.3}
-            }
-            result = await call_gemini_with_retry(payload, api_key_gemini)
-            content = result["candidates"][0]["content"]["parts"][0]["text"]
-            parsed_res = json.loads(content)
-            recs = parsed_res.get("recommendations", [])
-            if len(recs) > 0:
-                recs = assign_images_to_recommendations(recs, images)
-                return {
-                    "success": True,
-                    "recommendations": recs,
-                    "model_used": "gemini-2.5-flash",
-                    "budget_window": f"{currency} {min_budget} to {currency} {max_budget} (±20% rule applied)",
-                    "detected_destination": effective_dest,
-                    "sub_destinations": sub_destinations,
-                    "what_to_pack": what_to_pack,
-                    "extra_sections": extra_sections,
-                    "custom_fields": custom_fields
-                }
-        except Exception as gem_e:
-            logger.exception(f"[Model Cascading] Gemini generation failed: {gem_e}, falling back to structured generator.")
-
-    # 1. Check if we can route to small model for basic standardization
-    is_simple_package = len(compressed_text) < 3000 and "extra_section" not in compressed_text.lower()
-
-    if is_simple_package and api_key_openai:
-        try:
-            from src.services.ai_service import call_openai_with_retry
-            logger.info("[Model Cascading] Routed task to high-speed small model (gpt-4o-mini).")
-            prompt = (
-                f"You are an expert luxury travel planner. Create 3 distinct travel package recommendation options "
-                f"for {destination} lasting {duration} days, based on this document summary:\n{compressed_text}\n\n"
-                f"CRITICAL RULES:\n"
-                f"1. Every option's total_estimated_cost MUST be strictly between {min_budget} and {max_budget} {currency} (±20% rule).\n"
-                f"2. Return ONLY valid JSON with a 'recommendations' list containing 3 options.\n"
-                f"3. Do not include flights. Sub-destinations must bring hotels, activities, transfers, and meals.\n"
-                f"4. Each day in 'days' must have 'day_number', 'title', 'description', 'sub_destination', 'hotels', 'activities', 'transfers', and 'meals'.\n"
-            )
-            headers = {
-                "Authorization": f"Bearer {api_key_openai}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.3
-            }
-            result = await call_openai_with_retry(payload, headers)
-            content = result["choices"][0]["message"]["content"]
-            parsed_res = json.loads(content)
-            recs = parsed_res.get("recommendations", [])
-            if len(recs) > 0:
-                recs = assign_images_to_recommendations(recs, images)
-                return {
-                    "success": True,
-                    "recommendations": recs,
-                    "model_used": "gpt-4o-mini",
-                    "budget_window": f"{currency} {min_budget} to {currency} {max_budget} (±20% rule applied)",
-                    "detected_destination": effective_dest,
-                    "sub_destinations": sub_destinations,
-                    "what_to_pack": what_to_pack,
-                    "extra_sections": extra_sections,
-                    "custom_fields": custom_fields
-                }
-        except Exception as op_e:
-            logger.exception(f"[Model Cascading] OpenAI generation failed: {op_e}, falling back to structured generator.")
-    elif api_key_anthropic:
-        logger.info("[Model Cascading] Routed complex unstructured task to frontier model (claude-3-5-sonnet).")
-        pass
-
-    logger.info("[Model Cascading] Serving dynamic structured AI recommendations adhering to +-20% budget rule.")
-
-    # Dynamically derive sub-destinations based on target destination
-    dest_lower = destination.lower()
-    if "swit" in dest_lower or "zurich" in dest_lower or "alpin" in dest_lower:
-        sub_dests_1 = ["Zurich", "Lucerne", "Interlaken"]
-        sub_dests_2 = ["Zermatt", "St. Moritz", "Geneva"]
-    elif "bali" in dest_lower or "indo" in dest_lower:
-        sub_dests_1 = ["Ubud", "Seminyak", "Nusa Dua"]
-        sub_dests_2 = ["Uluwatu", "Canggu", "Jimbaran"]
-    elif "dubai" in dest_lower or "uae" in dest_lower:
-        sub_dests_1 = ["Downtown Dubai", "Palm Jumeirah", "Desert Conservation"]
-        sub_dests_2 = ["Dubai Marina", "Jumeirah Beach", "Old Dubai"]
-    elif "japan" in dest_lower or "tokyo" in dest_lower:
-        sub_dests_1 = ["Tokyo Central", "Kyoto", "Hakone"]
-        sub_dests_2 = ["Osaka", "Nara", "Tokyo Bay"]
-    elif "france" in dest_lower or "paris" in dest_lower:
-        sub_dests_1 = ["Paris Central", "Versailles", "Montmartre"]
-        sub_dests_2 = ["French Riviera", "Nice", "Monaco"]
-    else:
-        sub_dests_1 = [f"{destination} Center", f"{destination} Historic District", f"{destination} Scenic Area"]
-        sub_dests_2 = [f"{destination} Prime", f"{destination} Waterfront", f"{destination} Highlands"]
-
-    option_1_cost = round(budget * 0.95, -2)
-    option_2_cost = round(budget * 1.08, -2)
-
-    def generate_days_for_option(sub_list: List[str], opt_title: str):
-        day_list = []
-        for i in range(1, duration + 1):
-            sub = sub_list[(i - 1) % len(sub_list)]
-            day_list.append({
-                "day_number": i,
-                "title": f"Day {i}: Highlights of {sub}",
-                "description": f"Curated luxury experience in {sub} featuring VIP transfers, private guided landmark discovery, and gourmet reservations.",
-                "sub_destination": sub,
-                "hotels": [{
-                    "name": f"Luxury Palace Resort {sub}",
-                    "category": "5 Star Luxury",
-                    "price_per_night": round(budget * 0.08),
-                    "location": f"{sub} Prime District",
-                    "image_url": "",
-                    "inclusions": ["Gourmet Breakfast", "Private Spa Access", "VIP Airport Transfer"]
-                }],
-                "activities": [{
-                    "name": f"Private Guided {sub} Discovery",
-                    "duration": "4 hours",
-                    "price": round(budget * 0.025),
-                    "location": sub,
-                    "image_url": "",
-                    "description": "Exclusive private guide with skip-the-line landmark access."
-                }],
-                "transfers": [{
-                    "name": "VIP Executive Chauffeur",
-                    "vehicle_type": "Luxury Sedan / SUV",
-                    "price": round(budget * 0.015),
-                    "notes": "Private chauffeur at disposal"
-                }],
-                "meals": [{
-                    "type": "Dinner" if i % 2 == 1 else "Lunch",
-                    "venue": f"Signature Gourmet Venue {sub}",
-                    "description": "Multi-course seasonal chef tasting menu paired with sommelier selections.",
-                    "price": round(budget * 0.025),
-                    "image_url": ""
-                }],
-                "cruises": [{
-                    "name": f"Sunset Scenic Welcome Cruise {sub}",
-                    "cabin_type": "VIP Lounge Deck",
-                    "price": round(budget * 0.03),
-                    "notes": "Includes welcome champagne and gourmet canapés",
-                    "image_url": ""
-                }] if i == 1 else []
-            })
-        return day_list
-
-    recommendations = [
-        {
-          "option_id": "rec_opt_1",
-          "option_title": f"{destination} Signature Luxury Experience",
-          "destination": destination,
-          "sub_destinations": sub_dests_1,
-          "duration_days": duration,
-          "target_budget": budget,
-          "total_estimated_cost": option_1_cost,
-          "cost_variance_percentage": f"{round(((option_1_cost - budget)/budget)*100)}%",
-          "currency": currency,
-          "status": "Recommended",
-          "days": generate_days_for_option(sub_dests_1, f"{destination} Signature"),
-          "extra_sections": [
-            {
-              "section_title": "What We Provide (Inclusions)",
-              "content": [
-                "24/7 Dedicated Concierge Assistance",
-                "All First-Class Travel Passes & seat reservations",
-                "Private luxury SUV and sedan chauffeur transfers",
-                "All VIP museum and landmark entry passes"
-              ]
-            },
-            {
-              "section_title": "What You Have To Take (Packing & Visa)",
-              "content": [
-                "Seasonal layers and comfortable walking attire",
-                "Smart casual / formal attire for fine dining venues",
-                "Valid Travel Visa (Must be valid for at least 3 months beyond departure)",
-                "Universal travel power adapters"
-              ]
-            },
-            {
-              "section_title": "Important Guidelines & Advisory",
-              "content": [
-                "Private excursions are strictly scheduled; please arrive 15 minutes prior.",
-                "Hotel check-in is at 15:00 local time; early check-in requested subject to availability.",
-                "Custom dietary requirements have been pre-advised to all dining venues."
-              ]
-            }
-          ]
-        },
-        {
-          "option_id": "rec_opt_2",
-          "option_title": f"{destination} Grand Heritage & Explorer Getaway",
-          "destination": destination,
-          "sub_destinations": sub_dests_2,
-          "duration_days": duration,
-          "target_budget": budget,
-          "total_estimated_cost": option_2_cost,
-          "cost_variance_percentage": f"+{round(((option_2_cost - budget)/budget)*100)}%",
-          "currency": currency,
-          "status": "Recommended",
-          "days": generate_days_for_option(sub_dests_2, f"{destination} Grand Heritage"),
-          "extra_sections": [
-            {
-              "section_title": "What We Provide (Inclusions)",
-              "content": [
-                "Premium first-class seat reservations and dining",
-                "Private local concierge and activity guide",
-                "Direct luggage transport between luxury hotels"
-              ]
-            },
-            {
-              "section_title": "What You Have To Take (Packing & Advisory)",
-              "content": [
-                "Sun protection and weather-appropriate outdoor layers",
-                "Evening attire for exclusive gourmet reservations",
-                "Comprehensive international travel insurance"
-              ]
-            }
-          ]
+    try:
+        extracted = await extract_vault_package_from_text(
+            full_text=compressed_text,
+            destination_hint=destination,
+            images=images,
+        )
+        return {
+            "success": True,
+            "extracted_package": extracted,
+            # Maintain some backward compat fields that frontend may read
+            "recommendations": [_package_to_legacy_recommendation(extracted)],
+            "model_used": "gemini-2.5-flash (faithful-extraction)",
+            "detected_destination": extracted.get("destination") or destination,
+            "sub_destinations": extracted.get("sub_destinations", []),
+            "what_to_pack": (extracted.get("extra_sections") or {}).get("what_to_pack", ""),
+            "extra_sections": extracted.get("extra_sections", {}),
+            "custom_fields": _build_custom_fields(extracted.get("extra_sections", {})),
+            "currency": extracted.get("currency", "INR"),
+            "total_price": extracted.get("total_price"),
         }
-    ]
+    except Exception as e:
+        logger.exception(f"[VaultExtract] Extraction failed: {e}")
+        # Return a proper error — no fake fallback data
+        raise
 
-    recommendations = assign_images_to_recommendations(recommendations, images)
 
+def _package_to_legacy_recommendation(pkg: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Converts a faithfully-extracted package into the legacy recommendation
+    format that MyVaultPage.jsx currently expects.
+    """
     return {
-        "success": True,
-        "recommendations": recommendations,
-        "model_used": "cascading-dynamic-routing",
-        "budget_window": f"{currency} {min_budget} to {currency} {max_budget} (±20% rule applied)",
-        "detected_destination": effective_dest,
-        "sub_destinations": sub_destinations,
-        "what_to_pack": what_to_pack,
-        "extra_sections": extra_sections,
-        "custom_fields": custom_fields
+        "option_id": f"vault_extracted_{pkg.get('destination', 'unknown').lower().replace(' ', '_')}",
+        "option_title": pkg.get("destination", "Extracted Itinerary"),
+        "destination": pkg.get("destination", ""),
+        "sub_destinations": pkg.get("sub_destinations", []),
+        "duration_days": pkg.get("duration_days", 1),
+        "target_budget": pkg.get("total_price"),
+        "total_estimated_cost": pkg.get("total_price"),
+        "cost_variance_percentage": "Actual (from PDF)",
+        "currency": pkg.get("currency", "INR"),
+        "status": "Extracted",
+        "overview": pkg.get("overview", ""),
+        "cover_image_url": pkg.get("cover_image_url", ""),
+        "days": pkg.get("days", []),
+        "inclusions": pkg.get("inclusions", []),
+        "exclusions": pkg.get("exclusions", []),
+        "extra_sections": pkg.get("extra_sections", {}),
+        "what_to_pack": (pkg.get("extra_sections") or {}).get("what_to_pack", ""),
     }
 
+
+def _build_custom_fields(extra_sections: Dict[str, str]) -> List[Dict[str, Any]]:
+    """Convert extra_sections dict to custom_fields array for branding step."""
+    import uuid as _uuid
+    fields = []
+    for sec_type, content in (extra_sections or {}).items():
+        if not content:
+            continue
+        title = sec_type.replace("_", " ").title()
+        fields.append({
+            "id": f"extracted_{sec_type}_{_uuid.uuid4().hex[:6]}",
+            "label": title,
+            "value": content,
+            "type": "checklist" if "pack" in sec_type else "text",
+            "section_type": sec_type,
+        })
+    return fields

@@ -2,6 +2,19 @@ import React from 'react';
 import { incrementAnalytics } from '../../services/analyticsService.js';
 import { getLabel as getI18nLabel } from '../../lib/i18n.js';
 
+const safeRenderText = (val) => {
+  if (val == null) return '';
+  if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') return String(val);
+  if (Array.isArray(val)) return val.map(safeRenderText).join('\n');
+  if (typeof val === 'object') {
+    if (val.content !== undefined) return safeRenderText(val.content);
+    if (val.text !== undefined) return safeRenderText(val.text);
+    if (val.value !== undefined) return safeRenderText(val.value);
+    return JSON.stringify(val);
+  }
+  return String(val);
+};
+
 export default function UniversalTemplateExtras({ proposal = {}, branding = {}, customBlocks = [], order = [], style = 'classic', theme = {}, renderedKeys = [], lang = 'en' }) {
   const fontHeadline = branding.font_headline || theme.typography?.headline || 'serif';
   const fontBody = branding.font_body || theme.typography?.body || 'sans-serif';
@@ -18,7 +31,7 @@ export default function UniversalTemplateExtras({ proposal = {}, branding = {}, 
     <div className="universal-template-extras w-full no-print-break">
       {/* 1. Unrendered Custom Blocks / Sections */}
       {unrenderedCustomBlocks.map(cb => {
-        const contentVal = cb.content || '';
+        const contentVal = safeRenderText(cb.content || '');
         return (
           <section key={cb.id} className="py-12 px-8 md:px-16 max-w-7xl mx-auto editorial-section break-inside-avoid my-8 border-t border-outline-variant/30">
             <h2 className="text-3xl md:text-4xl font-bold mb-6 border-b pb-3" style={{ color: primaryColor, fontFamily: fontHeadline, borderColor: accentColor }}>
@@ -87,7 +100,7 @@ export default function UniversalTemplateExtras({ proposal = {}, branding = {}, 
                 return (
                   <div key={cf.id || idx} className="flex flex-col items-center px-6 py-3.5 rounded-xl border border-outline-variant/40 bg-white/50 dark:bg-black/20 shadow-sm min-w-[160px]">
                     <span className="text-[10px] uppercase tracking-widest font-bold opacity-60 mb-1" style={{ color: primaryColor, fontFamily: fontSubhead }}>{cf.label}</span>
-                    <span className="text-sm font-bold whitespace-pre-wrap" style={{ color: accentColor, fontFamily: fontBody }}>{cf.value}</span>
+                    <span className="text-sm font-bold whitespace-pre-wrap" style={{ color: accentColor, fontFamily: fontBody }}>{safeRenderText(cf.value)}</span>
                   </div>
                 );
               }

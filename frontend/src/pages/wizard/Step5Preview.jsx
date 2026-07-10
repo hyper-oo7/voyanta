@@ -85,6 +85,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
   const [showAddCustom, setShowAddCustom] = useState(false);
   const [newCustom, setNewCustom] = useState({ label: '', type: 'text', content: '' });
   const [isInteractiveStudio, setIsInteractiveStudio] = useState(false);
+  const [designStudioOpen, setDesignStudioOpen] = useState(false);
   const [studioTarget, setStudioTarget] = useState(null);
   const [smartContact, setSmartContact] = useState(null);
 
@@ -481,6 +482,11 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
         <button type="button" onClick={() => setIsInteractiveStudio(!isInteractiveStudio)} data-testid="toggle-wysiwyg"
           className={`px-lg py-md border rounded-lg font-label-md flex items-center gap-xs shadow-sm transition-all ${isInteractiveStudio ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-lg animate-pulse' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'}`}>
           <span className="material-symbols-outlined text-[18px]">edit_document</span> {isInteractiveStudio ? '✨ WYSIWYG Active (Click Text to Edit)' : '✨ WYSIWYG Live Editor'}
+        </button>
+
+        <button type="button" onClick={() => setDesignStudioOpen(true)} data-testid="open-design-studio"
+          className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
+          <span className="material-symbols-outlined text-[18px]">palette</span> Design Studio
         </button>
 
         <button type="button" onClick={() => setExportOpen(true)} data-testid="open-export-modal"

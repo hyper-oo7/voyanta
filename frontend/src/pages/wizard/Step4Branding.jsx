@@ -4,7 +4,18 @@ import LogoUploader from '../../components/LogoUploader.jsx';
 import { TEMPLATE_LIST } from '../../templates/registry.js';
 import { api } from '../../services/api.js';
 
-const safeStr = (v) => Array.isArray(v) ? v.join('\n') : (v && typeof v === 'object' ? JSON.stringify(v) : (v ?? ''));
+const safeStr = (v) => {
+  if (v == null) return '';
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return v.map(safeStr).join('\n');
+  if (typeof v === 'object') {
+    if (v.content !== undefined) return safeStr(v.content);
+    if (v.text !== undefined) return safeStr(v.text);
+    if (v.value !== undefined) return safeStr(v.value);
+    return JSON.stringify(v);
+  }
+  return String(v);
+};
 
 const Field = memo(function Field({ label, value, onChange, type = 'text', testid, extraClass = '' }) {
   return (
@@ -59,31 +70,120 @@ export function Step4Branding({ branding, setBranding, customBlocks, proposal, c
     };
   }, []);
 
-  // Agency-Exclusive What to Pack Auto-Fill Memory
+  // ── Destination Knowledge Auto-Fill ─────────────────────────────────────
+  // Queries accumulated destination_knowledge from vault and populates:
+  // inclusions, exclusions, what_to_pack, visa_guidelines, important_notes, etc.
+  const [knowledgeSources, setKnowledgeSources] = useState({});
+
   useEffect(() => {
     const dest = client?.destination || proposal?.destination || '';
-    const subDests = proposal?.subDestinations || proposal?.sub_destinations || [];
-    if (!dest || branding?.what_to_pack) return;
+    if (!dest) return;
 
-    const subStr = Array.isArray(subDests) ? subDests.join(',') : subDests;
-    const headers = {};
-    try {
-      const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-    } catch {}
+    let isMounted = true;
 
-    fetch(`/api/packing-rules/match?destination=${encodeURIComponent(dest)}&sub_destinations=${encodeURIComponent(subStr)}`, { headers })
-      .then(r => r.json())
-      .then(res => {
-        if (res && Array.isArray(res.rules) && res.rules.length > 0) {
-          const matched = res.rules.find(r => r.section_type === 'what_to_pack') || res.rules[0];
-          if (matched && matched.content) {
-            setBranding(s => ({ ...s, what_to_pack: matched.content }));
+    (async () => {
+      try {
+        let token = null;
+        try {
+          const supa = (await import('../../lib/supabaseClient.js')).supabase;
+          const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+          if (session?.access_token) token = session.access_token;
+        } catch {}
+
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/vault/knowledge?destination=${encodeURIComponent(dest)}`, { headers });
+        if (res.ok && isMounted) {
+          const json = await res.json();
+          const knowledge = json.knowledge || {};
+
+          if (Object.keys(knowledge).length === 0) return;
+
+          const sources = {};
+          const updates = {};
+
+          // Auto-fill each section ONLY if not already filled by the agent
+          if (knowledge.inclusions && !branding?.inclusions) {
+            updates.inclusions = knowledge.inclusions.content;
+            sources.inclusions = knowledge.inclusions.source_count;
+          }
+          if (knowledge.exclusions && !branding?.exclusions) {
+            updates.exclusions = knowledge.exclusions.content;
+            sources.exclusions = knowledge.exclusions.source_count;
+          }
+          if (knowledge.what_to_pack && !branding?.what_to_pack) {
+            updates.what_to_pack = knowledge.what_to_pack.content;
+            sources.what_to_pack = knowledge.what_to_pack.source_count;
+          }
+          if (knowledge.important_notes && !branding?.important_notes) {
+            updates.important_notes = knowledge.important_notes.content;
+            sources.important_notes = knowledge.important_notes.source_count;
+          }
+          if (knowledge.visa_guidelines && !branding?.visa_guidelines) {
+            updates.visa_guidelines = knowledge.visa_guidelines.content;
+            sources.visa_guidelines = knowledge.visa_guidelines.source_count;
+          }
+          if (knowledge.cancellation_policy && !branding?.cancellation_policy) {
+            updates.cancellation_policy = knowledge.cancellation_policy.content;
+            sources.cancellation_policy = knowledge.cancellation_policy.source_count;
+          }
+          if (knowledge.terms_of_payment && !branding?.terms_of_payment) {
+            updates.terms_of_payment = knowledge.terms_of_payment.content;
+            sources.terms_of_payment = knowledge.terms_of_payment.source_count;
+          }
+
+          // Accumulate dynamic extra sections into custom_fields
+          const dynamicSections = Object.entries(knowledge).filter(([k]) =>
+            !['inclusions', 'exclusions', 'what_to_pack', 'important_notes', 'visa_guidelines', 'cancellation_policy', 'terms_of_payment'].includes(k)
+          );
+          if (dynamicSections.length > 0) {
+            const existingCustom = branding?.custom_fields || [];
+            const existingKeys = new Set(existingCustom.map(f => f.section_type || f.label?.toLowerCase()));
+            const newFields = dynamicSections
+              .filter(([k]) => !existingKeys.has(k))
+              .map(([k, v]) => ({
+                id: `vault_knowledge_${k}_${Math.random().toString(36).slice(2, 6)}`,
+                label: safeStr(v.title || k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())),
+                value: safeStr(v.content),
+                type: 'text',
+                section_type: k,
+                vault_auto_filled: true,
+                source_count: v.source_count,
+              }));
+            if (newFields.length > 0) {
+              updates.custom_fields = [...existingCustom, ...newFields];
+            }
+          }
+
+          if (Object.keys(updates).length > 0) {
+            setBranding(s => ({ ...s, ...updates }));
+            setKnowledgeSources(sources);
+            toast.info(`Auto-filled ${Object.keys(updates).length} sections from Vault knowledge for "${dest}"`, { duration: 4000 });
           }
         }
-      })
-      .catch(err => console.warn('Packing rules lookup failed:', err));
-  }, [client?.destination, proposal?.destination, proposal?.subDestinations, proposal?.sub_destinations, branding?.what_to_pack, setBranding]);
+      } catch (err) {
+        // Fallback: legacy packing rules
+        const subDests = proposal?.subDestinations || proposal?.sub_destinations || [];
+        const subStr = Array.isArray(subDests) ? subDests.join(',') : subDests;
+        fetch(`/api/packing-rules/match?destination=${encodeURIComponent(dest)}&sub_destinations=${encodeURIComponent(subStr)}`)
+          .then(r => r.json())
+          .then(res => {
+            if (res?.rules?.length > 0) {
+              const matched = res.rules.find(r => r.section_type === 'what_to_pack') || res.rules[0];
+              if (matched?.content && !branding?.what_to_pack) {
+                setBranding(s => ({ ...s, what_to_pack: matched.content }));
+              }
+            }
+          })
+          .catch(() => {});
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [client?.destination, proposal?.destination]);
+  // Note: intentionally omitting branding from deps to avoid re-triggering on every setBranding call
+
 
   const isStarter = !currentPlan || currentPlan.toLowerCase() === 'starter';
 

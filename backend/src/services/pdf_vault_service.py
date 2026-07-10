@@ -282,100 +282,38 @@ def extract_text_from_pdf(file_path: str) -> Tuple[str, Dict[str, Any]]:
     return best_text, metrics
 
 
+
 def parse_destination_and_extra_sections(text: str) -> Dict[str, Any]:
     """
-    Deterministic Parser for Destination, Sub-destinations, and Extra Sections
-    (What to Pack, Important Notes, Visa Guidelines, etc.).
-    Ensures 100% faithful extraction directly from PDF text without hardcoded defaults.
+    Deterministic Pre-Parser for Extra Sections.
+    Extracts static sections (What to Pack, Visa, Important Notes, etc.) from
+    PDF text using regex before sending to AI — gives AI a head start.
+
+    Destination detection is now handled by the AI extraction prompt.
+    This function is kept for pre-AI enrichment only.
     """
-    dest_map = {
-        "kashmir": {
-            "name": "Kashmir",
-            "sub_destinations": ["Srinagar", "Gulmarg", "Pahalgam", "Sonamarg", "Doodhpathri"]
-        },
-        "ladakh": {
-            "name": "Ladakh",
-            "sub_destinations": ["Leh", "Nubra Valley", "Pangong Tso", "Kargil"]
-        },
-        "kerala": {
-            "name": "Kerala",
-            "sub_destinations": ["Munnar", "Alleppey", "Thekkady", "Kochi", "Kovalam"]
-        },
-        "himachal": {
-            "name": "Himachal Pradesh",
-            "sub_destinations": ["Shimla", "Manali", "Dharamshala", "Dalhousie", "Kasol"]
-        },
-        "rajasthan": {
-            "name": "Rajasthan",
-            "sub_destinations": ["Jaipur", "Udaipur", "Jodhpur", "Jaisalmer", "Pushkar"]
-        },
-        "goa": {
-            "name": "Goa",
-            "sub_destinations": ["North Goa", "South Goa", "Panaji", "Calangute"]
-        },
-        "andaman": {
-            "name": "Andaman & Nicobar",
-            "sub_destinations": ["Port Blair", "Havelock Island", "Neil Island"]
-        },
-        "bali": {
-            "name": "Bali",
-            "sub_destinations": ["Ubud", "Seminyak", "Nusa Dua", "Uluwatu", "Canggu"]
-        },
-        "dubai": {
-            "name": "Dubai",
-            "sub_destinations": ["Downtown Dubai", "Palm Jumeirah", "Dubai Marina", "Desert Safari"]
-        },
-        "switzerland": {
-            "name": "Switzerland",
-            "sub_destinations": ["Zurich", "Lucerne", "Interlaken", "Zermatt", "Geneva"]
-        },
-        "japan": {
-            "name": "Japan",
-            "sub_destinations": ["Tokyo", "Kyoto", "Osaka", "Hakone", "Nara"]
-        },
-        "france": {
-            "name": "France",
-            "sub_destinations": ["Paris", "Nice", "Versailles", "French Riviera"]
-        }
-    }
-
-    detected_dest = ""
-    detected_subs: List[str] = []
-    lower_text = text.lower()
-
-    # Match destination against known regions or cities
-    for key, data in dest_map.items():
-        if key in lower_text or any(sub.lower() in lower_text for sub in data["sub_destinations"]):
-            detected_dest = data["name"]
-            detected_subs = [sub for sub in data["sub_destinations"] if sub.lower() in lower_text]
-            if not detected_subs:
-                detected_subs = data["sub_destinations"][:3]
-            break
-
-    # If not in map, try to extract from explicit titles e.g. "Trip to X", "Tour to X", "Itinerary for X"
-    if not detected_dest:
-        m = re.search(r"(?i)(?:trip|tour|itinerary|package|holiday)\s+(?:to|for|in)\s+([A-Z][a-zA-Z\s]{2,25})", text)
-        if m:
-            detected_dest = m.group(1).strip()
-            detected_subs = [f"{detected_dest} Central", f"{detected_dest} Highlights"]
-
-    # Extract extra custom sections
+    # Extract extra custom sections using regex
     extra_sections = {}
 
-    # 1. What to Pack / Packing List
-    pack_match = re.search(r"(?i)(?:what\s+to\s+pack|things\s+to\s+carry|packing\s+list|essentials\s+to\s+carry|items\s+to\s+bring)[:\s]*\n?([\s\S]{15,1200}?)(?=\n\s*\n[A-Z0-9#]|\Z)", text)
-    if pack_match:
-        extra_sections["what_to_pack"] = pack_match.group(1).strip()
+    section_patterns = [
+        # What to Pack / Packing List
+        ("what_to_pack", r"(?i)(?:what\s+to\s+pack|things\s+to\s+carry|packing\s+list|essentials\s+to\s+carry|items\s+to\s+bring|carry\s+along)[:\s]*\n?([\s\S]{15,2000}?)(?=\n\s*\n[A-Z0-9#]|\Z)"),
+        # Important Notes / Do's & Don'ts
+        ("important_notes", r"(?i)(?:important\s+notes|special\s+notes|please\s+note|do\'?s\s+and\s+don\'?ts|points\s+to\s+remember|advisory)[:\s]*\n?([\s\S]{15,2000}?)(?=\n\s*\n[A-Z0-9#]|\Z)"),
+        # Visa Guidelines
+        ("visa_guidelines", r"(?i)(?:visa\s+requirements|visa\s+guidelines|visa\s+policy|passport\s+and\s+visa|visa\s+information)[:\s]*\n?([\s\S]{15,2000}?)(?=\n\s*\n[A-Z0-9#]|\Z)"),
+        # Cancellation / Damages
+        ("cancellation_policy", r"(?i)(?:cancellation\s+policy|cancellation\s+charges|refund\s+policy)[:\s]*\n?([\s\S]{15,2000}?)(?=\n\s*\n[A-Z0-9#]|\Z)"),
+        # Damages
+        ("damages", r"(?i)(?:damages|damage\s+policy|damage\s+charges)[:\s]*\n?([\s\S]{15,1000}?)(?=\n\s*\n[A-Z0-9#]|\Z)"),
+        # Terms of Payment
+        ("terms_of_payment", r"(?i)(?:terms\s+of\s+payment|payment\s+terms|payment\s+schedule|payment\s+policy)[:\s]*\n?([\s\S]{15,2000}?)(?=\n\s*\n[A-Z0-9#]|\Z)"),
+    ]
 
-    # 2. Important Notes / Do's & Don'ts
-    notes_match = re.search(r"(?i)(?:important\s+notes|special\s+notes|please\s+note|do\'?s\s+and\s+don\'?ts|points\s+to\s+remember)[:\s]*\n?([\s\S]{15,1200}?)(?=\n\s*\n[A-Z0-9#]|\Z)", text)
-    if notes_match:
-        extra_sections["important_notes"] = notes_match.group(1).strip()
-
-    # 3. Visa Guidelines
-    visa_match = re.search(r"(?i)(?:visa\s+requirements|visa\s+guidelines|visa\s+policy|passport\s+and\s+visa)[:\s]*\n?([\s\S]{15,1200}?)(?=\n\s*\n[A-Z0-9#]|\Z)", text)
-    if visa_match:
-        extra_sections["visa_guidelines"] = visa_match.group(1).strip()
+    for section_type, pattern in section_patterns:
+        match = re.search(pattern, text)
+        if match:
+            extra_sections[section_type] = match.group(1).strip()
 
     # Convert extra_sections dict into custom_fields array for branding
     custom_fields = []
@@ -389,15 +327,16 @@ def parse_destination_and_extra_sections(text: str) -> Dict[str, Any]:
             "section_type": sec_type
         })
 
-    logger.info(f"[PDF Section Parser] Detected destination: '{detected_dest}', sub_dests: {detected_subs}, extra_sections: {list(extra_sections.keys())}")
+    logger.info(f"[PDF Section Parser] Pre-parsed extra_sections: {list(extra_sections.keys())}")
 
     return {
-        "detected_destination": detected_dest,
-        "sub_destinations": detected_subs,
+        "detected_destination": "",  # Determined by AI extraction, not hardcoded
+        "sub_destinations": [],       # Determined by AI extraction
         "extra_sections": extra_sections,
         "what_to_pack": extra_sections.get("what_to_pack", ""),
         "custom_fields": custom_fields
     }
+
 
 
 def deterministic_pre_parse_and_compress(text: str) -> Tuple[str, Dict[str, Any]]:

@@ -6,9 +6,16 @@ export function formatPrice(amount, currency = 'INR') {
 }
 
 export function safeText(val) {
-  if (Array.isArray(val)) return val.join('\n');
-  if (val && typeof val === 'object') return JSON.stringify(val);
-  return val ?? '';
+  if (val == null) return '';
+  if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') return String(val);
+  if (Array.isArray(val)) return val.map(safeText).join('\n');
+  if (typeof val === 'object') {
+    if (val.content !== undefined) return safeText(val.content);
+    if (val.text !== undefined) return safeText(val.text);
+    if (val.value !== undefined) return safeText(val.value);
+    return JSON.stringify(val);
+  }
+  return String(val);
 }
 
 export function SectionHeader({ title, subtitle, accentColor = '#e11d48' }) {
