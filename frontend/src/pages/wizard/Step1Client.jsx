@@ -1,8 +1,9 @@
-import { useEffect, useState, useImperativeHandle, forwardRef, memo } from 'react';
+import { useEffect, useState, useRef, useImperativeHandle, forwardRef, memo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { COUNTRY_CODES } from '../../lib/countries.js';
+import { findClientByContact } from '../../services/crmService.js';
 
 const TOUR_TYPES = [
   'Honeymoon', 'Family', 'Friends', 'Solo', 'Corporate', 
@@ -30,6 +31,9 @@ const clientSchema = z.object({
   num_children: z.number().min(0).optional(),
   budget: z.union([z.number(), z.nan(), z.string()]).optional().transform(v => Number.isNaN(v) ? undefined : v),
   special_notes: z.string().optional(),
+  dietary: z.string().optional(),
+  pace: z.string().optional(),
+  dislikes: z.array(z.string()).optional().default([]),
 }).refine(data => {
   if (data.date_mode === 'dates') {
     return !!data.start_date && !!data.end_date;
@@ -51,7 +55,113 @@ const Field = memo(function Field({ label, register, name, type = 'text', testid
   );
 });
 
-export const Step1Client = forwardRef(function Step1Client({ client, setClient }, ref) {
+const TagInput = memo(function TagInput({ label, value = [], onChange, suggestions = [] }) {
+  const [inputVal, setInputVal] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const containerRef = useRef(null);
+
+  const filtered = suggestions.filter(s => 
+    s.toLowerCase().includes(inputVal.toLowerCase()) && 
+    !value.some(existing => existing.toLowerCase() === s.toLowerCase())
+  );
+
+  const addTag = (tag) => {
+    const trimmed = tag.trim();
+    if (trimmed && !value.some(existing => existing.toLowerCase() === trimmed.toLowerCase())) {
+      onChange([...value, trimmed]);
+    }
+    setInputVal('');
+    setShowSuggestions(false);
+    setHighlightedIndex(-1);
+  };
+
+  const removeTag = (tagToRemove) => {
+    onChange(value.filter(t => t !== tagToRemove));
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
+        addTag(filtered[highlightedIndex]);
+      } else if (inputVal.trim()) {
+        addTag(inputVal);
+      }
+    } else if (e.key === ',') {
+      e.preventDefault();
+      if (inputVal.trim()) {
+        addTag(inputVal);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setShowSuggestions(true);
+      setHighlightedIndex(prev => Math.min(prev + 1, filtered.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(prev => Math.max(prev - 1, -1));
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setHighlightedIndex(-1);
+    }
+  };
+
+  useEffect(() => {
+    const clickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', clickOutside);
+    return () => document.removeEventListener('mousedown', clickOutside);
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-xs relative w-full" ref={containerRef}>
+      <span className="font-label-md text-label-md text-on-surface">{label}</span>
+      <div className="flex flex-wrap gap-xs p-xs min-h-[3.25rem] bg-surface-container-lowest border border-outline-variant rounded-lg focus-within:ring-2 focus-within:ring-primary/20">
+        {value.map(tag => (
+          <span key={tag} className="flex items-center gap-xs px-sm py-xs bg-surface-container-low text-primary text-xs font-semibold rounded-md border border-outline-variant/40 animate-scale-in">
+            {tag}
+            <button type="button" onClick={() => removeTag(tag)} className="hover:text-error text-on-surface-variant flex items-center justify-center font-bold">
+              <span className="material-symbols-outlined text-sm">close</span>
+            </button>
+          </span>
+        ))}
+        <input 
+          type="text" 
+          value={inputVal}
+          onChange={(e) => {
+            setInputVal(e.target.value);
+            setShowSuggestions(true);
+            setHighlightedIndex(-1);
+          }}
+          onFocus={() => setShowSuggestions(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={value.length === 0 ? "Type and press Enter or comma..." : ""}
+          className="flex-1 min-w-[120px] px-sm py-xs outline-none bg-transparent font-body-md border-0 focus:ring-0 focus:outline-none"
+        />
+      </div>
+
+      {showSuggestions && filtered.length > 0 && (
+        <ul className="absolute z-50 top-[100%] left-0 right-0 mt-xs bg-surface-container-lowest border border-outline-variant/60 rounded-lg shadow-lg max-h-48 overflow-y-auto divide-y divide-outline-variant/30 backdrop-blur-md">
+          {filtered.map((suggestion, idx) => (
+            <li 
+              key={suggestion}
+              onClick={() => addTag(suggestion)}
+              onMouseEnter={() => setHighlightedIndex(idx)}
+              className={`px-md py-md font-body-md cursor-pointer transition-colors ${idx === highlightedIndex ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container-low'}`}
+            >
+              {suggestion}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+});
+
+export const Step1Client = forwardRef(function Step1Client({ client, setClient, isNew }, ref) {
   const { register, watch, handleSubmit, setValue, formState: { errors } } = useForm({
     resolver: zodResolver(clientSchema),
     defaultValues: {
@@ -60,11 +170,86 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient }
       num_children: parseInt(client.num_children) || 0,
       duration_days: parseInt(client.duration_days) || 1,
       duration_nights: parseInt(client.duration_nights) || 1,
+      dietary: client.dietary || '',
+      pace: client.pace || '',
+      dislikes: client.dislikes || [],
     },
     mode: 'onChange'
   });
 
   const values = watch();
+
+  const [dislikesTags, setDislikesTags] = useState(client.dislikes || []);
+  const [availableTags, setAvailableTags] = useState([]);
+  const [prefLoadedNote, setPrefLoadedNote] = useState('');
+
+  // Sync the form value whenever dislikesTags changes
+  useEffect(() => {
+    register('dislikes');
+    setValue('dislikes', dislikesTags, { shouldValidate: true });
+  }, [dislikesTags, register, setValue]);
+
+  // Load distinct object_tags for autocomplete suggestions
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      let tags = ['museums', 'adventure', 'relaxed', 'active', 'family', 'couple', 'luxury', 'budget', 'mid', 'nature', 'city', 'history', 'wildlife'];
+      try {
+        const supa = (await import('../../lib/supabaseClient.js')).supabase;
+        const isDemo = (await import('../../lib/supabaseClient.js')).isDemoSession();
+        if (supa && !isDemo) {
+          const { data } = await supa.from('object_tags').select('tag');
+          if (data && isMounted) {
+            const unique = Array.from(new Set(data.map(t => t.tag))).sort();
+            if (unique.length > 0) {
+              tags = unique;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch autocomplete tags", err);
+      }
+      if (isMounted) {
+        setAvailableTags(tags);
+      }
+    })();
+    return () => { isMounted = false; };
+  }, []);
+
+  // Watch contact details to trigger debounced prefill
+  const emailVal = watch('email');
+  const phoneVal = watch('phone');
+
+  useEffect(() => {
+    if (!isNew) return;
+    if (!emailVal && !phoneVal) {
+      setPrefLoadedNote('');
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const foundClient = await findClientByContact({ phone: phoneVal, email: emailVal });
+        if (foundClient && foundClient.preferences) {
+          const prefs = foundClient.preferences;
+          if (prefs.dietary) {
+            setValue('dietary', prefs.dietary, { shouldValidate: true });
+          }
+          if (prefs.pace) {
+            setValue('pace', prefs.pace, { shouldValidate: true });
+          }
+          if (prefs.dislikes && Array.isArray(prefs.dislikes)) {
+            setDislikesTags(prefs.dislikes);
+          }
+          setPrefLoadedNote(`Loaded preferences from ${foundClient.name}'s last trip.`);
+        }
+      } catch (err) {
+        console.warn('Failed to prefill client preferences:', err);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [emailVal, phoneVal, isNew, setValue]);
 
   useEffect(() => {
     // Keep parent state synced for auto-saving drafts
@@ -230,6 +415,56 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient }
         <label className="font-label-md text-label-md text-on-surface block mb-xs">Special Notes</label>
         <textarea {...register('special_notes')} rows={3} data-testid="special-notes"
           className="w-full px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md" />
+      </div>
+
+      {/* Client Preferences */}
+      <div className="border-t border-outline-variant pt-lg space-y-md">
+        <div className="flex items-center gap-sm">
+          <span className="material-symbols-outlined text-primary text-xl">psychology</span>
+          <h4 className="font-headline-sm text-headline-sm text-primary">Client Preferences</h4>
+        </div>
+        
+        {prefLoadedNote && (
+          <div className="text-xs font-semibold text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 px-md py-xs rounded-lg flex items-center gap-xs max-w-max animate-fade-in">
+            <span className="material-symbols-outlined text-sm text-emerald-600">check_circle</span>
+            {prefLoadedNote}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+          <label className="flex flex-col gap-xs">
+            <span className="font-label-md text-label-md text-on-surface">Dietary Preference</span>
+            <input 
+              type="text" 
+              {...register('dietary')} 
+              placeholder="e.g. Vegetarian, Vegan, Gluten-free, No seafood"
+              className="px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20"
+            />
+          </label>
+
+          <label className="flex flex-col gap-xs">
+            <span className="font-label-md text-label-md text-on-surface">Pace Preference</span>
+            <select 
+              {...register('pace')}
+              className="px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="">(Select Pace)</option>
+              <option value="relaxed">Relaxed</option>
+              <option value="moderate">Moderate</option>
+              <option value="active">Active</option>
+              <option value="fast-paced">Fast-paced</option>
+            </select>
+          </label>
+
+          <div className="col-span-1 md:col-span-2">
+            <TagInput 
+              label="Dislikes / Avoid Tags" 
+              value={dislikesTags} 
+              onChange={(newTags) => setDislikesTags(newTags)} 
+              suggestions={availableTags}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

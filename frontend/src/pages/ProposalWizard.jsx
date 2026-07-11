@@ -138,6 +138,68 @@ export default function ProposalWizard() {
     }
   }, [themeParam, idParam, setBranding]);
 
+  // Style Profile Auto-Phrasing for New Proposals
+  useEffect(() => {
+    const isNewProposal = !idParam && !activeId;
+    const dest = client?.destination || proposal?.destination;
+    
+    if (dest && (isNewProposal || (!proposal?.brief?.special_notes && !branding?.highlights))) {
+      let isMounted = true;
+      (async () => {
+        try {
+          let token = null;
+          try {
+            const supa = (await import('../lib/supabaseClient.js')).supabase;
+            const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+            if (session?.access_token) token = session.access_token;
+          } catch {}
+
+          const headers = { 'Content-Type': 'application/json' };
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+
+          const res = await fetch('/api/proposals/auto-phrase', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              client_name: client?.customer_name || 'Valued Traveler',
+              destination: dest,
+              tour_type: client?.tour_type || 'Luxury Voyage',
+              client_preferences: {
+                dietary: client?.dietary || '',
+                pace: client?.pace || '',
+                dislikes: client?.dislikes || []
+              }
+            })
+          });
+
+          if (res.ok && isMounted) {
+            const data = await res.json();
+            if (data.status === 'success' && data.draft) {
+              const { greeting, highlights } = data.draft;
+              
+              if (highlights && !branding?.highlights) {
+                setBranding(b => ({ ...b, highlights, highlights_ai_drafted: true }));
+              }
+              if (greeting && !proposal?.brief?.special_notes) {
+                setProposal(p => ({
+                  ...p,
+                  brief: {
+                    ...(p?.brief || {}),
+                    special_notes: greeting,
+                    special_notes_ai_drafted: true
+                  }
+                }));
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Failed to auto-phrase new proposal fields:", err);
+        }
+      })();
+      return () => { isMounted = false; };
+    }
+  }, [proposal?.destination, client?.destination, idParam, activeId]);
+
   // Eagerly preload heavy steps so they are instantly ready when the user reaches them
   useEffect(() => {
     import('./wizard/Step4Branding.jsx');
@@ -583,7 +645,7 @@ export default function ProposalWizard() {
                   transition={{ duration: 0.2, ease: 'easeOut' }}
                 >
                   <Suspense fallback={<div className="p-xl text-center"><span className="material-symbols-outlined animate-spin text-2xl">progress_activity</span></div>}>
-                    {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} />}
+                    {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} isNew={!idParam} />}
                     {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={() => loadProposal(proposal?.id)} itineraries={itineraries} onApplyItinerary={triggerApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft} />}
                     {stepParam === 3 && <Step3Costing proposal={proposal} setProposal={setProposal} proposalId={proposal?.id} items={items} setItems={setItems}
                       onPatchItem={onPatchItem} onRemoveItem={onRemoveItem} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft}

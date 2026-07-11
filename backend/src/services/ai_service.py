@@ -1,12 +1,13 @@
 import os
 import httpx
 import logging
+import json
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-async def call_openai_with_retry(payload: dict, headers: dict):
+async def _call_openai_with_retry_raw(payload: dict, headers: dict):
     async with httpx.AsyncClient(timeout=60.0) as client:
         r = await client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers)
         if r.status_code == 429 or r.status_code >= 500:
@@ -16,8 +17,64 @@ async def call_openai_with_retry(payload: dict, headers: dict):
             raise Exception(f"OpenAI API processing failed: {r.status_code}")
         return r.json()
 
+async def call_openai_with_retry(payload: dict, headers: dict):
+    cache_meta = payload.pop("_cache_meta", None)
+    if cache_meta:
+        agency_id = cache_meta.get("agency_id")
+        entity_type = cache_meta.get("entity_type") or "general"
+        entity_id = cache_meta.get("entity_id")
+        prompt_version = cache_meta.get("prompt_version") or "v1.0.0"
+        schema_version = cache_meta.get("schema_version") or "v1.0.0"
+        
+        input_text = cache_meta.get("input_text")
+        if not input_text:
+            try:
+                input_text = payload["messages"][-1]["content"]
+            except Exception:
+                input_text = ""
+                
+        model = cache_meta.get("model") or payload.get("model") or "gpt-4o-mini"
+        
+        from src.services.ai_cache_service import get_cached_extraction, save_cached_extraction
+        cached = await get_cached_extraction(agency_id, model, prompt_version, schema_version, input_text)
+        if cached is not None:
+            text_val = json.dumps(cached) if isinstance(cached, (dict, list)) else str(cached)
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": text_val
+                        }
+                    }
+                ]
+            }
+            
+        result = await _call_openai_with_retry_raw(payload, headers)
+        try:
+            content = result["choices"][0]["message"]["content"]
+            try:
+                parsed_data = json.loads(content)
+            except Exception:
+                parsed_data = content
+                
+            await save_cached_extraction(
+                agency_id=agency_id,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                model=model,
+                prompt_version=prompt_version,
+                schema_version=schema_version,
+                normalized_input=input_text,
+                output_json=parsed_data
+            )
+        except Exception as e:
+            logger.warning(f"[AICache] Failed to parse and cache OpenAI response: {e}")
+        return result
+    else:
+        return await _call_openai_with_retry_raw(payload, headers)
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-async def call_gemini_with_retry(payload: dict, api_key: str):
+async def _call_gemini_with_retry_raw(payload: dict, api_key: str):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -28,6 +85,66 @@ async def call_gemini_with_retry(payload: dict, api_key: str):
         if r.status_code != 200:
             raise Exception(f"Gemini API processing failed: {r.status_code} - {r.text}")
         return r.json()
+
+async def call_gemini_with_retry(payload: dict, api_key: str):
+    cache_meta = payload.pop("_cache_meta", None)
+    if cache_meta:
+        agency_id = cache_meta.get("agency_id")
+        entity_type = cache_meta.get("entity_type") or "general"
+        entity_id = cache_meta.get("entity_id")
+        prompt_version = cache_meta.get("prompt_version") or "v1.0.0"
+        schema_version = cache_meta.get("schema_version") or "v1.0.0"
+        
+        input_text = cache_meta.get("input_text")
+        if not input_text:
+            try:
+                input_text = payload["contents"][0]["parts"][0]["text"]
+            except Exception:
+                input_text = ""
+                
+        model = cache_meta.get("model") or "gemini-2.5-flash"
+        
+        from src.services.ai_cache_service import get_cached_extraction, save_cached_extraction
+        cached = await get_cached_extraction(agency_id, model, prompt_version, schema_version, input_text)
+        if cached is not None:
+            text_val = json.dumps(cached) if isinstance(cached, (dict, list)) else str(cached)
+            return {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": text_val
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+            
+        result = await _call_gemini_with_retry_raw(payload, api_key)
+        try:
+            content = result["candidates"][0]["content"]["parts"][0]["text"]
+            try:
+                parsed_data = json.loads(content)
+            except Exception:
+                parsed_data = content
+                
+            await save_cached_extraction(
+                agency_id=agency_id,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                model=model,
+                prompt_version=prompt_version,
+                schema_version=schema_version,
+                normalized_input=input_text,
+                output_json=parsed_data
+            )
+        except Exception as e:
+            logger.warning(f"[AICache] Failed to parse and cache Gemini response: {e}")
+        return result
+    else:
+        return await _call_gemini_with_retry_raw(payload, api_key)
 
 async def extract_itinerary(text: str) -> dict:
     api_key_gemini = os.environ.get("GEMINI_API_KEY")

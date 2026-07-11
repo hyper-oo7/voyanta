@@ -92,6 +92,10 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
   const [warnings, setWarnings] = useState([]);
   const [showWarnings, setShowWarnings] = useState(false);
 
+  const [sequenceFlags, setSequenceFlags] = useState([]);
+  const [showSequenceFlags, setShowSequenceFlags] = useState(false);
+  const [isValidatingSequence, setIsValidatingSequence] = useState(false);
+
   // Trigger validation check automatically when the preview page loads
   useEffect(() => {
     if (!proposalId) return;
@@ -303,6 +307,50 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
     setNewCustom({ label: '', type: 'text', content: '' });
     setShowAddCustom(false);
     toast.success(`Section "${created.label}" added!`);
+  };
+
+  const handleValidateSequence = async () => {
+    if (!proposalId) return;
+    
+    setIsValidatingSequence(true);
+    try {
+      const st = useProposalStore.getState();
+      const days = st.proposal?.itinerary?.days || [];
+      
+      let token = null;
+      try {
+        const supa = (await import('../../lib/supabaseClient.js')).supabase;
+        const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+        if (session?.access_token) token = session.access_token;
+      } catch {}
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/proposals/validate-sequence', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ days })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'success' && data.flags) {
+          setSequenceFlags(data.flags);
+          setShowSequenceFlags(true);
+          if (data.flags.length === 0) {
+            toast.success("✨ Itinerary flow and pacing check completed successfully! No issues flagged.");
+          } else {
+            toast.info(`AI flagged ${data.flags.length} pacing/sequence recommendations.`);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to run sequence validation:", err);
+      toast.error("Failed to execute sequence validation check.");
+    } finally {
+      setIsValidatingSequence(false);
+    }
   };
 
   const onGeneratePdf = async () => {
@@ -519,6 +567,21 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
           AI Auto-Title
         </button>
 
+        <button 
+          type="button" 
+          onClick={handleValidateSequence} 
+          disabled={isValidatingSequence}
+          data-testid="ai-itinerary-check"
+          className="px-md py-sm bg-purple-500/10 text-purple-700 border border-purple-500/20 hover:bg-purple-500/20 rounded-lg font-label-md flex items-center gap-2 transition-colors disabled:opacity-50"
+        >
+          {isValidatingSequence ? (
+            <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+          ) : (
+            <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+          )}
+          {isValidatingSequence ? 'Checking pacing…' : 'AI Itinerary Check'}
+        </button>
+
         <button type="button" onClick={() => setIsInteractiveStudio(!isInteractiveStudio)} data-testid="toggle-wysiwyg"
           className={`px-lg py-md border rounded-lg font-label-md flex items-center gap-xs shadow-sm transition-all ${isInteractiveStudio ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-lg animate-pulse' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'}`}>
           <span className="material-symbols-outlined text-[18px]">edit_document</span> {isInteractiveStudio ? '✨ WYSIWYG Active (Click Text to Edit)' : '✨ WYSIWYG Live Editor'}
@@ -612,6 +675,39 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
               type="button"
               onClick={() => setShowWarnings(false)} 
               className="text-amber-500 hover:text-amber-700 p-1 inline-flex items-center justify-center rounded-full hover:bg-amber-100/50"
+            >
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          </div>
+        )}
+        {showSequenceFlags && sequenceFlags.length > 0 && (
+          <div className="bg-purple-50 border-b border-purple-200 px-lg py-md flex items-start gap-md no-print animate-fade-in" data-testid="sequence-warnings">
+            <span className="material-symbols-outlined text-purple-600 mt-xs">auto_awesome</span>
+            <div className="flex-1 space-y-xs">
+              <h4 className="font-label-md font-bold text-purple-900 flex items-center gap-1">
+                AI Itinerary Pacing & Sequence Analysis
+              </h4>
+              <ul className="list-none space-y-md text-xs text-purple-850">
+                {sequenceFlags.map((flag) => (
+                  <li key={flag.id} className="border-l-2 border-purple-300 pl-3 py-1 space-y-0.5">
+                    <p className="font-bold text-purple-950 flex items-center gap-1 m-0">
+                      <span className="material-symbols-outlined text-[14px]">flag</span>
+                      {flag.message}
+                    </p>
+                    {flag.fix && (
+                      <p className="text-purple-850 m-0 leading-relaxed pl-1 text-[11px]">
+                        <strong className="text-[10px] uppercase font-bold tracking-wider text-purple-700 block mt-0.5">Recommended Fix:</strong>
+                        {flag.fix}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <button 
+              type="button"
+              onClick={() => setShowSequenceFlags(false)} 
+              className="text-purple-500 hover:text-purple-700 p-1 inline-flex items-center justify-center rounded-full hover:bg-purple-100/50"
             >
               <span className="material-symbols-outlined text-[18px]">close</span>
             </button>
@@ -798,7 +894,25 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
               </label>
               <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
                 Executive Welcome Text / Special Notes
-                <textarea rows={3} value={proposal?.brief?.special_notes || ''} placeholder="Welcome to your dream luxury getaway..." onChange={e => useProposalStore.getState().updateProposal({ brief: { ...proposal?.brief, special_notes: e.target.value } })} className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" />
+                <textarea 
+                  rows={3} 
+                  value={proposal?.brief?.special_notes || ''} 
+                  placeholder="Welcome to your dream luxury getaway..." 
+                  onChange={e => useProposalStore.getState().updateProposal({ 
+                    brief: { 
+                      ...proposal?.brief, 
+                      special_notes: e.target.value, 
+                      special_notes_ai_drafted: false 
+                    } 
+                  })} 
+                  className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" 
+                />
+                {proposal?.brief?.special_notes_ai_drafted && (
+                  <span className="text-[11px] font-semibold text-primary/80 flex items-center gap-xs mt-1" data-testid="special-notes-ai-warning">
+                    <span className="material-symbols-outlined text-[14px] text-primary">auto_awesome</span>
+                    AI-drafted using your style profile, edit as needed
+                  </span>
+                )}
               </label>
             </div>
 

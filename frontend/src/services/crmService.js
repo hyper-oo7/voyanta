@@ -206,6 +206,15 @@ export async function upsertClientFromProposal(proposal) {
 
   let existing = null;
 
+  // Extract client preferences from proposal brief
+  const brief = proposal.brief || {};
+  const clientPreferences = {
+    dietary: brief.dietary || '',
+    pace: brief.pace || '',
+    dislikes: brief.dislikes || [],
+    avoid: brief.dislikes || []
+  };
+
   if (isProd) {
     try {
       if (normEmail) {
@@ -235,7 +244,11 @@ export async function upsertClientFromProposal(proposal) {
     return updateClient(existing.id, {
       status: proposal.status || 'Proposal Sent',
       destination: destination || existing.destination,
-      phone: phone || existing.phone
+      phone: phone || existing.phone,
+      preferences: {
+        ...(existing.preferences || {}),
+        ...clientPreferences
+      }
     });
   } else {
     return createClient({
@@ -244,7 +257,56 @@ export async function upsertClientFromProposal(proposal) {
       phone,
       destination,
       status: proposal.status || 'Proposal Sent',
-      notes: `Generated proposal: ${proposal.name || 'Safari Adventure'}`
+      notes: `Generated proposal: ${proposal.name || 'Safari Adventure'}`,
+      preferences: clientPreferences
     });
   }
+}
+
+/**
+ * Searches for a client matching a phone number or email, in production (Supabase)
+ * or local fallback (Demo mode).
+ */
+export async function findClientByContact({ phone, email }) {
+  const agencyId = getAgencyId();
+  const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
+  const normEmail = email?.trim().toLowerCase();
+  const normPhone = phone?.replace(/\D/g, '');
+
+  if (!normEmail && (!normPhone || normPhone.length < 7)) return null;
+
+  if (isProd) {
+    try {
+      let query = supabase.from(TABLE).select('*').eq('agency_id', agencyId);
+      
+      const conditions = [];
+      if (normEmail) {
+        conditions.push(`email.ilike.${normEmail}`);
+      }
+      if (normPhone && normPhone.length >= 7) {
+        conditions.push(`phone.like.%${normPhone}%`);
+      }
+      
+      if (conditions.length > 0) {
+        query = query.or(conditions.join(','));
+        const { data, error } = await query.limit(1).maybeSingle();
+        if (!error && data) return data;
+      }
+    } catch (e) {
+      console.warn('Supabase findClientByContact failed, trying local lookup:', e);
+    }
+  }
+
+  // Fallback to local clients cache
+  const list = getLocalClients();
+  if (normEmail) {
+    const found = list.find(c => c.email && c.email.trim().toLowerCase() === normEmail);
+    if (found) return found;
+  }
+  if (normPhone && normPhone.length >= 7) {
+    const found = list.find(c => c.phone && c.phone.replace(/\D/g, '') === normPhone);
+    if (found) return found;
+  }
+
+  return null;
 }

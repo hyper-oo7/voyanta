@@ -208,6 +208,7 @@ async def process_vault_pdf(
             budget=budget,
             duration=duration,
             currency=currency,
+            agency_id=agency_id,
         )
 
         # ── Step 7: Store parsed package to Supabase vault_packages ───────
@@ -222,6 +223,8 @@ async def process_vault_pdf(
                 agency_id=agency_id,
                 user_id=user_id,
                 pdf_url=pdf_url,
+                raw_text=raw_text,
+                extraction_version="v2.0.0",
             )
             if saved:
                 ai_result["vault_package_id"] = saved.get("id")

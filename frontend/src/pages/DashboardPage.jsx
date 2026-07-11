@@ -36,6 +36,31 @@ export default function DashboardPage() {
     destinationsList: [],
   });
   const [recentActivity, setRecentActivity] = useState([]);
+  const [outcomeInsights, setOutcomeInsights] = useState(null);
+
+  useEffect(() => {
+    let token = null;
+    (async () => {
+      try {
+        const supa = (await import('../lib/supabaseClient.js')).supabase;
+        const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+        if (session?.access_token) token = session.access_token;
+      } catch {}
+
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      try {
+        const res = await fetch('/api/agencies/outcome-insights', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setOutcomeInsights(data);
+        }
+      } catch (err) {
+        console.error('Failed to load outcome insights:', err);
+      }
+    })();
+  }, [proposals]);
 
   // Fetch server-side stats on mount and analytics updates
   useEffect(() => {
@@ -158,6 +183,50 @@ export default function DashboardPage() {
         <MiniStatCard title="MOST APPROVED DEST." value={mostApprovedDestComputed} subtitle="Top Approved Plan" icon="thumb_up" color="text-indigo-500 bg-indigo-500/10" isText onClick={() => setShowDestModal(true)} />
         <MiniStatCard title="MOST MODIFIED DEST." value={mostModifiedDestComputed} subtitle="Top Modified Plan" icon="rate_review" color="text-orange-500 bg-orange-500/10" isText onClick={() => setShowDestModal(true)} />
       </div>
+
+      {/* Dynamic Conversion Insights Widget */}
+      {outcomeInsights && (
+        <div className="bg-gradient-to-r from-primary/5 to-purple-500/5 border border-outline-variant rounded-2xl p-lg shadow-sm space-y-md">
+          <h4 className="font-headline-sm text-sm font-extrabold text-primary m-0 uppercase tracking-widest flex items-center gap-xs">
+            <span className="material-symbols-outlined text-[20px] text-primary">analytics</span>
+            Conversion Insights
+          </h4>
+          {outcomeInsights.status === 'pending' ? (
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-md">
+              <p className="text-xs text-on-surface-variant m-0 leading-relaxed max-w-xl">
+                Proposal conversion insights will appear here automatically once you log at least 50 outcomes (marking proposals as Won/Approved or Lost/Cancelled). This helps analyze tag distributions and templates to boost conversion.
+              </p>
+              <div className="flex items-center gap-sm">
+                <div className="w-32 bg-surface-container-high h-2.5 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-primary h-full rounded-full transition-all duration-500" 
+                    style={{ width: `${Math.min(100, (outcomeInsights.current / outcomeInsights.required) * 100)}%` }}
+                  />
+                </div>
+                <span className="font-mono text-xs font-bold text-primary whitespace-nowrap">
+                  {outcomeInsights.current} / {outcomeInsights.required}
+                </span>
+              </div>
+            </div>
+          ) : !outcomeInsights.insights || outcomeInsights.insights.length === 0 ? (
+            <p className="text-xs text-on-surface-variant m-0">No strong styling or template conversion differences detected yet — continue logging outcomes to build patterns.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+              {outcomeInsights.insights.map((insight, idx) => (
+                <div key={idx} className="bg-white border border-outline-variant/60 rounded-xl p-md flex items-start gap-md shadow-sm hover:shadow-md transition-all">
+                  <span className="material-symbols-outlined text-primary text-xl mt-xs">auto_awesome</span>
+                  <div className="space-y-xs">
+                    <p className="text-xs font-bold text-on-surface leading-normal m-0">{insight.message}</p>
+                    <span className="text-[10px] text-primary font-bold uppercase tracking-wider bg-primary/10 px-2 py-0.5 rounded-full">
+                      {insight.type} Optimization
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-xl">

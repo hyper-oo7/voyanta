@@ -50,7 +50,11 @@ SYSTEM_PROMPT = (
     "  * \"rate\": A numeric price (e.g. 15000 or 150.50).\n"
     "  * \"currency\": The currency code (e.g. \"INR\", \"USD\", default \"INR\").\n"
     "  * \"valid_from\": The start date of the rate in \"YYYY-MM-DD\" format, or null.\n"
-    "  * \"valid_to\": The end date of the rate in \"YYYY-MM-DD\" format, or null.\n\n"
+    "  * \"valid_to\": The end date of the rate in \"YYYY-MM-DD\" format, or null.\n"
+    "- \"relations\": An optional array of proposed travel relations to other entities. Each relation must have:\n"
+    "  * \"relation_type\": Must be exactly 'pairs_well_with' (or 'alternative_to')\n"
+    "  * \"target_object_name\": The name of the other hotel, activity, or restaurant it pairs well with.\n"
+    "  * \"confidence_level\": Must be exactly 'high', 'medium', or 'low' based on how strongly the text suggests the relation (e.g. recommended combined visit, alternative options).\n\n"
     "Output MUST be a valid JSON array of these objects and nothing else. Do not output any markdown code block formatting (like ```json), commentary, or headers. Return ONLY the raw valid JSON array."
 )
 
@@ -294,6 +298,17 @@ def save_knowledge_objects(
                         logger.info(f"[KnowledgeExtract] Inserted {len(rate_records)} supplier rates.")
                     except Exception as rate_err:
                         logger.error(f"[KnowledgeExtract] Failed to insert supplier rates: {rate_err}")
+
+                # Process and save object relations (nearby and LLM proposed relations)
+                try:
+                    from src.services.object_relation_service import (
+                        compute_and_save_nearby_relations,
+                        process_and_save_extracted_relations
+                    )
+                    compute_and_save_nearby_relations(res.data, sb)
+                    process_and_save_extracted_relations(objects, inserted_map, sb)
+                except Exception as rel_err:
+                    logger.error(f"[KnowledgeExtract] Failed to process object relations: {rel_err}")
                         
         except Exception as e:
             logger.error(f"[KnowledgeExtract] Failed to insert knowledge records: {e}")

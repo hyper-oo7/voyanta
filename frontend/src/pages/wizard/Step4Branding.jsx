@@ -342,7 +342,21 @@ export function Step4Branding({ branding, setBranding, customBlocks, proposal, c
         <Field label="Instagram" value={branding?.social_instagram} onChange={upd('social_instagram')} testid="brand-ig" />
         <Field label="LinkedIn"  value={branding?.social_linkedin}  onChange={upd('social_linkedin')}  testid="brand-li" />
       </div>
-      <Textarea label="Highlights" value={branding?.highlights} onChange={upd('highlights')} testid="brand-highlights" placeholder="Bullet points of the trip's standout moments…" />
+      <div className="space-y-xs">
+        <Textarea 
+          label="Highlights" 
+          value={branding?.highlights} 
+          onChange={(e) => setBranding(s => ({ ...s, highlights: e.target.value, highlights_ai_drafted: false }))} 
+          testid="brand-highlights" 
+          placeholder="Bullet points of the trip's standout moments…" 
+        />
+        {branding?.highlights_ai_drafted && (
+          <span className="text-[11px] font-semibold text-primary/80 flex items-center gap-xs px-xs" data-testid="highlights-ai-warning">
+            <span className="material-symbols-outlined text-[14px] text-primary">auto_awesome</span>
+            AI-drafted using your style profile, edit as needed
+          </span>
+        )}
+      </div>
       <TextareaWithAI label="What's Included" value={branding?.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" onAI={aiDraft('inclusions', 'inclusions')} />
       <TextareaWithAI label="What's Excluded" value={branding?.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" onAI={aiDraft('exclusions', 'exclusions')} />
       <TextareaWithAI label="What to Pack (Packing & Trip Essentials)" value={branding?.what_to_pack} onChange={upd('what_to_pack')} testid="brand-what-to-pack" onAI={aiDraft('what_to_pack', 'what to pack')} />

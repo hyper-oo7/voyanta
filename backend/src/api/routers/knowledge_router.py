@@ -160,6 +160,20 @@ async def get_proposal_suggestions(
     proposal_data = proposal_res.data[0]
     brief = proposal_data.get("brief") or {}
     
+    # Fetch client preferences (dislikes) to filter suggestions
+    dislikes_set = set()
+    client_id = proposal_data.get("client_id")
+    if client_id:
+        try:
+            client_res = sb.table("clients").select("preferences").eq("id", client_id).execute()
+            if client_res.data:
+                client_prefs = client_res.data[0].get("preferences") or {}
+                if isinstance(client_prefs, dict):
+                    dislikes = client_prefs.get("dislikes") or []
+                    dislikes_set = {d.lower() for d in dislikes if isinstance(d, str)}
+        except Exception as e:
+            logger.error(f"Failed to query client preferences for client {client_id}: {e}")
+
     destination = proposal_data.get("destination") or brief.get("destination")
     
     # 2. Extract and sanitize client metrics
@@ -299,6 +313,10 @@ async def get_proposal_suggestions(
         o_tags = tags_by_obj.get(oid) or []
         o_tag_vals = [t["tag"] for t in o_tags]
         
+        # Exclude objects tagged with anything in the client dislikes list
+        if dislikes_set and any(t_val.lower() in dislikes_set for t_val in o_tag_vals):
+            continue
+            
         # Count target tag matches
         matched = [tag_val for tag_val in o_tag_vals if tag_val in target_tags]
         tag_match_count = len(matched)
@@ -335,6 +353,79 @@ async def get_proposal_suggestions(
     # Sort in descending order of matching score
     ranked_suggestions.sort(key=lambda x: x["score"], reverse=True)
 
+    # Fetch already added proposal items to find related items ("Goes well with what you just added")
+    related_suggestions = []
+    try:
+        items_res = sb.table("proposal_items").select("ref_id, label").eq("proposal_id", proposal_id).execute()
+        added_items = items_res.data or []
+        added_ref_ids = [item["ref_id"] for item in added_items if item.get("ref_id")]
+        
+        if added_ref_ids:
+            # Query object_relations where object_a_id is in added_ref_ids
+            relations_res = sb.table("object_relations")\
+                .select("object_a_id, object_b_id, relation_type, distance_minutes")\
+                .in_("object_a_id", added_ref_ids)\
+                .in_("relation_type", ["nearby", "pairs_well_with"])\
+                .eq("is_dismissed", False)\
+                .execute()
+                
+            relations_data = relations_res.data or []
+            if relations_data:
+                related_obj_ids = [r["object_b_id"] for r in relations_data]
+                
+                # Exclude objects already added to the proposal
+                related_obj_ids = [rid for rid in related_obj_ids if rid not in added_ref_ids]
+                
+                if related_obj_ids:
+                    rel_objs_res = sb.table("knowledge_objects")\
+                        .select("*")\
+                        .in_("id", related_obj_ids)\
+                        .eq("is_active", True)\
+                        .execute()
+                    
+                    rel_objs = rel_objs_res.data or []
+                    
+                    if rel_objs:
+                        # Fetch tags for related objects
+                        rel_tags_res = sb.table("object_tags").select("*").in_("object_id", related_obj_ids).execute()
+                        rel_tags_data = rel_tags_res.data or []
+                        
+                        rel_tags_by_obj = {}
+                        for t in rel_tags_data:
+                            oid = t["object_id"]
+                            if oid not in rel_tags_by_obj:
+                                rel_tags_by_obj[oid] = []
+                            rel_tags_by_obj[oid].append(t)
+                        
+                        added_labels_map = {item["ref_id"]: item["label"] for item in added_items if item.get("ref_id")}
+                        
+                        for ro in rel_objs:
+                            roid = ro["id"]
+                            rel_info = next((r for r in relations_data if r["object_b_id"] == roid), None)
+                            
+                            if rel_info:
+                                ro_tags = rel_tags_by_obj.get(roid) or []
+                                based_on_id = rel_info["object_a_id"]
+                                based_on_name = added_labels_map.get(based_on_id) or "added item"
+                                
+                                related_suggestions.append({
+                                    "id": roid,
+                                    "name": ro["name"],
+                                    "object_type": ro["object_type"],
+                                    "destination": ro["destination"],
+                                    "area": ro.get("area"),
+                                    "attributes": ro.get("attributes") or {},
+                                    "tags": [{"tag_category": t["tag_category"], "tag": t["tag"]} for t in ro_tags],
+                                    "relation": {
+                                        "relation_type": rel_info["relation_type"],
+                                        "distance_minutes": rel_info["distance_minutes"],
+                                        "based_on_id": based_on_id,
+                                        "based_on_name": based_on_name
+                                    }
+                                })
+    except Exception as e:
+        logger.error(f"Failed to query related suggestions: {e}")
+
     return JSONResponse(content={
         "status": "success",
         "step": step,
@@ -345,7 +436,8 @@ async def get_proposal_suggestions(
             "audience_tags": list(audience_tags),
             "travel_month": travel_month
         },
-        "suggestions": ranked_suggestions[:20]
+        "suggestions": ranked_suggestions[:20],
+        "related_suggestions": related_suggestions[:10]
     })
 
 
@@ -468,5 +560,40 @@ async def get_seasonal_rules(
     res = query.execute()
     rules = res.data or []
     return JSONResponse(content={"status": "success", "rules": rules})
+
+
+@router.patch("/knowledge-objects/relations/{object_a_id}/{object_b_id}/{relation_type}/dismiss")
+async def dismiss_relation(
+    object_a_id: str,
+    object_b_id: str,
+    relation_type: str,
+    user: Any = Depends(verify_token_optional)
+):
+    """
+    Dismisses a relation between two knowledge objects. Updates both directions in the database.
+    """
+    sb = get_supabase_client()
+    if not sb:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+        
+    try:
+        sb.table("object_relations")\
+            .update({"is_dismissed": True})\
+            .eq("object_a_id", object_a_id)\
+            .eq("object_b_id", object_b_id)\
+            .eq("relation_type", relation_type)\
+            .execute()
+            
+        sb.table("object_relations")\
+            .update({"is_dismissed": True})\
+            .eq("object_a_id", object_b_id)\
+            .eq("object_b_id", object_a_id)\
+            .eq("relation_type", relation_type)\
+            .execute()
+            
+        return JSONResponse(content={"status": "success", "message": "Relation dismissed successfully"})
+    except Exception as e:
+        logger.error(f"Failed to dismiss relation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 

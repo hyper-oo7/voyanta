@@ -229,7 +229,8 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
             <option value="ALL">All Status</option>
             <option value="DRAFT">Draft</option>
             <option value="SENT">Sent</option>
-            <option value="ACCEPTED">Accepted</option>
+            <option value="APPROVED">Won (Approved)</option>
+            <option value="CANCELLED">Lost (Cancelled)</option>
           </select>
           <span className="text-label-sm font-label-sm text-primary uppercase tracking-widest bg-primary-container px-md py-xs rounded-full whitespace-nowrap">
             {loading ? 'Loading…' : `${filtered.length} of ${proposals.length} Proposals`}
@@ -325,6 +326,7 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
 
 function ProposalCard({ proposal: p, highlightId, onView, onEdit, onDuplicate, onDelete, onShare, onExport, index }) {
   const isHighlight = highlightId === p.id;
+  const toast = useToast();
   
   const fallbackImages = [
     'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&q=80&w=800', 
@@ -385,6 +387,48 @@ function ProposalCard({ proposal: p, highlightId, onView, onEdit, onDuplicate, o
           </p>
         </div>
 
+        {/* One-click outcome actions if status is not Won/Lost */}
+        {(!p.status || !['approved', 'cancelled'].includes(p.status.toLowerCase())) && (
+          <div className="flex gap-xs my-sm" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                  await updateProposal(p.id, { status: 'Approved' });
+                  logActivity('proposal', `Marked proposal "${p.name}" as WON (Approved)`, p.client_name);
+                  toast.success('Marked proposal as WON! 🥳');
+                  window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
+                } catch (err) {
+                  toast.error('Failed to update status');
+                }
+              }}
+              className="flex-1 py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl font-label-xs font-bold uppercase tracking-wider border border-emerald-200 flex items-center justify-center gap-xs transition-all shadow-sm cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[14px]">check_circle</span>
+              Won
+            </button>
+            <button
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                  await updateProposal(p.id, { status: 'Cancelled' });
+                  logActivity('proposal', `Marked proposal "${p.name}" as LOST (Cancelled)`, p.client_name);
+                  toast.success('Marked proposal as LOST');
+                  window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
+                } catch (err) {
+                  toast.error('Failed to update status');
+                }
+              }}
+              className="flex-1 py-1.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-label-xs font-bold uppercase tracking-wider border border-rose-200 flex items-center justify-center gap-xs transition-all shadow-sm cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[14px]">cancel</span>
+              Lost
+            </button>
+          </div>
+        )}
+
         <div className="flex-1" />
 
         <div className="flex items-center justify-between pt-md border-t border-outline-variant mt-sm">
@@ -429,10 +473,12 @@ function IconBtn({ icon, onClick, title, testid, className = '' }) {
 
 function chipClass(status) {
   switch ((status || '').toLowerCase()) {
+    case 'approved':
     case 'accepted': return 'bg-emerald-500/90 text-white';
+    case 'cancelled':
+    case 'declined': return 'bg-rose-500/90 text-white';
     case 'sent':     return 'bg-blue-500/90 text-white';
     case 'draft':    return 'bg-white/20 text-white';
-    case 'declined': return 'bg-error/90 text-white';
     default:         return 'bg-white/20 text-white';
   }
 }
@@ -467,7 +513,7 @@ function ProposalDrawer({ proposal, onClose, onSave }) {
             <label className="font-label-md text-label-md text-on-surface block mb-xs">Status</label>
             <select disabled={isView} value={form.status} onChange={upd('status')} data-testid="field-status"
               className="w-full px-md py-md bg-white border border-outline-variant rounded-lg font-body-md text-body-md disabled:opacity-70">
-              {['Draft', 'Sent', 'Accepted', 'Declined'].map((s) => <option key={s}>{s}</option>)}
+              {['Draft', 'Sent', 'Approved', 'Cancelled'].map((s) => <option key={s}>{s}</option>)}
             </select>
           </div>
           <Field label="Travelers" type="number" value={form.travelers} readOnly={isView} onChange={upd('travelers')} testid="field-travelers" />

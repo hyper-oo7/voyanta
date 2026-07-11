@@ -26,6 +26,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
   const [vaultItems, setVaultItems] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
+  const [relatedSuggestions, setRelatedSuggestions] = useState([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
 
   const shownRef = useRef(new Set());
@@ -58,19 +59,31 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
         let hotels = [];
         let activities = [];
+        let relHotels = [];
+        let relActivities = [];
 
         if (resHotels.ok) {
           const data = await resHotels.json();
           hotels = data.suggestions || [];
+          relHotels = data.related_suggestions || [];
         }
         if (resActivities.ok) {
           const data = await resActivities.json();
           activities = data.suggestions || [];
+          relActivities = data.related_suggestions || [];
         }
 
         if (isMounted) {
           const merged = [...hotels, ...activities];
           setSuggestions(merged);
+          
+          // Merge related suggestions and de-duplicate by ID
+          const mergedRelated = [...relHotels, ...relActivities];
+          const uniqueRelatedMap = {};
+          mergedRelated.forEach(item => {
+            uniqueRelatedMap[item.id] = item;
+          });
+          setRelatedSuggestions(Object.values(uniqueRelatedMap));
           
           // Log suggestion_shown for any newly shown suggestions
           merged.forEach(sug => {
@@ -88,7 +101,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     })();
 
     return () => { isMounted = false; };
-  }, [proposal?.id]);
+  }, [proposal?.id, items?.length]);
 
   // Log suggestion_rejected when the builder step unmounts (closes/finishes)
   useEffect(() => {
@@ -102,6 +115,38 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       });
     };
   }, []);
+
+  const handleDismissRelation = async (sug) => {
+    if (!sug.relation) return;
+    
+    // Optimistically update UI
+    setRelatedSuggestions(prev => prev.filter(item => item.id !== sug.id));
+    
+    try {
+      let token = null;
+      try {
+        const supa = (await import('../../lib/supabaseClient.js')).supabase;
+        const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+        if (session?.access_token) token = session.access_token;
+      } catch {}
+
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      
+      const { based_on_id, relation_type } = sug.relation;
+      
+      await fetch(`/api/knowledge-objects/relations/${based_on_id}/${sug.id}/${relation_type}/dismiss`, {
+        method: 'PATCH',
+        headers
+      });
+      
+      logActivity('suggestion_dismissed', `Relation dismissed: ${sug.name}`, 'Agency Team', 'knowledge_object', sug.id);
+      toast.success('Recommendation dismissed');
+    } catch (err) {
+      console.error("Failed to dismiss relation:", err);
+      toast.error('Failed to dismiss recommendation');
+    }
+  };
 
   // Load vault items from Supabase API — filtered by destination and budget for smart matching
   useEffect(() => {
@@ -654,6 +699,84 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
                   </div>
                 </div>
               ))
+            )}
+
+            {/* Related Suggestions */}
+            {relatedSuggestions && relatedSuggestions.length > 0 && (
+              <div className="pt-md border-t border-outline-variant/50 space-y-sm">
+                <h5 className="font-label-sm text-on-surface uppercase tracking-widest flex items-center gap-xs font-semibold px-xs">
+                  <span className="material-symbols-outlined text-[16px] text-primary">join_inner</span>
+                  Goes well with what you just added
+                </h5>
+                <div className="space-y-sm animate-fade-in">
+                  {relatedSuggestions.map(sug => (
+                    <div key={sug.id} className="bg-white border border-outline-variant rounded-xl p-md shadow-sm hover:shadow-md transition-all flex flex-col gap-xs group">
+                      <div className="flex items-center justify-between">
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${sug.object_type === 'hotel' ? 'bg-blue-50 text-blue-600 border border-blue-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>
+                          {sug.object_type}
+                        </span>
+                        
+                        <div className="flex items-center gap-xs">
+                          {sug.relation && (
+                            <span className="text-[9px] font-bold bg-purple-50 text-purple-600 border border-purple-200 px-2 py-0.5 rounded uppercase tracking-wider">
+                              {sug.relation.relation_type === 'nearby' 
+                                ? `Nearby (${sug.relation.distance_minutes}m)`
+                                : 'Pairs Well'}
+                            </span>
+                          )}
+                          <button 
+                            type="button" 
+                            onClick={() => handleDismissRelation(sug)} 
+                            title="Dismiss recommendation"
+                            className="text-on-surface-variant hover:text-error flex items-center justify-center p-0.5 rounded-full hover:bg-surface-container transition-colors"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">close</span>
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <p className="font-label-md text-on-surface font-semibold">{sug.name}</p>
+                      
+                      {sug.relation && (
+                        <p className="text-[10px] text-on-surface-variant italic">
+                          Based on: {sug.relation.based_on_name}
+                        </p>
+                      )}
+                      
+                      <BestRateChip objId={sug.id} />
+                      
+                      <div className="mt-xs pt-xs border-t border-outline-variant/50">
+                        <select 
+                          className="w-full text-xs py-1 px-2 bg-primary/10 hover:bg-primary/20 rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-bold"
+                          onChange={(e) => {
+                            if(e.target.value !== '') {
+                              const resItem = {
+                                id: sug.id,
+                                name: sug.name,
+                                currency: sug.attributes?.currency || 'INR',
+                                price_per_night: sug.attributes?.price_per_night || sug.attributes?.price || 0,
+                                price: sug.attributes?.price || sug.attributes?.cost || 0,
+                                location: sug.destination || '',
+                                category: sug.attributes?.star_rating || '',
+                                duration_hours: sug.attributes?.duration || ''
+                              };
+                              addedRef.current.add(sug.id);
+                              logActivity('suggestion_added', `Related suggestion added: ${sug.name}`, 'Agency Team', 'knowledge_object', sug.id);
+                              onAddItemToDay(resItem, sug.object_type, parseInt(e.target.value));
+                              e.target.value = '';
+                            }
+                          }}
+                        >
+                          <option value="">+ Add to Day...</option>
+                          {days.map((d, i) => (
+                            <option key={i} value={i}>Day {d.day}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>

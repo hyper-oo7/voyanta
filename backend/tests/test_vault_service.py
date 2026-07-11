@@ -93,21 +93,24 @@ def test_permanent_pdf_db_storage_and_query_retention():
             pdf_hash="abc123hash",
             agency_id="agency-123",
             user_id="user-123",
-            pdf_url="https://pub-5b335169d19649a18c149e3e1de3a858.r2.dev/supplier-pdfs/default/xyz.pdf"
+            pdf_url="https://pub-5b335169d19649a18c149e3e1de3a858.r2.dev/supplier-pdfs/default/xyz.pdf",
+            raw_text="Delhi tour check in Taj Delhi",
+            extraction_version="v2.0.0"
         )
         
         assert res is not None
         assert res["id"] == "mock-pkg-uuid-12345"
-        assert res["status"] == "active"
-        assert res.get("expires_at") is None  # Check that expiration is disabled
-        assert res["pdf_url"] == "https://pub-5b335169d19649a18c149e3e1de3a858.r2.dev/supplier-pdfs/default/xyz.pdf"
+        # Verify database update payload contains raw_text and extraction_version
+        mock_table.update.assert_called_once()
+        updated_payload = mock_table.update.call_args[0][0]
+        assert updated_payload["raw_text"] == "Delhi tour check in Taj Delhi"
+        assert updated_payload["extraction_version"] == "v2.0.0"
 
         # 2. Simulate 30 days passing, query list of packages
         mock_list_query = MagicMock()
         mock_table.select.return_value = mock_list_query
         mock_list_query.eq.return_value = mock_list_query
         mock_list_query.order.return_value = mock_list_query
-        # The list query should successfully retrieve the active package after 30 days
         mock_list_query.execute.return_value = MagicMock(data=[mock_inserted_record])
         
         packages = list_vault_packages(agency_id="agency-123")

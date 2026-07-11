@@ -171,6 +171,7 @@ async def extract_vault_package_from_text(
     full_text: str,
     destination_hint: str = "",
     images: Optional[List[Dict[str, Any]]] = None,
+    agency_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Extract a structured vault package from PDF text using Gemini.
@@ -201,6 +202,14 @@ async def extract_vault_package_from_text(
             "responseMimeType": "application/json",
             "temperature": 0.0,  # Zero temperature = fully deterministic, no hallucination
             "maxOutputTokens": 8192,
+        },
+        "_cache_meta": {
+            "agency_id": agency_id,
+            "entity_type": "vault_package",
+            "prompt_version": "extraction_v2.0.0",
+            "schema_version": "schema_v2.0.0",
+            "model": "gemini-2.5-flash",
+            "input_text": full_text
         }
     }
 
@@ -272,6 +281,7 @@ async def route_model_cascading(
     budget: float,
     duration: int,
     currency: str = "INR",
+    agency_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Backward-compatible wrapper.
@@ -283,6 +293,7 @@ async def route_model_cascading(
             full_text=compressed_text,
             destination_hint=destination,
             images=images,
+            agency_id=agency_id,
         )
         return {
             "success": True,

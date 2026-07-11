@@ -40,6 +40,9 @@ export const useProposalStore = create((set, get) => ({
     num_adults: 1, num_children: 0, budget: '', special_notes: '',
     itinerary_id: '',
     tour_type: '',
+    dietary: '',
+    pace: '',
+    dislikes: [],
   },
   branding: {
     agency_name: '', logo_url: '', address: '',
@@ -91,6 +94,10 @@ export const useProposalStore = create((set, get) => ({
     saveLocalBackup({ ...state, proposal: nextProposal });
     return { proposal: nextProposal };
   }),
+
+  updateProposal: (partialProposal) => {
+    get().setProposal(partialProposal);
+  },
 
   setItems: (newItems) => set((state) => {
     const nextItems = typeof newItems === 'function' ? newItems(state.items) : newItems;
@@ -173,6 +180,9 @@ export const useProposalStore = create((set, get) => ({
             special_notes: b.special_notes || '',
             itinerary_id: b.itinerary_id || '',
             tour_type: b.tour_type || '',
+            dietary: b.dietary || '',
+            pace: b.pace || '',
+            dislikes: b.dislikes || [],
           },
           branding: cleanBranding,
           costingPrefs: { ...get().costingPrefs, ...(p.preferences?.costing || {}) },
@@ -216,6 +226,9 @@ export const useProposalStore = create((set, get) => ({
         special_notes: c.special_notes,
         itinerary_id: c.itinerary_id || null,
         tour_type: c.tour_type || null,
+        dietary: c.dietary || '',
+        pace: c.pace || '',
+        dislikes: c.dislikes || [],
       },
       preferences: { ...(proposal?.preferences || {}), branding, costing: costingPrefs },
       itinerary: proposal?.itinerary,

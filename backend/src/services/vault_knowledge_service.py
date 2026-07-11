@@ -30,6 +30,8 @@ def save_vault_package(
     agency_id: Optional[str] = None,
     user_id: Optional[str] = None,
     pdf_url: Optional[str] = None,
+    raw_text: Optional[str] = None,
+    extraction_version: Optional[str] = "v1.0.0",
 ) -> Optional[Dict[str, Any]]:
     """
     Persist a parsed vault package to Supabase.
@@ -48,6 +50,8 @@ def save_vault_package(
         "cover_image_url": parsed_data.get("cover_image_url", ""),
         "pdf_filename": pdf_filename,
         "pdf_url": pdf_url,
+        "raw_text": raw_text,
+        "extraction_version": extraction_version,
         "source_pdf_hash": pdf_hash,
         "parsed_data": json.dumps(parsed_data),
         "extra_sections": json.dumps(parsed_data.get("extra_sections", {})),

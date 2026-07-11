@@ -278,6 +278,100 @@ async def test_get_proposal_suggestions_ranking():
 
 
 @pytest.mark.anyio
+async def test_get_proposal_suggestions_with_dislikes():
+    from src.api.routers.knowledge_router import get_proposal_suggestions
+    
+    mock_sb = MagicMock()
+    mock_table = MagicMock()
+    mock_sb.table.return_value = mock_table
+    mock_table.select.return_value = mock_table
+    mock_table.eq.return_value = mock_table
+    mock_table.in_.return_value = mock_table
+    mock_table.or_.return_value = mock_table
+    mock_table.ilike.return_value = mock_table
+    
+    # 1. Mock proposals table query
+    mock_proposal = [{
+        "id": "prop-123",
+        "client_id": "client-999",
+        "destination": "Dubai",
+        "brief": {
+            "num_adults": 2,
+            "num_children": 1,
+            "budget": 10000.0  # luxury
+        }
+    }]
+    
+    # 2. Mock clients table query
+    mock_client = [{
+        "id": "client-999",
+        "preferences": {
+            "dislikes": ["couple"],
+            "dietary": "vegetarian",
+            "pace": "relaxed"
+        }
+    }]
+    
+    # 3. Mock knowledge_objects table query
+    mock_objects = [
+        {"id": "hotel-1", "name": "Hotel Luxury Family", "object_type": "hotel", "destination": "Dubai"},
+        {"id": "hotel-2", "name": "Hotel Budget Couples", "object_type": "hotel", "destination": "Dubai"}
+    ]
+    
+    # 4. Mock object_tags table query
+    mock_tags = [
+        {"object_id": "hotel-1", "tag_category": "audience", "tag": "family"},
+        {"object_id": "hotel-1", "tag_category": "price_tier", "tag": "luxury"},
+        {"object_id": "hotel-2", "tag_category": "audience", "tag": "couple"}, # This tag matches the dislikes, should cause hotel-2 to be excluded!
+        {"object_id": "hotel-2", "tag_category": "price_tier", "tag": "budget"}
+    ]
+    
+    # Setup execute() mock side-effect
+    mock_proposal_res = MagicMock()
+    mock_proposal_res.data = mock_proposal
+    
+    mock_client_res = MagicMock()
+    mock_client_res.data = mock_client
+    
+    mock_objs_res = MagicMock()
+    mock_objs_res.data = mock_objects
+    
+    mock_tags_res = MagicMock()
+    mock_tags_res.data = mock_tags
+    
+    def execute_side_effect():
+        called_table = mock_sb.table.call_args[0][0]
+        if called_table == "proposals":
+            return mock_proposal_res
+        elif called_table == "clients":
+            return mock_client_res
+        elif called_table == "knowledge_objects":
+            return mock_objs_res
+        elif called_table == "object_tags":
+            return mock_tags_res
+        return MagicMock(data=[])
+        
+    mock_table.execute.side_effect = execute_side_effect
+    
+    with patch("src.api.routers.knowledge_router.get_supabase_client", return_value=mock_sb):
+        res = await get_proposal_suggestions(
+            proposal_id="prop-123",
+            step="hotels",
+            user={"agency_id": "agency-123"}
+        )
+        
+        import json
+        body = json.loads(res.body)
+        assert res.status_code == 200
+        assert body["status"] == "success"
+        
+        # Verify filtering: hotel-2 is excluded because it is tagged with 'couple'
+        suggestions = body["suggestions"]
+        assert len(suggestions) == 1
+        assert suggestions[0]["id"] == "hotel-1"
+
+
+@pytest.mark.anyio
 async def test_save_knowledge_objects_supplier_rates():
     from src.services.knowledge_extraction_service import save_knowledge_objects
     
@@ -516,6 +610,76 @@ async def test_save_knowledge_objects_seasonal_rule():
         assert rule["message"] == "Extremely hot in July"
         assert rule["agency_id"] == "agency-1"
         assert rule["source_pdf_id"] == "pdf-1"
+
+
+@pytest.mark.anyio
+async def test_compute_and_save_relations():
+    from src.services.object_relation_service import (
+        compute_and_save_nearby_relations,
+        process_and_save_extracted_relations
+    )
+    
+    mock_sb = MagicMock()
+    mock_table = MagicMock()
+    mock_sb.table.return_value = mock_table
+    mock_table.select.return_value = mock_table
+    mock_table.eq.return_value = mock_table
+    mock_table.in_.return_value = mock_table
+    
+    # Mock knowledge_objects return
+    mock_objs = [
+        {"id": "o-1", "name": "Burj Khalifa", "destination": "Dubai", "area": "Downtown Dubai", "attributes": {"lat": 25.1972, "lng": 55.2744}},
+        {"id": "o-2", "name": "Dubai Mall", "destination": "Dubai", "area": "Downtown Dubai", "attributes": {"lat": 25.1985, "lng": 55.2796}},
+        {"id": "o-3", "name": "Ski Dubai", "destination": "Dubai", "area": "Al Barsha", "attributes": {"lat": 25.1174, "lng": 55.1996}}
+    ]
+    mock_objs_res = MagicMock()
+    mock_objs_res.data = mock_objs
+    mock_table.execute.return_value = mock_objs_res
+    
+    # We will capture upsert calls for relations
+    upserted_relations = []
+    def upsert_side_effect(data):
+        nonlocal upserted_relations
+        upserted_relations.extend(data)
+        return MagicMock()
+    mock_table.upsert.side_effect = upsert_side_effect
+    
+    # 1. Test compute_and_save_nearby_relations
+    new_inserted = [
+        {"id": "o-1", "name": "Burj Khalifa", "destination": "Dubai", "area": "Downtown Dubai", "attributes": {"lat": 25.1972, "lng": 55.2744}}
+    ]
+    compute_and_save_nearby_relations(new_inserted, mock_sb)
+    
+    # Should create bidirectional nearby relation between o-1 and o-2
+    assert len(upserted_relations) == 2
+    assert any(r["object_a_id"] == "o-1" and r["object_b_id"] == "o-2" and r["relation_type"] == "nearby" for r in upserted_relations)
+    
+    # 2. Test process_and_save_extracted_relations
+    upserted_relations.clear()
+    
+    extracted = [
+        {
+            "name": "Burj Khalifa",
+            "object_type": "activity",
+            "relations": [
+                {
+                    "relation_type": "pairs_well_with",
+                    "target_object_name": "Dubai Mall",
+                    "confidence_level": "high"
+                }
+            ]
+        }
+    ]
+    
+    # Map for current insertion batch
+    inserted_map = {
+        ("Burj Khalifa", "activity"): "o-1",
+        ("Dubai Mall", "activity"): "o-2"
+    }
+    
+    process_and_save_extracted_relations(extracted, inserted_map, mock_sb)
+    assert len(upserted_relations) == 2
+    assert any(r["object_a_id"] == "o-1" and r["object_b_id"] == "o-2" and r["relation_type"] == "pairs_well_with" for r in upserted_relations)
 
 
 
