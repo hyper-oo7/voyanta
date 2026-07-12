@@ -1,9 +1,10 @@
 import os
 import boto3
 from botocore.config import Config
-from typing import BinaryIO, Optional
+from typing import BinaryIO, Optional, Any
 import uuid
 import time
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,9 @@ def is_private_folder(folder: str) -> bool:
         "invoices",
         "receipts",
         "vault-documents",
+        "vault-raw-text",
+        "ai-cache",
+        "database-backups",
         "supplier-pdfs",
         "signatures",
         "digital-signatures",
@@ -176,3 +180,97 @@ def get_presigned_url(key: str, expires_in: int = 86400) -> Optional[str]:
         return f"http://127.0.0.1:8000/api/storage/mock-files/{folder}/{agency_id}/{filename}"
         
     return None
+
+def get_file_from_r2(key: str) -> Optional[bytes]:
+    """Retrieve raw file bytes from R2 (private or public) or fallback mock storage."""
+    is_private = True
+    parts = key.split("/")
+    if parts:
+        is_private = is_private_folder(parts[0])
+
+    s3 = get_private_r2_client() if is_private else get_public_r2_client()
+    bucket = CF_R2_PRIVATE_BUCKET if is_private else CF_R2_PUBLIC_BUCKET
+
+    if s3 and bucket:
+        try:
+            resp = s3.get_object(Bucket=bucket, Key=key)
+            return resp["Body"].read()
+        except Exception as e:
+            logger.error(f"[R2 Storage] Failed to get object {key} from R2 bucket {bucket}: {e}")
+
+    # Fallback to local mock storage
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    local_path = os.path.join(root_dir, "public_r2_mock", key.replace("/", os.sep))
+    if os.path.exists(local_path):
+        try:
+            with open(local_path, "rb") as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"[R2 Storage] Failed to read mock file {local_path}: {e}")
+    return None
+
+def upload_text_to_r2(
+    text: str,
+    filename: str,
+    folder: str = "vault-raw-text",
+    agency_id: Optional[str] = None
+) -> Optional[str]:
+    """Upload UTF-8 text to R2 and return the stored object key (path)."""
+    if text is None:
+        return None
+    res = upload_file_to_r2(
+        file_bytes=text.encode("utf-8"),
+        filename=filename,
+        folder=folder,
+        agency_id=agency_id,
+        content_type="text/plain; charset=utf-8"
+    )
+    return res.get("path") if res else None
+
+def get_text_from_r2(key: str) -> Optional[str]:
+    """Retrieve UTF-8 string from R2 object key."""
+    if not key:
+        return None
+    raw_bytes = get_file_from_r2(key)
+    if raw_bytes is None:
+        return None
+    try:
+        return raw_bytes.decode("utf-8")
+    except Exception as e:
+        logger.error(f"[R2 Storage] Failed to decode text from key {key}: {e}")
+        return None
+
+def upload_json_to_r2(
+    data: Any,
+    filename: str,
+    folder: str = "ai-cache",
+    agency_id: Optional[str] = None
+) -> Optional[str]:
+    """Serialize data to JSON and upload to R2, returning the stored object key."""
+    if data is None:
+        return None
+    try:
+        json_str = json.dumps(data, ensure_ascii=False)
+        res = upload_file_to_r2(
+            file_bytes=json_str.encode("utf-8"),
+            filename=filename if filename.endswith(".json") else f"{filename}.json",
+            folder=folder,
+            agency_id=agency_id,
+            content_type="application/json"
+        )
+        return res.get("path") if res else None
+    except Exception as e:
+        logger.error(f"[R2 Storage] Failed to serialize or upload JSON: {e}")
+        return None
+
+def get_json_from_r2(key: str) -> Optional[Any]:
+    """Retrieve JSON object from R2 object key."""
+    text = get_text_from_r2(key)
+    if text is None:
+        return None
+    try:
+        return json.loads(text)
+    except Exception as e:
+        logger.error(f"[R2 Storage] Failed to parse JSON from key {key}: {e}")
+        return None
+

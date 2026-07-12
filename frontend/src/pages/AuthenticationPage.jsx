@@ -112,6 +112,21 @@ export default function AuthenticationPage() {
             </div>
 
             {/* Tab switcher */}
+            {/* 14-Day Free Trial Notice Banner */}
+            <div className="mb-6 p-3.5 bg-gradient-to-r from-emerald-500/10 via-primary/10 to-amber-500/10 border border-emerald-500/25 rounded-2xl flex items-center gap-3 shadow-sm">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0 font-bold">
+                🎁
+              </div>
+              <div>
+                <p className="text-xs font-bold text-on-surface m-0">
+                  14-Day Full Access Free Trial
+                </p>
+                <p className="text-[11px] text-on-surface-variant m-0">
+                  No upfront payment or credit card required • Cancel anytime
+                </p>
+              </div>
+            </div>
+
             <div className="flex border-b border-outline-variant mb-lg select-none">
               <button 
                 onClick={() => setIsSignUp(false)}
@@ -126,15 +141,6 @@ export default function AuthenticationPage() {
                 Create Account
               </button>
             </div>
-
-            {import.meta.env.VITE_DEMO_MODE === 'true' && (
-              <button 
-                onClick={handleDemoBypass}
-                className="w-full mb-4 py-md px-lg bg-primary/10 text-primary border border-primary/20 rounded-lg font-label-md hover:bg-primary/20 transition-all font-bold cursor-pointer"
-              >
-                Skip — try Demo Mode
-              </button>
-            )}
 
             <button 
               onClick={handleGoogle}

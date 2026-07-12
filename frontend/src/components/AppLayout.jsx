@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
+import UpgradePlanModal from './billing/UpgradePlanModal.jsx';
 
 const navItems = [
   { path: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
@@ -9,11 +10,12 @@ const navItems = [
   { path: '/proposals/wizard', icon: 'add_box', label: 'New Proposal' },
   { path: '/proposals', icon: 'folder_open', label: 'Proposals' },
   { path: '/crm', icon: 'groups', label: 'Clients (CRM)' },
+  { path: '/contacts', icon: 'contacts', label: 'Contacts' },
   { path: '/invoices', icon: 'account_balance_wallet', label: 'Invoices & Billing' },
   { path: '/templates', icon: 'description', label: 'Templates' },
   { path: '/libraries/hotels', icon: 'hotel', label: 'Hotels' },
   { path: '/flights', icon: 'flight', label: 'Flights' },
-  { path: '/itinerary', icon: 'local_activity', label: 'Itinerary' },
+  { path: '/library', icon: 'library_books', label: 'Library' },
   { path: '/cost-calculator', icon: 'calculate', label: 'Cost Calculator' },
   { path: '/settings', icon: 'settings', label: 'Settings' },
 ];
@@ -34,8 +36,36 @@ export default function AppLayout() {
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const notifRef = useRef(null);
   const helpRef = useRef(null);
+
+  const userEmail = user?.email || 'user@agency.com';
+  const [trialDaysRemaining, setTrialDaysRemaining] = useState(14);
+  const [trialExpired, setTrialExpired] = useState(false);
+  const [trialLocked, setTrialLocked] = useState(false);
+  const [upiReminder, setUpiReminder] = useState(false);
+
+  useEffect(() => {
+    const payMethod = localStorage.getItem('voyanta_payment_method') || '';
+    if (payMethod === 'upi' || payMethod === 'bank_transfer') {
+      setUpiReminder(true);
+    }
+
+    const storedStart = localStorage.getItem(`voyanta_trial_start_${userEmail}`);
+    let startTime;
+    if (!storedStart) {
+      startTime = Date.now();
+      localStorage.setItem(`voyanta_trial_start_${userEmail}`, startTime);
+    } else {
+      startTime = parseInt(storedStart, 10);
+    }
+    const daysElapsed = Math.floor((Date.now() - startTime) / (1000 * 60 * 60 * 24));
+    const remaining = Math.max(0, 14 - daysElapsed);
+    setTrialDaysRemaining(remaining);
+    setTrialExpired(daysElapsed >= 14);
+    setTrialLocked(daysElapsed >= 30);
+  }, [userEmail]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -146,6 +176,34 @@ export default function AppLayout() {
 
       {/* Main Content Wrapper */}
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        {/* Dynamic Top Banner */}
+        {upiReminder && (
+          <div className="flex-shrink-0 bg-amber-600 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-50 text-xs font-semibold">
+            <span>🔔 Upcoming UPI / Bank Renewal: Your subscription renews in 4 days. Make payment now to ensure continuous access.</span>
+            <button onClick={() => setUpgradeModalOpen(true)} className="px-3 py-1 bg-white text-amber-900 font-bold rounded-lg border-none cursor-pointer">Pay Now</button>
+          </div>
+        )}
+        {!upiReminder && (
+          <div className={`flex-shrink-0 ${trialExpired ? 'bg-error text-white' : 'bg-gradient-to-r from-primary/90 via-emerald-600 to-primary text-white'} px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-50 text-xs`}>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded-full bg-white/20 text-white font-extrabold uppercase text-[10px] tracking-wider">
+                {trialExpired ? 'Trial Ended' : 'Free Trial'}
+              </span>
+              <span className="font-semibold">
+                {trialExpired
+                  ? '⚠️ Your 14-Day Free Trial has ended. Subscribe to continue creating and exporting proposals.'
+                  : `🎁 14-Day Full Access Free Trial Active • ${trialDaysRemaining} Days Remaining (No credit card required)`}
+              </span>
+            </div>
+            <button
+              onClick={() => setUpgradeModalOpen(true)}
+              className="px-3 py-1 bg-white text-primary hover:bg-white/90 font-bold rounded-lg shadow-sm transition-all text-xs border-none cursor-pointer"
+            >
+              Upgrade Plan (Save 20% Yearly)
+            </button>
+          </div>
+        )}
+
         {/* Top Navigation Bar */}
         {isDashboard && (
         <header className="flex-shrink-0 flex justify-between items-center w-full px-lg py-md bg-surface shadow-sm z-40">
@@ -224,6 +282,34 @@ export default function AppLayout() {
           </div>
         </div>
       </main>
+
+      {trialLocked && !upgradeModalOpen && (
+        <div className="fixed inset-0 z-[999999] bg-black/85 backdrop-blur-md flex items-center justify-center p-6">
+          <div className="bg-surface border border-outline-variant max-w-lg w-full rounded-3xl p-8 text-center shadow-2xl space-y-6">
+            <div className="w-16 h-16 bg-error/10 text-error rounded-2xl flex items-center justify-center mx-auto">
+              <span className="material-symbols-outlined text-[32px]">lock</span>
+            </div>
+            <div>
+              <h3 className="font-display text-2xl font-bold text-on-surface mb-2">Subscription Required</h3>
+              <p className="text-sm text-on-surface-variant leading-relaxed">
+                Your 14-day Free Trial and grace period have expired. To unlock your proposals, client CRM, and AI Vault library, please subscribe to a Voyanta plan.
+              </p>
+            </div>
+            <button
+              onClick={() => setUpgradeModalOpen(true)}
+              className="w-full py-3.5 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-lg transition-all cursor-pointer border-none"
+            >
+              Choose a Plan & Unlock Now
+            </button>
+          </div>
+        </div>
+      )}
+
+      <UpgradePlanModal
+        isOpen={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+        lockedItemName="Save 20% with Annual Subscription"
+      />
     </div>
   );
 }

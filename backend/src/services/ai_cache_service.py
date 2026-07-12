@@ -36,20 +36,27 @@ async def get_cached_extraction(
     cache_key, _ = compute_cache_key(agency_id, model, prompt_version, schema_version, normalized_input)
     
     try:
-        res = sb.table("ai_cache").select("output_json").eq("cache_key", cache_key).maybeSingle().execute()
-        if res.data and res.data.get("output_json"):
-            output = res.data["output_json"]
-            if isinstance(output, str):
-                try:
-                    output = json.loads(output)
-                except Exception:
-                    pass
-            
-            # Increment hit stats
-            saved_tokens = (len(normalized_input) + len(json.dumps(output))) // 4
-            await increment_hits(saved_tokens)
-            logger.info(f"[AICache] Cache HIT for key: {cache_key} (Saved ~{saved_tokens} tokens)")
-            return output
+        res = sb.table("ai_cache").select("output_r2_key, output_json").eq("cache_key", cache_key).maybeSingle().execute()
+        if res.data:
+            output = None
+            if res.data.get("output_r2_key"):
+                from src.services.r2_storage_service import get_json_from_r2
+                output = get_json_from_r2(res.data["output_r2_key"])
+            if output is None and res.data.get("output_json"):
+                output = res.data["output_json"]
+
+            if output:
+                if isinstance(output, str):
+                    try:
+                        output = json.loads(output)
+                    except Exception:
+                        pass
+                
+                # Increment hit stats
+                saved_tokens = (len(normalized_input) + len(json.dumps(output))) // 4
+                await increment_hits(saved_tokens)
+                logger.info(f"[AICache] Cache HIT for key: {cache_key} (Saved ~{saved_tokens} tokens)")
+                return output
     except Exception as e:
         logger.error(f"[AICache] Failed to lookup cache: {e}")
         
@@ -69,7 +76,7 @@ async def save_cached_extraction(
     confidence: Optional[float] = None
 ):
     """
-    Saves the structured extraction output to the cache database.
+    Saves the structured extraction output to R2 and records cache metadata in DB.
     """
     sb = get_supabase_client()
     if not sb:
@@ -77,6 +84,14 @@ async def save_cached_extraction(
         
     cache_key, input_hash = compute_cache_key(agency_id, model, prompt_version, schema_version, normalized_input)
     
+    output_r2_key = None
+    if output_json is not None:
+        try:
+            from src.services.r2_storage_service import upload_json_to_r2
+            output_r2_key = upload_json_to_r2(output_json, f"{cache_key}.json", "ai-cache", agency_id)
+        except Exception as e:
+            logger.error(f"[AICache] Failed to upload output_json to R2: {e}")
+
     try:
         record = {
             "cache_key": cache_key,
@@ -86,14 +101,15 @@ async def save_cached_extraction(
             "prompt_version": prompt_version,
             "schema_version": schema_version,
             "input_hash": input_hash,
-            "output_json": output_json,
+            "output_r2_key": output_r2_key,
+            "output_json": None,
             "confidence": confidence
         }
         if agency_id:
             record["agency_id"] = agency_id
             
         sb.table("ai_cache").upsert(record).execute()
-        logger.info(f"[AICache] Cached extraction successfully under key: {cache_key}")
+        logger.info(f"[AICache] Cached extraction successfully under key: {cache_key} (r2_key: {output_r2_key})")
     except Exception as e:
         logger.error(f"[AICache] Failed to store cache record: {e}")
 

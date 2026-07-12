@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext.jsx';
+import { useEntitlements } from '../hooks/useEntitlements.js';
+import UpgradePlanModal from '../components/billing/UpgradePlanModal.jsx';
 import { TEMPLATE_LIST } from '../templates/registry.js';
 
 // Map all 96 templates from the central registry into structured gallery cards
@@ -64,18 +66,11 @@ export default function TemplatesPage() {
   const [page, setPage] = useState(0);
   const pageSize = 10;
   
-  const [currentPlan, setCurrentPlan] = useState(() => typeof window !== 'undefined' ? (localStorage.getItem('voyanta_active_plan') || 'Starter') : 'Starter');
+  const { plan: backendPlan, refreshEntitlement } = useEntitlements();
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [lockedTemplateName, setLockedTemplateName] = useState('');
 
-  useEffect(() => {
-    const handler = () => setCurrentPlan(localStorage.getItem('voyanta_active_plan') || 'Starter');
-    window.addEventListener('voyanta:plan-updated', handler);
-    window.addEventListener('storage', handler);
-    return () => {
-      window.removeEventListener('voyanta:plan-updated', handler);
-      window.removeEventListener('storage', handler);
-    };
-  }, []);
-
+  const currentPlan = backendPlan || 'Starter';
   const isStarter = !currentPlan || currentPlan.toLowerCase() === 'starter';
 
   useEffect(() => {
@@ -84,7 +79,8 @@ export default function TemplatesPage() {
 
   const handleUseTemplate = (template) => {
     if (template.isPremium && isStarter) {
-      toast.error('Starter Plan allows Basic & Classic templates only. Upgrade to Professional or Enterprise in Settings to unlock Premium layouts!');
+      setLockedTemplateName(template.title);
+      setUpgradeModalOpen(true);
       return;
     }
     navigate(`/templates/${template.id}`);
@@ -328,6 +324,16 @@ export default function TemplatesPage() {
           )}
         </div>
       )}
+
+      <UpgradePlanModal
+        isOpen={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+        lockedItemName={lockedTemplateName}
+        onUpgradeSuccess={(newPlan) => {
+          toast.success(`Upgraded to ${newPlan}! All Premium layouts unlocked.`);
+          refreshEntitlement();
+        }}
+      />
     </div>
   );
 }

@@ -5,7 +5,13 @@
 @layer base {
   body {
     font-family: 'Inter', system-ui, sans-serif;
+    background-color: #ffffff;
+    color: #0f172a;
   }
+}
+
+.bg-surface, .bg-background {
+  background-color: #ffffff;
 }
 
 @layer utilities {
@@ -77,7 +83,7 @@ html.dark .glass-card {
   color: #f0f6fc !important;
 }
 html.dark body, html.dark .bg-surface, html.dark .bg-background {
-  background-color: #0b0f17 !important;
+  background-color: #000000 !important;
   color: #f0f6fc !important;
 }
 html.dark .bg-white, html.dark .bg-surface-container-lowest, html.dark .bg-surface-container-low, html.dark .bg-surface-container,

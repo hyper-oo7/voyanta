@@ -1,0 +1,47 @@
+name: Supabase Weekly Backup to R2
+
+on:
+  schedule:
+    # Run every Sunday at 03:00 UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+jobs:
+  backup-database:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install boto3 python-dotenv
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+
+      - name: Dump Supabase Database & Upload to R2
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          CF_R2_PRIVATE_BUCKET: ${{ secrets.CF_R2_PRIVATE_BUCKET }}
+          CF_R2_PRIVATE_ACCESS_KEY_ID: ${{ secrets.CF_R2_PRIVATE_ACCESS_KEY_ID }}
+          CF_R2_PRIVATE_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_PRIVATE_SECRET_ACCESS_KEY }}
+          CF_R2_PRIVATE_ENDPOINT: ${{ secrets.CF_R2_PRIVATE_ENDPOINT }}
+        run: |
+          if [ -z "$SUPABASE_PROJECT_ID" ] || [ -z "$SUPABASE_DB_PASSWORD" ]; then
+            echo "Supabase project credentials not configured. Skipping backup."
+            exit 0
+          fi
+          echo "Dumping database..."
+          supabase db dump --project-ref "$SUPABASE_PROJECT_ID" -f backup.sql
+          gzip backup.sql
+          echo "Uploading backup.sql.gz to Cloudflare R2..."
+          python backend/scripts/backup_supabase_to_r2.py backup.sql.gz

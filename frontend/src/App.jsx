@@ -28,8 +28,10 @@ const ProposalActionRoute = lazy(() => import('./pages/ProposalActionRoute.jsx')
 const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'));
 const ProposalsListPage = lazy(() => import('./pages/ProposalsListPage.jsx'));
 const CrmPage = lazy(() => import('./pages/CrmPage.jsx'));
+const ContactsPage = lazy(() => import('./pages/ContactsPage.jsx'));
 const InvoicesPage = lazy(() => import('./pages/InvoicesPage.jsx'));
 const MyVaultPage = lazy(() => import('./pages/MyVaultPage.jsx'));
+const UnifiedLibraryPage = lazy(() => import('./pages/UnifiedLibraryPage.jsx'));
 const ProposalWizard = lazy(() => import('./pages/ProposalWizard.jsx'));
 const CostCalculatorPage = lazy(() => import('./pages/CostCalculatorPage.jsx'));
 const HotelLibraryPage = lazy(() => import('./pages/HotelLibraryPage.jsx'));
@@ -43,6 +45,9 @@ const ItineraryLibraryPage = lazy(() => import('./pages/ItineraryLibraryPage.jsx
 const NewItineraryPage = lazy(() => import('./pages/NewItineraryPage.jsx'));
 const ItineraryEditorPage = lazy(() => import('./pages/ItineraryEditorPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy.jsx'));
+const TermsOfService = lazy(() => import('./pages/TermsOfService.jsx'));
+const CookiePolicy = lazy(() => import('./pages/CookiePolicy.jsx'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage.jsx'));
 
 const Protected = ({ children }) => <ProtectedRoute>{children}</ProtectedRoute>;
@@ -72,6 +77,9 @@ export default function App() {
               <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<AuthenticationPage />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/cookies" element={<CookiePolicy />} />
               
               {/* Public routes for PDF printing & client action tracking */}
               <Route path="/proposals/:id/print" element={<ProposalPrintRoute />} />
@@ -83,6 +91,8 @@ export default function App() {
                 <Route path="/dashboard"           element={<DashboardPage />} />
                 <Route path="/proposals"           element={<ProposalsListPage />} />
                 <Route path="/crm"                 element={<CrmPage />} />
+                <Route path="/contacts"            element={<ContactsPage />} />
+                <Route path="/library"             element={<UnifiedLibraryPage />} />
                 <Route path="/invoices"            element={<InvoicesPage />} />
                 <Route path="/vault"               element={<MyVaultPage />} />
 

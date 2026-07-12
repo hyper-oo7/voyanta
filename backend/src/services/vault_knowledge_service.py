@@ -38,7 +38,15 @@ def save_vault_package(
     Dedup: if the same PDF (by hash) was already saved for this agent, update it.
     """
     from src.services.supabase_client import get_supabase_client
+    from src.services.r2_storage_service import upload_text_to_r2
     sb = get_supabase_client()
+
+    raw_text_r2_key = None
+    if raw_text:
+        try:
+            raw_text_r2_key = upload_text_to_r2(raw_text, pdf_filename, "vault-raw-text", agency_id)
+        except Exception as e:
+            logger.error(f"[VaultKnowledge] Failed to upload raw_text to R2: {e}")
 
     record = {
         "destination": parsed_data.get("destination", ""),
@@ -50,7 +58,8 @@ def save_vault_package(
         "cover_image_url": parsed_data.get("cover_image_url", ""),
         "pdf_filename": pdf_filename,
         "pdf_url": pdf_url,
-        "raw_text": raw_text,
+        "raw_text": None,
+        "raw_text_r2_key": raw_text_r2_key,
         "extraction_version": extraction_version,
         "source_pdf_hash": pdf_hash,
         "parsed_data": json.dumps(parsed_data),
@@ -156,6 +165,12 @@ def list_vault_packages(
                     pkg["extra_sections"] = json.loads(pkg["extra_sections"])
                 except Exception:
                     pass
+            if pkg.get("raw_text") is None and pkg.get("raw_text_r2_key"):
+                try:
+                    from src.services.r2_storage_service import get_text_from_r2
+                    pkg["raw_text"] = get_text_from_r2(pkg["raw_text_r2_key"])
+                except Exception:
+                    pass
 
         return packages
     except Exception as e:
@@ -183,6 +198,12 @@ def get_vault_package(pkg_id: str, agency_id: Optional[str] = None) -> Optional[
             if isinstance(pkg.get("extra_sections"), str):
                 try:
                     pkg["extra_sections"] = json.loads(pkg["extra_sections"])
+                except Exception:
+                    pass
+            if pkg.get("raw_text") is None and pkg.get("raw_text_r2_key"):
+                try:
+                    from src.services.r2_storage_service import get_text_from_r2
+                    pkg["raw_text"] = get_text_from_r2(pkg["raw_text_r2_key"])
                 except Exception:
                     pass
         return pkg

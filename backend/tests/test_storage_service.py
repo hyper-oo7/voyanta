@@ -59,3 +59,27 @@ def test_get_presigned_url_mock_fallback():
     key = "supplier-pdfs/test-agency/some-unique-file.pdf"
     url = get_presigned_url(key)
     assert url == "http://127.0.0.1:8000/api/storage/mock-files/supplier-pdfs/test-agency/some-unique-file.pdf"
+
+def test_upload_and_get_text_r2(monkeypatch):
+    monkeypatch.setenv("CF_R2_PRIVATE_ACCESS_KEY_ID", "")
+    from src.services.r2_storage_service import upload_text_to_r2, get_text_from_r2
+    
+    key = upload_text_to_r2("Hello World raw text", "test_raw.txt", "vault-raw-text", "test-agency")
+    assert key is not None
+    assert "vault-raw-text/test-agency/" in key
+    
+    retrieved = get_text_from_r2(key)
+    assert retrieved == "Hello World raw text"
+
+def test_upload_and_get_json_r2(monkeypatch):
+    monkeypatch.setenv("CF_R2_PRIVATE_ACCESS_KEY_ID", "")
+    from src.services.r2_storage_service import upload_json_to_r2, get_json_from_r2
+    
+    data = {"name": "Paris Itinerary", "items": [1, 2, 3]}
+    key = upload_json_to_r2(data, "output.json", "ai-cache", "test-agency")
+    assert key is not None
+    assert "ai-cache/test-agency/" in key
+    
+    retrieved = get_json_from_r2(key)
+    assert retrieved == data
+

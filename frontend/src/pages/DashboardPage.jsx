@@ -229,9 +229,7 @@ export default function DashboardPage() {
       )}
 
       {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-xl">
-        {/* Left Column (2/3) */}
-        <div className="lg:col-span-2 space-y-xl">
+      <div className="space-y-xl">
           
           {/* Collapsible Proposals Box */}
           <div className="bg-surface border border-outline-variant rounded-2xl overflow-hidden shadow-sm transition-all duration-300">
@@ -343,53 +341,6 @@ export default function DashboardPage() {
             </div>
           )}
 
-        </div>
-
-        {/* Right Column (1/3) */}
-        <div className="space-y-xl">
-          
-          {/* Quick Actions (Dark Card) */}
-          <div className="bg-[#0F172A] rounded-2xl p-xl shadow-lg relative overflow-hidden">
-             {/* Subtle grid pattern background */}
-             <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(#ffffff 1px, transparent 1px), linear-gradient(90deg, #ffffff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
-             
-             <div className="relative z-10">
-               <h3 className="font-display text-lg text-white mb-lg m-0">Quick Actions</h3>
-               <div className="space-y-md">
-                 <button 
-                   onClick={() => navigate('/libraries/hotels')}
-                   className="w-full flex items-center gap-md p-md bg-[#1E293B] hover:bg-[#334155] border border-[#334155] rounded-xl transition-colors text-white text-left group"
-                 >
-                   <span className="material-symbols-outlined text-white/70 group-hover:text-white transition-colors">hotel</span>
-                   <span className="font-body-md text-sm font-medium">Upload Hotel Database</span>
-                 </button>
-                 <button 
-                   onClick={() => navigate('/itinerary')}
-                   className="w-full flex items-center gap-md p-md bg-[#1E293B] hover:bg-[#334155] border border-[#334155] rounded-xl transition-colors text-white text-left group"
-                 >
-                   <span className="material-symbols-outlined text-white/70 group-hover:text-white transition-colors">local_activity</span>
-                   <span className="font-body-md text-sm font-medium">Upload Itinerary Database</span>
-                 </button>
-               </div>
-             </div>
-          </div>
-
-
-          {/* AI Proposal Assistant */}
-          <div className="bg-surface border border-outline-variant rounded-2xl p-xl text-center flex flex-col items-center">
-             <div className="w-12 h-12 bg-primary-container text-on-primary-container rounded-2xl flex items-center justify-center mb-md">
-               <span className="material-symbols-outlined text-[24px]">auto_awesome</span>
-             </div>
-             <h3 className="font-display text-lg text-on-surface mb-xs m-0">AI Proposal Assistant</h3>
-             <p className="font-body-md text-sm text-on-surface-variant mb-lg leading-relaxed px-md">
-               Draft complex itineraries 3x faster with our new intelligent routing engine.
-             </p>
-             <button className="px-lg py-sm border border-outline-variant text-on-surface rounded-lg font-label-sm text-sm hover:bg-surface-container-lowest transition-colors">
-               Try Beta Feature
-             </button>
-          </div>
-
-        </div>
       </div>
 
       {/* Enlarge Proposals View Modal */}

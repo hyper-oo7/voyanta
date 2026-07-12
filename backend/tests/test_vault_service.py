@@ -100,10 +100,11 @@ def test_permanent_pdf_db_storage_and_query_retention():
         
         assert res is not None
         assert res["id"] == "mock-pkg-uuid-12345"
-        # Verify database update payload contains raw_text and extraction_version
+        # Verify database update payload contains raw_text_r2_key and extraction_version
         mock_table.update.assert_called_once()
         updated_payload = mock_table.update.call_args[0][0]
-        assert updated_payload["raw_text"] == "Delhi tour check in Taj Delhi"
+        assert updated_payload["raw_text_r2_key"] is not None
+        assert updated_payload["raw_text"] is None
         assert updated_payload["extraction_version"] == "v2.0.0"
 
         # 2. Simulate 30 days passing, query list of packages

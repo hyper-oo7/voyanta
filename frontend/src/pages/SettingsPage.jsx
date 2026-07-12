@@ -108,6 +108,7 @@ function NavButton({ active, onClick, icon, children }) {
 function PlanSettings({ subscription }) {
   const toast = useToast();
   const [activePlan, setActivePlan] = useState(() => localStorage.getItem('voyanta_active_plan') || subscription?.plan || 'Starter');
+  const [billingCycle, setBillingCycle] = useState('monthly');
 
   const handleSwitchPlan = (planName) => {
     localStorage.setItem('voyanta_active_plan', planName);
@@ -120,50 +121,85 @@ function PlanSettings({ subscription }) {
   const plans = [
     {
       name: 'Starter',
-      price: '$49/mo',
-      allows: ['Up to 10 PDF downloads per month', 'Standard templates', 'Basic agency branding'],
-      restricts: ['Team Management Locked', 'No Custom Branding Fields', 'No White-labeling'],
+      monthlyPrice: '₹999 / mo',
+      yearlyPrice: '₹799 / mo (₹9,588/yr)',
+      allows: ['50 proposals / month', 'Client CRM & Address Book', 'Invoicing & Payment reminders', 'AI Vault & 16 Basic templates'],
+      restricts: ['AI Rewrite & Review Locked', 'AI Cost Optimizer Locked'],
     },
     {
       name: 'Professional',
-      price: '$129/mo',
-      allows: ['Unlimited PDF downloads & proposals', 'Custom Branding Fields Unlocked', 'Priority email support', 'Analytics dashboard'],
-      restricts: ['Team Management Locked', 'No White-labeling'],
+      badge: 'Most Popular ⭐',
+      monthlyPrice: '₹2,999 / mo',
+      yearlyPrice: '₹2,399 / mo (₹28,788/yr)',
+      allows: ['200 proposals / month', 'AI Proposal Rewrite & Review', 'Everything in Starter', '80 Premium templates'],
+      restricts: ['AI Cost Optimizer Locked'],
+    },
+    {
+      name: 'Professional Plus',
+      monthlyPrice: '₹3,999 / mo',
+      yearlyPrice: '₹3,199 / mo (₹38,388/yr)',
+      allows: ['Unlimited proposals', 'AI Curated Itinerary Generator', 'AI Cost Optimizer', 'Full White-label export'],
+      restricts: [],
     },
     {
       name: 'Enterprise',
-      price: '$299/mo',
-      allows: ['Unlimited PDF downloads & proposals', 'Team Management & RBAC Unlocked', 'Custom Branding Fields Unlocked', 'Full Audit Logs & White-labeling', 'Dedicated account manager'],
+      monthlyPrice: '₹7,999 / mo',
+      yearlyPrice: '₹6,399 / mo (₹76,788/yr)',
+      allows: ['Up to 5 multi-agent sub-accounts', 'Dedicated Account Manager', 'Custom extra sections auto-fill', 'Custom API integrations'],
       restricts: [],
     },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-2xl font-serif font-bold">Plan & Billing</h3>
-        <span className="px-4 py-1.5 bg-primary/10 text-primary font-bold rounded-full text-sm">
-          Active Tier: <span className="underline">{activePlan}</span>
-        </span>
+      <div className="flex flex-wrap justify-between items-center gap-4">
+        <div>
+          <h3 className="text-2xl font-serif font-bold">Plan & Billing</h3>
+          <p className="text-xs text-on-surface-variant m-0 mt-1">Manage your subscription and upgrade anytime</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="inline-flex items-center bg-surface-container rounded-xl p-1 border border-outline-variant">
+            <button
+              onClick={() => setBillingCycle('monthly')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-none cursor-pointer ${billingCycle === 'monthly' ? 'bg-primary text-white shadow-sm' : 'bg-transparent text-on-surface-variant'}`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setBillingCycle('yearly')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-none cursor-pointer flex items-center gap-1 ${billingCycle === 'yearly' ? 'bg-primary text-white shadow-sm' : 'bg-transparent text-on-surface-variant'}`}
+            >
+              Yearly <span className="text-[10px] bg-amber-400 text-black px-1.5 py-0.5 rounded font-black">20% OFF</span>
+            </button>
+          </div>
+          <span className="px-4 py-1.5 bg-primary/10 text-primary font-bold rounded-full text-sm">
+            Active Tier: <span className="underline">{activePlan}</span>
+          </span>
+        </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {plans.map((p) => {
           const isCurrent = activePlan === p.name;
           return (
             <div key={p.name} className={`p-6 rounded-2xl border flex flex-col justify-between transition-all ${isCurrent ? 'bg-primary/5 border-primary shadow-lg ring-2 ring-primary/20' : 'bg-surface-container border-outline-variant hover:border-outline'}`}>
               <div>
                 <div className="flex justify-between items-start mb-2">
-                  <h4 className="text-xl font-bold font-serif">{p.name}</h4>
+                  <div>
+                    <h4 className="text-lg font-bold font-serif m-0">{p.name}</h4>
+                    {p.badge && <span className="text-[10px] font-extrabold text-amber-500 uppercase tracking-wider">{p.badge}</span>}
+                  </div>
                   {isCurrent && <span className="bg-black text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">Current</span>}
                 </div>
-                <div className="text-2xl font-black mb-4 text-primary">{p.price}</div>
+                <div className="text-xl font-black mb-4 text-primary">
+                  {billingCycle === 'yearly' ? p.yearlyPrice : p.monthlyPrice}
+                </div>
                 
                 <div className="space-y-2 mb-6">
-                  <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">What's Included:</p>
-                  <ul className="space-y-1.5 text-sm">
+                  <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Included:</p>
+                  <ul className="space-y-1.5 text-xs">
                     {p.allows.map((allow, i) => (
                       <li key={i} className="flex items-center gap-2 text-on-surface">
-                        <span className="material-symbols-outlined text-[18px] text-green-600">check_circle</span>
+                        <span className="material-symbols-outlined text-[16px] text-green-600">check_circle</span>
                         <span>{allow}</span>
                       </li>
                     ))}
@@ -171,10 +207,10 @@ function PlanSettings({ subscription }) {
                   {p.restricts.length > 0 && (
                     <>
                       <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mt-4">Restrictions:</p>
-                      <ul className="space-y-1.5 text-sm">
+                      <ul className="space-y-1.5 text-xs">
                         {p.restricts.map((rest, i) => (
                           <li key={i} className="flex items-center gap-2 text-on-surface-variant opacity-80">
-                            <span className="material-symbols-outlined text-[18px] text-error">lock</span>
+                            <span className="material-symbols-outlined text-[16px] text-error">lock</span>
                             <span>{rest}</span>
                           </li>
                         ))}
@@ -187,7 +223,7 @@ function PlanSettings({ subscription }) {
                 type="button"
                 onClick={() => handleSwitchPlan(p.name)}
                 disabled={isCurrent}
-                className={`w-full py-2.5 rounded-xl font-bold text-sm transition-all ${isCurrent ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-primary text-on-primary hover:bg-primary/90 shadow-md cursor-pointer'}`}
+                className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all border-none ${isCurrent ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-primary text-on-primary hover:bg-primary/90 shadow-md cursor-pointer'}`}
               >
                 {isCurrent ? 'Active Plan' : `Switch to ${p.name}`}
               </button>

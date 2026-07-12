@@ -1,0 +1,30 @@
+name: Supabase Keep-Alive Ping
+
+on:
+  schedule:
+    # Run every 5 days at 04:15 UTC (cron format: minute hour day month day-of-week)
+    - cron: '15 4 */5 * *'
+  workflow_dispatch:
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Database via REST API
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "Supabase secrets not configured. Skipping ping."
+            exit 0
+          fi
+          echo "Pinging Supabase REST API to prevent free-tier pause..."
+          curl --fail --silent --show-error \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_KEY" \
+            "$SUPABASE_URL/rest/v1/agencies?select=id&limit=1" || {
+              echo "Warning: Ping request failed."
+              exit 1
+            }
+          echo "Supabase keep-alive ping successful."

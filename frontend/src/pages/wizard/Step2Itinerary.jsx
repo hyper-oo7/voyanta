@@ -782,8 +782,6 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         </div>
       </div>
     </div>
-
-  </div>
   );
 }
 

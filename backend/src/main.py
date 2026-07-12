@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from starlette.middleware.cors import CORSMiddleware
 
-from src.api.routers import pdf_router, ppt_router, ai_router, public_router, packing_rules_router, vault_router, storage_router, knowledge_router
+from src.api.routers import pdf_router, ppt_router, ai_router, public_router, packing_rules_router, vault_router, storage_router, knowledge_router, maintenance_router, billing_router
 from src.core.rate_limiter import DistributedRateLimiterMiddleware
 
 # Configure logging
@@ -81,5 +81,7 @@ api_router.include_router(packing_rules_router.router)
 api_router.include_router(vault_router.router)
 api_router.include_router(storage_router.router)
 api_router.include_router(knowledge_router.router)
+api_router.include_router(maintenance_router.router)
+api_router.include_router(billing_router.router)
 
 app.include_router(api_router)
