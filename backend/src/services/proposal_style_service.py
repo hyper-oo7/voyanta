@@ -328,7 +328,7 @@ async def auto_phrase_with_profile(
 async def generate_outcome_insights(agency_id: str, db_client) -> dict:
     """
     Compares tag distributions, templates used, and pricing between Won (Approved)
-    and Lost (Cancelled) proposals once there are 50+ outcomes logged for this agency.
+    and Lost (Cancelled) proposals once there are 5+ outcomes logged for this agency.
     """
     try:
         # Fetch proposals with status Approved or Cancelled
@@ -341,11 +341,11 @@ async def generate_outcome_insights(agency_id: str, db_client) -> dict:
         proposals = res.data or []
         count = len(proposals)
         
-        if count < 50:
+        if count < 5:
             return {
                 "status": "pending",
                 "current": count,
-                "required": 50,
+                "required": 5,
                 "insights": []
             }
             
@@ -372,7 +372,7 @@ async def generate_outcome_insights(agency_id: str, db_client) -> dict:
         overall_rate = won_count / count
         
         for tpl, total in template_totals.items():
-            if total >= 5: # Need a minimum of 5 proposals to avoid noise
+            if total >= 2: # Need a minimum of 2 proposals to avoid noise
                 wins = template_wins.get(tpl, 0)
                 rate = wins / total
                 diff = rate - overall_rate
@@ -418,7 +418,7 @@ async def generate_outcome_insights(agency_id: str, db_client) -> dict:
         return {
             "status": "success",
             "current": count,
-            "required": 50,
+            "required": 5,
             "insights": insights
         }
     except Exception as e:
@@ -426,7 +426,7 @@ async def generate_outcome_insights(agency_id: str, db_client) -> dict:
         return {
             "status": "error",
             "current": 0,
-            "required": 50,
+            "required": 5,
             "insights": [],
             "error": str(e)
         }

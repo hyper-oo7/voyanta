@@ -55,7 +55,8 @@ def test_upload_file_to_r2_mock_fallback(tmp_path, monkeypatch):
     files = os.listdir(mock_dir)
     assert len(files) > 0
 
-def test_get_presigned_url_mock_fallback():
+def test_get_presigned_url_mock_fallback(monkeypatch):
+    monkeypatch.setenv("CF_R2_PRIVATE_ACCESS_KEY_ID", "")
     key = "supplier-pdfs/test-agency/some-unique-file.pdf"
     url = get_presigned_url(key)
     assert url == "http://127.0.0.1:8000/api/storage/mock-files/supplier-pdfs/test-agency/some-unique-file.pdf"

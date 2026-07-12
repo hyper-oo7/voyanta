@@ -19,7 +19,7 @@ const INDIAN_LANDSCAPE_HEROES = [
   },
   {
     url: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Amber Fort Royal Heritage, Jaipur'
+    caption: 'Taj Mahal Monument of Love, Agra'
   },
   {
     url: 'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&w=2000&q=85',
@@ -63,13 +63,7 @@ export default function LandingPage() {
   }, []);
 
   const handleStartDemo = () => {
-    if (demoEnabled) {
-      enterDemoMode();
-      toast.info('Demo mode active');
-      navigate('/dashboard');
-    } else {
-      navigate('/login');
-    }
+    navigate('/login?signup=true');
   };
 
   const workflowDemoSteps = [
@@ -107,26 +101,32 @@ export default function LandingPage() {
     },
     {
       stepNumber: '02',
-      title: 'AI Knowledge & Sanity Verification',
-      subtitle: 'Built-in sanity checks before you send.',
-      description: 'Before you send a proposal, AI Proposal Review flags over-budget itineraries, hotel mismatches, or missing transfers—the mistakes made at 11pm before a client meeting.',
+      title: 'Specify Client Brief & Destination',
+      subtitle: 'Built-in smart querying.',
+      description: 'Input destination, budget, and dates. Voyanta instantly indexes and queries your uploaded contracts to pull matched supplier prices.',
       visual: (
         <div className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant shadow-lg space-y-4">
           <div className="flex items-center justify-between border-b border-outline-variant pb-3">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">auto_awesome</span>
-              <span className="font-bold text-sm text-on-surface">AI Proposal Review & Cost Optimizer</span>
+              <span className="material-symbols-outlined text-primary text-base">person</span>
+              <span className="font-bold text-sm text-on-surface">Client Brief & Preferences</span>
             </div>
-            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">ALL VERIFIED</span>
+            <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs rounded-full uppercase tracking-wider">ACTIVE QUERY</span>
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs">
-              <span className="material-symbols-outlined text-emerald-600 text-base">check_circle</span>
-              <span className="text-on-surface">Cheapest verified supplier selected automatically</span>
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-outline-variant">
+                <span className="text-on-surface-variant block mb-1">Destination</span>
+                <span className="font-bold text-on-surface">Srinagar & Gulmarg, Kashmir</span>
+              </div>
+              <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-outline-variant">
+                <span className="text-on-surface-variant block mb-1">Target Budget</span>
+                <span className="font-bold text-on-surface">₹3,00,000 INR Max</span>
+              </div>
             </div>
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs">
-              <span className="material-symbols-outlined text-blue-600 text-base">verified</span>
-              <span className="text-on-surface">Airport transfer timeline aligned with flight arrivals</span>
+            <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-outline-variant">
+              <span className="text-on-surface-variant block mb-1">Traveler Preferences</span>
+              <span className="font-bold text-on-surface">Likes: CP plans, high-floor luxury rooms. Dislikes: heavy trekking.</span>
             </div>
           </div>
         </div>
@@ -134,28 +134,70 @@ export default function LandingPage() {
     },
     {
       stepNumber: '03',
-      title: 'One-Click Proposal Generation',
-      subtitle: 'Suggestions before you even ask.',
-      description: 'Start a new proposal and the vault already knows which hotels, activities, and suppliers you prefer for that client type—one click to generate in your agency’s voice.',
+      title: 'Sidebar Auto-Populates Matching Rates',
+      subtitle: 'The unique motion: matching rates appear as you type.',
+      description: 'As you build your proposal, the Vault Sidebar automatically suggests matching hotels and pre-negotiated rates from your contracts. Click once to insert verified prices directly.',
       visual: (
-        <div className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="font-bold text-sm text-on-surface">Royal Kashmir 6D/5N Luxury Escape</div>
-              <div className="text-xs text-on-surface-variant">Tailored in your agency’s tone & style</div>
-            </div>
-            <span className="px-3 py-1 bg-primary text-white text-xs font-bold rounded-xl shadow-md">
-              ₹3,45,000 Total
-            </span>
+        <div className="bg-surface-container-low rounded-2xl border border-outline-variant shadow-lg overflow-hidden flex flex-col h-[280px]">
+          <div className="bg-white dark:bg-slate-950 px-4 py-2 border-b border-outline-variant flex items-center justify-between text-[10px] font-bold text-on-surface">
+            <span className="flex items-center gap-1.5"><span className="material-symbols-outlined text-[13px]">edit_document</span> Proposal Builder / Day 1</span>
+            <span className="text-primary flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Live editor</span>
           </div>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-outline-variant">
-              <div className="text-on-surface-variant mb-1">Base Supplier Cost</div>
-              <div className="font-bold text-on-surface">₹2,85,000</div>
+          <div className="flex-1 grid grid-cols-12 overflow-hidden">
+            <div className="col-span-6 p-3 border-r border-outline-variant space-y-3 overflow-y-auto bg-white/40">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[9px] flex items-center justify-center font-mono">1</span>
+                <span className="font-bold text-[10px] text-on-surface">Day 1: Arrival in Srinagar</span>
+              </div>
+              <div className="p-2.5 bg-white dark:bg-slate-900 border border-outline-variant rounded-xl text-[9px] text-on-surface-variant font-mono space-y-1.5">
+                <div className="flex justify-between border-b border-outline-variant pb-1 font-bold text-on-surface">
+                  <span>Day 1 Costing</span>
+                  <span>₹27,700</span>
+                </div>
+                <div className="flex justify-between text-[8px] text-emerald-600 dark:text-emerald-400">
+                  <span>✓ Taj Dal View (Luxury Suite)</span>
+                  <span>₹24,500</span>
+                </div>
+                <div className="flex justify-between text-[8px]">
+                  <span>✓ Private Guided Shikara Ride</span>
+                  <span>₹3,200</span>
+                </div>
+              </div>
+              <button className="w-full py-1.5 border border-dashed border-outline-variant text-[9px] text-on-surface-variant font-medium rounded-lg flex items-center justify-center gap-1 bg-white/60">
+                <span className="material-symbols-outlined text-[11px]">add</span> Add Itinerary Item
+              </button>
             </div>
-            <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-outline-variant">
-              <div className="text-on-surface-variant mb-1">Agency Profit Margin</div>
-              <div className="font-bold text-emerald-600 dark:text-emerald-400">+₹60,000 (21%)</div>
+            <div className="col-span-6 p-2.5 bg-white dark:bg-slate-900 flex flex-col overflow-y-auto space-y-2 select-none">
+              <div className="pb-1.5 border-b border-outline-variant flex items-center justify-between">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[12px] text-primary animate-pulse">auto_awesome</span> Suggested from Vault
+                </span>
+                <span className="text-[8px] text-emerald-500 font-extrabold font-mono bg-emerald-500/10 px-1 rounded animate-pulse">MATCH</span>
+              </div>
+              
+              <div className="p-2 border border-emerald-500/35 bg-emerald-500/5 rounded-xl flex flex-col gap-1 shadow-sm transition-all duration-300 transform translate-x-0">
+                <div className="flex justify-between items-center">
+                  <span className="text-[8px] font-bold uppercase tracking-widest bg-blue-50 text-blue-600 border border-blue-200 px-1 rounded">Hotel</span>
+                  <span className="text-[8px] text-on-surface-variant font-medium">Srinagar</span>
+                </div>
+                <div className="font-bold text-[9px] text-on-surface">Taj Dal View Srinagar</div>
+                <div className="flex justify-between items-center text-[8px] text-on-surface font-semibold pt-0.5 border-t border-outline-variant/30">
+                  <span className="text-emerald-600 dark:text-emerald-400">₹24,500 <span className="text-[7px] text-on-surface-variant font-normal">/ night</span></span>
+                  <span className="text-[7px] px-1 bg-emerald-500/10 text-emerald-600 rounded">✓ Lowest Rate (TBO)</span>
+                </div>
+              </div>
+
+              <div className="p-2 border border-outline-variant bg-surface-container-low rounded-xl flex flex-col gap-1 transition-all duration-300">
+                <div className="flex justify-between items-center">
+                  <span className="text-[8px] font-bold uppercase tracking-widest bg-green-50 text-green-600 border border-green-200 px-1 rounded">Activity</span>
+                  <span className="text-[8px] text-on-surface-variant font-medium">Dal Lake</span>
+                </div>
+                <div className="font-bold text-[9px] text-on-surface">Private Guided Shikara Ride</div>
+                <div className="flex justify-between items-center text-[8px] text-on-surface font-semibold pt-0.5 border-t border-outline-variant/30">
+                  <span className="text-primary">₹3,200 <span className="text-[7px] text-on-surface-variant font-normal">/ pax</span></span>
+                  <span className="text-[7px] text-on-surface-variant font-normal">Contract Rate</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -177,15 +219,15 @@ export default function LandingPage() {
           </div>
           
           <div className="hidden md:flex items-center gap-8">
-            <a href="#features" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-white/90 hover:text-white'} text-sm font-medium transition-colors`}>Features</a>
-            <a href="#how-it-works" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-white/90 hover:text-white'} text-sm font-medium transition-colors`}>How It Works</a>
-            <a href="#pricing" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-white/90 hover:text-white'} text-sm font-medium transition-colors`}>Pricing</a>
+            <a href="#features" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>Features</a>
+            <a href="#how-it-works" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>How It Works</a>
+            <a href="#pricing" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>Pricing</a>
           </div>
 
           <div className="flex items-center gap-3">
             <button 
               onClick={() => navigate('/login')} 
-              className={`px-4 py-2 ${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-white/90 hover:text-white'} text-sm font-medium transition-colors`}
+              className={`px-4 py-2 ${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}
             >
               Sign In
             </button>
@@ -340,6 +382,23 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+
+          {/* Minimalist Agency Logo Placeholders */}
+          <div className="mt-12 pt-8 border-t border-outline-variant/60 flex flex-wrap justify-center items-center gap-12 opacity-60">
+            <div className="flex items-center gap-2 text-on-surface-variant font-bold text-sm tracking-widest font-mono select-none">
+              <span className="material-symbols-outlined text-primary text-[20px]">flight_takeoff</span> KASHMIR TRAVELS
+            </div>
+            <div className="flex items-center gap-2 text-on-surface-variant font-bold text-sm tracking-widest font-mono select-none">
+              <span className="material-symbols-outlined text-primary text-[20px]">architecture</span> RAJASTHAN PALACES
+            </div>
+            <div className="flex items-center gap-2 text-on-surface-variant font-bold text-sm tracking-widest font-mono select-none">
+              <span className="material-symbols-outlined text-primary text-[20px]">beach_access</span> MALDIVES LUXURY
+            </div>
+            <div className="flex items-center gap-2 text-on-surface-variant font-bold text-sm tracking-widest font-mono select-none">
+              <span className="material-symbols-outlined text-primary text-[20px]">apartment</span> DESERT CONCIERGE
+            </div>
+          </div>
+
         </div>
       </section>
 

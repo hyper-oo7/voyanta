@@ -121,16 +121,16 @@ async def test_generate_outcome_insights_pending():
     mock_table.eq.return_value = mock_table
     mock_table.in_.return_value = mock_table
     
-    # Return 10 mock proposals (under 50)
-    mock_proposals = [{"id": f"p-{i}", "status": "Approved"} for i in range(10)]
+    # Return 3 mock proposals (under 5)
+    mock_proposals = [{"id": f"p-{i}", "status": "Approved"} for i in range(3)]
     mock_res = MagicMock()
     mock_res.data = mock_proposals
     mock_table.execute.return_value = mock_res
     
     res = await generate_outcome_insights("agency-1", mock_sb)
     assert res["status"] == "pending"
-    assert res["current"] == 10
-    assert res["required"] == 50
+    assert res["current"] == 3
+    assert res["required"] == 5
     assert len(res["insights"]) == 0
 
 

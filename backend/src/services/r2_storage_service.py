@@ -9,29 +9,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Private Bucket Configuration
-CF_R2_PRIVATE_BUCKET = os.environ.get("CF_R2_PRIVATE_BUCKET")
-CF_R2_PRIVATE_ACCESS_KEY_ID = os.environ.get("CF_R2_PRIVATE_ACCESS_KEY_ID")
-CF_R2_PRIVATE_SECRET_ACCESS_KEY = os.environ.get("CF_R2_PRIVATE_SECRET_ACCESS_KEY")
-CF_R2_PRIVATE_ENDPOINT = os.environ.get("CF_R2_PRIVATE_ENDPOINT")
-
-# Public Bucket Configuration
-CF_R2_PUBLIC_BUCKET = os.environ.get("CF_R2_PUBLIC_BUCKET")
-CF_R2_PUBLIC_ACCESS_KEY_ID = os.environ.get("CF_R2_PUBLIC_ACCESS_KEY_ID")
-CF_R2_PUBLIC_SECRET_ACCESS_KEY = os.environ.get("CF_R2_PUBLIC_SECRET_ACCESS_KEY")
-CF_R2_PUBLIC_ENDPOINT = os.environ.get("CF_R2_PUBLIC_ENDPOINT")
-CF_R2_PUBLIC_URL_PREFIX = os.environ.get("CF_R2_PUBLIC_URL_PREFIX")
-
+# Private Bucket Configuration dynamically read in clients below
 def get_private_r2_client():
-    if not (CF_R2_PRIVATE_ENDPOINT and CF_R2_PRIVATE_ACCESS_KEY_ID and CF_R2_PRIVATE_SECRET_ACCESS_KEY):
+    endpoint = os.environ.get("CF_R2_PRIVATE_ENDPOINT")
+    access_key = os.environ.get("CF_R2_PRIVATE_ACCESS_KEY_ID")
+    secret_key = os.environ.get("CF_R2_PRIVATE_SECRET_ACCESS_KEY")
+    if not (endpoint and access_key and secret_key):
         logger.warning("[R2 Storage] Private R2 credentials not fully configured.")
         return None
     try:
         s3 = boto3.client(
             "s3",
-            endpoint_url=CF_R2_PRIVATE_ENDPOINT,
-            aws_access_key_id=CF_R2_PRIVATE_ACCESS_KEY_ID,
-            aws_secret_access_key=CF_R2_PRIVATE_SECRET_ACCESS_KEY,
+            endpoint_url=endpoint,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
             config=Config(signature_version="s3v4")
         )
         return s3
@@ -40,15 +31,18 @@ def get_private_r2_client():
         return None
 
 def get_public_r2_client():
-    if not (CF_R2_PUBLIC_ENDPOINT and CF_R2_PUBLIC_ACCESS_KEY_ID and CF_R2_PUBLIC_SECRET_ACCESS_KEY):
+    endpoint = os.environ.get("CF_R2_PUBLIC_ENDPOINT")
+    access_key = os.environ.get("CF_R2_PUBLIC_ACCESS_KEY_ID")
+    secret_key = os.environ.get("CF_R2_PUBLIC_SECRET_ACCESS_KEY")
+    if not (endpoint and access_key and secret_key):
         logger.warning("[R2 Storage] Public R2 credentials not fully configured.")
         return None
     try:
         s3 = boto3.client(
             "s3",
-            endpoint_url=CF_R2_PUBLIC_ENDPOINT,
-            aws_access_key_id=CF_R2_PUBLIC_ACCESS_KEY_ID,
-            aws_secret_access_key=CF_R2_PUBLIC_SECRET_ACCESS_KEY,
+            endpoint_url=endpoint,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
             config=Config(signature_version="s3v4")
         )
         return s3
@@ -102,7 +96,9 @@ def upload_file_to_r2(
     
     # Try S3 Upload
     s3 = get_private_r2_client() if is_private else get_public_r2_client()
-    bucket = CF_R2_PRIVATE_BUCKET if is_private else CF_R2_PUBLIC_BUCKET
+    private_bucket = os.environ.get("CF_R2_PRIVATE_BUCKET")
+    public_bucket = os.environ.get("CF_R2_PUBLIC_BUCKET")
+    bucket = private_bucket if is_private else public_bucket
 
     if s3 and bucket:
         try:
@@ -122,11 +118,13 @@ def upload_file_to_r2(
                 )
             else:
                 # Public file uses public CDN URL prefix
-                prefix = (CF_R2_PUBLIC_URL_PREFIX or "").rstrip("/")
+                public_url_prefix = os.environ.get("CF_R2_PUBLIC_URL_PREFIX")
+                prefix = (public_url_prefix or "").rstrip("/")
                 if prefix:
                     url = f"{prefix}/{key}"
                 else:
-                    endpoint = CF_R2_PUBLIC_ENDPOINT.rstrip("/")
+                    public_endpoint = os.environ.get("CF_R2_PUBLIC_ENDPOINT")
+                    endpoint = (public_endpoint or "").rstrip("/")
                     url = f"{endpoint}/{bucket}/{key}"
             
             return {
@@ -153,14 +151,14 @@ def upload_file_to_r2(
     return {
         "url": mock_url,
         "path": key,
-        "bucket": bucket or ("voyanta-private-mock" if is_private else "voyanta-public-mock"),
+        "bucket": "voyanta-private-mock" if is_private else "voyanta-public-mock",
         "is_private": is_private
     }
 
 def get_presigned_url(key: str, expires_in: int = 86400) -> Optional[str]:
     """Generate a presigned URL for private files."""
     s3 = get_private_r2_client()
-    bucket = CF_R2_PRIVATE_BUCKET
+    bucket = os.environ.get("CF_R2_PRIVATE_BUCKET")
     if s3 and bucket:
         try:
             url = s3.generate_presigned_url(
@@ -189,7 +187,9 @@ def get_file_from_r2(key: str) -> Optional[bytes]:
         is_private = is_private_folder(parts[0])
 
     s3 = get_private_r2_client() if is_private else get_public_r2_client()
-    bucket = CF_R2_PRIVATE_BUCKET if is_private else CF_R2_PUBLIC_BUCKET
+    private_bucket = os.environ.get("CF_R2_PRIVATE_BUCKET")
+    public_bucket = os.environ.get("CF_R2_PUBLIC_BUCKET")
+    bucket = private_bucket if is_private else public_bucket
 
     if s3 and bucket:
         try:

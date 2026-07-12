@@ -482,6 +482,7 @@ async def test_affinity_aggregation_and_scoring():
     mock_sb.table.return_value = mock_table
     mock_table.select.return_value = mock_table
     mock_table.in_.return_value = mock_table
+    mock_table.is_.return_value = mock_table
     
     # Mock activity logs returned
     mock_logs = [
