@@ -26,6 +26,10 @@ export default function AuthenticationPage() {
     } else {
       setIsSignUp(false);
     }
+    const plan = params.get('plan');
+    if (plan) {
+      localStorage.setItem('voyanta_pending_subscription_plan', plan);
+    }
   }, [location.search]);
 
   const handleDemoBypass = () => {
@@ -78,8 +82,8 @@ export default function AuthenticationPage() {
   };
 
   return (
-    <div className="min-h-screen bg-surface-container-lowest flex items-center justify-center p-xl">
-      <div className="max-w-6xl w-full bg-surface rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row h-[700px]">
+    <div className="min-h-screen bg-surface-container-lowest flex items-center justify-center p-lg md:p-xl">
+      <div className="max-w-6xl w-full bg-surface rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row min-h-[580px] md:h-[680px]">
         
         {/* Left Side: Beautiful imagery */}
         <div className="hidden md:flex md:w-1/2 relative bg-on-surface">
@@ -108,10 +112,25 @@ export default function AuthenticationPage() {
         </div>
 
         {/* Right Side: Auth Form */}
-        <div className="w-full md:w-1/2 flex flex-col justify-center px-lg py-xxl sm:px-xxl bg-surface">
+        <div className="w-full md:w-1/2 flex flex-col justify-center py-10 px-6 sm:px-12 bg-surface">
           <div className="max-w-md w-full mx-auto">
             
-            <div className="mb-xl">
+            {/* Top Navigation Row */}
+            <div className="flex items-center justify-between mb-6">
+              <button 
+                onClick={() => navigate('/')} 
+                className="flex items-center gap-1 text-xs font-bold text-primary hover:underline bg-transparent border-none p-0 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+                Back to Home
+              </button>
+              <div className="flex items-center gap-1.5 md:hidden">
+                <span className="material-symbols-outlined text-primary text-[20px]">travel_explore</span>
+                <span className="font-display font-bold text-primary text-base">Voyanta</span>
+              </div>
+            </div>
+
+            <div className="mb-6">
               <h2 className="font-headline-lg text-headline-lg text-on-surface mb-xs m-0">
                 Voyanta Travel Concierge
               </h2>

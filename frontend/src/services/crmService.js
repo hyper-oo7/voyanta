@@ -101,7 +101,6 @@ export async function createClient(clientData) {
       var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
     }),
-    agency_id: agencyId,
     name: clientData.name || 'Unnamed Client',
     email: clientData.email || '',
     phone: clientData.phone || '',
@@ -110,7 +109,8 @@ export async function createClient(clientData) {
     notes: clientData.notes || '',
     created_at: now,
     updated_at: now,
-    ...clientData
+    ...clientData,
+    agency_id: agencyId // Force current active agency_id at the end to prevent overwrite
   };
 
   if (isProd) {
@@ -135,9 +135,12 @@ export async function createClient(clientData) {
 
 export async function updateClient(id, patch) {
   const now = new Date().toISOString();
-  const updatePayload = { ...patch, updated_at: now };
   const agencyId = getAgencyId();
   const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
+
+  // Strip agency_id from updates to avoid RLS constraint checks
+  const { agency_id, ...cleanPatch } = patch;
+  const updatePayload = { ...cleanPatch, agency_id: agencyId, updated_at: now };
 
   if (isProd && !String(id).startsWith('inv_client_')) {
     const { data, error } = await supabase.from(TABLE).update(updatePayload).eq('id', id).select().single();

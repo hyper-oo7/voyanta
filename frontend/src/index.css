@@ -181,6 +181,32 @@ html.dark .glass-card label span {
   color: #e2e8f0 !important;
 }
 
+/* Pricing Plan Card Custom Premium Lighting & Glow */
+.pricing-plan-card {
+  position: relative;
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, rgba(255, 255, 255, 0.95) 100%) !important;
+  border: 2px solid rgba(99, 102, 241, 0.3) !important;
+  box-shadow: 0 20px 40px -15px rgba(99, 102, 241, 0.12) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.pricing-plan-card:hover {
+  box-shadow: 0 30px 50px -10px rgba(99, 102, 241, 0.25) !important;
+  transform: translateY(-8px) scale(1.02) !important;
+  border-color: rgba(99, 102, 241, 0.8) !important;
+}
+
+html.dark .pricing-plan-card {
+  background: radial-gradient(circle at top left, rgba(99, 102, 241, 0.15), rgba(20, 27, 40, 0.95)) !important;
+  border: 2px solid rgba(99, 102, 241, 0.4) !important;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.6) !important;
+}
+
+html.dark .pricing-plan-card:hover {
+  box-shadow: 0 0 45px rgba(99, 102, 241, 0.35) !important;
+  border-color: rgba(99, 102, 241, 0.9) !important;
+}
+
 /* Print mode resets to ensure pristine A4 documents even if dark mode is active */
 @media print {
   html.dark, body, .bg-surface, .bg-background, .bg-white, .bg-surface-container-lowest, .bg-surface-container-low, .bg-surface-container, .bg-surface-container-high, .bg-surface-container-highest {

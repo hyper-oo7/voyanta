@@ -85,9 +85,21 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
   const [showAddCustom, setShowAddCustom] = useState(false);
   const [newCustom, setNewCustom] = useState({ label: '', type: 'text', content: '' });
   const [isInteractiveStudio, setIsInteractiveStudio] = useState(false);
-  const [designStudioOpen, setDesignStudioOpen] = useState(false);
+  const [shareDropdownOpen, setShareDropdownOpen] = useState(false);
+  const shareDropdownRef = useRef(null);
   const [studioTarget, setStudioTarget] = useState(null);
   const [smartContact, setSmartContact] = useState(null);
+
+  // Close share dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (shareDropdownRef.current && !shareDropdownRef.current.contains(event.target)) {
+        setShareDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const [warnings, setWarnings] = useState([]);
   const [showWarnings, setShowWarnings] = useState(false);
@@ -161,6 +173,43 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
     }, 500);
     return () => clearTimeout(timer);
   }, [proposalId, branding]);
+
+  // Pull database overrides into localStorage for offline consistency
+  useEffect(() => {
+    if (!proposalId) return;
+    try {
+      const dbOverrides = proposal?.preferences?.overrides;
+      if (dbOverrides && Object.keys(dbOverrides).length > 0) {
+        const localKey = `voyanta_overrides_${proposalId}`;
+        const local = JSON.parse(localStorage.getItem(localKey) || '{}');
+        const merged = { ...dbOverrides, ...local };
+        localStorage.setItem(localKey, JSON.stringify(merged));
+      }
+    } catch {}
+  }, [proposalId, proposal?.preferences?.overrides]);
+
+  // Auto-sync template settings (style, selections, custom sections, order) to Supabase database
+  useEffect(() => {
+    if (!proposalId) return;
+    const currentPrefs = proposal?.preferences || {};
+    if (
+      currentPrefs.template_style !== style ||
+      JSON.stringify(currentPrefs.include_sections) !== JSON.stringify(include) ||
+      JSON.stringify(currentPrefs.section_order) !== JSON.stringify(sectionOrder) ||
+      JSON.stringify(currentPrefs.custom_blocks) !== JSON.stringify(localCustomBlocks)
+    ) {
+      setProposal({
+        preferences: {
+          ...currentPrefs,
+          template_style: style,
+          include_sections: include,
+          section_order: sectionOrder,
+          custom_blocks: localCustomBlocks
+        }
+      });
+      saveDraftBackground().catch(() => {});
+    }
+  }, [style, include, sectionOrder, localCustomBlocks, proposalId, setProposal, saveDraftBackground]);
 
   useEffect(() => {
     if (customBlocks && customBlocks.length > 0) {
@@ -476,73 +525,37 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
         </select>
         
         <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest ml-2">Language</span>
-        <select value={proposal?.language || proposal?.lang || 'en'} onChange={async (e) => {
-          const newLang = e.target.value;
-          const updatedProp = { ...proposal, language: newLang, lang: newLang };
-          setProposal(updatedProp);
-          toast.info(`Language set to ${newLang.toUpperCase()}. Updating UI labels...`);
-          if (newLang !== 'en') {
-            const cacheKey = `voyanta_translation_cache_${proposal?.id || 'draft'}_${newLang}`;
-            try {
-              const cached = localStorage.getItem(cacheKey);
-              if (cached) {
-                const parsed = JSON.parse(cached);
-                const existingPrefs = proposal?.preferences || {};
-                const existingBranding = existingPrefs.branding || branding || {};
-                setProposal({
-                  ...parsed,
-                  language: newLang,
-                  lang: newLang,
-                  preferences: {
-                    ...existingPrefs,
-                    ...(parsed.preferences || {}),
-                    branding: { ...existingBranding, ...(parsed.preferences?.branding || {}) }
-                  }
-                });
-                toast.success("Applied saved translation");
-                return;
-              }
-            } catch {}
-            try {
-              toast.info("AI Translating proposal text...");
-              const res = await api.post('/api/translate-proposal', { 
-                proposal: updatedProp, 
-                target_lang: newLang,
-                glossary: OFFLINE_GLOSSARY[newLang] || {}
-              });
-              if (res && res.success && res.translated_proposal) {
-                const existingPrefs = proposal?.preferences || {};
-                const existingBranding = existingPrefs.branding || branding || {};
-                const trans = res.translated_proposal;
-                const mergedProposal = {
-                  ...trans,
-                  language: newLang,
-                  lang: newLang,
-                  preferences: {
-                    ...existingPrefs,
-                    ...(trans.preferences || {}),
-                    branding: { ...existingBranding, ...(trans.preferences?.branding || {}) }
-                  }
-                };
-                setProposal(mergedProposal);
-                try { localStorage.setItem(cacheKey, JSON.stringify(mergedProposal)); } catch {}
-                toast.success("Proposal text translated successfully!");
-              }
-            } catch (err) {
-              console.warn("AI translation failed, using offline terms:", err);
+        <select 
+          value={proposal?.language || proposal?.lang || 'en'} 
+          onChange={(e) => {
+            const newLang = e.target.value;
+            setProposal({ ...proposal, language: newLang, lang: newLang });
+            toast.info(`Translating page to ${newLang.toUpperCase()} via Google Translate...`);
+            
+            // Programmatically trigger Google Translate
+            const googleSelect = document.querySelector('.goog-te-combo');
+            if (googleSelect) {
+              googleSelect.value = newLang;
+              googleSelect.dispatchEvent(new Event('change'));
+            } else {
+              toast.error('Google Translate script is still loading. Please try again in a moment.');
             }
-          }
-        }} data-testid="preview-language"
-          className="px-md py-sm bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md">
+          }} 
+          data-testid="preview-language"
+          className="px-md py-sm bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md"
+        >
           <option value="en">English</option>
           <option value="hi">Hindi (हिंदी)</option>
           <option value="bn">Bengali (বাংলা)</option>
-          <option value="gu">Gujarati (ગુજરાતી)</option>
+          <option value="te">Telugu (తెలుగు)</option>
           <option value="mr">Marathi (मराठी)</option>
-          <option value="es">Spanish (Español)</option>
-          <option value="fr">French (Français)</option>
+          <option value="ta">Tamil (தமிழ்)</option>
+          <option value="gu">Gujarati (ગુજરાતી)</option>
+          <option value="kn">Kannada (ಕನ್ನಡ)</option>
+          <option value="pa">Punjabi (ਪੰਜਾਬੀ)</option>
+          <option value="ml">Malayalam (മലയാളം)</option>
         </select>
-
+ 
         <button type="button" onClick={async () => {
           const dest = json?.proposal?.destination || 'Destination';
           const tType = json?.proposal?.preferences?.tour_type || 'Luxury';
@@ -566,7 +579,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
           <span className="material-symbols-outlined text-[18px]">magic_button</span>
           AI Auto-Title
         </button>
-
+ 
         <button 
           type="button" 
           onClick={handleValidateSequence} 
@@ -581,17 +594,21 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
           )}
           {isValidatingSequence ? 'Checking pacing…' : 'AI Itinerary Check'}
         </button>
-
+ 
         <button type="button" onClick={() => setIsInteractiveStudio(!isInteractiveStudio)} data-testid="toggle-wysiwyg"
           className={`px-lg py-md border rounded-lg font-label-md flex items-center gap-xs shadow-sm transition-all ${isInteractiveStudio ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-lg animate-pulse' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'}`}>
           <span className="material-symbols-outlined text-[18px]">edit_document</span> {isInteractiveStudio ? '✨ WYSIWYG Active (Click Text to Edit)' : '✨ WYSIWYG Live Editor'}
         </button>
 
-        <button type="button" onClick={() => setDesignStudioOpen(true)} data-testid="open-design-studio"
-          className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">palette</span> Design Studio
+        <button 
+          type="button" 
+          onClick={() => window.open(`/view/${proposal?.share_token || 'demo'}`, '_blank')} 
+          className="px-lg py-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 rounded-lg font-label-md flex items-center gap-xs shadow-sm transition-all cursor-pointer"
+        >
+          <span className="material-symbols-outlined text-[18px]">visibility</span>
+          View Web View
         </button>
-
+ 
         <button type="button" onClick={() => setExportOpen(true)} data-testid="open-export-modal"
           className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
           <span className="material-symbols-outlined text-[18px]">tune</span> Customize Sections
@@ -602,47 +619,112 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
           Save Template
         </button>
 
-        <button type="button" onClick={() => {
-          incrementAnalytics('whatsapp', proposalId);
-          setSmartContact({
-            mode: 'whatsapp',
-            initialPhone: proposal?.client_phone || proposal?.phone || proposal?.brief?.phone || '',
-            initialEmail: proposal?.client_email || proposal?.email || proposal?.brief?.email || '',
-            clientName: proposal?.client_name || proposalName || 'Client',
-            clientId: proposal?.client_id || null,
-            proposalId: proposalId || proposal?.id,
-            proposalObj: proposal,
-            shareText: `Hi! Here is the travel proposal for ${proposalName || 'your trip'}. View and approve it here: ${window.location.origin}/proposals/wizard?id=${encodeURIComponent(proposalId || proposal?.id)}&step=7`,
-            shareSubject: `Travel Proposal: ${proposalName || 'Your Trip'}`
-          });
-        }} className="px-lg py-md bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/30 rounded-lg font-label-md flex items-center gap-xs font-bold shadow-sm transition-all">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-          Share WA
-        </button>
+        <div className="relative" ref={shareDropdownRef}>
+          <button 
+            type="button" 
+            onClick={() => setShareDropdownOpen(!shareDropdownOpen)}
+            className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 flex items-center gap-xs shadow-md font-bold transition-all border-none cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[18px]">share</span> Share / Export
+            <span className="material-symbols-outlined text-[16px]">arrow_drop_down</span>
+          </button>
+          
+          {shareDropdownOpen && (
+            <div className="absolute right-0 top-full mt-sm w-64 bg-surface border border-outline-variant rounded-xl shadow-xl z-[95] py-sm overflow-hidden animate-fade-in font-sans">
+              <button 
+                type="button"
+                onClick={async () => {
+                  setShareDropdownOpen(false);
+                  const webViewUrl = `${window.location.origin}/view/${proposal?.share_token || 'demo'}`;
+                  try {
+                    await navigator.clipboard.writeText(webViewUrl);
+                    toast.success('🌐 Public web view link copied to clipboard!');
+                    incrementAnalytics('share_link', proposalId);
+                  } catch (err) {
+                    toast.error('Failed to copy link to clipboard');
+                  }
+                }}
+                className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-primary text-[20px]">public</span>
+                <div>
+                  <div className="font-semibold text-xs text-on-surface">Share Web View</div>
+                  <div className="text-[10px] text-on-surface-variant">Copy live interactive link</div>
+                </div>
+              </button>
 
-        <button type="button" onClick={() => {
-          incrementAnalytics('email', proposalId);
-          setSmartContact({
-            mode: 'email',
-            initialPhone: proposal?.client_phone || proposal?.phone || proposal?.brief?.phone || '',
-            initialEmail: proposal?.client_email || proposal?.email || proposal?.brief?.email || '',
-            clientName: proposal?.client_name || proposalName || 'Client',
-            clientId: proposal?.client_id || null,
-            proposalId: proposalId || proposal?.id,
-            proposalObj: proposal,
-            shareText: `Hi! Here is the travel proposal for ${proposalName || 'your trip'}. View and approve it here: ${window.location.origin}/proposals/wizard?id=${encodeURIComponent(proposalId || proposal?.id)}&step=7`,
-            shareSubject: `Travel Proposal: ${proposalName || 'Your Trip'}`
-          });
-        }} className="px-lg py-md bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 border border-blue-500/30 rounded-lg font-label-md flex items-center gap-xs font-bold shadow-sm transition-all">
-          <span className="material-symbols-outlined text-[18px]">mail</span>
-          Share Email
-        </button>
-        <button type="button" onClick={onGeneratePdf} disabled={generating || !isHealthy} data-testid="generate-pdf"
-          title={!isHealthy ? 'Backend API or PDF service unreachable' : 'Generate and download A4 PDF'}
-          className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-50 flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
-          {generating ? 'Generating…' : !isHealthy ? 'PDF Offline' : 'Generate PDF'}
-        </button>
+              <button 
+                type="button"
+                onClick={() => {
+                  setShareDropdownOpen(false);
+                  incrementAnalytics('whatsapp', proposalId);
+                  const webViewUrl = `${window.location.origin}/view/${proposal?.share_token || 'demo'}`;
+                  setSmartContact({
+                    mode: 'whatsapp',
+                    initialPhone: proposal?.client_phone || proposal?.phone || proposal?.brief?.phone || '',
+                    initialEmail: proposal?.client_email || proposal?.email || proposal?.brief?.email || '',
+                    clientName: proposal?.client_name || proposalName || 'Client',
+                    clientId: proposal?.client_id || null,
+                    proposalId: proposalId || proposal?.id,
+                    proposalObj: proposal,
+                    shareText: `Hi! Here is the travel proposal for ${proposalName || 'your trip'}. View and approve it here: ${webViewUrl}`,
+                    shareSubject: `Travel Proposal: ${proposalName || 'Your Trip'}`
+                  });
+                }}
+                className="w-full flex items-center gap-md px-md py-sm hover:bg-[#25D366]/10 hover:text-[#25D366] transition-colors text-left border-none bg-transparent cursor-pointer"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" className="text-[#25D366] shrink-0" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                <div>
+                  <div className="font-semibold text-xs text-on-surface">Share WhatsApp</div>
+                  <div className="text-[10px] text-on-surface-variant">Send link via WhatsApp</div>
+                </div>
+              </button>
+
+              <button 
+                type="button"
+                onClick={() => {
+                  setShareDropdownOpen(false);
+                  incrementAnalytics('email', proposalId);
+                  const webViewUrl = `${window.location.origin}/view/${proposal?.share_token || 'demo'}`;
+                  setSmartContact({
+                    mode: 'email',
+                    initialPhone: proposal?.client_phone || proposal?.phone || proposal?.brief?.phone || '',
+                    initialEmail: proposal?.client_email || proposal?.email || proposal?.brief?.email || '',
+                    clientName: proposal?.client_name || proposalName || 'Client',
+                    clientId: proposal?.client_id || null,
+                    proposalId: proposalId || proposal?.id,
+                    proposalObj: proposal,
+                    shareText: `Hi! Here is the travel proposal for ${proposalName || 'your trip'}. View and approve it here: ${webViewUrl}`,
+                    shareSubject: `Travel Proposal: ${proposalName || 'Your Trip'}`
+                  });
+                }}
+                className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-blue-500 text-[20px]">mail</span>
+                <div>
+                  <div className="font-semibold text-xs text-on-surface">Share Email</div>
+                  <div className="text-[10px] text-on-surface-variant">Send link via email</div>
+                </div>
+              </button>
+
+              <button 
+                type="button"
+                onClick={() => {
+                  setShareDropdownOpen(false);
+                  onGeneratePdf();
+                }}
+                disabled={generating || !isHealthy}
+                className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-error text-[20px]">picture_as_pdf</span>
+                <div>
+                  <div className="font-semibold text-xs text-on-surface">{generating ? 'Generating PDF...' : 'Generate PDF'}</div>
+                  <div className="text-[10px] text-on-surface-variant">Download A4 printed PDF</div>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {isInteractiveStudio && (
@@ -832,98 +914,6 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
         </div>
       )}
 
-      {designStudioOpen && createPortal(
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-end animate-fade-in no-print" onClick={() => setDesignStudioOpen(false)}>
-          <div className="bg-surface border-l border-outline-variant w-full max-w-md h-full overflow-y-auto p-xl shadow-2xl flex flex-col gap-lg" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center border-b border-outline-variant pb-md">
-              <div className="flex items-center gap-sm">
-                <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                  <span className="material-symbols-outlined">palette</span>
-                </div>
-                <div>
-                  <h3 className="font-headline-sm text-lg font-bold text-on-surface m-0">Design Studio</h3>
-                  <p className="text-xs text-on-surface-variant m-0">Live customize texts, colors & images</p>
-                </div>
-              </div>
-              <button type="button" onClick={() => setDesignStudioOpen(false)} className="p-sm text-on-surface-variant hover:text-on-surface rounded-full">
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-
-            <div className="space-y-md">
-              <h4 className="font-bold text-sm text-primary uppercase tracking-wider m-0">1. Theme Colors</h4>
-              <div className="grid grid-cols-2 gap-sm">
-                <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
-                  Primary Brand Color
-                  <div className="flex gap-2 items-center">
-                    <input type="color" value={branding?.primary_color || '#10b981'} onChange={e => setBranding(s => ({ ...s, primary_color: e.target.value }))} className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent" />
-                    <span className="font-mono text-xs text-on-surface-variant">{branding?.primary_color || '#10b981'}</span>
-                  </div>
-                </label>
-                <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
-                  Secondary Accent
-                  <div className="flex gap-2 items-center">
-                    <input type="color" value={branding?.secondary_color || '#3b82f6'} onChange={e => setBranding(s => ({ ...s, secondary_color: e.target.value }))} className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent" />
-                    <span className="font-mono text-xs text-on-surface-variant">{branding?.secondary_color || '#3b82f6'}</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            <div className="space-y-md border-t border-outline-variant pt-md">
-              <h4 className="font-bold text-sm text-primary uppercase tracking-wider m-0">2. Cover & Logo Images</h4>
-              <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
-                Hero Cover Image URL
-                <input type="text" value={branding?.cover_image_url || ''} placeholder="https://images.unsplash.com/..." onChange={e => setBranding(s => ({ ...s, cover_image_url: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" />
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
-                Agency Logo URL
-                <input type="text" value={branding?.logo_url || ''} placeholder="https://..." onChange={e => setBranding(s => ({ ...s, logo_url: e.target.value }))} className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" />
-              </label>
-            </div>
-
-            <div className="space-y-md border-t border-outline-variant pt-md">
-              <h4 className="font-bold text-sm text-primary uppercase tracking-wider m-0">3. Proposal Text Overrides</h4>
-              <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
-                Proposal Title / Client Name
-                <input type="text" value={proposal?.name || ''} placeholder="Safari Adventure" onChange={e => useProposalStore.getState().updateProposal({ name: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" />
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
-                Destination
-                <input type="text" value={proposal?.destination || ''} placeholder="Serengeti, Tanzania" onChange={e => useProposalStore.getState().updateProposal({ destination: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" />
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-bold text-on-surface">
-                Executive Welcome Text / Special Notes
-                <textarea 
-                  rows={3} 
-                  value={proposal?.brief?.special_notes || ''} 
-                  placeholder="Welcome to your dream luxury getaway..." 
-                  onChange={e => useProposalStore.getState().updateProposal({ 
-                    brief: { 
-                      ...proposal?.brief, 
-                      special_notes: e.target.value, 
-                      special_notes_ai_drafted: false 
-                    } 
-                  })} 
-                  className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest font-normal text-xs" 
-                />
-                {proposal?.brief?.special_notes_ai_drafted && (
-                  <span className="text-[11px] font-semibold text-primary/80 flex items-center gap-xs mt-1" data-testid="special-notes-ai-warning">
-                    <span className="material-symbols-outlined text-[14px] text-primary">auto_awesome</span>
-                    AI-drafted using your style profile, edit as needed
-                  </span>
-                )}
-              </label>
-            </div>
-
-            <div className="mt-auto pt-md border-t border-outline-variant">
-              <button type="button" onClick={() => setDesignStudioOpen(false)} className="w-full py-3 bg-primary text-white font-bold rounded-xl shadow-md hover:bg-primary/90 transition-all">
-                Apply Customizations
-              </button>
-            </div>
-          </div>
-        </div>
-      , document.body)}
 
       {showTemplatePrompt && createPortal(
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-xl animate-fade-in" onClick={() => setShowTemplatePrompt(false)}>

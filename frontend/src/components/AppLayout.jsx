@@ -52,20 +52,34 @@ export default function AppLayout() {
       setUpiReminder(true);
     }
 
-    const storedStart = localStorage.getItem(`voyanta_trial_start_${userEmail}`);
     let startTime;
-    if (!storedStart) {
-      startTime = Date.now();
-      localStorage.setItem(`voyanta_trial_start_${userEmail}`, startTime);
+    if (user && !isDemo && user.created_at) {
+      startTime = new Date(user.created_at).getTime();
     } else {
-      startTime = parseInt(storedStart, 10);
+      const storedStart = localStorage.getItem(`voyanta_trial_start_${userEmail}`);
+      if (!storedStart) {
+        startTime = Date.now();
+        localStorage.setItem(`voyanta_trial_start_${userEmail}`, startTime.toString());
+      } else {
+        startTime = parseInt(storedStart, 10);
+      }
     }
     const daysElapsed = Math.floor((Date.now() - startTime) / (1000 * 60 * 60 * 24));
     const remaining = Math.max(0, 14 - daysElapsed);
     setTrialDaysRemaining(remaining);
     setTrialExpired(daysElapsed >= 14);
     setTrialLocked(daysElapsed >= 30);
-  }, [userEmail]);
+  }, [user, isDemo, userEmail]);
+
+  useEffect(() => {
+    if (user) {
+      const pendingPlan = localStorage.getItem('voyanta_pending_subscription_plan');
+      if (pendingPlan) {
+        localStorage.removeItem('voyanta_pending_subscription_plan');
+        setUpgradeModalOpen(true);
+      }
+    }
+  }, [user]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -266,6 +280,10 @@ export default function AppLayout() {
                     <div className="flex items-center gap-sm text-sm">
                       <span className="material-symbols-outlined text-[18px] text-primary">call</span>
                       <a href="tel:+1800VOYANTA" className="text-on-surface hover:text-primary transition-colors">+1-800-VOYANTA</a>
+                    </div>
+                    <div className="flex items-center gap-sm text-sm pt-2 border-t border-outline-variant mt-2">
+                      <span className="material-symbols-outlined text-[18px] text-primary font-bold">menu_book</span>
+                      <Link to="/how-to-use" className="text-primary hover:underline font-bold transition-colors">How to Use Guide</Link>
                     </div>
                   </div>
                 </div>

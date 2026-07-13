@@ -202,6 +202,15 @@ export const useProposalStore = create((set, get) => ({
   buildPayload: () => {
     const { client: c, branding, costingPrefs, proposal } = get();
     const travelers = (parseInt(c.num_adults, 10) || 0) + (parseInt(c.num_children, 10) || 0);
+
+    let overrides = {};
+    try {
+      const pid = proposal?.id || get().activeId;
+      if (pid) {
+        overrides = JSON.parse(localStorage.getItem(`voyanta_overrides_${pid}`) || '{}');
+      }
+    } catch {}
+
     return {
       client_id: c.client_id || c.id || proposal?.client_id || null,
       name: proposal?.name || (c.destination ? `${c.destination}${c.tour_type ? ' ' + c.tour_type : ' Itinerary'}` : 'Travel Proposal'),
@@ -230,7 +239,15 @@ export const useProposalStore = create((set, get) => ({
         pace: c.pace || '',
         dislikes: c.dislikes || [],
       },
-      preferences: { ...(proposal?.preferences || {}), branding, costing: costingPrefs },
+      preferences: {
+        ...(proposal?.preferences || {}),
+        branding,
+        costing: costingPrefs,
+        overrides: {
+          ...(proposal?.preferences?.overrides || {}),
+          ...overrides
+        }
+      },
       itinerary: proposal?.itinerary,
       status: proposal?.status || 'Draft',
     };

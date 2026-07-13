@@ -7,6 +7,7 @@ import { BackendHealthProvider } from './context/BackendHealthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import AppLayout from './components/AppLayout.jsx';
 import DiagnosticsPanel from './components/DiagnosticsPanel.jsx';
+import GoogleTranslateWidget from './components/GoogleTranslateWidget.jsx';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const queryClient = new QueryClient({
@@ -48,6 +49,8 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy.jsx'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService.jsx'));
 const CookiePolicy = lazy(() => import('./pages/CookiePolicy.jsx'));
+const HowToUsePage = lazy(() => import('./pages/HowToUsePage.jsx'));
+const ContactPage = lazy(() => import('./pages/ContactPage.jsx'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage.jsx'));
 
 const Protected = ({ children }) => <ProtectedRoute>{children}</ProtectedRoute>;
@@ -80,6 +83,8 @@ export default function App() {
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/terms" element={<TermsOfService />} />
               <Route path="/cookies" element={<CookiePolicy />} />
+              <Route path="/how-to-use" element={<HowToUsePage />} />
+              <Route path="/contact" element={<ContactPage />} />
               
               {/* Public routes for PDF printing & client action tracking */}
               <Route path="/proposals/:id/print" element={<ProposalPrintRoute />} />
@@ -123,6 +128,7 @@ export default function App() {
               </Routes>
             </Suspense>
             <DiagnosticsPanel />
+            <GoogleTranslateWidget />
           </ProposalBuilderProvider>
         </BackendHealthProvider>
       </ToastProvider>

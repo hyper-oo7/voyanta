@@ -4,9 +4,9 @@ import { fetchSharedProposalByToken } from '../services/proposalItemService.js';
 import { api } from '../services/api.js';
 import { formatPrice } from '../lib/currency.js';
 import { useToast } from '../context/ToastContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  REGIONAL_LANGUAGES,
   MULTILINGUAL_DEMO_PROPOSALS,
   getUIText,
   translateText,
@@ -14,9 +14,25 @@ import {
 import MediaCarousel from '../components/MediaCarousel.jsx';
 import WeatherWidget from '../components/WeatherWidget.jsx';
 import MapWidget from '../components/MapWidget.jsx';
+import TemplateRenderer, { ALL as ALL_SECTIONS, SECTIONS } from '../components/TemplateRenderer.jsx';
+import InlineStudioPopover from '../components/common/InlineStudioPopover.jsx';
+
+const INDIAN_LANGUAGES = [
+  { code: 'en', label: 'English', native: 'English' },
+  { code: 'hi', label: 'Hindi', native: 'हिंदी' },
+  { code: 'bn', label: 'Bengali', native: 'বাংলা' },
+  { code: 'te', label: 'Telugu', native: 'తెలుగు' },
+  { code: 'mr', label: 'Marathi', native: 'मਰਾਠੀ' },
+  { code: 'ta', label: 'Tamil', native: 'தமிழ்' },
+  { code: 'gu', label: 'Gujarati', native: 'ગુજરાતી' },
+  { code: 'kn', label: 'Kannada', native: 'ಕನ್ನಡ' },
+  { code: 'pa', label: 'Punjabi', native: 'ਪੰਜਾਬੀ' },
+  { code: 'ml', label: 'Malayalam', native: 'മലയാളം' }
+];
 
 export default function WebViewPage() {
   const { token } = useParams();
+  const { user } = useAuth();
   const [lang, setLang] = useState('en');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -25,6 +41,10 @@ export default function WebViewPage() {
   const [isDarkMode, setIsDarkMode] = useState(
     () => document.documentElement.classList.contains('dark')
   );
+
+  // Live Overrides & Edit Mode states
+  const [isInteractiveStudio, setIsInteractiveStudio] = useState(false);
+  const [studioTarget, setStudioTarget] = useState(null);
 
   // Accordion Expand/Collapse state
   const [allExpanded, setAllExpanded] = useState(true);
@@ -114,6 +134,104 @@ export default function WebViewPage() {
   const items = data?.items || [];
   const branding = p.preferences?.branding || {};
   const daysList = p.trip_details?.days || [];
+
+  const include = p.preferences?.include_sections || ALL_SECTIONS;
+  const sectionOrder = p.preferences?.section_order || SECTIONS;
+  const style = p.preferences?.template_style || branding.template_style || 'classic';
+  const customBlocks = p.preferences?.custom_blocks || [];
+
+  // Apply live overrides to DOM
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const saved = p.preferences?.overrides || {};
+        for (const [key, val] of Object.entries(saved)) {
+          const el = document.getElementById(key) || document.querySelector(`[data-testid="${key}"]`) || (val.selector ? document.querySelector(val.selector) : null);
+          if (el) {
+            if (val.type === 'text') {
+              if (val.text !== undefined) el.innerText = val.text;
+              if (val.color) el.style.color = val.color;
+              if (val.fontSize) el.style.fontSize = val.fontSize;
+              if (val.fontWeight) el.style.fontWeight = val.fontWeight;
+              if (val.textAlign) el.style.textAlign = val.textAlign;
+            } else if (val.type === 'image') {
+              if (el.tagName.toLowerCase() === 'img') el.src = val.src;
+              else el.style.backgroundImage = `url("${val.src}")`;
+              if (val.objectFit) el.style.objectFit = val.objectFit;
+              if (val.borderRadius) el.style.borderRadius = val.borderRadius;
+            } else if (val.type === 'section') {
+              if (val.backgroundColor) el.style.backgroundColor = val.backgroundColor;
+              if (val.padding) el.style.padding = val.padding;
+            }
+          }
+        }
+      } catch {}
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [data, p.preferences?.overrides]);
+
+  // Apply WYSIWYG overrides to the database
+  const handleApplyOverride = async (elKey, override) => {
+    try {
+      const currentOverrides = p.preferences?.overrides || {};
+      currentOverrides[elKey] = override;
+      const updatedPrefs = {
+        ...p.preferences,
+        overrides: currentOverrides
+      };
+
+      await api.put(`/api/proposals/${p.id}`, {
+        ...p,
+        preferences: updatedPrefs
+      });
+
+      setData(prev => ({
+        ...prev,
+        proposal: {
+          ...prev.proposal,
+          preferences: updatedPrefs
+        }
+      }));
+      toast.success('Live view edit saved to database!');
+    } catch (err) {
+      toast.error('Failed to save edit.');
+    }
+  };
+
+  // Click & hover handlers for live editor mode
+  const handleWebviewClick = (e) => {
+    if (!isInteractiveStudio) return;
+    e.preventDefault();
+    e.stopPropagation();
+    let el = e.target;
+    while (el && el.id !== 'webview-render-root' && el.tagName.toLowerCase() !== 'body') {
+      const tag = el.tagName.toLowerCase();
+      if (['h1','h2','h3','h4','h5','h6','p','span','a','li','img','section'].includes(tag) || el.classList.contains('editorial-section') || el.classList.contains('card') || el.classList.contains('glass-card')) {
+        setStudioTarget(el);
+        return;
+      }
+      el = el.parentElement;
+    }
+    setStudioTarget(e.target);
+  };
+
+  const handleWebviewMouseOver = (e) => {
+    if (!isInteractiveStudio) return;
+    const el = e.target;
+    if (el && el.id !== 'webview-render-root' && el !== e.currentTarget) {
+      el.style.outline = '2px dashed #3b82f6';
+      el.style.outlineOffset = '2px';
+    }
+  };
+
+  const handleWebviewMouseOut = (e) => {
+    if (!isInteractiveStudio) return;
+    const el = e.target;
+    if (el && el.id !== 'webview-render-root' && el !== e.currentTarget) {
+      el.style.outline = '';
+      el.style.outlineOffset = '';
+    }
+  };
 
   const handleApproveSubmit = async (e) => {
     e.preventDefault();
@@ -207,6 +325,34 @@ export default function WebViewPage() {
 
   return (
     <div className="min-h-screen bg-surface font-body-md text-on-surface pb-36 transition-colors duration-300">
+      {/* Agent Live Editor Control Bar */}
+      {user && (
+        <div className="bg-primary text-on-primary py-3 px-4 flex items-center justify-between text-xs font-bold shadow-md no-print z-50 sticky top-0">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[18px]">admin_panel_settings</span>
+            <span>Agent View: Live Proposal Web View Editor</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsInteractiveStudio(!isInteractiveStudio);
+                setStudioTarget(null);
+              }}
+              className={`px-3 py-1.5 rounded-lg border font-bold flex items-center gap-1 transition-all ${
+                isInteractiveStudio
+                  ? 'bg-white text-primary border-white animate-pulse shadow-md'
+                  : 'bg-primary-container text-on-primary-container border-primary-container hover:bg-primary-container/95'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">edit_document</span>
+              {isInteractiveStudio ? 'Exit Editor Mode' : 'Toggle Live Editor Mode'}
+            </button>
+            <span className="text-[10px] text-on-primary/75 font-normal">(Click any text, image, or section to customize live)</span>
+          </div>
+        </div>
+      )}
+
       {/* Confetti Celebration Banner */}
       {showConfetti && (
         <div className="fixed inset-0 pointer-events-none z-[100] flex items-start justify-center overflow-hidden">
@@ -243,23 +389,8 @@ export default function WebViewPage() {
             </div>
           </div>
 
-          {/* Controls: Language Selector, Theme Toggle & Show Pricing */}
-          <div className="flex items-center gap-3">
-            {/* Language Dropdown */}
-            <div className="relative">
-              <select
-                value={lang}
-                onChange={(e) => setLang(e.target.value)}
-                className="bg-surface-container-high border border-outline rounded-full px-3.5 py-1.5 text-xs font-semibold text-on-surface hover:border-primary focus:ring-2 focus:ring-primary focus:outline-none cursor-pointer transition-all"
-              >
-                {REGIONAL_LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code}>
-                    {l.native} ({l.label})
-                  </option>
-                ))}
-              </select>
-            </div>
-
+          {/* Controls: Theme Toggle & Show Pricing */}
+          <div className="flex items-center gap-3 animate-fade-in">
             {/* Pricing Toggle */}
             <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none bg-surface-container px-3 py-1.5 rounded-full border border-outline-variant">
               <input
@@ -293,7 +424,12 @@ export default function WebViewPage() {
       )}
 
       {/* HERO SECTION WITH CAROUSEL */}
-      <section className="relative h-72 md:h-[420px] w-full overflow-hidden">
+      <section 
+        className="relative h-72 md:h-[420px] w-full overflow-hidden"
+        onClick={handleWebviewClick}
+        onMouseOver={handleWebviewMouseOver}
+        onMouseOut={handleWebviewMouseOut}
+      >
         <MediaCarousel
           images={
             p.heroImages || [
@@ -321,58 +457,194 @@ export default function WebViewPage() {
       </section>
 
       {/* MAIN TWO-COLUMN BENTO GRID */}
-      <main className="max-w-7xl mx-auto px-4 md:px-8 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* LEFT COLUMN: ITINERARY & INCLUDED ITEMS (8 cols) */}
+      <main 
+        id="webview-render-root"
+        className="max-w-7xl mx-auto px-4 md:px-8 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8"
+        onClick={handleWebviewClick}
+        onMouseOver={handleWebviewMouseOver}
+        onMouseOut={handleWebviewMouseOut}
+      >
+        {/* LEFT COLUMN: ALL CONFIGURED SECTIONS (8 cols) */}
         <div className="lg:col-span-8 space-y-8">
-          {/* ITINERARY OVERVIEW HEADER */}
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-display font-bold text-on-surface flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">calendar_month</span>
-              {getUIText(lang, 'itineraryOverview')}
-            </h2>
-            <button
-              onClick={() => setAllExpanded(!allExpanded)}
-              className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 bg-surface-container px-3 py-1.5 rounded-full border border-outline-variant"
-            >
-              <span className="material-symbols-outlined text-sm">
-                {allExpanded ? 'unfold_less' : 'unfold_more'}
-              </span>
-              {allExpanded ? getUIText(lang, 'collapseAll') : getUIText(lang, 'expandAll')}
-            </button>
-          </div>
+          
+          {/* Highlights Section */}
+          {include.highlights && p.highlights && (
+            <div id="highlights-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
+              <h2 className="text-2xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">auto_awesome</span>
+                Highlights
+              </h2>
+              <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">{p.highlights}</div>
+            </div>
+          )}
 
-          {/* COLLAPSIBLE ITINERARY DAYS ACCORDION */}
+          {/* ITINERARY OVERVIEW */}
           <div className="space-y-4">
-            {daysList.map((day, idx) => (
-              <ItineraryDayAccordionCard
-                key={idx}
-                day={day}
-                dayNumber={idx + 1}
-                lang={lang}
-                defaultExpanded={allExpanded}
-              />
-            ))}
-          </div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">calendar_month</span>
+                {getUIText(lang, 'itineraryOverview')}
+              </h2>
+              <button
+                onClick={() => setAllExpanded(!allExpanded)}
+                className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 bg-surface-container px-3 py-1.5 rounded-full border border-outline-variant no-print"
+              >
+                <span className="material-symbols-outlined text-sm">
+                  {allExpanded ? 'unfold_less' : 'unfold_more'}
+                </span>
+                {allExpanded ? getUIText(lang, 'collapseAll') : getUIText(lang, 'expandAll')}
+              </button>
+            </div>
 
-          {/* INCLUDED HOTELS & FLIGHTS SECTION */}
-          <div className="pt-4">
-            <h2 className="text-2xl font-display font-bold text-on-surface mb-4 flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">hotel_class</span>
-              {getUIText(lang, 'includedInTrip')}
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {items.map((item) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
+            {/* Collapsible Accordions */}
+            <div className="space-y-4">
+              {daysList.map((day, idx) => (
+                <ItineraryDayAccordionCard
+                  key={idx}
+                  day={day}
+                  dayNumber={idx + 1}
                   lang={lang}
-                  showPricing={showPricing}
-                  currency={data?.totals?.currency || 'INR'}
+                  defaultExpanded={allExpanded}
                 />
               ))}
             </div>
           </div>
+
+          {/* INCLUDED ITEMS (Hotels, Flights, Transits) */}
+          {include.hotels && items && items.length > 0 && (
+            <div className="space-y-4 pt-4">
+              <h2 className="text-2xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">hotel_class</span>
+                {getUIText(lang, 'includedInTrip')}
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {items.map((item) => (
+                  <ItemCard
+                    key={item.id}
+                    item={item}
+                    lang={lang}
+                    showPricing={showPricing}
+                    currency={data?.totals?.currency || 'INR'}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Inclusions & Exclusions */}
+          {((include.inclusions && p.inclusions) || (include.exclusions && p.exclusions)) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+              {include.inclusions && p.inclusions && (
+                <div id="inclusions-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
+                  <h3 className="text-lg font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                    <span className="material-symbols-outlined">check_circle</span>
+                    Inclusions
+                  </h3>
+                  <ul className="space-y-2 text-sm text-on-surface-variant pl-4 list-disc">
+                    {p.inclusions.split('\n').map((item, i) => item.trim() && <li key={i}>{item}</li>)}
+                  </ul>
+                </div>
+              )}
+              {include.exclusions && p.exclusions && (
+                <div id="exclusions-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
+                  <h3 className="text-lg font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
+                    <span className="material-symbols-outlined">cancel</span>
+                    Exclusions
+                  </h3>
+                  <ul className="space-y-2 text-sm text-on-surface-variant pl-4 list-disc">
+                    {p.exclusions.split('\n').map((item, i) => item.trim() && <li key={i}>{item}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Custom Blocks */}
+          {customBlocks && customBlocks.length > 0 && (
+            <div className="space-y-6 pt-4">
+              {customBlocks.map((cb) => {
+                if (!include[cb.id]) return null;
+                const contentVal = cb.content || '';
+                return (
+                  <div key={cb.id} id={cb.id} className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
+                    <h3 className="text-xl font-display font-bold text-on-surface">{cb.label}</h3>
+                    {cb.type === 'text' ? (
+                      <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">{contentVal}</div>
+                    ) : cb.type === 'list' ? (
+                      <ul className="space-y-2 text-sm text-on-surface-variant pl-4 list-disc">
+                        {contentVal.split('\n').map((item, i) => item.trim() && <li key={i}>{item}</li>)}
+                      </ul>
+                    ) : cb.type === 'image' && contentVal ? (
+                      <img src={contentVal} className="w-full max-h-96 object-cover rounded-xl" alt={cb.label} />
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Terms & Conditions */}
+          {include.terms && p.terms && (
+            <div id="terms-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-3 pt-4">
+              <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">gavel</span>
+                Terms & Conditions
+              </h3>
+              <div className="text-xs text-on-surface-variant leading-relaxed whitespace-pre-wrap">{p.terms}</div>
+            </div>
+          )}
+
+          {/* Contact Details & Socials */}
+          {include.contacts && (branding.email || branding.phone || branding.address) && (
+            <div id="contacts-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4 pt-4">
+              <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">contact_support</span>
+                Contact Details
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                {branding.email && (
+                  <div className="flex items-center gap-2 text-on-surface-variant">
+                    <span className="material-symbols-outlined text-primary text-base">mail</span>
+                    <a href={`mailto:${branding.email}`} className="hover:underline">{branding.email}</a>
+                  </div>
+                )}
+                {branding.phone && (
+                  <div className="flex items-center gap-2 text-on-surface-variant">
+                    <span className="material-symbols-outlined text-primary text-base">call</span>
+                    <a href={`tel:${branding.phone}`} className="hover:underline">{branding.phone}</a>
+                  </div>
+                )}
+                {branding.address && (
+                  <div className="flex items-center gap-2 text-on-surface-variant sm:col-span-2">
+                    <span className="material-symbols-outlined text-primary text-base">location_on</span>
+                    <span>{branding.address}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Social Links */}
+          {include.socials && (branding.social_instagram || branding.social_facebook || branding.social_linkedin) && (
+            <div id="socials-sec" className="flex justify-center gap-6 py-6 border-t border-outline-variant/40">
+              {branding.social_instagram && (
+                <a href={branding.social_instagram} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline">
+                  Instagram
+                </a>
+              )}
+              {branding.social_facebook && (
+                <a href={branding.social_facebook} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline">
+                  Facebook
+                </a>
+              )}
+              {branding.social_linkedin && (
+                <a href={branding.social_linkedin} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline">
+                  LinkedIn
+                </a>
+              )}
+            </div>
+          )}
+
         </div>
 
         {/* RIGHT COLUMN SIDEBAR: WEATHER, MAP & PRICING SUMMARY (4 cols) */}
@@ -424,7 +696,7 @@ export default function WebViewPage() {
         </div>
       </main>
 
-      {/* STICKY CLIENT ACTIONS BAR */}
+      {/* STICKY CLIENT ACTIONS BAR WITH INDIAN LANGUAGE TRANSLATION */}
       <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur-xl border-t border-outline-variant p-4 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] z-50">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
@@ -434,7 +706,33 @@ export default function WebViewPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Google Translate programmatic select dropdown restricted to Indian languages */}
+            <div className="flex items-center gap-2 bg-surface-container-high px-4 py-2 rounded-full border border-outline-variant shadow-xs">
+              <span className="material-symbols-outlined text-primary text-[18px]">translate</span>
+              <select
+                value={lang}
+                onChange={(e) => {
+                  const newLang = e.target.value;
+                  setLang(newLang);
+                  
+                  // Trigger Google Translate programmatically
+                  const googleSelect = document.querySelector('.goog-te-combo');
+                  if (googleSelect) {
+                    googleSelect.value = newLang;
+                    googleSelect.dispatchEvent(new Event('change'));
+                  }
+                }}
+                className="bg-transparent border-none text-xs font-bold text-on-surface focus:outline-none cursor-pointer"
+              >
+                {INDIAN_LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code} className="bg-surface text-on-surface">
+                    {l.native}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {proposalStatus === 'approved' ? (
               <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-5 py-2.5 rounded-full font-bold text-sm flex items-center gap-2">
                 <span className="material-symbols-outlined text-base">check_circle</span>
@@ -468,6 +766,39 @@ export default function WebViewPage() {
         </div>
       </div>
 
+      {/* POPUP STUDIO POPOVER FOR AGENT WEB VIEW EDITING */}
+      {isInteractiveStudio && studioTarget && (
+        <InlineStudioPopover 
+          target={studioTarget} 
+          onClose={() => setStudioTarget(null)} 
+          branding={branding} 
+          setBranding={async (fnOrVal) => {
+            const next = typeof fnOrVal === 'function' ? fnOrVal(branding) : fnOrVal;
+            const updatedPrefs = {
+              ...p.preferences,
+              branding: next
+            };
+            try {
+              await api.put(`/api/proposals/${p.id}`, {
+                ...p,
+                preferences: updatedPrefs
+              });
+              setData(prev => ({
+                ...prev,
+                proposal: {
+                  ...prev.proposal,
+                  preferences: updatedPrefs
+                }
+              }));
+              toast.success('Branding update saved to database!');
+            } catch (err) {
+              toast.error('Failed to update branding.');
+            }
+          }}
+          onApplyOverride={handleApplyOverride}
+        />
+      )}
+
       {/* MODAL 1: DPDP ACT COMPLIANT APPROVAL MODAL */}
       <AnimatePresence>
         {showApproveModal && (
@@ -475,7 +806,7 @@ export default function WebViewPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 no-print"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -556,7 +887,7 @@ export default function WebViewPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 no-print"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -656,7 +987,7 @@ export default function WebViewPage() {
                   <button
                     type="submit"
                     disabled={actionLoading}
-                    className="px-6 py-2.5 rounded-full bg-primary text-on-primary font-bold text-xs shadow-md hover:shadow-lg transition-all"
+                    className="px-6 py-2.5 rounded-full bg-primary text-on-primary font-bold text-sm shadow-md hover:shadow-lg transition-all"
                   >
                     {actionLoading ? getUIText(lang, 'processing') : getUIText(lang, 'submitChangesBtn')}
                   </button>

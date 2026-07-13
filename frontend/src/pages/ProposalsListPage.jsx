@@ -554,8 +554,9 @@ function ShareModal({ proposal, onClose }) {
   const [copied, setCopied] = useState(false);
   const [smartContact, setSmartContact] = useState(null);
 
+  const webViewUrl = `${window.location.origin}/view/${proposal.share_token || 'demo'}`;
   const previewUrl = `${window.location.origin}/proposals/wizard?id=${encodeURIComponent(proposal.id)}&step=7`;
-  const text = `Hi! Here is the travel proposal for ${proposal.name}. View it here: ${previewUrl}`;
+  const text = `Hi! Here is the travel proposal for ${proposal.name}. View and approve it here: ${webViewUrl}`;
   const clientPhone = proposal.client_phone || proposal.phone || proposal.brief?.phone || '';
   const clientEmail = proposal.client_email || proposal.email || proposal.brief?.email || '';
   
@@ -576,7 +577,7 @@ function ShareModal({ proposal, onClose }) {
         <div className="flex flex-col gap-md">
           <button
             onClick={() => {
-              navigator.clipboard.writeText(previewUrl);
+              navigator.clipboard.writeText(webViewUrl);
               setCopied(true);
               setTimeout(() => setCopied(false), 2000);
             }}
@@ -586,8 +587,8 @@ function ShareModal({ proposal, onClose }) {
               <span className="material-symbols-outlined">{copied ? 'check' : 'link'}</span>
             </div>
             <div>
-              <div className="font-label-md font-bold text-on-surface">{copied ? 'Link Copied!' : 'Copy Client Link'}</div>
-              <div className="font-label-sm text-on-surface-variant">Copy direct link to send anywhere</div>
+              <div className="font-label-md font-bold text-on-surface">{copied ? 'Link Copied!' : 'Copy Client Web View Link'}</div>
+              <div className="font-label-sm text-on-surface-variant">Copy direct public web view link to send anywhere</div>
             </div>
           </button>
 
@@ -613,7 +614,7 @@ function ShareModal({ proposal, onClose }) {
               <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="css-i6dzq1"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
             </div>
             <div>
-              <div className="font-label-md font-bold text-on-surface">WhatsApp</div>
+              <div className="font-label-md font-bold text-on-surface">WhatsApp Client Portal Link</div>
               <div className="font-label-sm text-on-surface-variant">Send directly to client number</div>
             </div>
           </button>
@@ -640,8 +641,8 @@ function ShareModal({ proposal, onClose }) {
               <span className="material-symbols-outlined">mail</span>
             </div>
             <div>
-              <div className="font-label-md font-bold text-on-surface">Email</div>
-              <div className="font-label-sm text-on-surface-variant">Compose in default mail app to client</div>
+              <div className="font-label-md font-bold text-on-surface">Email Client Portal Link</div>
+              <div className="font-label-sm text-on-surface-variant">Compose email with public portal link</div>
             </div>
           </button>
           

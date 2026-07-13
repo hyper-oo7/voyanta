@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import DpdpConsentBanner from '../components/DpdpConsentBanner.jsx';
@@ -222,6 +222,8 @@ export default function LandingPage() {
             <a href="#features" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>Features</a>
             <a href="#how-it-works" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>How It Works</a>
             <a href="#pricing" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>Pricing</a>
+            <Link to="/how-to-use" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>How to Use</Link>
+            <Link to="/contact" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>Contact Us</Link>
           </div>
 
           <div className="flex items-center gap-3">
@@ -250,10 +252,6 @@ export default function LandingPage() {
             className="w-full h-full object-cover scale-105 transition-all duration-1000" 
           />
           <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-surface"></div>
-          <div className="absolute bottom-6 right-6 hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white/90 text-xs font-medium shadow-lg">
-            <span className="material-symbols-outlined text-sm text-emerald-400">location_on</span>
-            <span>{heroImage.caption}</span>
-          </div>
         </div>
 
         <div className="relative z-10 max-w-5xl mx-auto px-6 text-center flex flex-col items-center">
@@ -616,7 +614,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
             
             {/* Starter */}
-            <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
+            <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
               <div>
                 <span className="inline-block px-3 py-1 bg-surface-container text-on-surface-variant text-xs font-bold rounded-full mb-4">
                   Starter Plan
@@ -660,16 +658,25 @@ export default function LandingPage() {
                 </li>
               </ul>
 
-              <button
-                onClick={handleStartDemo}
-                className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors border-none cursor-pointer"
-              >
-                Start 14-Day Free Trial
-              </button>
+              <div className="space-y-2 mt-auto">
+                <button
+                  onClick={() => navigate('/login?signup=true&plan=starter')}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[16px]">credit_card</span>
+                  Subscribe & Start Trial
+                </button>
+                <button
+                  onClick={handleStartDemo}
+                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
+                >
+                  Start 14-Day Free Trial (No Card)
+                </button>
+              </div>
             </div>
 
             {/* Professional ⭐ Most Popular */}
-            <div className="bg-gradient-to-b from-primary/10 via-surface-container-lowest to-surface-container-lowest border-2 border-primary rounded-3xl p-6 sm:p-8 flex flex-col shadow-xl relative scale-105 z-10">
+            <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col shadow-xl relative scale-105 z-10">
               <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary text-white text-xs font-bold uppercase tracking-wider rounded-full shadow-md">
                 ⭐ Most Popular
               </div>
@@ -717,16 +724,25 @@ export default function LandingPage() {
                 </li>
               </ul>
 
-              <button
-                onClick={handleStartDemo}
-                className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 transition-all border-none cursor-pointer"
-              >
-                Start 14-Day Free Trial
-              </button>
+              <div className="space-y-2 mt-auto">
+                <button
+                  onClick={() => navigate('/login?signup=true&plan=professional')}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[16px]">credit_card</span>
+                  Subscribe & Start Trial
+                </button>
+                <button
+                  onClick={handleStartDemo}
+                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
+                >
+                  Start 14-Day Free Trial (No Card)
+                </button>
+              </div>
             </div>
 
             {/* Professional Plus */}
-            <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
+            <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
               <div>
                 <span className="inline-block px-3 py-1 bg-surface-container text-on-surface-variant text-xs font-bold rounded-full mb-4">
                   Professional Plus Plan
@@ -770,16 +786,25 @@ export default function LandingPage() {
                 </li>
               </ul>
 
-              <button
-                onClick={handleStartDemo}
-                className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors border-none cursor-pointer"
-              >
-                Start 14-Day Free Trial
-              </button>
+              <div className="space-y-2 mt-auto">
+                <button
+                  onClick={() => navigate('/login?signup=true&plan=professional_plus')}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[16px]">credit_card</span>
+                  Subscribe & Start Trial
+                </button>
+                <button
+                  onClick={handleStartDemo}
+                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
+                >
+                  Start 14-Day Free Trial (No Card)
+                </button>
+              </div>
             </div>
 
             {/* Enterprise Standing Checklist Card */}
-            <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
+            <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
               <div>
                 <span className="inline-block px-3 py-1 bg-primary/10 text-primary text-xs font-bold rounded-full mb-4">
                   Enterprise Plan
@@ -823,12 +848,21 @@ export default function LandingPage() {
                 </li>
               </ul>
 
-              <button
-                onClick={handleStartDemo}
-                className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary text-white hover:bg-primary/90 shadow-md transition-all border-none cursor-pointer"
-              >
-                Start 14-Day Free Trial
-              </button>
+              <div className="space-y-2 mt-auto">
+                <button
+                  onClick={() => navigate('/login?signup=true&plan=enterprise')}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[16px]">credit_card</span>
+                  Subscribe & Start Trial
+                </button>
+                <button
+                  onClick={handleStartDemo}
+                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
+                >
+                  Start 14-Day Free Trial (No Card)
+                </button>
+              </div>
             </div>
 
           </div>
@@ -869,6 +903,8 @@ export default function LandingPage() {
             &copy; {new Date().getFullYear()} Voyanta Technologies Pvt. Ltd. All rights reserved. Compliant with India DPDP Act 2023.
           </div>
           <div className="flex gap-6 text-sm font-medium">
+            <button onClick={() => navigate('/how-to-use')} className="text-on-surface-variant hover:text-primary transition-colors">How to Use</button>
+            <button onClick={() => navigate('/contact')} className="text-on-surface-variant hover:text-primary transition-colors">Contact Us</button>
             <button onClick={() => navigate('/privacy')} className="text-on-surface-variant hover:text-primary transition-colors">Privacy Policy</button>
             <button onClick={() => navigate('/terms')} className="text-on-surface-variant hover:text-primary transition-colors">Terms of Service</button>
             <button onClick={() => navigate('/cookies')} className="text-on-surface-variant hover:text-primary transition-colors">Cookie Policy</button>
