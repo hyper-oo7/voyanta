@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useToast } from '../context/ToastContext.jsx';
 import { useProposals } from '../hooks/useProposals.js';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuthStore } from '../store/authStore.js';
 import { getAnalyticsStats } from '../services/analyticsService.js';
 import { fetchDashboardSummary } from '../services/dashboardService.js';
 import { getActivityLogs } from '../services/activityLogService.js';
@@ -14,7 +14,7 @@ import { TEMPLATE_LIST } from '../templates/registry.js';
 export default function DashboardPage() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   
   const { proposals, isLoading: loadingProposals } = useProposals();
 

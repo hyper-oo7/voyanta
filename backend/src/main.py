@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from starlette.middleware.cors import CORSMiddleware
 
-from src.api.routers import pdf_router, ppt_router, ai_router, public_router, packing_rules_router, vault_router, storage_router, knowledge_router, maintenance_router, billing_router
+from src.api.routers import pdf_router, ppt_router, ai_router, public_router, packing_rules_router, vault_router, storage_router, knowledge_router, maintenance_router, billing_router, import_router
 from src.core.rate_limiter import DistributedRateLimiterMiddleware
 
 # Configure logging
@@ -37,9 +37,29 @@ if sentry_dsn:
     except Exception as e:
         logger.warning(f"[Sentry] Failed to initialize sentry-sdk: {e}")
 
+import asyncio
+from src.services.pdf_vault_service import cleanup_old_temp_pdfs
+
+async def retention_cleanup_loop():
+    logger.info("[Scheduler] Starting temporary PDF retention cleanup background loop.")
+    while True:
+        try:
+            cleanup_old_temp_pdfs(retention_days=15)
+        except Exception as e:
+            logger.error(f"[Scheduler] Error running PDF retention loop: {e}")
+        await asyncio.sleep(24 * 3600)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: Start cleanup task
+    cleanup_task = asyncio.create_task(retention_cleanup_loop())
     yield
+    # Shutdown: Cancel cleanup task
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
 
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(DistributedRateLimiterMiddleware, max_requests=200, window_seconds=60)
@@ -74,6 +94,7 @@ async def health():
     }
 
 api_router.include_router(pdf_router.router)
+api_router.include_router(import_router.router)
 api_router.include_router(ppt_router.router)
 api_router.include_router(ai_router.router)
 api_router.include_router(public_router.router)

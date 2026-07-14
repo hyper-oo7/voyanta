@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import ImportModal from '../components/ImportModal.jsx';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuthStore } from '../store/authStore.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { useProposalStore } from '../store/proposalStore.js';
 import { itinerariesService } from '../services/resourceService.js';
@@ -35,7 +35,7 @@ export default function ProposalWizard() {
   const navigate = useNavigate();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
-  const { signOut, isDemo, user } = useAuth();
+  const { signOut, isDemo, user } = useAuthStore();
 
   const idParam   = params.get('id') || '';
   const stepParam = Math.max(1, Math.min(5, parseInt(params.get('step') || '1', 10) || 1));

@@ -29,3 +29,10 @@ When parsing supplier PDFs and populating proposal wizards (`ProposalWizard`, `S
 - **Deterministic-First Multi-Reader Pipeline**: Always run robust pure-code PDF extraction tools first (`fitz`/PyMuPDF, `pdfminer.six`) to extract 100% of the authentic destination, sub-destinations, itinerary days, and **all extra custom sections** (e.g. "What to Pack", "Important Notes", "Visa Info", "Do's & Don'ts"). Fall back to AI (`gemini-2.5-flash`) only when structured extraction needs enhancement or formatting. Never use hardcoded destination fallbacks.
 - **Dynamic Section Creation in Branding Page**: If an extracted PDF section or stored agency rule does not have a static field in `Step6Branding`, dynamically add it to `branding.custom_fields` or custom extra sections so it is auto-populated, editable by the user, and rendered in all proposal exports.
 - **Strict Agency-Exclusive Memory (`agency_id` Isolation)**: Packing lists and custom extra sections learned from an agency's PDF or proposal must be persisted exclusively for that agency (`agency_packing_rules` table scoped by `agency_id`). When that agency creates a proposal for a matching destination/sub-destination (e.g., Kashmir / Srinagar), automatically fill the corresponding sections. Never leak Agency A's rules to Agency B.
+
+## 6. Frontend State Management & Architectural Consistency
+To maintain structural consistency and avoid overlapping or redundant state paradigms:
+- **Client UI & Session State**: Use Zustand exclusively. Never wrap a Zustand store in a React Context. Read and update global client states (e.g. auth status, proposal wizard steps) by calling the respective Zustand hooks directly (e.g., `useAuthStore` or `useProposalStore`).
+- **Server Cache & Async Data**: Use TanStack React Query for all server-derived data fetches, caching, and mutation states.
+- **Redundant Context Deletion**: Keep React Context isolated to simple leaf-level visual or environmental variables (e.g. theme toggle). Delete thin proxy Context wrappers (such as `AuthContext.jsx`) that merely duplicate or forward Zustand states.
+

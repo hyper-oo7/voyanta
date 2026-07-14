@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from pydantic import BaseModel
 import logging
 
 from src.models.api_models import ParseItineraryInput
-from src.core.security import verify_token, verify_token_optional
+from src.core.security import verify_token, verify_token_optional, get_request_token
+from src.services.supabase_client import get_user_supabase_client
+
 from src.services.ai_service import extract_itinerary, translate_proposal_content, generate_luxury_title, enhance_luxury_text
 
 logger = logging.getLogger(__name__)
@@ -69,12 +71,14 @@ class AutoPhraseInput(BaseModel):
 
 
 @router.post("/agencies/style-profile/rebuild")
-async def rebuild_agency_style_profile(user: Any = Depends(verify_token_optional)):
+async def rebuild_agency_style_profile(
+    user: Any = Depends(verify_token_optional),
+    token: Optional[str] = Depends(get_request_token)
+):
     """
     Triggers summarizing finalized proposals and PDFs to build the agency style profile.
     """
-    from src.services.supabase_client import get_supabase_client
-    sb = get_supabase_client()
+    sb = get_user_supabase_client(token)
     if not sb:
         raise HTTPException(status_code=500, detail="Supabase not configured")
         
@@ -106,12 +110,15 @@ async def rebuild_agency_style_profile(user: Any = Depends(verify_token_optional
 
 
 @router.post("/proposals/auto-phrase")
-async def auto_phrase_proposal(input: AutoPhraseInput, user: Any = Depends(verify_token_optional)):
+async def auto_phrase_proposal(
+    input: AutoPhraseInput,
+    user: Any = Depends(verify_token_optional),
+    token: Optional[str] = Depends(get_request_token)
+):
     """
     Auto-phrases customized greeting and highlights text using the agency's style profile.
     """
-    from src.services.supabase_client import get_supabase_client
-    sb = get_supabase_client()
+    sb = get_user_supabase_client(token)
     if not sb:
         raise HTTPException(status_code=500, detail="Supabase not configured")
         
@@ -146,12 +153,14 @@ async def auto_phrase_proposal(input: AutoPhraseInput, user: Any = Depends(verif
 
 
 @router.get("/agencies/outcome-insights")
-async def get_outcome_insights(user: Any = Depends(verify_token_optional)):
+async def get_outcome_insights(
+    user: Any = Depends(verify_token_optional),
+    token: Optional[str] = Depends(get_request_token)
+):
     """
     Returns dynamically computed style and template outcome insights for the agency.
     """
-    from src.services.supabase_client import get_supabase_client
-    sb = get_supabase_client()
+    sb = get_user_supabase_client(token)
     if not sb:
         raise HTTPException(status_code=500, detail="Supabase not configured")
         

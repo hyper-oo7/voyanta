@@ -59,3 +59,42 @@ def test_pdf_generate_custom_name():
         assert r.status_code == 200
         assert r.content[:4] == b"%PDF"
         assert "Custom-Name-Test.pdf" in r.headers.get("content-disposition", "")
+
+
+# --- Security: /api/pdf/vault-process -----------------------------------
+def test_vault_process_unauthenticated_blocked():
+    from fastapi import HTTPException
+    def raise_401():
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    # Temporarily override verify_token to simulate unauthenticated access
+    old_override = app.dependency_overrides.get(verify_token)
+    app.dependency_overrides[verify_token] = raise_401
+    try:
+        r = client.post("/api/pdf/vault-process", files={"file": ("test.pdf", b"pdf content")})
+        assert r.status_code == 401
+    finally:
+        app.dependency_overrides[verify_token] = old_override
+
+
+def test_vault_process_size_limit_exceeded():
+    import tempfile
+    # Mock SpooledTemporaryFile's tell method to simulate a large upload
+    with patch.object(tempfile.SpooledTemporaryFile, "tell", return_value=30 * 1024 * 1024):
+        r = client.post("/api/pdf/vault-process", files={"file": ("test.pdf", b"pdf content")})
+        assert r.status_code == 413
+        assert "File size exceeds 25MB" in r.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_entitlement_fail_closed_on_db_error():
+    from unittest.mock import MagicMock
+    from src.core.entitlements import get_agency_entitlements_data
+    mock_db = MagicMock()
+    mock_db.rpc.side_effect = Exception("Database timeout/connection failure")
+
+    ent = await get_agency_entitlements_data(mock_db, "agency-123")
+    assert ent["features"]["ai_vault"] is False
+    assert ent["features"]["ai_rewrite"] is False
+    assert ent["max_proposals_per_month"] == 0
+
+

@@ -1,8 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext.jsx';
+import { useAuthStore } from './store/authStore.js';
 import { ToastProvider } from './context/ToastContext.jsx';
-import { ProposalBuilderProvider } from './context/ProposalBuilderContext.jsx';
 import { BackendHealthProvider } from './context/BackendHealthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import AppLayout from './components/AppLayout.jsx';
@@ -70,12 +69,16 @@ export default function App() {
       document.documentElement.classList.add('dark');
     }
   }, []);
+
+  useEffect(() => {
+    const unsub = useAuthStore.getState().initAuth();
+    return () => unsub();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
         <ToastProvider>
         <BackendHealthProvider>
-          <ProposalBuilderProvider>
             <Suspense fallback={<PageLoader />}>
               <Routes>
               <Route path="/" element={<LandingPage />} />
@@ -129,10 +132,8 @@ export default function App() {
             </Suspense>
             <DiagnosticsPanel />
             <GoogleTranslateWidget />
-          </ProposalBuilderProvider>
         </BackendHealthProvider>
       </ToastProvider>
-    </AuthProvider>
     </QueryClientProvider>
   );
 }

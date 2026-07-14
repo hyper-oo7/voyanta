@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 
 import { useToast } from '../context/ToastContext.jsx';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuthStore } from '../store/authStore.js';
 import { useProposals } from '../hooks/useProposals.js';
 import { updateProposal } from '../services/proposalService.js';
 import { buildProposalExport } from '../services/proposalItemService.js';
@@ -24,7 +24,7 @@ export default function ProposalsListPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const toast = useToast();
-  const { signOut, isDemo, user } = useAuth();
+  const { signOut, isDemo, user } = useAuthStore();
   
   const { proposals, isLoading: loading, error, deleteProposal, deleteAllProposals, duplicateProposal } = useProposals();
   

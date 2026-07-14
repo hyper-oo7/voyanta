@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import DpdpConsentBanner from '../components/DpdpConsentBanner.jsx';
 
@@ -50,7 +49,6 @@ const INDIAN_LANDSCAPE_HEROES = [
 export default function LandingPage() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { demoEnabled, enterDemoMode } = useAuth();
   const [activeWorkflowStep, setActiveWorkflowStep] = useState(0);
   const [billingCycle, setBillingCycle] = useState('monthly');
   const [heroImage] = useState(() => INDIAN_LANDSCAPE_HEROES[Math.floor(Math.random() * INDIAN_LANDSCAPE_HEROES.length)]);

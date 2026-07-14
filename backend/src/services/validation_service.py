@@ -222,11 +222,12 @@ def check_pacing(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return warnings
 
 
-def validate_proposal_itinerary(proposal_id: str) -> List[Dict[str, Any]]:
+def validate_proposal_itinerary(proposal_id: str, sb: Any = None) -> List[Dict[str, Any]]:
     """
     Queries proposal_items and checks all four validation rules.
     """
-    sb = get_supabase_client()
+    if sb is None:
+        sb = get_supabase_client()
     if not sb:
         logger.error("Supabase client not configured")
         return []

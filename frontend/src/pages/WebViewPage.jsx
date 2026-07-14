@@ -4,7 +4,7 @@ import { fetchSharedProposalByToken } from '../services/proposalItemService.js';
 import { api } from '../services/api.js';
 import { formatPrice } from '../lib/currency.js';
 import { useToast } from '../context/ToastContext.jsx';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuthStore } from '../store/authStore.js';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MULTILINGUAL_DEMO_PROPOSALS,
@@ -22,7 +22,7 @@ const INDIAN_LANGUAGES = [
   { code: 'hi', label: 'Hindi', native: 'हिंदी' },
   { code: 'bn', label: 'Bengali', native: 'বাংলা' },
   { code: 'te', label: 'Telugu', native: 'తెలుగు' },
-  { code: 'mr', label: 'Marathi', native: 'मਰਾਠੀ' },
+  { code: 'mr', label: 'Marathi', native: 'मਰਾਠी' },
   { code: 'ta', label: 'Tamil', native: 'தமிழ்' },
   { code: 'gu', label: 'Gujarati', native: 'ગુજરાતી' },
   { code: 'kn', label: 'Kannada', native: 'ಕನ್ನಡ' },
@@ -32,7 +32,7 @@ const INDIAN_LANGUAGES = [
 
 export default function WebViewPage() {
   const { token } = useParams();
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   const [lang, setLang] = useState('en');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

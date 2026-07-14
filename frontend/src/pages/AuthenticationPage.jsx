@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { useAuthStore } from '../store/authStore.js';
 
@@ -8,7 +7,7 @@ export default function AuthenticationPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { signIn, signUp, signInWithProvider, user } = useAuth();
+  const { signIn, signUp, signInWithProvider, user } = useAuthStore();
   
   const [isSignUp, setIsSignUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);

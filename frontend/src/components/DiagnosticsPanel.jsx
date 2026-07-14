@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuthStore } from '../store/authStore.js';
 import { useBackendHealth } from '../context/BackendHealthContext.jsx';
 
 export default function DiagnosticsPanel() {
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   const { isHealthy, lastChecked } = useBackendHealth();
   const [open, setOpen] = useState(false);
   const [latency, setLatency] = useState(null);

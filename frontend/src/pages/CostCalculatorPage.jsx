@@ -7,9 +7,9 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 
 
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuthStore } from '../store/authStore.js';
 import { useToast } from '../context/ToastContext.jsx';
-import { useProposalBuilder } from '../context/ProposalBuilderContext.jsx';
+import { useProposalStore } from '../store/proposalStore.js';
 import { listItems, addItem, updateItem, removeItem, buildProposalExport } from '../services/proposalItemService.js';
 import { fetchProposalById, fetchProposals } from '../services/proposalService.js';
 import { formatPrice } from '../lib/currency.js';
@@ -21,8 +21,8 @@ export default function CostCalculatorPage() {
   const wrapperRef = useRef(null);
   const navigate = useNavigate();
   const toast = useToast();
-  const { signOut, isDemo, user } = useAuth();
-  const { activeId, setActiveId } = useProposalBuilder();
+  const { signOut, isDemo, user } = useAuthStore();
+  const { activeId, setActiveId } = useProposalStore();
   const [proposal, setProposal] = useState(null);
   const [proposals, setProposals] = useState([]);
   const [items, setItems] = useState([]);

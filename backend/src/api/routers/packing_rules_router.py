@@ -2,7 +2,9 @@ import logging
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from src.core.security import verify_token
+from src.core.security import verify_token, get_request_token
+from src.services.supabase_client import get_user_supabase_client
+
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,8 @@ _LOCAL_AGENCY_MEMORY: Dict[str, Dict[str, Any]] = {}
 async def match_agency_packing_rules(
     destination: str = Query("", description="Primary destination e.g. Kashmir"),
     sub_destinations: str = Query("", description="Comma-separated sub-destinations e.g. Srinagar,Gulmarg"),
-    user: Any = Depends(verify_token)
+    user: Any = Depends(verify_token),
+    token: Optional[str] = Depends(get_request_token)
 ):
     """
     Returns agency-exclusive packing rules and extra sections matching either
@@ -44,8 +47,7 @@ async def match_agency_packing_rules(
         return {"status": "success", "rules": matched}
 
     try:
-        from src.services.supabase_client import get_supabase_client
-        sb = get_supabase_client()
+        sb = get_user_supabase_client(token)
         if not sb:
             return {"status": "success", "rules": []}
 
@@ -72,7 +74,8 @@ async def match_agency_packing_rules(
 @router.post("/upsert")
 async def upsert_agency_packing_rule(
     payload: PackingRuleUpsertRequest,
-    user: Any = Depends(verify_token)
+    user: Any = Depends(verify_token),
+    token: Optional[str] = Depends(get_request_token)
 ):
     """
     Saves or updates an agency-exclusive packing rule or extra section.
@@ -92,8 +95,7 @@ async def upsert_agency_packing_rule(
         return {"status": "success", "message": "Saved to local demo store"}
 
     try:
-        from src.services.supabase_client import get_supabase_client
-        sb = get_supabase_client()
+        sb = get_user_supabase_client(token)
         if sb:
             data = {
                 "agency_id": agency_id,

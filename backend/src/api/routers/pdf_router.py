@@ -17,7 +17,7 @@ from fastapi.responses import Response, JSONResponse
 from typing import Any, Optional
 
 from src.models.api_models import PDFGenerateRequest
-from src.core.security import verify_token, verify_token_optional
+from src.core.security import verify_token, verify_token_optional, get_request_token
 from src.services.pdf_vault_service import (
     save_temporary_pdf,
     extract_text_from_pdf,
@@ -32,7 +32,7 @@ from src.services.vault_knowledge_service import (
 )
 from src.services.r2_storage_service import upload_file_to_r2
 from src.services.knowledge_extraction_service import extract_knowledge_objects, save_knowledge_objects
-from src.services.supabase_client import get_supabase_client
+from src.services.supabase_client import get_supabase_client, get_user_supabase_client
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pdf")
@@ -88,7 +88,8 @@ async def process_vault_pdf(
     budget: float = Form(0),              # Optional budget hint for cache keying only
     duration: int = Form(0),             # Optional duration hint — actual duration extracted from PDF
     currency: str = Form("INR"),          # Default but overridden by PDF-detected currency
-    user: Any = Depends(verify_token_optional),
+    user: Any = Depends(verify_token),
+    token: Optional[str] = Depends(get_request_token),
 ):
     """
     Vault V2 Pipeline:
@@ -100,6 +101,18 @@ async def process_vault_pdf(
     6. Store parsed package to Supabase vault_packages
     7. Accumulate static sections into destination_knowledge
     """
+    # ── Check upload size limit (25MB) before reading body ───────────────────
+    try:
+        file.file.seek(0, 2)
+        file_size = file.file.tell()
+        file.file.seek(0)
+    except Exception as e:
+        logger.error(f"[VaultProcess] Failed to check file size: {e}")
+        file_size = 0
+
+    if file_size > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File size exceeds 25MB limit")
+
     try:
         # ── Resolve user context ───────────────────────────────────────────
         agency_id = None
@@ -117,6 +130,14 @@ async def process_vault_pdf(
 
         # ── Step 1: Save PDF & Upload to R2 ─────────────────────────────────
         file_bytes = await file.read()
+        
+        # ── Validate Magic Bytes ───────────────────────────────────────────
+        if b"%PDF-" not in file_bytes[:1024]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid file structure. Only valid PDF files starting with '%PDF-' magic bytes are allowed."
+            )
+
         pdf_hash = hashlib.sha256(file_bytes).hexdigest()
         storage_meta = save_temporary_pdf(file_bytes, file.filename or "supplier_package.pdf")
         
@@ -131,7 +152,13 @@ async def process_vault_pdf(
 
         # Insert upload trace to public.supplier_pdfs
         source_pdf_id = None
-        sb = get_supabase_client()
+        sb = get_user_supabase_client(token)
+
+        # ── Enforce Entitlement Check ──────────────────────────────────────
+        from src.core.entitlements import get_agency_entitlements_data, check_feature_entitlement
+        entitlements = await get_agency_entitlements_data(sb, agency_id)
+        check_feature_entitlement(entitlements, "ai_vault")
+
         if sb:
             try:
                 pdf_record = {

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuthStore } from '../store/authStore.js';
 import { useToast } from '../context/ToastContext.jsx';
 import UpgradePlanModal from './billing/UpgradePlanModal.jsx';
 
@@ -24,7 +24,7 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { user, isDemo, signOut } = useAuth();
+  const { user, isDemo, signOut } = useAuthStore();
 
   const isDashboard = location.pathname === '/dashboard';
 

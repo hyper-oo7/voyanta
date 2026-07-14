@@ -90,7 +90,8 @@ async def test_call_gemini_with_cache_hit():
     mock_cached_output = {"success": True, "data": "Delhi Tour itinerary cached"}
     
     with patch("src.services.ai_cache_service.get_cached_extraction", return_value=mock_cached_output) as mock_get, \
-         patch("src.services.ai_service._call_gemini_with_retry_raw") as mock_raw:
+         patch("src.services.ai_client._post_http_call") as mock_raw, \
+         patch.dict("os.environ", {"GEMINI_API_KEY": "fake-gemini-key"}):
         res = await call_gemini_with_retry(payload, "fake_api_key")
         
         # Ensure raw LLM call is NOT made
@@ -130,8 +131,9 @@ async def test_call_gemini_with_cache_miss_and_save():
     }
     
     with patch("src.services.ai_cache_service.get_cached_extraction", return_value=None) as mock_get, \
-         patch("src.services.ai_service._call_gemini_with_retry_raw", return_value=mock_live_response) as mock_raw, \
-         patch("src.services.ai_cache_service.save_cached_extraction") as mock_save:
+         patch("src.services.ai_client._post_http_call", return_value=mock_live_response) as mock_raw, \
+         patch("src.services.ai_cache_service.save_cached_extraction") as mock_save, \
+         patch.dict("os.environ", {"GEMINI_API_KEY": "fake-gemini-key"}):
         res = await call_gemini_with_retry(payload, "fake_api_key")
         
         # Raw LLM call should be made

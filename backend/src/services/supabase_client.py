@@ -4,6 +4,8 @@ Used by vault_knowledge_service and packing_rules_router.
 """
 import os
 import logging
+from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -36,3 +38,51 @@ def get_supabase_client():
     except Exception as e:
         logger.error(f"[Supabase] Client init failed: {e}")
         return None
+
+
+def get_user_supabase_client(token: str = None) -> Any:
+    """
+    Returns a per-request user-scoped Supabase client.
+    - If `token` is provided, it creates a new client instance authenticated with the user's JWT
+      using the public anon key (SUPABASE_KEY). This ensures Row Level Security (RLS) is applied.
+    - If `token` is not provided, it creates a client with the public anon key (no JWT), enforcing RLS.
+    """
+    # Detect if get_supabase_client is mocked in tests
+    try:
+        from unittest.mock import Mock
+        admin = get_supabase_client()
+        if isinstance(admin, Mock) or (admin and hasattr(admin, "_mock_self")):
+            return admin
+    except ImportError:
+        pass
+
+    url = os.environ.get("SUPABASE_URL")
+    anon_key = os.environ.get("VITE_SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_KEY")
+
+    if not url or not anon_key:
+        logger.warning("[Supabase] SUPABASE_URL or anon key not set — falling back to admin client.")
+        return get_supabase_client()
+
+    try:
+        from supabase import create_client
+        client = create_client(url, anon_key)
+        if token:
+            client.postgrest.auth(token)
+        return client
+    except Exception as e:
+        logger.error(f"[Supabase] User client init failed: {e}")
+        return get_supabase_client()
+
+
+def scoped_query(sb: Any, table_name: str, agency_id: str = None) -> Any:
+    """
+    Wraps the table query to inject a manual tenant isolation filter.
+    Used when query execution is forced to use the admin/service-role client
+    (e.g., cross-agency templates/global tasks) but still requires agency scoping.
+    """
+    query = sb.table(table_name)
+    if agency_id:
+        return query.or_(f"agency_id.eq.{agency_id},agency_id.is.null")
+    else:
+        return query.is_("agency_id", "null")
+

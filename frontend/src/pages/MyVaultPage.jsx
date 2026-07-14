@@ -127,11 +127,11 @@ export default function MyVaultPage() {
     loadVaultItems();
   }, [loadVaultItems]);
 
-  // ── Process uploaded PDFs ─────────────────────────────────────────────────
+  // ── Process uploaded files ────────────────────────────────────────────────
   const handleUploadAndProcess = async (e) => {
     e.preventDefault();
     if (files.length === 0) {
-      toast.error('Please select at least one PDF');
+      toast.error('Please select at least one file');
       return;
     }
 
@@ -183,7 +183,7 @@ export default function MyVaultPage() {
           const reqHeaders = {};
           if (token) reqHeaders['Authorization'] = `Bearer ${token}`;
 
-          let response = await fetch('/api/pdf/vault-process', {
+          let response = await fetch('/api/import/process', {
             method: 'POST',
             headers: reqHeaders,
             body: formData,
@@ -197,7 +197,7 @@ export default function MyVaultPage() {
             if (budget) retryFormData.append('budget', budget);
             if (duration) retryFormData.append('duration', duration);
             retryFormData.append('currency', 'INR');
-            response = await fetch('/api/pdf/vault-process', { method: 'POST', body: retryFormData });
+            response = await fetch('/api/import/process', { method: 'POST', body: retryFormData });
           }
 
           if (response.ok) {
@@ -235,7 +235,7 @@ export default function MyVaultPage() {
     }
 
     if (successCount > 0) {
-      toast.success(`Successfully digitalized ${successCount} PDF${successCount > 1 ? 's' : ''} into your Vault!`);
+      toast.success(`Successfully digitalized ${successCount} file${successCount > 1 ? 's' : ''} into your Vault!`);
       setFiles([]);
       setDestination('');
       setBudget('');
@@ -243,7 +243,7 @@ export default function MyVaultPage() {
       // Reload vault items from Supabase
       await loadVaultItems();
     } else {
-      toast.error('No PDFs were successfully processed. Check PDF format and try again.');
+      toast.error('No files were successfully processed. Check file formats and try again.');
     }
 
     setIsProcessing(false);
@@ -358,10 +358,10 @@ export default function MyVaultPage() {
         <div>
           <div className="flex items-center gap-sm">
             <span className="material-symbols-outlined text-primary text-3xl">auto_awesome</span>
-            <h1 className="text-2xl font-black text-on-surface">MY VAULT — PDF Digitalization Hub</h1>
+            <h1 className="text-2xl font-black text-on-surface">MY VAULT — Document Digitalization Hub</h1>
           </div>
           <p className="text-sm text-on-surface-variant mt-1 max-w-2xl">
-            Upload your supplier PDFs. Every hotel, activity, meal, transfer, price, and detail is faithfully extracted — no data loss, no hallucination. Your vault grows smarter with every PDF.
+            Upload your supplier documents (PDF, Excel, CSV). Every hotel, activity, meal, transfer, price, and detail is faithfully extracted — no data loss, no hallucination. Your vault grows smarter with every document.
           </p>
         </div>
         <div className="flex items-center gap-sm bg-primary/10 border border-primary/20 px-4 py-2.5 rounded-xl text-primary font-semibold text-xs whitespace-nowrap">
@@ -374,8 +374,8 @@ export default function MyVaultPage() {
       <div className="bg-surface p-lg rounded-2xl border border-outline-variant shadow-sm space-y-lg">
         <h2 className="text-base font-bold text-on-surface flex items-center gap-2">
           <span className="material-symbols-outlined text-primary text-lg">upload_file</span>
-          Upload Supplier PDFs for Digitalization
-          <span className="text-xs font-semibold bg-primary/10 text-primary px-2.5 py-0.5 rounded-full ml-auto">Up to 10 PDFs</span>
+          Upload Supplier Files (PDF, Excel, CSV) for Digitalization
+          <span className="text-xs font-semibold bg-primary/10 text-primary px-2.5 py-0.5 rounded-full ml-auto">Up to 10 Files</span>
         </h2>
 
         {/* Drop Zone */}
@@ -384,7 +384,10 @@ export default function MyVaultPage() {
           onDrop={e => {
             e.preventDefault();
             if (e.dataTransfer.files?.length > 0) {
-              const dropped = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+              const dropped = Array.from(e.dataTransfer.files).filter(f => {
+                const ext = f.name.toLowerCase().split('.').pop();
+                return ['pdf', 'xlsx', 'xls', 'csv'].includes(ext);
+              });
               setFiles(prev => [...prev, ...dropped].slice(0, 10));
             }
           }}
@@ -396,21 +399,24 @@ export default function MyVaultPage() {
           <input
             id="vault-file-input"
             type="file"
-            accept=".pdf"
+            accept=".pdf,.xlsx,.xls,.csv"
             multiple
             className="hidden"
             onChange={e => {
               if (e.target.files?.length > 0) {
-                const selected = Array.from(e.target.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+                const selected = Array.from(e.target.files).filter(f => {
+                  const ext = f.name.toLowerCase().split('.').pop();
+                  return ['pdf', 'xlsx', 'xls', 'csv'].includes(ext);
+                });
                 setFiles(prev => [...prev, ...selected].slice(0, 10));
               }
             }}
           />
-          <span className="material-symbols-outlined text-5xl text-primary mb-3 block">picture_as_pdf</span>
+          <span className="material-symbols-outlined text-5xl text-primary mb-3 block">upload_file</span>
           {files.length > 0 ? (
             <div>
               <p className="font-bold text-sm text-on-surface mb-2">
-                {files.length} PDF{files.length > 1 ? 's' : ''} Selected
+                {files.length} File{files.length > 1 ? 's' : ''} Selected
               </p>
               <div className="flex flex-wrap justify-center gap-2 max-h-28 overflow-y-auto">
                 {files.map((f, i) => (
@@ -428,8 +434,8 @@ export default function MyVaultPage() {
             </div>
           ) : (
             <div>
-              <p className="font-bold text-base text-on-surface">Drag & Drop supplier PDFs here</p>
-              <p className="text-sm text-on-surface-variant mt-1">or click to browse — up to 10 PDFs at once</p>
+              <p className="font-bold text-base text-on-surface">Drag & Drop supplier files here</p>
+              <p className="text-sm text-on-surface-variant mt-1">or click to browse — up to 10 files at once</p>
               <p className="text-xs text-on-surface-variant/60 mt-2">Every detail will be faithfully extracted: hotels, activities, meals, transfers, prices, timings, and all sections</p>
             </div>
           )}

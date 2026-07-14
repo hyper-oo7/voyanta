@@ -5,24 +5,15 @@ import { api } from './api.js';
 import { logger } from '../utils/logger.js';
 import Papa from 'papaparse';
 
-async function loadPdfJS() {
-  if (window.pdfjsLib) return window.pdfjsLib;
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
-    script.onload = () => {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-      resolve(window.pdfjsLib);
-    };
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-}
+// pdfjs-dist is bundled via npm — no CDN, no runtime script injection.
+// The worker is served as a hashed static asset via Vite's ?url import.
+import * as pdfjsLib from 'pdfjs-dist';
+import PdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+pdfjsLib.GlobalWorkerOptions.workerSrc = PdfWorkerUrl;
 
 async function extractTextFromPdf(file) {
-  const pdfjs = await loadPdfJS();
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   let text = '';
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
@@ -110,12 +101,12 @@ function parseItineraryTextLocally(text) {
   for (const d of days) {
     for (const h of d.hotels) {
       if (h && !hotels.some(x => x.name.toLowerCase() === h.toLowerCase())) {
-        hotels.push({ name: h, location: destination || "Imported Location", price_per_night: 5000 });
+        hotels.push({ name: h, location: destination || "Imported Location", price_per_night: null });
       }
     }
     for (const act of d.activities) {
       if (act && !activities.some(x => x.name.toLowerCase() === act.toLowerCase())) {
-        activities.push({ name: act, price: 1000, description: "Imported activity" });
+        activities.push({ name: act, price: null, description: "Imported activity" });
       }
     }
     for (const t of d.transfers) {
@@ -126,13 +117,64 @@ function parseItineraryTextLocally(text) {
           flights.push({
             airline: parts[0] || 'Imported Airline',
             flight_no: parts[1] || parts[0] || 'TBD',
-            cost: 1500,
+            cost: null,
             currency: 'INR'
           });
         }
       }
     }
   }
+  
+  const fields = {
+    destination: {
+      value: destination,
+      confidence: destination ? 0.5 : 0.0,
+      source: destination ? 'deterministic' : 'missing',
+      needs_review: !destination
+    },
+    total_price: {
+      value: null,
+      confidence: 0.0,
+      source: 'missing',
+      needs_review: true
+    },
+    currency: {
+      value: 'INR',
+      confidence: 0.5,
+      source: 'deterministic',
+      needs_review: true
+    },
+    duration_days: {
+      value: days.length,
+      confidence: days.length > 0 ? 0.8 : 0.0,
+      source: days.length > 0 ? 'deterministic' : 'missing',
+      needs_review: days.length === 0
+    },
+    days: {
+      value: days,
+      confidence: days.length > 0 ? 0.7 : 0.0,
+      source: days.length > 0 ? 'deterministic' : 'missing',
+      needs_review: days.length === 0
+    },
+    hotels: {
+      value: hotels,
+      confidence: hotels.length > 0 ? 0.6 : 0.0,
+      source: hotels.length > 0 ? 'deterministic' : 'missing',
+      needs_review: hotels.length > 0
+    },
+    activities: {
+      value: activities,
+      confidence: activities.length > 0 ? 0.6 : 0.0,
+      source: activities.length > 0 ? 'deterministic' : 'missing',
+      needs_review: activities.length > 0
+    },
+    flights: {
+      value: flights,
+      confidence: flights.length > 0 ? 0.6 : 0.0,
+      source: flights.length > 0 ? 'deterministic' : 'missing',
+      needs_review: flights.length > 0
+    }
+  };
   
   return {
     name,
@@ -141,18 +183,38 @@ function parseItineraryTextLocally(text) {
     days,
     hotels,
     activities,
-    flights
+    flights,
+    fields
   };
 }
 
 export async function parsePdfFile(file) {
-  const text = await extractTextFromPdf(file);
-  
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('destination', '');
+  formData.append('budget', '0');
+  formData.append('duration', '0');
+  formData.append('currency', 'INR');
+
   try {
-    const result = await api.post('/api/parse-itinerary', { text });
-    return result;
+    const result = await api.post('/api/import/process', formData);
+    if (result && result.status === 'success' && result.data) {
+      const pkg = result.data;
+      return {
+        name: pkg.destination || file.name.replace('.pdf', ''),
+        destination: pkg.destination || '',
+        days_count: pkg.days?.length || 0,
+        days: pkg.days || [],
+        hotels: pkg.hotels || [],
+        activities: pkg.activities || [],
+        flights: pkg.flights || [],
+        fields: pkg.fields || {}
+      };
+    }
+    throw new Error('Invalid response format from import processor');
   } catch (err) {
-    logger.warn('Failed to use AI parser, falling back to local extraction.', err);
+    logger.warn('Failed to use unified import/process parser, falling back to local extraction.', err);
+    const text = await extractTextFromPdf(file);
     return parseItineraryTextLocally(text);
   }
 }

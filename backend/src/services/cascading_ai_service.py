@@ -180,11 +180,7 @@ async def extract_vault_package_from_text(
     Returns a structured JSON matching the extraction schema above.
     Raises an exception if extraction fails — NO fake fallback.
     """
-    from src.services.ai_service import call_gemini_with_retry
-
-    api_key_gemini = os.environ.get("GEMINI_API_KEY")
-    if not api_key_gemini:
-        raise RuntimeError("GEMINI_API_KEY not configured — cannot extract vault package.")
+    from src.services.ai_client import call_llm
 
     # Detect currency from the raw text BEFORE sending to AI
     detected_currency = detect_currency_from_text(full_text)
@@ -193,29 +189,24 @@ async def extract_vault_package_from_text(
     # Build prompt with full document text (Gemini 2.5 Flash has 1M token context)
     prompt = EXTRACTION_PROMPT_TEMPLATE.format(document_text=full_text)
 
-    payload = {
-        "contents": [{
-            "role": "user",
-            "parts": [{"text": prompt}]
-        }],
-        "generationConfig": {
-            "responseMimeType": "application/json",
-            "temperature": 0.0,  # Zero temperature = fully deterministic, no hallucination
-            "maxOutputTokens": 8192,
-        },
-        "_cache_meta": {
-            "agency_id": agency_id,
-            "entity_type": "vault_package",
-            "prompt_version": "extraction_v2.0.0",
-            "schema_version": "schema_v2.0.0",
-            "model": "gemini-2.5-flash",
-            "input_text": full_text
-        }
+    cache_meta = {
+        "agency_id": agency_id,
+        "entity_type": "vault_package",
+        "prompt_version": "extraction_v2.0.0",
+        "schema_version": "schema_v2.0.0",
+        "model": "gemini-2.5-flash",
+        "input_text": full_text
     }
 
-    logger.info("[VaultExtract] Sending to Gemini 2.5 Flash for faithful extraction...")
-    result = await call_gemini_with_retry(payload, api_key_gemini)
-    content = result["candidates"][0]["content"]["parts"][0]["text"]
+    logger.info("[VaultExtract] Sending to LLM via call_llm for faithful extraction...")
+    content = await call_llm(
+        prompt=prompt,
+        provider="gemini",
+        response_schema={"type": "object"},
+        temperature=0.0,
+        max_tokens=8192,
+        cache_meta=cache_meta
+    )
 
     try:
         parsed = json.loads(content)
@@ -258,6 +249,7 @@ async def extract_vault_package_from_text(
     # Clean up null extra_sections
     extra = parsed.get("extra_sections") or {}
     parsed["extra_sections"] = {k: v for k, v in extra.items() if v and isinstance(v, str) and v.strip()}
+    parsed["model_used"] = cache_meta.get("model_used", "gemini-2.5-flash")
 
     logger.info(
         f"[VaultExtract] Extraction complete — destination={parsed.get('destination')}, "
@@ -295,12 +287,13 @@ async def route_model_cascading(
             images=images,
             agency_id=agency_id,
         )
+        model_used = extracted.get("model_used", "gemini-2.5-flash")
         return {
             "success": True,
             "extracted_package": extracted,
             # Maintain some backward compat fields that frontend may read
             "recommendations": [_package_to_legacy_recommendation(extracted)],
-            "model_used": "gemini-2.5-flash (faithful-extraction)",
+            "model_used": f"{model_used} (faithful-extraction)",
             "detected_destination": extracted.get("destination") or destination,
             "sub_destinations": extracted.get("sub_destinations", []),
             "what_to_pack": (extracted.get("extra_sections") or {}).get("what_to_pack", ""),

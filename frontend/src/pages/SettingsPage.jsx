@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuthStore } from '../store/authStore.js';
 import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { settingsService } from '../services/resourceService.js';
@@ -37,7 +37,7 @@ const fetchActivityLogs = async () => {
 
 // ---- Components ----
 export default function SettingsPage() {
-  const { user, isDemo, signOut } = useAuth();
+  const { user, isDemo, signOut } = useAuthStore();
   const [activeTab, setActiveTab] = useState('plan');
   
   const { data: subscription } = useQuery({ queryKey: ['subscription'], queryFn: fetchSubscription });
