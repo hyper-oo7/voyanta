@@ -13,8 +13,8 @@ def compute_cache_key(agency_id: Optional[str], model: str, prompt_version: str,
     cleaned_input = normalized_input.strip()
     input_hash = hashlib.sha256(cleaned_input.encode("utf-8")).hexdigest()
     
-    agency_part = str(agency_id) if agency_id else "global"
-    cache_string = f"{agency_part}:{model}:{prompt_version}:{schema_version}:{input_hash}"
+    # Decouple caching from agency context so that AI outputs are cached platform-wide
+    cache_string = f"global:{model}:{prompt_version}:{schema_version}:{input_hash}"
     cache_key = hashlib.sha256(cache_string.encode("utf-8")).hexdigest()
     
     return cache_key, input_hash

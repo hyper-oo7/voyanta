@@ -4,6 +4,10 @@ import { useAuthStore } from '../store/authStore.js';
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// Supabase client instance.
+// Note: x-tenant-id (representing agency_id) is dynamically injected into supabase.rest.headers
+// by the auth store (authStore.js) whenever the logged-in user's tenant context changes.
+// This allows the Postgres database to access the tenant context via the request.headers session variable.
 export const supabase = (url && key)
   ? createClient(url, key, {
       auth: {

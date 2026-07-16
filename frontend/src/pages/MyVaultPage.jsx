@@ -36,6 +36,86 @@ const SECTION_ICONS = {
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
+function syncVaultItemsToLibrary(items) {
+  try {
+    const libraryStr = localStorage.getItem('voyanta_unified_library') || '[]';
+    let library = JSON.parse(libraryStr);
+    let updated = false;
+
+    items.forEach(pkg => {
+      const parsed = pkg.parsed_data || {};
+      const hotels = parsed.hotels || [];
+      const activities = parsed.activities || [];
+      
+      // 1. Process hotels
+      hotels.forEach(h => {
+        const id = h.id || `hotel_${pkg.id}_${h.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        if (!library.some(item => String(item.id) === String(id))) {
+          library.push({
+            id: id,
+            name: h.name,
+            type: 'hotel',
+            location: h.location || pkg.destination || '',
+            rate: h.rate || h.price || 0,
+            cover_image: h.cover_image || h.image_url || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80',
+            details: h.details || h.description || '',
+            description: h.details || h.description || '',
+            source: 'vault',
+            pkg_id: pkg.id
+          });
+          updated = true;
+        }
+      });
+
+      // 2. Process activities
+      activities.forEach(act => {
+        const id = act.id || `activity_${pkg.id}_${act.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        if (!library.some(item => String(item.id) === String(id))) {
+          library.push({
+            id: id,
+            name: act.name,
+            type: 'activity',
+            location: act.location || pkg.destination || '',
+            rate: act.rate || act.price || 0,
+            cover_image: act.cover_image || act.image_url || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80',
+            details: act.details || act.description || '',
+            description: act.details || act.description || '',
+            source: 'vault',
+            pkg_id: pkg.id
+          });
+          updated = true;
+        }
+      });
+      
+      // 3. Process itinerary package itself
+      const itineraryId = `itinerary_${pkg.id}`;
+      if (!library.some(item => String(item.id) === String(itineraryId))) {
+        library.push({
+          id: itineraryId,
+          name: pkg.name || `${pkg.destination} Tour Package`,
+          type: 'itinerary',
+          location: pkg.destination || '',
+          rate: pkg.budget || 0,
+          cover_image: pkg.cover_image || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&q=80',
+          details: `${pkg.duration_days || 0} Days itinerary package`,
+          description: pkg.itinerary_text || '',
+          days: parsed.days || [],
+          source: 'vault',
+          pkg_id: pkg.id
+        });
+        updated = true;
+      }
+    });
+
+    if (updated) {
+      localStorage.setItem('voyanta_unified_library', JSON.stringify(library));
+      window.dispatchEvent(new CustomEvent('voyanta:unified-library-updated'));
+    }
+  } catch (err) {
+    console.warn('Failed to sync vault items to library:', err);
+  }
+}
+
 export default function MyVaultPage() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -88,6 +168,7 @@ export default function MyVaultPage() {
           extra_sections: typeof pkg.extra_sections === 'string' ? JSON.parse(pkg.extra_sections) : pkg.extra_sections,
         }));
         setVaultItems(dbItems);
+        syncVaultItemsToLibrary(dbItems);
 
         // One-time migration: import old localStorage items
         const legacyRaw = localStorage.getItem('voyanta_vault_items');
@@ -105,6 +186,7 @@ export default function MyVaultPage() {
         try {
           const raw = JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]');
           setVaultItems(raw || []);
+          syncVaultItemsToLibrary(raw || []);
         } catch {
           setVaultItems([]);
         }
@@ -115,6 +197,7 @@ export default function MyVaultPage() {
       try {
         const raw = JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]');
         setVaultItems(raw || []);
+        syncVaultItemsToLibrary(raw || []);
       } catch {
         setVaultItems([]);
       }

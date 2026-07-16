@@ -91,6 +91,11 @@ export async function createProposal(payload) {
     } catch {}
   }
 
+  const randomNumbers = Math.floor(1000000000 + Math.random() * 9000000000); // 10 random digits
+  const agencyName = payload.agency_name || payload.branding?.agency_name || 'voyanta';
+  const agencySlug = agencyName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').trim();
+  const secureShareToken = `voyanta-${agencySlug}-${randomNumbers}`;
+
   const row = {
     id: crypto.randomUUID(),
     agency_id: agencyId,
@@ -113,6 +118,7 @@ export async function createProposal(payload) {
     trip_details: payload.trip_details || null,
     brief: payload.brief || null,
     status: payload.status || 'Draft',
+    share_token: secureShareToken,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -147,8 +153,24 @@ export async function createProposal(payload) {
 
 export async function updateProposal(id, patch) {
   const agencyId = getAgencyId();
+
+  // If share_token is missing, generate one
+  let shareTokenPatch = {};
+  try {
+    const existingStr = localStorage.getItem(`voyanta_proposal_${id}`);
+    const existing = existingStr ? JSON.parse(existingStr) : {};
+    if (!existing.share_token && !patch.share_token) {
+      const randomNumbers = Math.floor(1000000000 + Math.random() * 9000000000);
+      const agencyName = patch.agency_name || patch.branding?.agency_name || existing.agency_name || existing.branding?.agency_name || 'voyanta';
+      const agencySlug = agencyName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').trim();
+      shareTokenPatch.share_token = `voyanta-${agencySlug}-${randomNumbers}`;
+    }
+  } catch {}
+
+  const fullPatch = { ...shareTokenPatch, ...patch };
+
   if (supabase && !isDemoSession() && agencyId) {
-    const { data, error } = await supabase.from(TABLE).update(patch).eq('id', id).eq('agency_id', agencyId).select().maybeSingle();
+    const { data, error } = await supabase.from(TABLE).update(fullPatch).eq('id', id).eq('agency_id', agencyId).select().maybeSingle();
     if (error) {
       notifyDbError(TABLE, error);
       throw error;
@@ -166,7 +188,7 @@ export async function updateProposal(id, patch) {
   try {
     const existingStr = localStorage.getItem(`voyanta_proposal_${id}`);
     const existing = existingStr ? JSON.parse(existingStr) : { id, created_at: new Date().toISOString() };
-    const updated = { ...existing, ...patch, id, updated_at: new Date().toISOString() };
+    const updated = { ...existing, ...fullPatch, id, updated_at: new Date().toISOString() };
     const norm = normalize(updated);
     localStorage.setItem(`voyanta_proposal_${id}`, JSON.stringify(norm));
 
@@ -174,7 +196,7 @@ export async function updateProposal(id, patch) {
     let list = JSON.parse(listStr);
     const idx = list.findIndex(item => item.id === id);
     if (idx >= 0) {
-      list[idx] = { ...list[idx], ...patch, id, updated_at: norm.updated_at };
+      list[idx] = { ...list[idx], ...fullPatch, id, updated_at: norm.updated_at };
     } else {
       list.unshift(norm);
     }
@@ -183,7 +205,7 @@ export async function updateProposal(id, patch) {
     window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
     return norm;
   } catch {
-    return normalize({ id, ...patch });
+    return normalize({ id, ...fullPatch });
   }
 }
 

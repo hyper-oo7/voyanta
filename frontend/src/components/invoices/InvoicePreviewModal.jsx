@@ -5,6 +5,7 @@ import { UpiQrGenerator, formatCurrency } from './UpiQrGenerator.jsx';
 import { ReceiptPreviewModal } from './ReceiptPreviewModal.jsx';
 import { InvoiceShareModal } from './InvoiceShareModal.jsx';
 import { translateCommonTermsOffline } from '../../lib/i18n.js';
+import ContactPicker from '../common/ContactPicker.jsx';
 
 export function InvoicePreviewModal({ invoice, onClose, onUpdate }) {
   const toast = useToast();
@@ -496,7 +497,18 @@ export function InvoicePreviewModal({ invoice, onClose, onUpdate }) {
             {/* Client & Billing Info Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 rounded-2xl bg-slate-50 border border-slate-200 print:bg-white print:border-none print:p-0">
               <div>
-                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-400 block mb-1">{t('Billed To')}</span>
+                <div className="flex items-center justify-between mb-1 no-print">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-slate-400 block">{t('Billed To')}</span>
+                  <ContactPicker
+                    onSelect={(c) => {
+                      handleFieldChange('client_name', c.name || '');
+                      handleFieldChange('client_email', c.email || '');
+                      handleFieldChange('client_phone', c.phone || '');
+                      if (c.destination) handleFieldChange('destination', c.destination);
+                    }}
+                  />
+                </div>
+                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-400 print:block hidden mb-1">{t('Billed To')}</span>
                 <input
                   type="text"
                   value={current.client_name || ''}

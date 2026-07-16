@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { COUNTRY_CODES } from '../../lib/countries.js';
 import { findClientByContact } from '../../services/crmService.js';
+import ContactPicker from '../../components/common/ContactPicker.jsx';
 
 const TOUR_TYPES = [
   'Honeymoon', 'Family', 'Friends', 'Solo', 'Corporate', 
@@ -346,7 +347,19 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
           </div>
         </div>
       )}
-      <h3 className="font-headline-sm text-headline-sm text-primary">Client Information</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="font-headline-sm text-headline-sm text-primary">Client Information</h3>
+        <ContactPicker 
+          onSelect={(c) => {
+            setValue('customer_name', c.name || '', { shouldValidate: true });
+            setValue('email', c.email || '', { shouldValidate: true });
+            setValue('phone', c.phone || '', { shouldValidate: true });
+            if (c.destination) {
+              setValue('destination', c.destination, { shouldValidate: true });
+            }
+          }}
+        />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
         <Field label="Customer Name *" name="customer_name" register={register} error={errors.customer_name} testid="customer-name" />
         <div className="flex gap-xs">

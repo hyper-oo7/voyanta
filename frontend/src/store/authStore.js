@@ -122,3 +122,16 @@ export const useAuthStore = create((set, get) => ({
     if (error) throw error;
   },
 }));
+
+// Automatically update PostgREST headers when agencyId changes in Zustand store to inject into Postgres session context
+if (supabase) {
+  useAuthStore.subscribe((state) => {
+    if (supabase.rest) {
+      if (state.agencyId) {
+        supabase.rest.headers['x-tenant-id'] = state.agencyId;
+      } else {
+        delete supabase.rest.headers['x-tenant-id'];
+      }
+    }
+  });
+}

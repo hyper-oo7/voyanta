@@ -23,6 +23,12 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
   const upd = (key) => (e) => updateDay(index, { [key]: e.target.value });
   const [showBlockMenu, setShowBlockMenu] = useState(false);
   const [pickerType, setPickerType] = useState(null);
+  
+  // AI Expansion states
+  const [showAIPanel, setShowAIPanel] = useState(false);
+  const [aiLength, setAiLength] = useState('medium');
+  const [aiFormat, setAiFormat] = useState('paragraph');
+  const [isExpanding, setIsExpanding] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -91,36 +97,93 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
               className="w-full font-headline-sm text-on-surface font-bold bg-transparent border-b-2 border-transparent hover:border-outline-variant focus:border-primary outline-none transition-colors py-xs"
             />
             <div className="pt-2 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Day Experience & Narrative</span>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const txt = dayData.description || dayData.title || '';
-                    if (!txt) {
-                      toast.info('Please enter a brief day title or description first.');
-                      return;
-                    }
-                    toast.info('Expanding day into luxury sensory experience via AI...');
-                    try {
-                      const res = await api.post('/api/enhance-text', {
-                        text: txt,
-                        mode: 'day_description',
-                        destination: dayData.title || ''
-                      });
-                      if (res?.enhanced_text) {
-                        updateDay(index, { description: res.enhanced_text });
-                        toast.success('Day expanded beautifully!');
-                      }
-                    } catch (e) {
-                      toast.error('AI expansion failed');
-                    }
-                  }}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2.5 py-1 rounded-full transition-colors"
-                >
-                  <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
-                  AI Expand Luxury Experience
-                </button>
+              <div className="flex flex-col gap-2 p-3 bg-surface-container-low rounded-xl border border-outline-variant/60">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Day Experience & Narrative</span>
+                  {!showAIPanel && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAIPanel(true)}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2.5 py-1 rounded-full transition-colors border-none cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
+                      AI Expand Luxury Experience
+                    </button>
+                  )}
+                </div>
+
+                {showAIPanel && (
+                  <div className="space-y-3 pt-1 border-t border-outline-variant/40 animate-fade-in text-xs font-sans text-on-surface">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Response Length</label>
+                        <select 
+                          value={aiLength} 
+                          onChange={(e) => setAiLength(e.target.value)}
+                          className="w-full text-xs p-1.5 rounded-lg bg-surface border border-outline-variant text-on-surface focus:outline-none"
+                        >
+                          <option value="short">Short (1-2 sentences)</option>
+                          <option value="medium">Medium (1 paragraph)</option>
+                          <option value="long">Long (2-3 paragraphs)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Text Style</label>
+                        <select 
+                          value={aiFormat} 
+                          onChange={(e) => setAiFormat(e.target.value)}
+                          className="w-full text-xs p-1.5 rounded-lg bg-surface border border-outline-variant text-on-surface focus:outline-none"
+                        >
+                          <option value="paragraph">Paragraphs</option>
+                          <option value="bullet points">Bullet Points</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2 border-t border-outline-variant/30">
+                      <button 
+                        type="button" 
+                        onClick={() => setShowAIPanel(false)}
+                        className="px-2.5 py-1 text-[10px] font-bold text-on-surface-variant bg-surface hover:bg-surface-container border border-outline-variant rounded-lg transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        type="button" 
+                        disabled={isExpanding}
+                        onClick={async () => {
+                          const txt = dayData.description || dayData.title || '';
+                          if (!txt) {
+                            toast.info('Please enter a brief day title or description first.');
+                            return;
+                          }
+                          setIsExpanding(true);
+                          toast.info('Expanding day into luxury experience via AI...');
+                          try {
+                            const res = await api.post('/api/enhance-text', {
+                              text: txt,
+                              mode: 'day_description',
+                              destination: dayData.title || '',
+                              length: aiLength,
+                              format: aiFormat
+                            });
+                            if (res?.enhanced_text) {
+                              updateDay(index, { description: res.enhanced_text });
+                              toast.success('Day expanded beautifully!');
+                              setShowAIPanel(false);
+                            }
+                          } catch (e) {
+                            toast.error('AI expansion failed');
+                          } finally {
+                            setIsExpanding(false);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-white bg-primary hover:bg-primary/95 px-3 py-1 border-none rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {isExpanding ? 'Expanding...' : 'Generate'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <textarea
                 value={dayData.description || ''}

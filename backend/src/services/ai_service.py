@@ -2,6 +2,7 @@ import os
 import httpx
 import logging
 import json
+from typing import Optional, Dict, Any, List
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
@@ -270,17 +271,26 @@ async def generate_luxury_title(destination: str, tour_type: str, duration: int)
     else:
         return f"{destination or 'Luxury'} Collection: A Curated {duration}-Day {tour_type or 'Journey'}"
 
-async def enhance_luxury_text(text: str, mode: str, destination: str = "") -> str:
+async def enhance_luxury_text(
+    text: str,
+    mode: str,
+    destination: str = "",
+    length: Optional[str] = None,
+    format: Optional[str] = None
+) -> str:
     api_key_gemini = os.environ.get("GEMINI_API_KEY")
     if not api_key_gemini:
         return text
 
     if mode == "day_description":
+        length_str = f" The length of the response should be: {length}." if length else " The response should be a rich, descriptive length."
+        format_str = f" The format of the response should be: {format}." if format else " Return the response in clean paragraphs."
         prompt = (
             f"You are a luxury travel curator writing about {destination or 'this destination'}. "
             "Expand and rewrite the following itinerary day description to create an immersive, sensory luxury experience. "
             "Make the traveler feel like they are personally in that place experiencing the sights, sounds, and executive comforts. "
-            "Return ONLY the expanded paragraph text, no quotes or intro.\n\n"
+            f"{length_str}{format_str} "
+            "Return ONLY the expanded text, no quotes, intro, or markdown commentary.\n\n"
             f"Original text: {text}"
         )
     else:

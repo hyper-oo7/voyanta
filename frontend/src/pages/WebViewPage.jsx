@@ -45,6 +45,7 @@ export default function WebViewPage() {
   // Live Overrides & Edit Mode states
   const [isInteractiveStudio, setIsInteractiveStudio] = useState(false);
   const [studioTarget, setStudioTarget] = useState(null);
+  const [showShareDropdown, setShowShareDropdown] = useState(false);
 
   // Accordion Expand/Collapse state
   const [allExpanded, setAllExpanded] = useState(true);
@@ -170,7 +171,7 @@ export default function WebViewPage() {
     return () => clearTimeout(timer);
   }, [data, p.preferences?.overrides]);
 
-  // Apply WYSIWYG overrides to the database
+  // Apply WYSIWYG overrides to the database and local cache
   const handleApplyOverride = async (elKey, override) => {
     try {
       const currentOverrides = p.preferences?.overrides || {};
@@ -180,11 +181,30 @@ export default function WebViewPage() {
         overrides: currentOverrides
       };
 
-      await api.put(`/api/proposals/${p.id}`, {
-        ...p,
-        preferences: updatedPrefs
-      });
+      // 1. Always save to local storage cache immediately
+      try {
+        const localKey = `voyanta_proposal_${p.id}`;
+        const updatedProposalObj = {
+          ...p,
+          preferences: updatedPrefs
+        };
+        localStorage.setItem(localKey, JSON.stringify(updatedProposalObj));
 
+        // Also update proposals list cache
+        const cacheKey = 'voyanta_proposals_list_cache';
+        const cachedList = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+        const newList = cachedList.map(item => {
+          if (String(item.id) === String(p.id)) {
+            return { ...item, preferences: updatedPrefs };
+          }
+          return item;
+        });
+        localStorage.setItem(cacheKey, JSON.stringify(newList));
+      } catch (err) {
+        console.warn('Failed to update local storage overrides:', err);
+      }
+
+      // 2. Optimistically update frontend state
       setData(prev => ({
         ...prev,
         proposal: {
@@ -192,9 +212,20 @@ export default function WebViewPage() {
           preferences: updatedPrefs
         }
       }));
-      toast.success('Live view edit saved to database!');
+
+      // 3. Make database server call if not in demo session
+      if (!isDemo && p.id) {
+        await api.put(`/api/proposals/${p.id}`, {
+          ...p,
+          preferences: updatedPrefs
+        });
+        toast.success('Live view edit saved to server database!');
+      } else {
+        toast.success('Live view edit saved locally!');
+      }
     } catch (err) {
-      toast.error('Failed to save edit.');
+      console.warn('Failed to save edit to server, kept local overrides:', err);
+      toast.info('Live view edit saved locally (server unavailable).');
     }
   };
 
@@ -332,23 +363,81 @@ export default function WebViewPage() {
             <span className="material-symbols-outlined text-[18px]">admin_panel_settings</span>
             <span>Agent View: Live Proposal Web View Editor</span>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setIsInteractiveStudio(!isInteractiveStudio);
-                setStudioTarget(null);
-              }}
-              className={`px-3 py-1.5 rounded-lg border font-bold flex items-center gap-1 transition-all ${
-                isInteractiveStudio
-                  ? 'bg-white text-primary border-white animate-pulse shadow-md'
-                  : 'bg-primary-container text-on-primary-container border-primary-container hover:bg-primary-container/95'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">edit_document</span>
-              {isInteractiveStudio ? 'Exit Editor Mode' : 'Toggle Live Editor Mode'}
-            </button>
-            <span className="text-[10px] text-on-primary/75 font-normal">(Click any text, image, or section to customize live)</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsInteractiveStudio(!isInteractiveStudio);
+                  setStudioTarget(null);
+                }}
+                className={`px-3 py-1.5 rounded-lg border font-bold flex items-center gap-1 transition-all ${
+                  isInteractiveStudio
+                    ? 'bg-white text-primary border-white animate-pulse shadow-md'
+                    : 'bg-primary-container text-on-primary-container border-primary-container hover:bg-primary-container/95'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">edit_document</span>
+                {isInteractiveStudio ? 'Exit Editor Mode' : 'Toggle Live Editor Mode'}
+              </button>
+              <span className="text-[10px] text-on-primary/75 font-normal">(Click any text, image, or section to customize live)</span>
+            </div>
+
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowShareDropdown(!showShareDropdown)}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1 transition-all border-none cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">share</span>
+                Share with Client
+                <span className="material-symbols-outlined text-[14px]">arrow_drop_down</span>
+              </button>
+              {showShareDropdown && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-zinc-800 border border-outline-variant rounded-xl shadow-xl z-[999] py-2 overflow-hidden text-on-surface text-left font-sans">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setShowShareDropdown(false);
+                      const url = `${window.location.origin}/view/${p.share_token || 'demo'}`;
+                      await navigator.clipboard.writeText(url);
+                      toast.success('🌐 Client proposal link copied!');
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer font-bold text-xs text-on-surface"
+                  >
+                    <span className="material-symbols-outlined text-primary text-[18px]">content_copy</span>
+                    Copy Client Link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowShareDropdown(false);
+                      const url = `${window.location.origin}/view/${p.share_token || 'demo'}`;
+                      const msg = `Hi! Here is the travel proposal for ${p.name || 'your trip'}. View and approve it here: ${url}`;
+                      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer font-bold text-xs text-on-surface"
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" className="text-[#25D366] shrink-0" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                    Share via WhatsApp
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowShareDropdown(false);
+                      const url = `${window.location.origin}/view/${p.share_token || 'demo'}`;
+                      const subject = `Travel Proposal: ${p.name || 'Your Trip'}`;
+                      const body = `Hi! Here is the travel proposal for ${p.name || 'your trip'}. View and approve it here: ${url}`;
+                      window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer font-bold text-xs text-on-surface"
+                  >
+                    <span className="material-symbols-outlined text-blue-500 text-[18px]">mail</span>
+                    Share via Email
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -733,7 +822,12 @@ export default function WebViewPage() {
               </select>
             </div>
 
-            {proposalStatus === 'approved' ? (
+            {user ? (
+              <div className="bg-primary/10 border border-primary/20 text-primary px-5 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 no-print">
+                <span className="material-symbols-outlined text-base">info</span>
+                Viewing as Agent
+              </div>
+            ) : proposalStatus === 'approved' ? (
               <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-5 py-2.5 rounded-full font-bold text-sm flex items-center gap-2">
                 <span className="material-symbols-outlined text-base">check_circle</span>
                 {getUIText(lang, 'approvedStatus')}
@@ -778,21 +872,52 @@ export default function WebViewPage() {
               ...p.preferences,
               branding: next
             };
+            
+            // 1. Always save to local storage cache
             try {
-              await api.put(`/api/proposals/${p.id}`, {
+              const localKey = `voyanta_proposal_${p.id}`;
+              const updatedProposalObj = {
                 ...p,
                 preferences: updatedPrefs
-              });
-              setData(prev => ({
-                ...prev,
-                proposal: {
-                  ...prev.proposal,
-                  preferences: updatedPrefs
+              };
+              localStorage.setItem(localKey, JSON.stringify(updatedProposalObj));
+
+              const cacheKey = 'voyanta_proposals_list_cache';
+              const cachedList = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+              const newList = cachedList.map(item => {
+                if (String(item.id) === String(p.id)) {
+                  return { ...item, preferences: updatedPrefs };
                 }
-              }));
-              toast.success('Branding update saved to database!');
+                return item;
+              });
+              localStorage.setItem(cacheKey, JSON.stringify(newList));
             } catch (err) {
-              toast.error('Failed to update branding.');
+              console.warn('Failed to update local storage branding:', err);
+            }
+
+            // 2. Update frontend state
+            setData(prev => ({
+              ...prev,
+              proposal: {
+                ...prev.proposal,
+                preferences: updatedPrefs
+              }
+            }));
+
+            // 3. Make database server call if not in demo session
+            try {
+              if (!isDemo && p.id) {
+                await api.put(`/api/proposals/${p.id}`, {
+                  ...p,
+                  preferences: updatedPrefs
+                });
+                toast.success('Branding update saved to database!');
+              } else {
+                toast.success('Branding update saved locally!');
+              }
+            } catch (err) {
+              console.warn('Failed to save branding to database, kept local copy:', err);
+              toast.info('Branding saved locally (server unavailable).');
             }
           }}
           onApplyOverride={handleApplyOverride}

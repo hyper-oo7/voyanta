@@ -44,30 +44,43 @@ export default function SettingsPage() {
   const isEnterprise = subscription?.plan === 'Enterprise';
 
   return (
-    <div className="flex h-full bg-surface">
-      {/* Sidebar Navigation */}
-      <div className="w-64 border-r border-outline-variant bg-surface-container-lowest p-6 flex flex-col gap-2">
-        <h2 className="text-xl font-serif font-bold text-on-surface mb-6">Settings</h2>
-        
-        <NavButton active={activeTab === 'plan'} onClick={() => setActiveTab('plan')} icon="⭐">
-          My Plan & Billing
-        </NavButton>
-        <NavButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon="👤">
-          My Profile
-        </NavButton>
-        <NavButton active={activeTab === 'branding'} onClick={() => setActiveTab('branding')} icon="🎨">
-          Agency Branding
-        </NavButton>
-        <NavButton active={activeTab === 'team'} onClick={() => setActiveTab('team')} icon="👥">
-          Team Management
-        </NavButton>
-        <NavButton active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} icon="📋">
-          Activity Logs
-        </NavButton>
+    <div className="space-y-6">
+      {/* Settings Header Card */}
+      <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant shadow-sm flex flex-wrap items-center justify-between gap-6">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-on-surface m-0">Settings</h1>
+          <p className="text-xs text-on-surface-variant m-0 mt-1">
+            Configure your travel agency parameters, invoice formats, legal items, team permissions, and billing tier.
+          </p>
+        </div>
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 p-8 overflow-y-auto">
+      {/* Horizontal Tabs */}
+      <div className="flex flex-wrap border-b border-outline-variant gap-2 bg-surface-container-lowest p-3 rounded-2xl border border-outline-variant">
+        {[
+          { id: 'plan', label: 'My Plan & Billing', icon: 'star' },
+          { id: 'profile', label: 'My Profile', icon: 'person' },
+          { id: 'branding', label: 'Agency Branding', icon: 'palette' },
+          { id: 'team', label: 'Team Management', icon: 'group' },
+          { id: 'logs', label: 'Activity Logs', icon: 'list_alt' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border-none cursor-pointer transition-all ${
+              activeTab === tab.id 
+                ? 'bg-primary text-white shadow-sm' 
+                : 'bg-transparent text-on-surface-variant hover:bg-surface-container'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Main Settings Display */}
+      <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant shadow-sm">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -75,10 +88,10 @@ export default function SettingsPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
-            className="max-w-4xl"
+            className="w-full"
           >
             {activeTab === 'plan' && <PlanSettings subscription={subscription} />}
-            {activeTab === 'profile' && <ProfileSettings user={user} signOut={signOut} isDemo={isDemo} />}
+            {activeTab === 'profile' && <ProfileSettings user={user} signOut={signOut} isDemo={isDemo} isEnterprise={isEnterprise} />}
             {activeTab === 'branding' && <BrandingSettings />}
             {activeTab === 'team' && <TeamSettings />}
             {activeTab === 'logs' && <ActivityLogs />}
@@ -86,20 +99,6 @@ export default function SettingsPage() {
         </AnimatePresence>
       </div>
     </div>
-  );
-}
-
-function NavButton({ active, onClick, icon, children }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-        active ? 'bg-primary/10 text-primary font-medium' : 'text-on-surface hover:bg-surface-container'
-      }`}
-    >
-      <span>{icon}</span>
-      {children}
-    </button>
   );
 }
 
@@ -235,7 +234,7 @@ function PlanSettings({ subscription }) {
   );
 }
 
-function ProfileSettings({ user, signOut, isDemo }) {
+function ProfileSettings({ user, signOut, isDemo, isEnterprise }) {
   const rawAgencyId = getAgencyId() || '0001';
   const rawUserId = user?.id || '0001';
 
@@ -296,13 +295,22 @@ function ProfileSettings({ user, signOut, isDemo }) {
               </div>
               <div className="font-mono text-xs text-on-surface select-all break-all">{voyantaId}</div>
             </div>
-            <div className="p-3 bg-surface rounded-lg border border-outline-variant">
-              <div className="text-xs font-medium text-on-surface-variant mb-1 flex items-center justify-between">
-                <span>Agency ID (Tenant ID)</span>
-                <span className="text-[10px] px-1.5 py-0.5 bg-secondary/10 text-secondary rounded font-mono">Agency</span>
+            {isEnterprise ? (
+              <div className="p-3 bg-surface rounded-lg border border-outline-variant">
+                <div className="text-xs font-medium text-on-surface-variant mb-1 flex items-center justify-between">
+                  <span>Agency ID (Tenant ID)</span>
+                  <span className="text-[10px] px-1.5 py-0.5 bg-secondary/10 text-secondary rounded font-mono">Agency</span>
+                </div>
+                <div className="font-mono text-xs text-on-surface select-all break-all">{agencyId}</div>
               </div>
-              <div className="font-mono text-xs text-on-surface select-all break-all">{agencyId}</div>
-            </div>
+            ) : (
+              <div className="p-3 bg-surface rounded-lg border border-outline-variant flex flex-col justify-between h-full opacity-60">
+                <div className="text-xs font-medium text-on-surface-variant mb-1">
+                  <span>Agency ID (Tenant ID)</span>
+                </div>
+                <div className="text-[10px] text-primary font-bold">🔒 Only visible to Enterprise users</div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -784,6 +792,7 @@ function BrandingSettings() {
                       setForm(s => ({ ...(s || settings || {}), payment_qr_code: val }));
                       try { localStorage.setItem('voyanta_payment_qr_code', val || ''); } catch {}
                     }}
+                    hideStockSearch={true}
                   />
                 </div>
               </div>

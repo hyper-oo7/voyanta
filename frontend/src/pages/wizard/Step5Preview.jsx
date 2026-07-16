@@ -605,8 +605,8 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
           onClick={() => window.open(`/view/${proposal?.share_token || 'demo'}`, '_blank')} 
           className="px-lg py-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 rounded-lg font-label-md flex items-center gap-xs shadow-sm transition-all cursor-pointer"
         >
-          <span className="material-symbols-outlined text-[18px]">visibility</span>
-          View Web View
+          <span className="material-symbols-outlined text-[18px]">edit</span>
+          Edit Web View
         </button>
  
         <button type="button" onClick={() => setExportOpen(true)} data-testid="open-export-modal"
@@ -633,77 +633,16 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
             <div className="absolute right-0 top-full mt-sm w-64 bg-surface border border-outline-variant rounded-xl shadow-xl z-[95] py-sm overflow-hidden animate-fade-in font-sans">
               <button 
                 type="button"
-                onClick={async () => {
+                onClick={() => {
                   setShareDropdownOpen(false);
-                  const webViewUrl = `${window.location.origin}/view/${proposal?.share_token || 'demo'}`;
-                  try {
-                    await navigator.clipboard.writeText(webViewUrl);
-                    toast.success('🌐 Public web view link copied to clipboard!');
-                    incrementAnalytics('share_link', proposalId);
-                  } catch (err) {
-                    toast.error('Failed to copy link to clipboard');
-                  }
+                  window.open(`/view/${proposal?.share_token || 'demo'}`, '_blank');
                 }}
                 className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer"
               >
-                <span className="material-symbols-outlined text-primary text-[20px]">public</span>
+                <span className="material-symbols-outlined text-primary text-[20px]">edit</span>
                 <div>
-                  <div className="font-semibold text-xs text-on-surface">Share Web View</div>
-                  <div className="text-[10px] text-on-surface-variant">Copy live interactive link</div>
-                </div>
-              </button>
-
-              <button 
-                type="button"
-                onClick={() => {
-                  setShareDropdownOpen(false);
-                  incrementAnalytics('whatsapp', proposalId);
-                  const webViewUrl = `${window.location.origin}/view/${proposal?.share_token || 'demo'}`;
-                  setSmartContact({
-                    mode: 'whatsapp',
-                    initialPhone: proposal?.client_phone || proposal?.phone || proposal?.brief?.phone || '',
-                    initialEmail: proposal?.client_email || proposal?.email || proposal?.brief?.email || '',
-                    clientName: proposal?.client_name || proposalName || 'Client',
-                    clientId: proposal?.client_id || null,
-                    proposalId: proposalId || proposal?.id,
-                    proposalObj: proposal,
-                    shareText: `Hi! Here is the travel proposal for ${proposalName || 'your trip'}. View and approve it here: ${webViewUrl}`,
-                    shareSubject: `Travel Proposal: ${proposalName || 'Your Trip'}`
-                  });
-                }}
-                className="w-full flex items-center gap-md px-md py-sm hover:bg-[#25D366]/10 hover:text-[#25D366] transition-colors text-left border-none bg-transparent cursor-pointer"
-              >
-                <svg viewBox="0 0 24 24" width="18" height="18" className="text-[#25D366] shrink-0" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-                <div>
-                  <div className="font-semibold text-xs text-on-surface">Share WhatsApp</div>
-                  <div className="text-[10px] text-on-surface-variant">Send link via WhatsApp</div>
-                </div>
-              </button>
-
-              <button 
-                type="button"
-                onClick={() => {
-                  setShareDropdownOpen(false);
-                  incrementAnalytics('email', proposalId);
-                  const webViewUrl = `${window.location.origin}/view/${proposal?.share_token || 'demo'}`;
-                  setSmartContact({
-                    mode: 'email',
-                    initialPhone: proposal?.client_phone || proposal?.phone || proposal?.brief?.phone || '',
-                    initialEmail: proposal?.client_email || proposal?.email || proposal?.brief?.email || '',
-                    clientName: proposal?.client_name || proposalName || 'Client',
-                    clientId: proposal?.client_id || null,
-                    proposalId: proposalId || proposal?.id,
-                    proposalObj: proposal,
-                    shareText: `Hi! Here is the travel proposal for ${proposalName || 'your trip'}. View and approve it here: ${webViewUrl}`,
-                    shareSubject: `Travel Proposal: ${proposalName || 'Your Trip'}`
-                  });
-                }}
-                className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-blue-500 text-[20px]">mail</span>
-                <div>
-                  <div className="font-semibold text-xs text-on-surface">Share Email</div>
-                  <div className="text-[10px] text-on-surface-variant">Send link via email</div>
+                  <div className="font-semibold text-xs text-on-surface">Edit Web View</div>
+                  <div className="text-[10px] text-on-surface-variant">Open live editor on web view</div>
                 </div>
               </button>
 

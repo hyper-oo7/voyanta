@@ -4,9 +4,10 @@ from pydantic import BaseModel
 import logging
 from datetime import datetime
 import uuid
+from src.services.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(prefix="/public")
 
 class ProposalActionInput(BaseModel):
     action: str
@@ -43,6 +44,22 @@ async def client_proposal_action(token: str, input: ProposalActionInput, request
     )
 
     status_code = "approved" if input.action.lower() == "approve" else "changes_requested"
+
+    # Update proposal status in Supabase Database
+    sb = get_supabase_client()
+    if sb:
+        try:
+            # Query the proposal id by share_token
+            res = sb.table("proposals").select("id").eq("share_token", token).execute()
+            if res.data:
+                proposal_id = res.data[0]["id"]
+                sb.table("proposals").update({
+                    "status": "Approved" if input.action.lower() == "approve" else "Changes Requested",
+                    "updated_at": timestamp
+                }).eq("id", proposal_id).execute()
+                logger.info(f"[PublicAction] Successfully updated proposal status to {status_code} in DB.")
+        except Exception as e:
+            logger.error(f"[PublicAction] Failed to update proposal status in database: {e}")
 
     return {
         "success": True,
@@ -111,27 +128,7 @@ async def search_images(query: str):
         except Exception as e:
             logger.warning(f"Pexels API search error: {e}")
 
-    # 3. Safe offline/default fallback
-    if not results:
-        results = [
-            {
-                "id": "fallback_1",
-                "url": "https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=1200&q=80",
-                "thumb": "https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=400&q=80",
-                "author": "Taj Heritage Resort"
-            },
-            {
-                "id": "fallback_2",
-                "url": "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=1200&q=80",
-                "thumb": "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=400&q=80",
-                "author": "Palace Collection"
-            },
-            {
-                "id": "fallback_3",
-                "url": "https://images.unsplash.com/photo-1599661046289-e31897846e41?w=1200&q=80",
-                "thumb": "https://images.unsplash.com/photo-1599661046289-e31897846e41?w=400&q=80",
-                "author": "Luxury Escape"
-            }
-        ]
+    # 3. No fallback arrays to ensure absolutely zero hardcoding
+    pass
 
     return {"success": True, "results": results}

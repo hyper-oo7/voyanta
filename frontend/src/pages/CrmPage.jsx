@@ -4,6 +4,7 @@ import { fetchClients, createClient, updateClient, deleteClient, TRIP_STATUSES }
 import { fetchInvoices } from '../services/invoiceService.js';
 import { useNavigate } from 'react-router-dom';
 import { Client360Modal } from '../components/crm/Client360Modal.jsx';
+import ContactPicker from '../components/common/ContactPicker.jsx';
 
 const formatCurr = (val, curr = 'INR') => new Intl.NumberFormat('en-IN', { style: 'currency', currency: curr, maximumFractionDigits: 0 }).format(Number(val) || 0);
 
@@ -465,10 +466,23 @@ export default function CrmPage() {
             </div>
 
             <form onSubmit={handleSave} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-extrabold uppercase tracking-widest text-on-surface-variant mb-1">
-                  Client Full Name *
-                </label>
+               <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">
+                    Client Full Name *
+                  </label>
+                  <ContactPicker
+                    onSelect={(c) => {
+                      setFormData({
+                        ...formData,
+                        name: c.name || '',
+                        email: c.email || '',
+                        phone: c.phone || '',
+                        destination: c.destination || ''
+                      });
+                    }}
+                  />
+                </div>
                 <input
                   type="text"
                   required

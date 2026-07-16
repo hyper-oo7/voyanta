@@ -26,6 +26,8 @@ class EnhanceTextInput(BaseModel):
     text: str
     mode: str = "grammar"
     destination: str = ""
+    length: Optional[str] = None
+    format: Optional[str] = None
 
 @router.post("/parse-itinerary")
 async def parse_itinerary(input: ParseItineraryInput, user: Any = Depends(verify_token_optional)):
@@ -56,8 +58,42 @@ async def generate_title(input: GenerateTitleInput, user: Any = Depends(verify_t
 @router.post("/enhance-text")
 async def enhance_text(input: EnhanceTextInput, user: Any = Depends(verify_token_optional)):
     try:
-        enhanced = await enhance_luxury_text(input.text, input.mode, input.destination)
-        return {"success": True, "enhanced_text": enhanced}
+        model = "gemini"
+        prompt_version = "v1.1.0"
+        schema_version = "v1.1.0"
+        
+        normalized_input = f"mode:{input.mode}|dest:{input.destination}|len:{input.length or 'default'}|fmt:{input.format or 'default'}|text:{input.text}"
+
+        from src.services.ai_cache_service import get_cached_extraction, save_cached_extraction
+        
+        # Check cache (globally, agency_id = None)
+        cached = await get_cached_extraction(
+            agency_id=None,
+            model=model,
+            prompt_version=prompt_version,
+            schema_version=schema_version,
+            normalized_input=normalized_input
+        )
+        if cached and isinstance(cached, dict) and "enhanced_text" in cached:
+            logger.info("[AICache] Global Cache HIT for enhance-text")
+            return {"success": True, "enhanced_text": cached["enhanced_text"], "cached": True}
+
+        # If cache miss, generate via Gemini
+        enhanced = await enhance_luxury_text(input.text, input.mode, input.destination, input.length, input.format)
+        
+        # Save to global cache
+        await save_cached_extraction(
+            agency_id=None,
+            entity_type="sensory_expansion",
+            entity_id=None,
+            model=model,
+            prompt_version=prompt_version,
+            schema_version=schema_version,
+            normalized_input=normalized_input,
+            output_json={"enhanced_text": enhanced}
+        )
+        
+        return {"success": True, "enhanced_text": enhanced, "cached": False}
     except Exception as e:
         logger.exception("AI enhance-text failed")
         return {"success": False, "enhanced_text": input.text, "error": str(e)}

@@ -13,7 +13,6 @@ const navItems = [
   { path: '/contacts', icon: 'contacts', label: 'Contacts' },
   { path: '/invoices', icon: 'account_balance_wallet', label: 'Invoices & Billing' },
   { path: '/templates', icon: 'description', label: 'Templates' },
-  { path: '/libraries/hotels', icon: 'hotel', label: 'Hotels' },
   { path: '/flights', icon: 'flight', label: 'Flights' },
   { path: '/library', icon: 'library_books', label: 'Library' },
   { path: '/cost-calculator', icon: 'calculate', label: 'Cost Calculator' },

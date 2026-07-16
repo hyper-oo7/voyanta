@@ -17,10 +17,36 @@ function notifyDbError(resource, error) {
 export function makeResourceService(resource) {
   return {
     list: async (filters = {}, force = false, { page = 0, pageSize = DEFAULT_PAGE_SIZE } = {}) => {
+      let localUnified = [];
+      if (resource === 'hotels' || resource === 'activities') {
+        try {
+          const stored = localStorage.getItem('voyanta_unified_library');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            const targetType = resource === 'hotels' ? 'hotel' : 'activity';
+            localUnified = parsed.filter(item => item.type === targetType).map(item => ({
+              ...item,
+              image_url: item.cover_image || item.image_url || '',
+              cover_image: item.cover_image || item.image_url || ''
+            }));
+          }
+        } catch (err) {
+          console.warn('Failed to load unified library cache:', err);
+        }
+      }
+
       const localKey = `voyanta_res_cache_${resource}:${JSON.stringify(filters)}`;
 
       if (!supabase) {
-        try { return JSON.parse(localStorage.getItem(localKey) || '[]'); } catch { return []; }
+        let localFallback = [];
+        try { localFallback = JSON.parse(localStorage.getItem(localKey) || '[]'); } catch {}
+        const merged = [...localUnified];
+        localFallback.forEach(item => {
+          if (!merged.some(m => String(m.id) === String(item.id))) {
+            merged.push(item);
+          }
+        });
+        return merged;
       }
 
       const from = page * pageSize;
@@ -32,16 +58,27 @@ export function makeResourceService(resource) {
 
       const { data, error, count } = await q;
       if (error) {
-        try {
-          const cached = JSON.parse(localStorage.getItem(localKey) || 'null');
-          if (cached) return cached;
-        } catch {}
-        throw error;
+        let cached = [];
+        try { cached = JSON.parse(localStorage.getItem(localKey) || '[]'); } catch {}
+        const merged = [...localUnified];
+        cached.forEach(item => {
+          if (!merged.some(m => String(m.id) === String(item.id))) {
+            merged.push(item);
+          }
+        });
+        return merged;
       }
       
       const result = data || [];
       try { localStorage.setItem(localKey, JSON.stringify(result)); } catch {}
-      return result;
+
+      const merged = [...localUnified];
+      result.forEach(item => {
+        if (!merged.some(m => String(m.id) === String(item.id))) {
+          merged.push(item);
+        }
+      });
+      return merged;
     },
     count: async (filters = {}) => {
       if (!supabase) return 0;
@@ -52,6 +89,23 @@ export function makeResourceService(resource) {
       return count || 0;
     },
     get: async (id) => {
+      if (resource === 'hotels' || resource === 'activities') {
+        try {
+          const stored = localStorage.getItem('voyanta_unified_library');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            const found = parsed.find(item => String(item.id) === String(id));
+            if (found) {
+              return {
+                ...found,
+                image_url: found.cover_image || found.image_url || '',
+                cover_image: found.cover_image || found.image_url || ''
+              };
+            }
+          }
+        } catch (err) {}
+      }
+
       if (supabase) {
         try {
           const { data, error } = await supabase.from(resource).select('*').eq('id', id).single();

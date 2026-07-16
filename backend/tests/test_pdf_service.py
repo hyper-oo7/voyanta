@@ -89,12 +89,12 @@ def test_vault_process_size_limit_exceeded():
 async def test_entitlement_fail_closed_on_db_error():
     from unittest.mock import MagicMock
     from src.core.entitlements import get_agency_entitlements_data
+    from fastapi import HTTPException
     mock_db = MagicMock()
     mock_db.rpc.side_effect = Exception("Database timeout/connection failure")
 
-    ent = await get_agency_entitlements_data(mock_db, "agency-123")
-    assert ent["features"]["ai_vault"] is False
-    assert ent["features"]["ai_rewrite"] is False
-    assert ent["max_proposals_per_month"] == 0
+    with pytest.raises(HTTPException) as exc_info:
+        await get_agency_entitlements_data(mock_db, "agency-123")
+    assert exc_info.value.status_code == 503
 
 

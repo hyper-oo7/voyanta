@@ -195,7 +195,7 @@ export async function createInvoiceFromProposal(proposal, customBranding = null)
   const totalAmount = subtotal + taxAmount;
 
   const newInvoice = {
-    id: `inv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    id: crypto.randomUUID(),
     agency_id: agencyId,
     proposal_id: proposal?.id || null,
     client_name: proposal?.client_name || proposal?.client || 'Valued Client',
@@ -281,7 +281,7 @@ export async function createInvoice(customData = {}) {
   const totalAmount = Number(customData.total_amount ?? (subtotal + taxAmount));
 
   const newInvoice = {
-    id: `inv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    id: crypto.randomUUID(),
     agency_id: agencyId,
     proposal_id: customData.proposal_id || null,
     client_name: customData.client_name || 'Valued Client',
@@ -448,7 +448,7 @@ export async function generateRemainingBalanceInvoice(parentInvoice, customAmoun
 
   const childInvoice = {
     ...parentInvoice,
-    id: `inv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    id: crypto.randomUUID(),
     invoice_number: invoiceNumber,
     status: 'Sent',
     issue_date: now.toISOString().split('T')[0],
