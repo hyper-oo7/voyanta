@@ -7,9 +7,11 @@ import SectionDivider from '../utility/SectionDivider.jsx';
  * Displays hotels and resorts included in the proposal.
  * Supports 5 variants: card-grid, luxury-card-stack, editorial-list, masonry, single-focus
  */
-export default function AccommodationSection({ items = [], theme = {}, variant = 'card-grid', currency = 'INR' }) {
+export default function AccommodationSection({ items = [], theme = {}, variant = 'card-grid', currency = 'INR', proposal = {} }) {
   const hotels = items.filter(it => (it.kind || '').toLowerCase() === 'hotel');
   if (!hotels || hotels.length === 0) return null;
+
+  const visibilityMode = (proposal?.visibility_mode || 'ITEMIZED').toUpperCase();
 
   const primaryColor = theme.colors?.primary || '#1a1a2e';
   const accentColor = theme.colors?.accent || '#c41e3a';
@@ -32,7 +34,7 @@ export default function AccommodationSection({ items = [], theme = {}, variant =
 
         <div className="space-y-8">
           {hotels.map((hotel, idx) => (
-            <HotelCard key={hotel.id || idx} item={hotel} theme={theme} variant={variant} currency={currency} />
+            <HotelCard key={hotel.id || idx} item={hotel} theme={theme} variant={variant} currency={currency} visibilityMode={visibilityMode} />
           ))}
         </div>
         <SectionDivider variant={dividerType} theme={theme} />
@@ -55,7 +57,7 @@ export default function AccommodationSection({ items = [], theme = {}, variant =
 
         {featured && (
           <div className="mb-12">
-            <HotelCard item={featured} theme={theme} variant="luxury-card-stack" currency={currency} />
+            <HotelCard item={featured} theme={theme} variant="luxury-card-stack" currency={currency} visibilityMode={visibilityMode} />
           </div>
         )}
 
@@ -64,7 +66,7 @@ export default function AccommodationSection({ items = [], theme = {}, variant =
             <h3 className="text-xl font-bold mb-6" style={{ color: primaryColor }}>Other Accommodations Along Your Route</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {others.map((hotel, idx) => (
-                <HotelCard key={hotel.id || idx} item={hotel} theme={theme} variant="card-grid" currency={currency} />
+                <HotelCard key={hotel.id || idx} item={hotel} theme={theme} variant="card-grid" currency={currency} visibilityMode={visibilityMode} />
               ))}
             </div>
           </div>
@@ -89,7 +91,7 @@ export default function AccommodationSection({ items = [], theme = {}, variant =
 
       <div className={`grid grid-cols-1 md:grid-cols-2 ${hotels.length > 2 ? 'lg:grid-cols-3' : ''} gap-8`}>
         {hotels.map((hotel, idx) => (
-          <HotelCard key={hotel.id || idx} item={hotel} theme={theme} variant="card-grid" currency={currency} />
+          <HotelCard key={hotel.id || idx} item={hotel} theme={theme} variant="card-grid" currency={currency} visibilityMode={visibilityMode} />
         ))}
       </div>
       <SectionDivider variant={dividerType} theme={theme} />

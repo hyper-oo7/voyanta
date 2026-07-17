@@ -21,6 +21,8 @@ class GenerateTitleInput(BaseModel):
     destination: str = ""
     tour_type: str = ""
     duration: int = 7
+    group_type: str = ""
+    tour_category: str = ""
 
 class EnhanceTextInput(BaseModel):
     text: str
@@ -49,7 +51,13 @@ async def translate_proposal(input: TranslateProposalInput, user: Any = Depends(
 @router.post("/generate-title")
 async def generate_title(input: GenerateTitleInput, user: Any = Depends(verify_token_optional)):
     try:
-        title = await generate_luxury_title(input.destination, input.tour_type, input.duration)
+        title = await generate_luxury_title(
+            input.destination, 
+            input.tour_type, 
+            input.duration,
+            group_type=input.group_type,
+            tour_category=input.tour_category
+        )
         return {"success": True, "title": title}
     except Exception as e:
         logger.exception("AI generate-title failed")
@@ -103,6 +111,8 @@ class AutoPhraseInput(BaseModel):
     client_name: str = ""
     destination: str = ""
     tour_type: str = ""
+    group_type: str = ""
+    tour_category: str = ""
     client_preferences: Dict[str, Any] = {}
 
 
@@ -183,7 +193,9 @@ async def auto_phrase_proposal(
         client_name=input.client_name,
         destination=input.destination,
         tour_type=input.tour_type,
-        client_preferences=input.client_preferences
+        client_preferences=input.client_preferences,
+        group_type=input.group_type,
+        tour_category=input.tour_category
     )
     return {"status": "success", "draft": draft}
 

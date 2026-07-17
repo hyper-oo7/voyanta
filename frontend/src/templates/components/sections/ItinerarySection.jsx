@@ -13,6 +13,7 @@ export default function ItinerarySection({ proposal = {}, items = [], theme = {}
   const days = Array.isArray(proposal.itinerary?.days) ? proposal.itinerary.days : (Array.isArray(proposal.itinerary) ? proposal.itinerary : (Array.isArray(proposal.days) ? proposal.days : []));
   if (!Array.isArray(days) || days.length === 0) return null;
 
+  const visibilityMode = (proposal?.visibility_mode || 'ITEMIZED').toUpperCase();
   const sequence = layoutConfig.dayLayouts || layoutConfig.dayLayoutSequence || ['alternating-layout'];
   const primaryColor = theme.colors?.primary || '#1a1a2e';
   const accentColor = theme.colors?.accent || '#c41e3a';
@@ -67,14 +68,14 @@ export default function ItinerarySection({ proposal = {}, items = [], theme = {}
               {(flights.length > 0 || activities.length > 0 || hotels.length > 0) && (
                 <div className="mt-6 pl-0 md:pl-12 space-y-4">
                   {flights.map((f, i) => (
-                    <FlightCard key={`f-${i}`} item={f} theme={theme} currency={currency} />
+                    <FlightCard key={`f-${i}`} item={f} theme={theme} currency={currency} visibilityMode={visibilityMode} />
                   ))}
                   {activities.map((a, i) => (
-                    <ActivityCard key={`a-${i}`} item={a} theme={theme} currency={currency} />
+                    <ActivityCard key={`a-${i}`} item={a} theme={theme} currency={currency} visibilityMode={visibilityMode} />
                   ))}
                   {hotels.map((h, i) => (
                     <div key={`h-${i}`} className="max-w-xl">
-                      <HotelCard item={h} theme={theme} variant="card-grid" currency={currency} />
+                      <HotelCard item={h} theme={theme} variant="card-grid" currency={currency} visibilityMode={visibilityMode} />
                     </div>
                   ))}
                 </div>

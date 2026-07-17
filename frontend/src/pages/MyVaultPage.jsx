@@ -4,6 +4,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import { useProposalStore } from '../store/proposalStore.js';
 import { supabase } from '../lib/supabaseClient.js';
 import { api } from '../services/api.js';
+import BatchExtractionReviewModal from '../components/vault/BatchExtractionReviewModal.jsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -124,12 +125,13 @@ export default function MyVaultPage() {
 
   // Upload form state
   const [files, setFiles] = useState([]);
-  const [destination, setDestination] = useState('');
-  const [budget, setBudget] = useState('');  // Optional budget hint
-  const [duration, setDuration] = useState('');  // Optional duration hint
   const [isProcessing, setIsProcessing] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentFile: '', status: '' });
   const [metrics, setMetrics] = useState(null);
+
+  // Review Modal State
+  const [reviewBatch, setReviewBatch] = useState([]);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
 
   // Vault items state (loaded from Supabase)
   const [vaultItems, setVaultItems] = useState([]);
@@ -210,11 +212,19 @@ export default function MyVaultPage() {
     loadVaultItems();
   }, [loadVaultItems]);
 
-  // ── Process uploaded files ────────────────────────────────────────────────
+  // ── Process uploaded files with pre-save review and token refresh ──────────
   const handleUploadAndProcess = async (e) => {
     e.preventDefault();
     if (files.length === 0) {
       toast.error('Please select at least one file');
+      return;
+    }
+    if (files.length > 20) {
+      toast.error('Please select up to 20 files per batch.');
+      return;
+    }
+    if (files.some(f => f.size > 50 * 1024 * 1024)) {
+      toast.error('One or more files exceed the 50MB limit per file.');
       return;
     }
 
@@ -222,115 +232,108 @@ export default function MyVaultPage() {
     setMetrics(null);
     setBatchProgress({ current: 0, total: files.length, currentFile: files[0].name, status: 'Starting...' });
 
-    let successCount = 0;
-    let cacheHitsCount = 0;
-
-    for (let idx = 0; idx < files.length; idx++) {
-      const currentF = files[idx];
-      setBatchProgress({
-        current: idx + 1,
-        total: files.length,
-        currentFile: currentF.name,
-        status: `Extracting data from ${currentF.name}...`
-      });
-
-      // Check localStorage cache for this exact file
-      const cacheKey = `voyanta_vault_cache_v2_${currentF.name.toLowerCase().replace(/[^a-z0-9]/g, '')}_${currentF.size}`;
-      let resultData = null;
-      try {
-        const cachedStr = localStorage.getItem(cacheKey);
-        if (cachedStr) {
-          resultData = JSON.parse(cachedStr);
-          resultData.cache_hit = true;
-          cacheHitsCount++;
-        }
-      } catch {}
-
-      if (!resultData) {
-        try {
-          let token = null;
-          try {
-            const { data: { session } } = await supabase?.auth?.getSession?.() || { data: { session: null } };
-            if (session?.access_token && Date.now() < (session.expires_at * 1000) - 30000) {
-              token = session.access_token;
-            }
-          } catch {}
-
-          const formData = new FormData();
-          formData.append('file', currentF);
-          if (destination) formData.append('destination', destination);
-          if (budget) formData.append('budget', budget);
-          if (duration) formData.append('duration', duration);
-          formData.append('currency', 'INR');
-
-          const reqHeaders = {};
-          if (token) reqHeaders['Authorization'] = `Bearer ${token}`;
-
-          let response = await fetch('/api/import/process', {
-            method: 'POST',
-            headers: reqHeaders,
-            body: formData,
-          });
-
-          // Retry without token if auth error
-          if ((response.status === 401 || response.status === 403) && token) {
-            const retryFormData = new FormData();
-            retryFormData.append('file', currentF);
-            if (destination) retryFormData.append('destination', destination);
-            if (budget) retryFormData.append('budget', budget);
-            if (duration) retryFormData.append('duration', duration);
-            retryFormData.append('currency', 'INR');
-            response = await fetch('/api/import/process', { method: 'POST', body: retryFormData });
-          }
-
-          if (response.ok) {
-            resultData = await response.json();
-            // Cache locally to avoid re-processing same file
-            try { localStorage.setItem(cacheKey, JSON.stringify(resultData)); } catch {}
-          } else {
-            let errText = response.statusText;
-            try {
-              const errJson = await response.json();
-              errText = errJson.detail || errJson.message || errText;
-            } catch {}
-            toast.error(`Error processing ${currentF.name}: ${errText}`);
-            continue;
-          }
-        } catch (err) {
-          toast.error(`Failed to process ${currentF.name}: ${err.message}`);
-          continue;
-        }
-      }
-
-      if (resultData?.data) {
-        successCount++;
-        if (idx === files.length - 1) {
-          setMetrics({
-            compression: resultData.compression_metrics,
-            cost: cacheHitsCount === files.length ? '$0.00 (100% Cache Hits)' : 'Optimized via Faithful Extraction',
-            cacheHit: cacheHitsCount > 0,
-            vault_package_id: resultData.data?.vault_package_id,
-          });
-        }
-      } else {
-        toast.error(`No valid data extracted from ${currentF.name}`);
-      }
+    // Proactively refresh JWT session before starting batch extraction
+    let token = null;
+    try {
+      await supabase?.auth?.refreshSession?.();
+      const { data: { session } } = await supabase?.auth?.getSession?.() || { data: { session: null } };
+      token = session?.access_token || null;
+    } catch (authErr) {
+      console.warn('[MyVault] Proactive session check warning:', authErr);
     }
 
-    if (successCount > 0) {
-      toast.success(`Successfully digitalized ${successCount} file${successCount > 1 ? 's' : ''} into your Vault!`);
-      setFiles([]);
-      setDestination('');
-      setBudget('');
-      setDuration('');
-      // Reload vault items from Supabase
-      await loadVaultItems();
-    } else {
-      toast.error('No files were successfully processed. Check file formats and try again.');
+    const extractedBatch = [];
+    let cacheHitsCount = 0;
+    const concurrency = 3;
+
+    for (let i = 0; i < files.length; i += concurrency) {
+      const chunk = files.slice(i, i + concurrency);
+      await Promise.all(chunk.map(async (currentF, chunkIdx) => {
+        const fileIndex = i + chunkIdx;
+        setBatchProgress({
+          current: fileIndex + 1,
+          total: files.length,
+          currentFile: currentF.name,
+          status: `Extracting data from ${currentF.name} (${fileIndex + 1}/${files.length})...`
+        });
+
+        const cacheKey = `voyanta_vault_cache_v3_${currentF.name.toLowerCase().replace(/[^a-z0-9]/g, '')}_${currentF.size}`;
+        let resultData = null;
+        try {
+          const cachedStr = localStorage.getItem(cacheKey);
+          if (cachedStr) {
+            resultData = JSON.parse(cachedStr);
+            resultData.cache_hit = true;
+            cacheHitsCount++;
+          }
+        } catch {}
+
+        if (!resultData) {
+          try {
+            const formData = new FormData();
+            formData.append('file', currentF);
+            formData.append('preview_only', 'true');
+            formData.append('currency', 'INR');
+
+            const reqHeaders = {};
+            if (token) reqHeaders['Authorization'] = `Bearer ${token}`;
+
+            let response = await fetch('/api/import/process', {
+              method: 'POST',
+              headers: reqHeaders,
+              body: formData,
+            });
+
+            // Retry without token if auth error occurs
+            if ((response.status === 401 || response.status === 403) && token) {
+              const retryFormData = new FormData();
+              retryFormData.append('file', currentF);
+              retryFormData.append('preview_only', 'true');
+              retryFormData.append('currency', 'INR');
+              response = await fetch('/api/import/process', { method: 'POST', body: retryFormData });
+            }
+
+            if (response.ok) {
+              resultData = await response.json();
+              try { localStorage.setItem(cacheKey, JSON.stringify(resultData)); } catch {}
+            } else {
+              let errText = response.statusText;
+              try {
+                const errJson = await response.json();
+                errText = errJson.detail || errJson.message || errText;
+              } catch {}
+              toast.error(`Error processing ${currentF.name}: ${errText}`);
+              return;
+            }
+          } catch (err) {
+            toast.error(`Failed to process ${currentF.name}: ${err.message}`);
+            return;
+          }
+        }
+
+        if (resultData?.data) {
+          extractedBatch.push(resultData.data);
+          if (fileIndex === files.length - 1) {
+            setMetrics({
+              compression: resultData.compression_metrics,
+              cost: cacheHitsCount === files.length ? '$0.00 (100% Cache Hits)' : 'Optimized via Faithful Extraction',
+              cacheHit: cacheHitsCount > 0,
+            });
+          }
+        }
+      }));
     }
 
     setIsProcessing(false);
     setBatchProgress({ current: 0, total: 0, currentFile: '', status: '' });
+
+    if (extractedBatch.length > 0) {
+      setReviewBatch(extractedBatch);
+      setIsReviewOpen(true);
+      setFiles([]);
+    } else {
+      toast.error('No files were successfully extracted. Check file formats and try again.');
+    }
   };
 
   // ── Apply vault package to proposal wizard ────────────────────────────────
@@ -458,7 +461,7 @@ export default function MyVaultPage() {
         <h2 className="text-base font-bold text-on-surface flex items-center gap-2">
           <span className="material-symbols-outlined text-primary text-lg">upload_file</span>
           Upload Supplier Files (PDF, Excel, CSV) for Digitalization
-          <span className="text-xs font-semibold bg-primary/10 text-primary px-2.5 py-0.5 rounded-full ml-auto">Up to 10 Files</span>
+          <span className="text-xs font-semibold bg-primary/10 text-primary px-2.5 py-0.5 rounded-full ml-auto">Up to 20 Files</span>
         </h2>
 
         {/* Drop Zone */}
@@ -471,7 +474,7 @@ export default function MyVaultPage() {
                 const ext = f.name.toLowerCase().split('.').pop();
                 return ['pdf', 'xlsx', 'xls', 'csv'].includes(ext);
               });
-              setFiles(prev => [...prev, ...dropped].slice(0, 10));
+              setFiles(prev => [...prev, ...dropped].slice(0, 20));
             }
           }}
           className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
@@ -491,7 +494,7 @@ export default function MyVaultPage() {
                   const ext = f.name.toLowerCase().split('.').pop();
                   return ['pdf', 'xlsx', 'xls', 'csv'].includes(ext);
                 });
-                setFiles(prev => [...prev, ...selected].slice(0, 10));
+                setFiles(prev => [...prev, ...selected].slice(0, 20));
               }
             }}
           />
@@ -499,7 +502,7 @@ export default function MyVaultPage() {
           {files.length > 0 ? (
             <div>
               <p className="font-bold text-sm text-on-surface mb-2">
-                {files.length} File{files.length > 1 ? 's' : ''} Selected
+                {files.length} File{files.length > 1 ? 's' : ''} Selected (Up to 20 files, max 50MB each)
               </p>
               <div className="flex flex-wrap justify-center gap-2 max-h-28 overflow-y-auto">
                 {files.map((f, i) => (
@@ -518,45 +521,10 @@ export default function MyVaultPage() {
           ) : (
             <div>
               <p className="font-bold text-base text-on-surface">Drag & Drop supplier files here</p>
-              <p className="text-sm text-on-surface-variant mt-1">or click to browse — up to 10 files at once</p>
-              <p className="text-xs text-on-surface-variant/60 mt-2">Every detail will be faithfully extracted: hotels, activities, meals, transfers, prices, timings, and all sections</p>
+              <p className="text-sm text-on-surface-variant mt-1">or click to browse — up to 20 files at once (50MB max per file)</p>
+              <p className="text-xs text-on-surface-variant/60 mt-2">Every detail will be faithfully extracted: hotels, activities, meals, transfers, prices, timings, and all extra sections. Reviewed by agent before saving!</p>
             </div>
           )}
-        </div>
-
-        {/* Optional Hints Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
-          <div>
-            <label className="text-xs font-bold text-on-surface-variant block mb-1">Destination Hint (optional)</label>
-            <input
-              type="text"
-              value={destination}
-              onChange={e => setDestination(e.target.value)}
-              placeholder="e.g. Ladakh, Bali, Switzerland"
-              className="w-full px-3 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm focus:border-primary focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-on-surface-variant block mb-1">Budget Hint (₹, optional)</label>
-            <input
-              type="number"
-              value={budget}
-              onChange={e => setBudget(e.target.value)}
-              placeholder="e.g. 41000"
-              className="w-full px-3 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm focus:border-primary focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-on-surface-variant block mb-1">Duration Hint (days, optional)</label>
-            <input
-              type="number"
-              value={duration}
-              onChange={e => setDuration(e.target.value)}
-              placeholder="e.g. 7"
-              min="1"
-              className="w-full px-3 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-xl text-sm focus:border-primary focus:outline-none"
-            />
-          </div>
         </div>
 
         {/* Batch Progress */}
@@ -1024,6 +992,16 @@ export default function MyVaultPage() {
           </div>
         )}
       </div>
+
+      <BatchExtractionReviewModal
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
+        batchData={reviewBatch}
+        onSuccess={async (confirmedPackages) => {
+          toast.success(`Batch review completed! Saved ${confirmedPackages.length} package(s) to Vault.`);
+          await loadVaultItems();
+        }}
+      />
     </div>
   );
 }

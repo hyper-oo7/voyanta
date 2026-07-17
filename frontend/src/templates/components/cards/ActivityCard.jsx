@@ -7,7 +7,7 @@ import { formatPrice as libFormatPrice } from '../../../lib/currency.js';
  * Activity & Experience Card component.
  * Displays experience title, timing, description, image, and inclusion status.
  */
-export default function ActivityCard({ item, theme = {}, currency = 'INR', variant = 'default' }) {
+export default function ActivityCard({ item, theme = {}, currency = 'INR', variant = 'default', visibilityMode = 'ITEMIZED' }) {
   if (!item) return null;
 
   const title = item.label || item.activity_name || item.name || 'Special Excursion';
@@ -15,6 +15,7 @@ export default function ActivityCard({ item, theme = {}, currency = 'INR', varia
   const imgUrl = item.image_url || item.url || item.photo || 'https://images.unsplash.com/photo-1516426122078-c23e76319801?auto=format&fit=crop&w=800&q=80';
   const time = item.timing || item.time || item.duration || 'Half Day';
   const price = Number(item.unit_price || item.price || 0) * Number(item.qty || 1);
+  const showItemPrice = price > 0 && (visibilityMode || item?.visibilityMode || item?.visibility_mode || 'ITEMIZED').toUpperCase() === 'ITEMIZED';
 
   const primaryColor = theme.colors?.primary || '#1a1a2e';
   const accentColor = theme.colors?.accent || '#c41e3a';
@@ -45,7 +46,7 @@ export default function ActivityCard({ item, theme = {}, currency = 'INR', varia
             <span className="material-symbols-outlined text-sm mr-1">check_circle</span>
             Included in Itinerary
           </div>
-          {price > 0 && (
+          {showItemPrice && (
             <div className="font-bold text-sm" style={{ color: primaryColor }}>
               {formatPrice(price)}
             </div>

@@ -188,6 +188,53 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
     } catch {}
   }, [proposalId, proposal?.preferences?.overrides]);
 
+  const [include, setInclude] = useState(() => {
+    try {
+      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
+      if (prefs && prefs.include_sections) return { ...ALL_SECTIONS, ...prefs.include_sections };
+    } catch {}
+    return ALL_SECTIONS;
+  });
+  const [exportOpen, setExportOpen] = useState(false);
+  const [showTemplatePrompt, setShowTemplatePrompt] = useState(false);
+  const [style, setStyle] = useState(() => {
+    try {
+      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
+      if (prefs && prefs.template_style) return prefs.template_style;
+    } catch {}
+    return branding?.template_style || 'classic';
+  });
+  const [generating, setGenerating] = useState(false);
+
+  const [sectionOrder, setSectionOrder] = useState(() => {
+    try {
+      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
+      if (prefs && Array.isArray(prefs.section_order) && prefs.section_order.length > 0) return prefs.section_order;
+    } catch {}
+    const base = ['hero', 'highlights', 'itinerary', 'hotels', 'costing', 'inclusions', 'exclusions', 'terms', 'contacts', 'socials'];
+    if (localCustomBlocks) localCustomBlocks.forEach(cb => base.push(cb.id));
+    return base;
+  });
+
+  const json = useMemo(() => {
+    if (!proposal) return null;
+    const grouped = {};
+    for (const it of items) {
+      const k = (it.kind || 'custom').toLowerCase();
+      (grouped[k] ||= []).push(it);
+    }
+    const total = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
+    return {
+      schema_version: 1,
+      generated_at: new Date().toISOString(),
+      agency_id: proposal.agency_id || 'DEFAULT',
+      proposal,
+      items_by_kind: grouped,
+      items,
+      totals: { subtotal: total, currency: proposal.currency || 'INR' },
+    };
+  }, [proposal, items]);
+
   // Auto-sync template settings (style, selections, custom sections, order) to Supabase database
   useEffect(() => {
     if (!proposalId) return;
@@ -229,53 +276,6 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
       saveDraftBackground().catch(() => {});
     }
   }, [proposalId, saveDraftBackground]);
-  
-  const json = useMemo(() => {
-    if (!proposal) return null;
-    const grouped = {};
-    for (const it of items) {
-      const k = (it.kind || 'custom').toLowerCase();
-      (grouped[k] ||= []).push(it);
-    }
-    const total = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
-    return {
-      schema_version: 1,
-      generated_at: new Date().toISOString(),
-      agency_id: proposal.agency_id || 'DEFAULT',
-      proposal,
-      items_by_kind: grouped,
-      items,
-      totals: { subtotal: total, currency: proposal.currency || 'INR' },
-    };
-  }, [proposal, items]);
-
-  const [include, setInclude] = useState(() => {
-    try {
-      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
-      if (prefs && prefs.include_sections) return { ...ALL_SECTIONS, ...prefs.include_sections };
-    } catch {}
-    return ALL_SECTIONS;
-  });
-  const [exportOpen, setExportOpen] = useState(false);
-  const [showTemplatePrompt, setShowTemplatePrompt] = useState(false);
-  const [style, setStyle] = useState(() => {
-    try {
-      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
-      if (prefs && prefs.template_style) return prefs.template_style;
-    } catch {}
-    return branding?.template_style || 'classic';
-  });
-  const [generating, setGenerating] = useState(false);
-
-  const [sectionOrder, setSectionOrder] = useState(() => {
-    try {
-      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
-      if (prefs && Array.isArray(prefs.section_order) && prefs.section_order.length > 0) return prefs.section_order;
-    } catch {}
-    const base = ['hero', 'highlights', 'itinerary', 'hotels', 'costing', 'inclusions', 'exclusions', 'terms', 'contacts', 'socials'];
-    if (localCustomBlocks) localCustomBlocks.forEach(cb => base.push(cb.id));
-    return base;
-  });
 
   useEffect(() => {
     try {
@@ -559,12 +559,16 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
         <button type="button" onClick={async () => {
           const dest = json?.proposal?.destination || 'Destination';
           const tType = json?.proposal?.preferences?.tour_type || 'Luxury';
+          const gType = json?.proposal?.preferences?.group_type || '';
+          const tCat = json?.proposal?.preferences?.tour_category || '';
           const duration = json?.proposal?.itinerary?.days?.length || 7;
           toast.info('Generating luxury title via AI...');
           try {
             const res = await api.post('/api/generate-title', {
               destination: dest,
               tour_type: tType,
+              group_type: gType,
+              tour_category: tCat,
               duration: duration
             });
             if (res?.title) {

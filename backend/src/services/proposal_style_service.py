@@ -208,7 +208,9 @@ async def auto_phrase_with_profile(
     client_name: str,
     destination: str,
     tour_type: str,
-    client_preferences: dict = None
+    client_preferences: dict = None,
+    group_type: str = "",
+    tour_category: str = ""
 ) -> Dict[str, str]:
     """
     Generates a draft greeting note and trip highlights blurb using the agency's style profile.
@@ -236,7 +238,7 @@ async def auto_phrase_with_profile(
         system_prompt = (
             "You are an expert luxury travel copywriter drafting sections for a travel proposal.\n"
             "Based on the agency's style profile guidelines, generate two sections for the proposal:\n"
-            "1. A personalized greeting/welcome note to the client (addressing them by name, destination, and tour type).\n"
+            "1. A personalized greeting/welcome note to the client (addressing them by name, destination, and tour type/group style).\n"
             "2. A brief, compelling trip highlights blurb summarizing what makes this trip stand out.\n\n"
             "Style Profile to apply:\n"
             f"{profile_json}\n\n"
@@ -251,7 +253,9 @@ async def auto_phrase_with_profile(
         user_prompt = (
             f"Client Name: {client_name or 'Valued Traveler'}\n"
             f"Destination: {destination or 'Selected Destination'}\n"
-            f"Tour Type: {tour_type or 'Concierge Experience'}\n"
+            f"Tour Label: {tour_type or 'Concierge Experience'}\n"
+            f"Who's Travelling (Group Type): {group_type or 'Not specified'}\n"
+            f"Tour Category: {tour_category or tour_type or 'Not specified'}\n"
             f"{pref_str}"
         )
         

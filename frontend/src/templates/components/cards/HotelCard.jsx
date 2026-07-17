@@ -7,12 +7,13 @@ import { formatPrice as libFormatPrice } from '../../../lib/currency.js';
  * Premium Hotel Card component.
  * Displays hotel image, rating, room category, check-in/out dates, pricing, and amenities.
  */
-export default function HotelCard({ item, theme = {}, variant = 'default', currency = 'INR' }) {
+export default function HotelCard({ item, theme = {}, variant = 'default', currency = 'INR', visibilityMode = 'ITEMIZED' }) {
   if (!item) return null;
 
   const title = item.label || item.hotel_name || item.name || 'Luxury Accommodation';
   const desc = item.desc || item.description || item.notes || '';
   const price = Number(item.unit_price || item.price || 0) * Number(item.qty || item.nights || 1);
+  const showItemPrice = price > 0 && (visibilityMode || item?.visibilityMode || item?.visibility_mode || 'ITEMIZED').toUpperCase() === 'ITEMIZED';
   const imgUrl = item.image_url || item.url || item.photo || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';
   const rating = item.rating || item.stars || 5;
   const roomType = item.room_type || item.category || 'Deluxe Suite';
@@ -59,7 +60,7 @@ export default function HotelCard({ item, theme = {}, variant = 'default', curre
               <div className="text-xs" style={{ color: textSec }}>
                 Includes Breakfast & All Taxes
               </div>
-              {price > 0 && (
+              {showItemPrice && (
                 <div className="text-right">
                   <div className="text-xs text-gray-500">Total Price</div>
                   <div className="text-xl font-bold" style={{ color: primaryColor }}>{formatPrice(price)}</div>
@@ -95,7 +96,7 @@ export default function HotelCard({ item, theme = {}, variant = 'default', curre
           <div className="text-xs font-medium text-amber-500">
             {'★'.repeat(Math.min(5, Math.floor(rating)))}
           </div>
-          {price > 0 && (
+          {showItemPrice && (
             <div className="text-base font-bold" style={{ color: primaryColor }}>
               {formatPrice(price)}
             </div>

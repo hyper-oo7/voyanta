@@ -100,6 +100,10 @@ export default function WebViewPage() {
           if (res.proposal.status === 'approved') setProposalStatus('approved');
           else if (res.proposal.status === 'changes_requested') setProposalStatus('changes_requested');
 
+          const mode = (res.proposal?.visibility_mode || 'ITEMIZED').toUpperCase();
+          if (mode === 'HIDDEN') setShowPricing(false);
+          else setShowPricing(true);
+
           const branding = res.proposal?.preferences?.branding;
           if (branding?.theme_color) {
             document.documentElement.style.setProperty('--color-primary', branding.theme_color);
@@ -133,6 +137,7 @@ export default function WebViewPage() {
 
   const p = data?.proposal || {};
   const items = data?.items || [];
+  const visibilityMode = (p.visibility_mode || data?.visibility_mode || 'ITEMIZED').toUpperCase();
   const branding = p.preferences?.branding || {};
   const daysList = p.trip_details?.days || [];
 
@@ -480,16 +485,18 @@ export default function WebViewPage() {
 
           {/* Controls: Theme Toggle & Show Pricing */}
           <div className="flex items-center gap-3 animate-fade-in">
-            {/* Pricing Toggle */}
-            <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none bg-surface-container px-3 py-1.5 rounded-full border border-outline-variant">
-              <input
-                type="checkbox"
-                checked={showPricing}
-                onChange={(e) => setShowPricing(e.target.checked)}
-                className="rounded border-outline text-primary focus:ring-primary h-3.5 w-3.5"
-              />
-              {getUIText(lang, 'showPricing')}
-            </label>
+            {/* Pricing Toggle - only shown when visibility mode is ITEMIZED */}
+            {visibilityMode === 'ITEMIZED' && (
+              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none bg-surface-container px-3 py-1.5 rounded-full border border-outline-variant">
+                <input
+                  type="checkbox"
+                  checked={showPricing}
+                  onChange={(e) => setShowPricing(e.target.checked)}
+                  className="rounded border-outline text-primary focus:ring-primary h-3.5 w-3.5"
+                />
+                {getUIText(lang, 'showPricing')}
+              </label>
+            )}
 
             {/* Dark Mode Toggle */}
             <button
@@ -614,6 +621,7 @@ export default function WebViewPage() {
                     lang={lang}
                     showPricing={showPricing}
                     currency={data?.totals?.currency || 'INR'}
+                    visibilityMode={visibilityMode}
                   />
                 ))}
               </div>
@@ -751,7 +759,7 @@ export default function WebViewPage() {
           />
 
           {/* COST BREAKDOWN CARD */}
-          {showPricing && (
+          {showPricing && visibilityMode !== 'HIDDEN' && (
             <div className="glass-card rounded-2xl p-6 border border-outline-variant shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-outline-variant/60 pb-3">
                 <span className="font-display font-bold text-lg text-on-surface">
@@ -1192,8 +1200,9 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
 }
 
 // Subcomponent: Included Hotel / Flight Item Card
-function ItemCard({ item, lang, showPricing, currency }) {
+function ItemCard({ item, lang, showPricing, currency, visibilityMode = 'ITEMIZED' }) {
   const isHotel = (item.kind || '').toLowerCase() === 'hotel';
+  const showItemRate = showPricing && (visibilityMode || 'ITEMIZED').toUpperCase() === 'ITEMIZED';
 
   return (
     <div className="glass-card rounded-2xl overflow-hidden border border-outline-variant shadow-xs flex flex-col justify-between">
@@ -1224,7 +1233,7 @@ function ItemCard({ item, lang, showPricing, currency }) {
           </p>
         </div>
 
-        {showPricing && (
+        {showItemRate && (
           <div className="mt-4 pt-3 border-t border-outline-variant/40 flex items-center justify-between">
             <span className="text-xs text-on-surface-variant font-medium">Estimated Price</span>
             <span className="font-bold text-primary text-base">

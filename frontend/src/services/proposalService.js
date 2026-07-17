@@ -17,7 +17,7 @@ function notifyDbError(resource, error) {
 }
 
 // Lightweight projection: Exclude heavy JSONB columns (itinerary, trip_details, brief)
-const LIST_COLUMNS = 'id, agency_id, created_by, client_id, name, client_name, status, destination, start_date, end_date, travelers, budget_min, budget_max, currency, total_cost, is_archived, arrival_city, arrival_airport, departure_city, departure_airport, created_at, updated_at, preferences';
+const LIST_COLUMNS = 'id, agency_id, created_by, client_id, name, client_name, status, destination, start_date, end_date, travelers, budget_min, budget_max, currency, visibility_mode, total_cost, is_archived, arrival_city, arrival_airport, departure_city, departure_airport, created_at, updated_at, preferences';
 
 export async function fetchProposals({ page = 0, pageSize = PAGE_SIZE } = {}) {
   const agencyId = getAgencyId();
@@ -118,6 +118,7 @@ export async function createProposal(payload) {
     trip_details: payload.trip_details || null,
     brief: payload.brief || null,
     status: payload.status || 'Draft',
+    visibility_mode: payload.visibility_mode || 'ITEMIZED',
     share_token: secureShareToken,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -280,6 +281,7 @@ export async function archiveProposal(id) {
 function normalize(row) {
   return {
     ...row,
+    visibility_mode: row.visibility_mode || 'ITEMIZED',
     date: row.created_at ? new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
   };
 }

@@ -5,6 +5,7 @@
 import { useRef, useState } from 'react';
 import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 import { api } from '../services/api.js';
+import ImageSearchPicker from './common/ImageSearchPicker.jsx';
 
 const BUCKET = 'agency-assets';
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -13,6 +14,7 @@ export default function LogoUploader({ value, onChange, label = 'Logo', testid =
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [showStockPicker, setShowStockPicker] = useState(false);
 
   const onPick = () => fileRef.current?.click();
   const onClear = () => onChange('');
@@ -36,6 +38,16 @@ export default function LogoUploader({ value, onChange, label = 'Logo', testid =
 
   return (
     <div className="flex flex-col gap-xs" data-testid={testid}>
+      {showStockPicker && (
+        <ImageSearchPicker
+          onSelect={(url) => {
+            onChange(url);
+            setShowStockPicker(false);
+          }}
+          onClose={() => setShowStockPicker(false)}
+          defaultQuery="luxury travel"
+        />
+      )}
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
       <div className="flex flex-col sm:flex-row sm:items-center gap-md">
         <div className="w-20 h-20 rounded-lg border border-outline-variant bg-white overflow-hidden flex items-center justify-center flex-shrink-0">
@@ -44,14 +56,20 @@ export default function LogoUploader({ value, onChange, label = 'Logo', testid =
             : <span className="material-symbols-outlined text-on-surface-variant text-[28px]">image</span>}
         </div>
         <div className="flex-1 flex flex-col gap-xs min-w-0 w-full">
-          <div className="flex gap-xs flex-wrap">
+          <div className="flex gap-xs flex-wrap items-center">
+            <button type="button" onClick={() => setShowStockPicker(true)}
+              className="px-md py-sm bg-secondary text-on-secondary rounded-lg font-label-md hover:bg-secondary/90 flex items-center gap-1 shadow-sm cursor-pointer">
+              <span className="material-symbols-outlined text-[16px]">photo_library</span>
+              Stock Photos
+            </button>
             <button type="button" onClick={onPick} disabled={busy} data-testid={`${testid}-pick`}
-              className="px-md py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low disabled:opacity-60">
+              className="px-md py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low disabled:opacity-60 flex items-center gap-1 cursor-pointer">
+              <span className="material-symbols-outlined text-[16px]">upload</span>
               {busy ? 'Uploading…' : (strVal ? 'Replace image' : 'Upload image')}
             </button>
             {strVal && (
               <button type="button" onClick={onClear} data-testid={`${testid}-clear`}
-                className="px-md py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">
+                className="px-md py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low cursor-pointer">
                 Remove
               </button>
             )}

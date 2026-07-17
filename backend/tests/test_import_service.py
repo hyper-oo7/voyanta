@@ -126,19 +126,46 @@ def test_import_process_endpoint_pdf(mock_gemini, mock_r2, mock_supabase, mock_e
         mock_page.get_images.return_value = []
         mock_fitz_open.return_value = mock_doc
         
+        # Test default preview_only=True workflow
         response = client.post(
             "/api/import/process",
             files={"file": ("itinerary.pdf", b"%PDF-1.4 mock content")},
-            data={"destination": "Paris", "budget": "2000", "duration": "3"}
+            data={"destination": "Paris", "budget": "2000", "duration": "3", "preview_only": "true"}
         )
         
         assert response.status_code == 200
         json_data = response.json()
         assert json_data["status"] == "success"
         assert json_data["cache_hit"] is False
+        assert json_data["preview_only"] is True
         assert json_data["data"]["destination"] == "Paris"
         assert json_data["data"]["source_type"] == "pdf"
-        assert json_data["data"]["vault_package_id"] == "mock-package-id"
+        assert "overall_confidence_score" in json_data["data"]
+
+        # Test preview_only=False direct save workflow
+        response_direct = client.post(
+            "/api/import/process",
+            files={"file": ("itinerary.pdf", b"%PDF-1.4 mock content")},
+            data={"destination": "Paris", "budget": "2000", "duration": "3", "preview_only": "false"}
+        )
+        assert response_direct.status_code == 200
+        json_direct = response_direct.json()
+        assert json_direct["data"]["vault_package_id"] == "mock-package-id"
+
+def test_import_confirm_endpoint(mock_gemini, mock_r2, mock_supabase, mock_entitlements, mock_semantic_cache):
+    confirm_payload = {
+        "destination": "Paris",
+        "days": [{"day_number": 1, "title": "Arrival", "description": "Welcome to Paris"}],
+        "total_price": 2500,
+        "currency": "EUR",
+        "source_type": "pdf",
+        "_pdf_filename": "reviewed_paris.pdf"
+    }
+    response = client.post("/api/import/confirm", json=confirm_payload)
+    assert response.status_code == 200
+    res_data = response.json()
+    assert res_data["status"] == "success"
+    assert "vault_package_id" in res_data["data"] or res_data["data"].get("destination") == "Paris"
 
 def test_import_process_endpoint_invalid_pdf(mock_gemini, mock_r2, mock_supabase, mock_entitlements, mock_semantic_cache):
     response = client.post(

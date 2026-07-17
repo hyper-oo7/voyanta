@@ -146,16 +146,22 @@ Return ONLY a valid JSON object with this exact schema — no markdown, no code 
       ]
     }}
   ],
-  "inclusions": ["exact list from document"],
-  "exclusions": ["exact list from document"],
+  "inclusions": ["exact list of inclusions verbatim from document"],
+  "exclusions": ["exact list of exclusions verbatim from document"],
   "extra_sections": {{
-    "what_to_pack": "verbatim content if present, else null",
+    "what_to_pack": "verbatim content or essentials if present, else null",
     "visa_guidelines": "verbatim content if present, else null",
     "important_notes": "verbatim content if present, else null",
     "damages": "verbatim content if present, else null",
     "cancellation_policy": "verbatim content if present, else null",
     "dos_and_donts": "verbatim content if present, else null",
-    "terms_of_payment": "verbatim content if present, else null"
+    "payment": "verbatim payment terms, 50% advance deposit notes, etc. if present, else null",
+    "terms_and_conditions": "verbatim terms & condition section if present, else null",
+    "amendment": "verbatim amendment policy if present, else null",
+    "refund": "verbatim refund policy if present, else null",
+    "about_transport": "verbatim vehicle / transport notes (e.g. Tawang rules) if present, else null",
+    "arrival_requirements": "verbatim arrival particulars / ID proofs required if present, else null",
+    "ANY_OTHER_HEADING_IN_PDF": "If the PDF contains any other custom sections or headings at the end, add them here verbatim using a lowercase_snake_case key"
   }}
 }}
 
@@ -174,7 +180,7 @@ async def extract_vault_package_from_text(
     agency_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Extract a structured vault package from PDF text using Gemini.
+    Extract a structured vault package from PDF text using Instructor + strict Pydantic schema orchestration.
     This is the ONLY place AI is called for vault processing.
     
     Returns a structured JSON matching the extraction schema above.
@@ -186,46 +192,69 @@ async def extract_vault_package_from_text(
     detected_currency = detect_currency_from_text(full_text)
     logger.info(f"[VaultExtract] Detected currency: {detected_currency}")
 
-    # Build prompt with full document text (Gemini 2.5 Flash has 1M token context)
-    prompt = EXTRACTION_PROMPT_TEMPLATE.format(document_text=full_text)
-
-    cache_meta = {
-        "agency_id": agency_id,
-        "entity_type": "vault_package",
-        "prompt_version": "extraction_v2.0.0",
-        "schema_version": "schema_v2.0.0",
-        "model": "gemini-2.5-flash",
-        "input_text": full_text
-    }
-
-    logger.info("[VaultExtract] Sending to LLM via call_llm for faithful extraction...")
-    content = await call_llm(
-        prompt=prompt,
-        provider="gemini",
-        response_schema={"type": "object"},
-        temperature=0.0,
-        max_tokens=8192,
-        cache_meta=cache_meta
-    )
-
+    # 1. Attempt strict AI Orchestration via Instructor & FinalProposalSchema
+    parsed: Dict[str, Any] = {}
     try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as e:
-        # Try to extract JSON from the response
-        json_match = re.search(r'\{[\s\S]+\}', content)
-        if json_match:
-            parsed = json.loads(json_match.group())
-        else:
-            raise ValueError(f"Gemini returned invalid JSON: {e}\nResponse preview: {content[:500]}")
+        from src.services.ai_orchestration_service import orchestrate_proposal_extraction
+        logger.info("[VaultExtract] Orchestrating proposal extraction via Instructor & strict Pydantic schema...")
+        proposal_model = await orchestrate_proposal_extraction(
+            extraction_input=full_text,
+            destination_hint=destination_hint,
+            agency_id=agency_id
+        )
+        parsed = proposal_model.model_dump(by_alias=True)
+        parsed["model_used"] = getattr(proposal_model, "model_used", "gemini-2.5-flash")
+    except Exception as orch_err:
+        logger.warning(f"[VaultExtract] Instructor orchestration encountered issue ({orch_err}); falling back to standard call_llm flow.")
+        # Build prompt with full document text (Gemini 2.5 Flash has 1M token context)
+        prompt = EXTRACTION_PROMPT_TEMPLATE.format(document_text=full_text)
 
-    # Apply detected currency if AI missed it or defaulted to USD
-    if parsed.get("currency", "USD") == "USD" and detected_currency != "USD":
-        logger.info(f"[VaultExtract] Correcting currency from USD to {detected_currency}")
-        parsed["currency"] = detected_currency
+        cache_meta = {
+            "agency_id": agency_id,
+            "entity_type": "vault_package",
+            "prompt_version": "extraction_v2.0.0",
+            "schema_version": "schema_v2.0.0",
+            "model": "gemini-2.5-flash",
+            "input_text": full_text
+        }
 
-    # Use destination hint if AI didn't extract a destination
-    if not parsed.get("destination") and destination_hint:
-        parsed["destination"] = destination_hint
+        logger.info("[VaultExtract] Sending to LLM via call_llm for faithful extraction...")
+        content = await call_llm(
+            prompt=prompt,
+            provider="gemini",
+            response_schema={"type": "object"},
+            temperature=0.0,
+            max_tokens=8192,
+            cache_meta=cache_meta
+        )
+
+        import json_repair
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as e:
+            try:
+                repaired = json_repair.loads(content)
+                if isinstance(repaired, dict):
+                    parsed = repaired
+                else:
+                    json_match = re.search(r'\{[\s\S]+\}', content)
+                    if json_match:
+                        parsed = json_repair.loads(json_match.group())
+                    else:
+                        raise ValueError(f"Gemini returned non-dict structure after repair: {type(repaired)}")
+            except Exception as repair_err:
+                raise ValueError(f"Gemini returned invalid JSON ({e}); repair failed: {repair_err}\nResponse preview: {content[:500]}")
+
+        # Apply detected currency if AI missed it or defaulted to USD
+        if parsed.get("currency", "USD") == "USD" and detected_currency != "USD":
+            logger.info(f"[VaultExtract] Correcting currency from USD to {detected_currency}")
+            parsed["currency"] = detected_currency
+
+        # Use destination hint if AI didn't extract a destination
+        if not parsed.get("destination") and destination_hint:
+            parsed["destination"] = destination_hint
+
+        parsed["model_used"] = cache_meta.get("model_used", "gemini-2.5-flash")
 
     # Attach cover image (first extracted image from PDF page 1)
     if images and len(images) > 0:
@@ -247,14 +276,16 @@ async def extract_vault_package_from_text(
                     img_idx += 1
 
     # Clean up null extra_sections
-    extra = parsed.get("extra_sections") or {}
-    parsed["extra_sections"] = {k: v for k, v in extra.items() if v and isinstance(v, str) and v.strip()}
-    parsed["model_used"] = cache_meta.get("model_used", "gemini-2.5-flash")
+    if isinstance(parsed.get("extra_sections"), dict):
+        extra = parsed.get("extra_sections") or {}
+        parsed["extra_sections"] = {k: v for k, v in extra.items() if v and isinstance(v, str) and v.strip()}
+    else:
+        parsed["extra_sections"] = {}
 
     logger.info(
         f"[VaultExtract] Extraction complete — destination={parsed.get('destination')}, "
         f"days={len(parsed.get('days', []))}, currency={parsed.get('currency')}, "
-        f"total_price={parsed.get('total_price')}, extra_sections={list(parsed['extra_sections'].keys())}"
+        f"total_price={parsed.get('total_price')}, extra_sections={list(parsed.get('extra_sections', {}).keys())}"
     )
 
     return parsed

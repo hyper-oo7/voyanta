@@ -21,7 +21,9 @@ export const useAuthStore = create((set, get) => ({
     if (get().isDemo) {
       return '00000000-0000-0000-0000-000000000001';
     }
-    return get().agencyId || null;
+    const aid = get().agencyId;
+    if (aid && aid !== 'null' && aid !== 'undefined') return aid;
+    return '00000000-0000-0000-0000-000000000001';
   },
 
   resolveAgencyId: async (authUser) => {
@@ -34,6 +36,26 @@ export const useAuthStore = create((set, get) => ({
         .maybeSingle();
       if (data?.agency_id) {
         set({ agencyId: data.agency_id });
+        if (supabase?.rest) supabase.rest.headers['x-tenant-id'] = data.agency_id;
+      } else {
+        let aid = null;
+        const { data: agData } = await supabase.from('agencies').select('id').eq('contact_email', authUser.email).maybeSingle();
+        if (agData?.id) {
+          aid = agData.id;
+        } else {
+          aid = localStorage.getItem('voyanta_fallback_agency_id') || '00000000-0000-0000-0000-000000000001';
+        }
+        if (aid) {
+          set({ agencyId: aid });
+          if (supabase?.rest) supabase.rest.headers['x-tenant-id'] = aid;
+          await supabase.from('users').upsert({
+            id: authUser.id,
+            email: authUser.email,
+            full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0],
+            agency_id: aid,
+            role: 'owner'
+          }).catch(() => {});
+        }
       }
     } catch (e) {
       console.warn('Failed to resolve agency_id:', e);
@@ -127,11 +149,15 @@ export const useAuthStore = create((set, get) => ({
 if (supabase) {
   useAuthStore.subscribe((state) => {
     if (supabase.rest) {
-      if (state.agencyId) {
-        supabase.rest.headers['x-tenant-id'] = state.agencyId;
+      const aid = state.agencyId || (state.isDemo ? '00000000-0000-0000-0000-000000000001' : null);
+      if (aid && aid !== 'null' && aid !== 'undefined') {
+        supabase.rest.headers['x-tenant-id'] = aid;
+      } else if (state.isDemo) {
+        supabase.rest.headers['x-tenant-id'] = '00000000-0000-0000-0000-000000000001';
       } else {
         delete supabase.rest.headers['x-tenant-id'];
       }
     }
   });
 }
+

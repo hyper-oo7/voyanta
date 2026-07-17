@@ -35,6 +35,21 @@ async def get_cached_extraction(
         
     cache_key, _ = compute_cache_key(agency_id, model, prompt_version, schema_version, normalized_input)
     
+    # Check Upstash Redis first
+    try:
+        from src.core.redis_client import get_redis_client
+        redis_client = get_redis_client()
+        if redis_client:
+            redis_data = await redis_client.get(f"ai_cache:{cache_key}")
+            if redis_data:
+                parsed_out = json.loads(redis_data) if isinstance(redis_data, str) else redis_data
+                saved_tokens = (len(normalized_input) + len(json.dumps(parsed_out))) // 4
+                await increment_hits(saved_tokens)
+                logger.info(f"[AICache] Cache HIT in Upstash Redis for key: {cache_key} (Saved ~{saved_tokens} tokens)")
+                return parsed_out
+    except Exception as e:
+        logger.debug(f"[AICache] Redis check error: {e}")
+
     try:
         res = sb.table("ai_cache").select("output_r2_key, output_json").eq("cache_key", cache_key).maybeSingle().execute()
         if res.data:
@@ -52,6 +67,15 @@ async def get_cached_extraction(
                     except Exception:
                         pass
                 
+                # Warm Upstash Redis
+                try:
+                    from src.core.redis_client import get_redis_client
+                    rc = get_redis_client()
+                    if rc and isinstance(output, (dict, list)):
+                        await rc.setex(f"ai_cache:{cache_key}", 2592000, json.dumps(output))
+                except Exception:
+                    pass
+
                 # Increment hit stats
                 saved_tokens = (len(normalized_input) + len(json.dumps(output))) // 4
                 await increment_hits(saved_tokens)
@@ -112,6 +136,16 @@ async def save_cached_extraction(
         logger.info(f"[AICache] Cached extraction successfully under key: {cache_key} (r2_key: {output_r2_key})")
     except Exception as e:
         logger.error(f"[AICache] Failed to store cache record: {e}")
+
+    # Also store directly in Upstash Redis for instant access
+    if output_json is not None:
+        try:
+            from src.core.redis_client import get_redis_client
+            rc = get_redis_client()
+            if rc and isinstance(output_json, (dict, list)):
+                await rc.setex(f"ai_cache:{cache_key}", 2592000, json.dumps(output_json))
+        except Exception as re_err:
+            logger.debug(f"[AICache] Failed to save to Upstash Redis: {re_err}")
 
 async def increment_hits(saved_tokens: int):
     """

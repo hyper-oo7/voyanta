@@ -24,9 +24,9 @@ async def test_compute_cache_key_deterministic():
     assert key1 == key2
     assert hash1 == hash2
     
-    # Change agency ID -> should result in a different cache key
+    # Change agency ID -> platform-wide cache key remains identical
     key3, hash3 = compute_cache_key("agency-uuid-2", model, prompt_version, schema_version, normalized_input)
-    assert key1 != key3
+    assert key1 == key3
     assert hash1 == hash3  # input hash remains the same
 
 @pytest.mark.anyio

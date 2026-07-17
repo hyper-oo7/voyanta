@@ -30,22 +30,24 @@ class DistributedRateLimiterMiddleware(BaseHTTPMiddleware):
         self._last_eviction = time.time()
         
         # Try initializing Redis if configured
-        redis_url = os.environ.get("REDIS_URL") or os.environ.get("REDIS_HOST")
-        if HAS_REDIS and redis_url:
-            try:
-                self.redis_client = redis.from_url(
-                    redis_url if redis_url.startswith("redis") else f"redis://{redis_url}:6379",
-                    encoding="utf-8",
-                    decode_responses=True
-                )
-                logger.info("[RateLimiter] Connected to Redis distributed backend")
-            except Exception as e:
-                logger.warning(f"[RateLimiter] Redis init failed, falling back to local cache: {e}")
-                self.redis_client = None
+        try:
+            from src.core.redis_client import get_redis_client
+            self.redis_client = get_redis_client()
+            if self.redis_client:
+                logger.info("[RateLimiter] Connected to Redis/Upstash distributed backend")
+        except Exception as e:
+            logger.warning(f"[RateLimiter] Redis init failed, falling back to local cache: {e}")
+            self.redis_client = None
 
     async def _check_redis_limit(self, key: str, now: float) -> bool:
         """Returns True if request is allowed, False if rate limit exceeded."""
         try:
+            if not self.redis_client:
+                from src.core.redis_client import get_redis_client
+                self.redis_client = get_redis_client()
+            if not self.redis_client:
+                return self._check_memory_limit(key, now)
+
             bucket_key = f"ratelimit:{key}:{int(now // self.window_seconds)}"
             count = await self.redis_client.incr(bucket_key)
             if count == 1:

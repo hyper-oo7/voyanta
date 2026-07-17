@@ -15,6 +15,7 @@ export default function EditorialTemplate(props) {
   const currency = data.totals?.currency || 'INR';
   const days = Array.isArray(p.itinerary?.days) ? p.itinerary.days : (Array.isArray(p.itinerary) ? p.itinerary : (Array.isArray(p.days) ? p.days : []));
   const brief = p.brief || {};
+  const visibilityMode = (p.visibility_mode || data.visibility_mode || 'ITEMIZED').toUpperCase();
   const travelers = Number(brief.num_adults ?? p.travelers ?? 1) + Number(brief.num_children ?? 0) || Number(p.travelers) || 1;
 
   const [bgImage, setBgImage] = useState('');
@@ -186,7 +187,7 @@ export default function EditorialTemplate(props) {
                   <p className="text-xs text-slate-500 m-0 mb-4">{hotel.meta?.location || p.destination || 'Prime City Location'}</p>
                   <div className="flex justify-between items-center pt-3 border-t border-slate-100 text-xs font-semibold text-slate-700">
                     <span>{hotel.qty || 1} Night(s) Included</span>
-                    <span className="text-rose-600 font-bold">{formatPrice(hotel.unit_price || 0, currency)}</span>
+                    {visibilityMode === 'ITEMIZED' && <span className="text-rose-600 font-bold">{formatPrice(hotel.unit_price || 0, currency)}</span>}
                   </div>
                 </div>
               </div>
@@ -196,20 +197,24 @@ export default function EditorialTemplate(props) {
       )}
 
       {/* ─── Investment / Costing ────────────────────────────────────────────── */}
-      {(include.costing ?? true) && total > 0 && (
+      {(include.costing ?? true) && total > 0 && visibilityMode !== 'HIDDEN' && (
         <section className="editorial-page">
           <SectionHeader title="Investment" subtitle="Cost Breakdown" accentColor="#e11d48" />
           <table className="costing-table">
             <thead>
               <tr>
                 <th>Service / Component</th>
-                <th className="text-center">Qty / Duration</th>
-                <th className="text-right">Rate</th>
+                {visibilityMode === 'ITEMIZED' && (
+                  <>
+                    <th className="text-center">Qty / Duration</th>
+                    <th className="text-right">Rate</th>
+                  </>
+                )}
                 <th className="text-right">Total ({currency})</th>
               </tr>
             </thead>
             <tbody>
-              {Object.entries(items).flatMap(([kind, list]) =>
+              {visibilityMode === 'ITEMIZED' && Object.entries(items).flatMap(([kind, list]) =>
                 list.map((it, idx) => {
                   const qty = Number(it.qty) || 1;
                   const unit = Number(it.unit_price) || 0;
@@ -230,7 +235,7 @@ export default function EditorialTemplate(props) {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan="3" className="pt-6 text-right font-bold text-slate-500 uppercase tracking-wider text-xs">Total Investment</td>
+                <td colSpan={visibilityMode === 'ITEMIZED' ? 3 : 1} className="pt-6 text-right font-bold text-slate-500 uppercase tracking-wider text-xs">Total Investment</td>
                 <td className="pt-6 text-right font-black text-2xl text-rose-600">{formatPrice(total, currency)}</td>
               </tr>
             </tfoot>

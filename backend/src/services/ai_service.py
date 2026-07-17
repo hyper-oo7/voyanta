@@ -254,11 +254,19 @@ async def translate_proposal_content(proposal_data: dict, target_lang: str, glos
         logger.exception(f"[AI Translate] Translation failed: {e}. Returning original data.")
         return proposal_data
 
-async def generate_luxury_title(destination: str, tour_type: str, duration: int) -> str:
+async def generate_luxury_title(
+    destination: str, 
+    tour_type: str, 
+    duration: int, 
+    group_type: str = "", 
+    tour_category: str = ""
+) -> str:
     api_key_gemini = os.environ.get("GEMINI_API_KEY")
+    tour_desc = [group_type, tour_category or tour_type].filter(Boolean) if hasattr([group_type], "filter") else [x for x in (group_type, tour_category or tour_type) if x]
+    tour_label = " · ".join(tour_desc) if tour_desc else (tour_type or "")
     prompt = (
         f"Generate a captivating, luxury travel proposal title for a {duration}-day trip to {destination or 'Your Destination'}"
-        f"{' (' + tour_type + ')' if tour_type else ''}. "
+        f"{' (' + tour_label + ')' if tour_label else ''}. "
         "Return ONLY the title string, no quotes, no extra text. Example: Enchanting Amalfi Coast: 7 Days of Executive Coastal Luxury"
     )
     if api_key_gemini:
@@ -269,7 +277,7 @@ async def generate_luxury_title(destination: str, tour_type: str, duration: int)
         res = await call_gemini_with_retry(payload, api_key_gemini)
         return res["candidates"][0]["content"]["parts"][0]["text"].strip().strip('"').strip("'")
     else:
-        return f"{destination or 'Luxury'} Collection: A Curated {duration}-Day {tour_type or 'Journey'}"
+        return f"{destination or 'Luxury'} Collection: A Curated {duration}-Day {tour_label or 'Journey'}"
 
 async def enhance_luxury_text(
     text: str,
@@ -283,13 +291,20 @@ async def enhance_luxury_text(
         return text
 
     if mode == "day_description":
-        length_str = f" The length of the response should be: {length}." if length else " The response should be a rich, descriptive length."
+        length_norm = (length or "medium").lower().strip()
+        if length_norm in ("brief", "short"):
+            length_instruction = "The response must be brief. Tell just about what is necessary, nothing extra."
+        elif length_norm in ("detailed", "long"):
+            length_instruction = "The response must be detailed and rich. Give detailed descriptions of the place, activities, and ambiance, separated into distinct paragraphs (do NOT combine everything into one single paragraph)."
+        else: # medium
+            length_instruction = "The response must be of medium length (usually 1 well-structured paragraph). Tell something about the place and how the traveler will feel experiencing it."
+
         format_str = f" The format of the response should be: {format}." if format else " Return the response in clean paragraphs."
         prompt = (
             f"You are a luxury travel curator writing about {destination or 'this destination'}. "
             "Expand and rewrite the following itinerary day description to create an immersive, sensory luxury experience. "
             "Make the traveler feel like they are personally in that place experiencing the sights, sounds, and executive comforts. "
-            f"{length_str}{format_str} "
+            f"{length_instruction}{format_str} "
             "Return ONLY the expanded text, no quotes, intro, or markdown commentary.\n\n"
             f"Original text: {text}"
         )

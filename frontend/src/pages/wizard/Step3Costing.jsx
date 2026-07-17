@@ -162,6 +162,22 @@ export function Step3Costing({ proposal, setProposal, proposalId, items, setItem
                 {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
               </select>
             </div>
+            <div className="flex items-center gap-2 bg-surface-container-lowest px-3 py-1 rounded-lg border border-outline-variant">
+              <span className="material-symbols-outlined text-sm text-on-surface-variant">visibility</span>
+              <select
+                value={proposal?.visibility_mode || 'ITEMIZED'}
+                onChange={(e) => {
+                  const mode = e.target.value;
+                  if (setProposal) setProposal(s => ({ ...s, visibility_mode: mode }));
+                  useProposalStore.getState().updateProposal({ visibility_mode: mode });
+                }}
+                className="bg-transparent font-label-md text-primary font-bold outline-none cursor-pointer"
+              >
+                <option value="ITEMIZED">Itemized Pricing</option>
+                <option value="TOTAL_ONLY">Total Only</option>
+                <option value="HIDDEN">Hidden Pricing</option>
+              </select>
+            </div>
           </div>
           <select onChange={(e) => { if (e.target.value) { onAdd(e.target.value); e.target.value=''; } }}
             data-testid="add-line-select"

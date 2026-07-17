@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: voyanta-fastapi-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: standard
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: ENV
+        value: production
+      - key: REDIS_URL
+        fromDatabase:
+          name: voyanta-upstash-redis
+          property: connectionString
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: SQS_QUEUE_URL
+        sync: false
+      - key: AWS_REGION
+        value: us-east-1

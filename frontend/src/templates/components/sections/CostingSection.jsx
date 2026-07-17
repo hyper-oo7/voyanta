@@ -33,6 +33,28 @@ export default function CostingSection({ items = [], proposal = {}, theme = {}, 
   // If no items have price, check proposal overall total
   const proposalTotal = proposal.total_amount || proposal.price || total || 0;
 
+  const visibilityMode = (proposal?.visibility_mode || 'ITEMIZED').toUpperCase();
+  if (visibilityMode === 'HIDDEN') return null;
+  if (visibilityMode === 'TOTAL_ONLY') {
+    return (
+      <section className="py-16 px-8 md:px-16 max-w-5xl mx-auto">
+        <GlassCard theme={theme} className="p-8 md:p-12 text-center border">
+          <span className="text-xs uppercase tracking-widest font-semibold block mb-2" style={{ color: accentColor }}>Quotation Summary</span>
+          <h2 className="text-3xl md:text-4xl font-serif font-bold mb-6" style={{ color: primaryColor, fontFamily: theme.typography?.headline }}>
+            Total Trip Investment
+          </h2>
+          <div className="text-4xl md:text-6xl font-serif font-bold my-4" style={{ color: accentColor }}>
+            {formatPrice(proposalTotal)}
+          </div>
+          <p className="text-sm mt-4 text-gray-500 max-w-md mx-auto">
+            Inclusive of all curated accommodations, transfers, activities, and applicable taxes.
+          </p>
+        </GlassCard>
+        <SectionDivider variant={dividerType} theme={theme} />
+      </section>
+    );
+  }
+
   // ─── 1. Luxury Invoice Variant ─────────────────────────────────────────
   if (variant === 'luxury-invoice') {
     return (

@@ -157,13 +157,16 @@ export default function ProposalWizard() {
           const headers = { 'Content-Type': 'application/json' };
           if (token) headers['Authorization'] = `Bearer ${token}`;
 
+          const tourLabel = [client?.group_type, client?.tour_category].filter(Boolean).join(' · ') || client?.tour_type || 'Luxury Voyage';
           const res = await fetch('/api/proposals/auto-phrase', {
             method: 'POST',
             headers,
             body: JSON.stringify({
               client_name: client?.customer_name || 'Valued Traveler',
               destination: dest,
-              tour_type: client?.tour_type || 'Luxury Voyage',
+              tour_type: tourLabel,
+              group_type: client?.group_type || '',
+              tour_category: client?.tour_category || client?.tour_type || '',
               client_preferences: {
                 dietary: client?.dietary || '',
                 pace: client?.pace || '',

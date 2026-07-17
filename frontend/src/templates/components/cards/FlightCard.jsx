@@ -7,7 +7,7 @@ import { formatPrice as libFormatPrice } from '../../../lib/currency.js';
  * Flight Card component.
  * Displays airline, flight number, departure/arrival times, routing, and cabin class.
  */
-export default function FlightCard({ item, theme = {}, currency = 'INR' }) {
+export default function FlightCard({ item, theme = {}, currency = 'INR', visibilityMode = 'ITEMIZED' }) {
   if (!item) return null;
 
   const airline = item.airline || item.label || item.name || 'Flight Service';
@@ -18,6 +18,7 @@ export default function FlightCard({ item, theme = {}, currency = 'INR' }) {
   const arrTime = item.arrival_time || item.arr || '12:30';
   const cabin = item.cabin_class || item.class || 'Economy';
   const price = Number(item.unit_price || item.price || 0) * Number(item.qty || 1);
+  const showItemPrice = price > 0 && (visibilityMode || item?.visibilityMode || item?.visibility_mode || 'ITEMIZED').toUpperCase() === 'ITEMIZED';
 
   const primaryColor = theme.colors?.primary || '#1a1a2e';
   const accentColor = theme.colors?.accent || '#c41e3a';
@@ -63,7 +64,7 @@ export default function FlightCard({ item, theme = {}, currency = 'INR' }) {
         </div>
       </div>
 
-      {price > 0 && (
+      {showItemPrice && (
         <div className="pt-3 border-t flex justify-end items-center" style={{ borderColor: theme.colors?.border }}>
           <span className="text-xs mr-2" style={{ color: textSec }}>Price per Passenger:</span>
           <span className="font-bold text-base" style={{ color: primaryColor }}>{formatPrice(price)}</span>

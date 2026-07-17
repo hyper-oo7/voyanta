@@ -144,8 +144,11 @@ export async function inviteMember({ email, name, role = 'Editor' }) {
 }
 
 export async function updateMemberRole(id, newRole, isInvite = false) {
+  if (!id || id === 'null' || id === 'undefined') {
+    throw new Error('Invalid team member ID.');
+  }
   const agencyId = getAgencyId();
-  const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
+  const isProd = supabase && agencyId !== DEMO_AGENCY_ID && !String(id).startsWith('u_demo');
 
   if (isProd) {
     const table = isInvite ? 'team_invitations' : 'users';
@@ -182,8 +185,11 @@ export async function updateMemberRole(id, newRole, isInvite = false) {
 }
 
 export async function removeMember(id, isInvite = false) {
+  if (!id || id === 'null' || id === 'undefined') {
+    throw new Error('Invalid team member ID.');
+  }
   const agencyId = getAgencyId();
-  const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
+  const isProd = supabase && agencyId !== DEMO_AGENCY_ID && !String(id).startsWith('u_demo');
 
   if (isProd) {
     if (isInvite) {

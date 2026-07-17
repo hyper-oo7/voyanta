@@ -122,9 +122,9 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
                           onChange={(e) => setAiLength(e.target.value)}
                           className="w-full text-xs p-1.5 rounded-lg bg-surface border border-outline-variant text-on-surface focus:outline-none"
                         >
-                          <option value="short">Short (1-2 sentences)</option>
-                          <option value="medium">Medium (1 paragraph)</option>
-                          <option value="long">Long (2-3 paragraphs)</option>
+                          <option value="brief">Brief (essentials only)</option>
+                          <option value="medium">Medium (place & feeling)</option>
+                          <option value="detailed">Detailed (multi-paragraph)</option>
                         </select>
                       </div>
                       <div>

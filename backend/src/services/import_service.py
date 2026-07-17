@@ -8,7 +8,8 @@ logger = logging.getLogger(__name__)
 
 def build_normalized_fields(data: Dict[str, Any], source_type: str) -> Dict[str, Any]:
     """
-    Constructs the 'fields' dictionary mapping each path to its confidence metadata.
+    Constructs the 'fields' dictionary mapping each path to its confidence metadata,
+    doubt status, and doubt_reason for UI red wavy underlining.
     """
     fields = {}
     tracked_paths = [
@@ -19,34 +20,71 @@ def build_normalized_fields(data: Dict[str, Any], source_type: str) -> Dict[str,
         val = data.get(path)
         is_missing = val is None or val == "" or val == [] or val == {}
         
+        doubtful = False
+        doubt_reason = ""
+        
         if is_missing:
             source = "missing"
             confidence = 0.0
             needs_review = True
+            doubtful = True
+            doubt_reason = f"Missing {path.replace('_', ' ')} from document."
         else:
             if path == "currency" and source_type == "pdf":
                 source = "deterministic"
                 confidence = 1.0
+                needs_review = False
             else:
                 source = "ai"
-                confidence = 0.9
-            
-            if path == "total_price" and (val is None or val == 0):
-                needs_review = True
-            else:
+                confidence = 0.95
                 needs_review = False
+            
+            if path == "total_price":
+                if val is None or val == 0:
+                    needs_review = True
+                    doubtful = True
+                    confidence = 0.4
+                    doubt_reason = "Total price not explicitly stated or extracted as 0."
+                elif isinstance(val, (int, float)) and val < 100:
+                    needs_review = True
+                    doubtful = True
+                    confidence = 0.7
+                    doubt_reason = f"Total price ({val}) appears unusually low for a package."
+            elif path == "destination":
+                if not val or len(str(val).strip()) < 3:
+                    needs_review = True
+                    doubtful = True
+                    confidence = 0.6
+                    doubt_reason = "Destination name is ambiguous or very short."
+            elif path == "hotels":
+                if isinstance(val, list):
+                    missing_prices = sum(1 for h in val if h.get("price_per_night") is None)
+                    if missing_prices > 0:
+                        needs_review = True
+                        doubtful = True
+                        confidence = round(max(0.6, 0.95 - (missing_prices * 0.1)), 2)
+                        doubt_reason = f"{missing_prices} hotel(s) missing itemized night price."
+            elif path == "days":
+                if isinstance(val, list) and len(val) == 0:
+                    needs_review = True
+                    doubtful = True
+                    confidence = 0.2
+                    doubt_reason = "No itinerary days extracted from document."
                 
         fields[path] = {
             "value": val,
             "confidence": confidence,
             "source": source,
-            "needs_review": needs_review
+            "needs_review": needs_review,
+            "doubtful": doubtful,
+            "doubt_reason": doubt_reason
         }
     return fields
 
 def compile_normalized_package(extracted: Dict[str, Any], source_type: str, destination_hint: str = "", budget_hint: float = 0.0, currency_hint: str = "INR") -> Dict[str, Any]:
     """
-    Combines extracted package fields with flat list conversions to produce the standard schema.
+    Combines extracted package fields with flat list conversions to produce the standard schema,
+    computing exact overall_confidence_score across all fields.
     """
     days = extracted.get("days", [])
     hotels = []
@@ -87,7 +125,15 @@ def compile_normalized_package(extracted: Dict[str, Any], source_type: str, dest
         "cover_image_url": extracted.get("cover_image_url", "")
     }
     
-    normalized["fields"] = build_normalized_fields(normalized, source_type)
+    fields_dict = build_normalized_fields(normalized, source_type)
+    normalized["fields"] = fields_dict
+    
+    # Calculate overall confidence score across primary fields
+    conf_scores = [f_meta["confidence"] for f_meta in fields_dict.values()]
+    overall_conf = round(sum(conf_scores) / len(conf_scores), 2) if conf_scores else 0.85
+    normalized["overall_confidence_score"] = overall_conf
+    normalized["confidence_score"] = overall_conf
+    
     return normalized
 
 class ImportExtractor(ABC):

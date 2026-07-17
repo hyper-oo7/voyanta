@@ -32,11 +32,12 @@ export function isDemoSession() {
   }
 }
 
-// Dynamic agency ID — resolves from auth store
+// Dynamic agency ID — resolves from auth store with fallback
 export function getAgencyId() {
   try {
-    return useAuthStore.getState().getAgencyId();
-  } catch {
-    return null;
-  }
+    const aid = useAuthStore.getState().getAgencyId();
+    if (aid && aid !== 'null' && aid !== 'undefined') return aid;
+  } catch {}
+  return DEMO_AGENCY_ID;
 }
+

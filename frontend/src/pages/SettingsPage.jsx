@@ -39,9 +39,18 @@ const fetchActivityLogs = async () => {
 export default function SettingsPage() {
   const { user, isDemo, signOut } = useAuthStore();
   const [activeTab, setActiveTab] = useState('plan');
+  const [localPlan, setLocalPlan] = useState(() => localStorage.getItem('voyanta_active_plan') || 'Starter');
   
+  useEffect(() => {
+    const handlePlanUpdate = () => {
+      setLocalPlan(localStorage.getItem('voyanta_active_plan') || 'Starter');
+    };
+    window.addEventListener('voyanta:plan-updated', handlePlanUpdate);
+    return () => window.removeEventListener('voyanta:plan-updated', handlePlanUpdate);
+  }, []);
+
   const { data: subscription } = useQuery({ queryKey: ['subscription'], queryFn: fetchSubscription });
-  const isEnterprise = subscription?.plan === 'Enterprise';
+  const isEnterprise = localPlan === 'Enterprise' || subscription?.plan === 'Enterprise';
 
   return (
     <div className="space-y-6">
@@ -109,12 +118,22 @@ function PlanSettings({ subscription }) {
   const [activePlan, setActivePlan] = useState(() => localStorage.getItem('voyanta_active_plan') || subscription?.plan || 'Starter');
   const [billingCycle, setBillingCycle] = useState('monthly');
 
-  const handleSwitchPlan = (planName) => {
+  const handleSwitchPlan = async (planName) => {
     localStorage.setItem('voyanta_active_plan', planName);
     setActivePlan(planName);
     window.dispatchEvent(new CustomEvent('voyanta:plan-updated'));
     logActivity('subscription', `Switched active subscription tier to ${planName} from Settings`);
     toast.success(`Switched to ${planName} Plan! Features and limits updated immediately.`);
+    if (supabase) {
+      try {
+        const agencyId = getAgencyId();
+        await supabase.from('subscriptions').upsert({
+          agency_id: agencyId,
+          plan: planName,
+          status: 'active'
+        }).catch(() => {});
+      } catch {}
+    }
   };
 
   const plans = [
@@ -325,6 +344,7 @@ function ProfileSettings({ user, signOut, isDemo, isEnterprise }) {
 }
 
 function TeamSettings() {
+  const { user } = useAuthStore();
   const toast = useToast();
   const queryClient = useQueryClient();
   const [activePlan, setActivePlan] = useState(() => localStorage.getItem('voyanta_active_plan') || 'Starter');
@@ -539,27 +559,43 @@ function TeamSettings() {
                   No team members found.
                 </td>
               </tr>
-            ) : combinedTeam.map(member => (
+            ) : combinedTeam.map(member => {
+              const isOwnerOrSelf = member.role === 'Owner' || member.role === 'owner' || member.email?.toLowerCase() === user?.email?.toLowerCase() || member.id === user?.id || member.email?.toLowerCase() === 'raman@voyanta.com';
+              return (
               <tr key={member.id} className="hover:bg-surface-container-highest/50 transition-colors">
                 <td className="p-4">
                   <div className="font-bold text-on-surface text-sm flex items-center gap-2">
                     {member.name}
                     {member.isInvite && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded uppercase font-bold">Pending</span>}
+                    {isOwnerOrSelf && <span className="text-[10px] bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded uppercase font-bold">Agency Owner</span>}
                   </div>
                   <div className="text-xs text-on-surface-variant">{member.email}</div>
                 </td>
                 <td className="p-4">
-                  <select
-                    value={member.role}
-                    onChange={(e) => handleRoleChange(member.id, e.target.value, member.isInvite)}
-                    className="px-2 py-1 rounded bg-white border border-outline text-xs font-bold text-primary cursor-pointer"
-                  >
-                    <option value="Editor">Editor (No Delete)</option>
-                    <option value="Admin">Admin (Full Access)</option>
-                  </select>
-                  <div className="text-[10px] text-on-surface-variant mt-0.5">
-                    {member.role === 'Admin' ? 'Can edit, send & delete proposals' : 'Can edit & send, cannot delete'}
-                  </div>
+                  {isOwnerOrSelf ? (
+                    <div>
+                      <span className="px-2.5 py-1 bg-primary/10 text-primary rounded-md font-bold text-xs flex items-center gap-1.5 w-fit">
+                        <span className="material-symbols-outlined text-[15px]">shield_person</span> Owner / Default Admin (Full Access)
+                      </span>
+                      <div className="text-[10px] text-on-surface-variant mt-0.5">
+                        Default agency creator with permanent full administrative and deletion access
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={member.role}
+                        onChange={(e) => handleRoleChange(member.id, e.target.value, member.isInvite)}
+                        className="px-2 py-1 rounded bg-white border border-outline text-xs font-bold text-primary cursor-pointer"
+                      >
+                        <option value="Editor">Editor (No Delete)</option>
+                        <option value="Admin">Admin (Full Access)</option>
+                      </select>
+                      <div className="text-[10px] text-on-surface-variant mt-0.5">
+                        {member.role === 'Admin' ? 'Can edit, send & delete proposals' : 'Can edit & send, cannot delete'}
+                      </div>
+                    </>
+                  )}
                 </td>
                 <td className="p-4">
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${member.status === 'Active' ? 'bg-green-500/10 text-green-600' : 'bg-amber-500/10 text-amber-600'}`}>
@@ -567,14 +603,17 @@ function TeamSettings() {
                   </span>
                 </td>
                 <td className="p-4 text-right">
-                  {member.email !== 'raman@voyanta.com' && member.role !== 'Owner' && (
+                  {isOwnerOrSelf ? (
+                    <span className="text-[10px] text-on-surface-variant italic">Permanent Admin</span>
+                  ) : (
                     <button type="button" onClick={() => handleRemove(member.id, member.isInvite)} className="text-error text-xs font-bold hover:underline">
                       {member.isInvite ? 'Revoke Invite' : 'Revoke Access'}
                     </button>
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

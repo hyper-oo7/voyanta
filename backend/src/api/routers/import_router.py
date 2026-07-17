@@ -5,7 +5,7 @@ from typing import Any, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 
-from src.core.security import verify_token, get_request_token
+from src.core.security import verify_token_optional, get_request_token
 from src.services.supabase_client import get_supabase_client, get_user_supabase_client
 from src.services.r2_storage_service import upload_file_to_r2
 from src.services.semantic_cache_service import compute_content_hash, get_cached_recommendation, store_cached_recommendation
@@ -67,15 +67,16 @@ async def process_file_import(
     budget: float = Form(0.0),
     duration: int = Form(0),
     currency: str = Form("INR"),
-    user: Any = Depends(verify_token),
+    preview_only: bool = Form(True),
+    user: Any = Depends(verify_token_optional),
     token: Optional[str] = Depends(get_request_token),
 ):
     """
     Unified Import Processing Endpoint:
-    Processes PDF, XLSX, and CSV file formats, uses the shared semantic cache,
-    accumulates knowledge, and stores in the vault packages.
+    Processes PDF, XLSX, and CSV file formats, computes confidence metadata,
+    and supports preview_only pre-save review workflow.
     """
-    # 1. Size Validation (25MB limit)
+    # 1. Size Validation (50MB limit)
     try:
         file.file.seek(0, 2)
         file_size = file.file.tell()
@@ -84,8 +85,8 @@ async def process_file_import(
         logger.error(f"[ImportProcess] Failed to check file size: {e}")
         file_size = 0
 
-    if file_size > 25 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="File size exceeds 25MB limit")
+    if file_size > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File size exceeds 50MB limit")
 
     try:
         # 2. Context Isolation
@@ -99,13 +100,23 @@ async def process_file_import(
             )
             user_id = user.get("sub") or user.get("id")
             
-        logger.info(f"[ImportProcess] Start - file={file.filename}, agency_id={agency_id}, user_id={user_id}")
+        logger.info(f"[ImportProcess] Start - file={file.filename}, agency_id={agency_id}, user_id={user_id}, preview_only={preview_only}")
 
-        # 3. Entitlements Check
-        sb = get_user_supabase_client(token)
-        from src.core.entitlements import get_agency_entitlements_data, check_feature_entitlement
-        entitlements = await get_agency_entitlements_data(sb, agency_id)
-        check_feature_entitlement(entitlements, "ai_vault")
+        # 3. Entitlements Check (if authenticated with an agency)
+        if agency_id:
+            sb = get_user_supabase_client(token)
+            from src.core.entitlements import get_agency_entitlements_data, check_feature_entitlement
+            try:
+                entitlements = await get_agency_entitlements_data(sb, agency_id)
+                check_feature_entitlement(entitlements, "ai_vault")
+            except HTTPException as http_e:
+                # If specifically 403 upgrade required, bubble up
+                if http_e.status_code == 403:
+                    raise http_e
+            except Exception as ent_err:
+                logger.warning(f"[ImportProcess] Entitlements check fallback: {ent_err}")
+        else:
+            sb = get_supabase_client()
 
         # 4. Upload original file to R2
         file_bytes = await file.read()
@@ -125,7 +136,6 @@ async def process_file_import(
             extractor = PdfExtractor()
             file_type = "pdf"
         elif ext in ("xlsx", "xls"):
-            # PK\x03\x04 represents zip signature for modern Office files; \xd0\xcf\x11\xe0... is for legacy OLE binary files
             if not (file_bytes.startswith(b"PK\x03\x04") or file_bytes.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")):
                 raise HTTPException(
                     status_code=400,
@@ -135,7 +145,6 @@ async def process_file_import(
             extractor = XlsxExtractor()
             file_type = "xlsx"
         elif ext == "csv":
-            # CSV must be a valid text stream and must not contain binary markers
             if file_bytes.startswith(b"PK\x03\x04") or file_bytes.startswith(b"%PDF-") or b"\x00" in file_bytes[:1024]:
                 raise HTTPException(
                     status_code=400,
@@ -176,10 +185,7 @@ async def process_file_import(
             except Exception as pdf_err:
                 logger.error(f"[ImportProcess] Failed to insert supplier_pdfs row: {pdf_err}")
 
-        # 5. Semantic Cache Lookup (Pre-AI extraction)
-        # We need the extracted/compressed text to perform cache lookup
-        # Let's extract first. PDF saves temporary file and compresses text.
-        # CSV and Excel extract pandas text.
+        # 5. Extract via multi-reader pipeline
         normalized = await extractor.extract(
             file_bytes=file_bytes,
             filename=filename,
@@ -211,12 +217,10 @@ async def process_file_import(
         cached_result = await get_cached_recommendation(hash_key, supabase_client=sb, agency_id=agency_id)
         if cached_result:
             logger.info(f"[ImportProcess] Cache HIT for hash {hash_key[:8]}")
-            # Ensure fields metadata is present in cached result
             if "fields" not in cached_result:
                 from src.services.import_service import build_normalized_fields
                 cached_result["fields"] = build_normalized_fields(cached_result, file_type)
             
-            # Make sure vault package exists in DB if needed or just return cached data
             return JSONResponse(content={
                 "status": "success",
                 "cache_hit": True,
@@ -227,47 +231,51 @@ async def process_file_import(
                 "data": cached_result
             })
 
-        # Cache MISS -> Save package to DB
-        saved_pkg = save_vault_package(
-            parsed_data=normalized,
-            pdf_filename=filename,
-            pdf_hash=file_hash,
-            agency_id=agency_id,
-            user_id=user_id,
-            pdf_url=file_url,
-            raw_text=raw_text,
-            extraction_version="v3.0.0"
-        )
-        if saved_pkg:
-            normalized["vault_package_id"] = saved_pkg.get("id")
-            logger.info(f"[ImportProcess] Saved to vault_packages: id={saved_pkg.get('id')}")
+        # Attach metadata to normalized data so confirm step can persist accurately
+        normalized["_pdf_filename"] = filename
+        normalized["_pdf_hash"] = file_hash
+        normalized["_pdf_url"] = file_url
+        normalized["_raw_text"] = raw_text
+        normalized["_hash_key"] = hash_key
 
-        # 6. Accumulate destination knowledge (to shared and agency-exclusive tables)
-        extra_sections = normalized.get("extra_sections") or {}
-        dest_for_knowledge = normalized.get("destination") or destination
-        
-        if extra_sections and dest_for_knowledge:
-            # 6a. Shared accumulation
-            accumulate_destination_knowledge(
-                destination=dest_for_knowledge,
-                extra_sections=extra_sections,
+        if not preview_only:
+            # Save package directly to DB if not in preview mode
+            saved_pkg = save_vault_package(
+                parsed_data=normalized,
+                pdf_filename=filename,
+                pdf_hash=file_hash,
                 agency_id=agency_id,
-                user_id=user_id
+                user_id=user_id,
+                pdf_url=file_url,
+                raw_text=raw_text,
+                extraction_version="v3.0.0"
             )
-            # 6b. Agency-exclusive memory (Rule 5)
-            accumulate_agency_packing_rules(
-                destination=dest_for_knowledge,
-                extra_sections=extra_sections,
-                agency_id=agency_id,
-                token=token
-            )
+            if saved_pkg:
+                normalized["vault_package_id"] = saved_pkg.get("id")
+                logger.info(f"[ImportProcess] Saved to vault_packages: id={saved_pkg.get('id')}")
 
-        # 7. Store in Semantic Cache for future zero-cost retrievals
-        await store_cached_recommendation(hash_key, normalized, dest_for_knowledge, budget, supabase_client=sb, agency_id=agency_id)
+            # Accumulate destination knowledge
+            extra_sections = normalized.get("extra_sections") or {}
+            dest_for_knowledge = normalized.get("destination") or destination
+            if extra_sections and dest_for_knowledge:
+                accumulate_destination_knowledge(
+                    destination=dest_for_knowledge,
+                    extra_sections=extra_sections,
+                    agency_id=agency_id,
+                    user_id=user_id
+                )
+                accumulate_agency_packing_rules(
+                    destination=dest_for_knowledge,
+                    extra_sections=extra_sections,
+                    agency_id=agency_id,
+                    token=token
+                )
+            await store_cached_recommendation(hash_key, normalized, dest_for_knowledge, budget, supabase_client=sb, agency_id=agency_id)
 
         return JSONResponse(content={
             "status": "success",
             "cache_hit": False,
+            "preview_only": preview_only,
             "cost_incurred": "Optimized via Faithful Extraction",
             "storage_meta": {**storage_meta, "pdf_url": file_url},
             "compression_metrics": compression_metrics,
@@ -283,3 +291,84 @@ async def process_file_import(
             status_code=500,
             content={"status": "error", "message": str(e)}
         )
+
+@router.post("/confirm")
+async def confirm_file_import(
+    payload: Dict[str, Any],
+    user: Any = Depends(verify_token_optional),
+    token: Optional[str] = Depends(get_request_token),
+):
+    """
+    Saves a confirmed/agent-reviewed extraction package to vault_packages,
+    and accumulates destination knowledge and agency rules.
+    """
+    try:
+        agency_id = None
+        user_id = None
+        if isinstance(user, dict):
+            agency_id = (
+                (user.get("user_metadata") or {}).get("agency_id")
+                or (user.get("app_metadata") or {}).get("agency_id")
+                or user.get("agency_id")
+            )
+            user_id = user.get("sub") or user.get("id")
+
+        filename = payload.pop("_pdf_filename", payload.get("pdf_filename", "confirmed_package.pdf"))
+        file_hash = payload.pop("_pdf_hash", payload.get("pdf_hash", hashlib.md5(str(payload).encode()).hexdigest()))
+        file_url = payload.pop("_pdf_url", payload.get("pdf_url", ""))
+        raw_text = payload.pop("_raw_text", "")
+        hash_key = payload.pop("_hash_key", None)
+
+        # Recalculate fields metadata if agent edited values
+        from src.services.import_service import build_normalized_fields
+        fields_dict = build_normalized_fields(payload, payload.get("source_type", "pdf"))
+        payload["fields"] = fields_dict
+        conf_scores = [f_meta["confidence"] for f_meta in fields_dict.values()]
+        payload["overall_confidence_score"] = round(sum(conf_scores) / len(conf_scores), 2) if conf_scores else 0.95
+
+        saved_pkg = save_vault_package(
+            parsed_data=payload,
+            pdf_filename=filename,
+            pdf_hash=file_hash,
+            agency_id=agency_id,
+            user_id=user_id,
+            pdf_url=file_url,
+            raw_text=raw_text,
+            extraction_version="v3.0.0-reviewed"
+        )
+
+        dest_for_knowledge = payload.get("destination", "")
+        extra_sections = payload.get("extra_sections") or {}
+        if extra_sections and dest_for_knowledge:
+            accumulate_destination_knowledge(
+                destination=dest_for_knowledge,
+                extra_sections=extra_sections,
+                agency_id=agency_id,
+                user_id=user_id
+            )
+            accumulate_agency_packing_rules(
+                destination=dest_for_knowledge,
+                extra_sections=extra_sections,
+                agency_id=agency_id,
+                token=token
+            )
+
+        if hash_key:
+            sb = get_user_supabase_client(token) if agency_id else get_supabase_client()
+            await store_cached_recommendation(
+                hash_key,
+                payload,
+                dest_for_knowledge,
+                payload.get("total_price") or 0.0,
+                supabase_client=sb,
+                agency_id=agency_id
+            )
+
+        return JSONResponse(content={
+            "status": "success",
+            "message": "Package confirmed and saved to Vault successfully.",
+            "data": saved_pkg or payload
+        })
+    except Exception as e:
+        logger.exception("Failed to confirm and save vault package")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})

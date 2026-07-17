@@ -1,0 +1,49 @@
+{
+  "family": "voyanta-fastapi-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "voyanta-fastapi",
+      "image": "ACCOUNT_ID.dkr.ecr.AWS_REGION.amazonaws.com/voyanta-fastapi:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "PORT", "value": "8000" },
+        { "name": "ENV", "value": "production" },
+        { "name": "AWS_REGION", "value": "us-east-1" }
+      ],
+      "secrets": [
+        { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:AWS_REGION:ACCOUNT_ID:secret:UPSTASH_REDIS_URL" },
+        { "name": "UPSTASH_REDIS_REST_URL", "valueFrom": "arn:aws:secretsmanager:AWS_REGION:ACCOUNT_ID:secret:UPSTASH_REDIS_REST_URL" },
+        { "name": "UPSTASH_REDIS_REST_TOKEN", "valueFrom": "arn:aws:secretsmanager:AWS_REGION:ACCOUNT_ID:secret:UPSTASH_REDIS_REST_TOKEN" },
+        { "name": "SQS_QUEUE_URL", "valueFrom": "arn:aws:secretsmanager:AWS_REGION:ACCOUNT_ID:secret:SQS_QUEUE_URL" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/voyanta-fastapi-backend",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://127.0.0.1:8000/api/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      }
+    }
+  ]
+}

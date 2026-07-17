@@ -2,6 +2,7 @@ import { useState, useRef, memo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { uploadOrEmbed } from './LogoUploader.jsx';
 import { motion } from 'framer-motion';
+import ImageSearchPicker from './common/ImageSearchPicker.jsx';
 
 const HIDDEN = new Set(['id', 'agency_id', 'created_at', 'updated_at', 'raw', 'created_by']);
 
@@ -210,6 +211,7 @@ export default function EditItemDrawer({ item: record, resource, service, onClos
 
 function HotelImagesManager({ images, onChange }) {
   const [busy, setBusy] = useState(false);
+  const [showStockPicker, setShowStockPicker] = useState(false);
   const fileRef = useRef(null);
 
   const onAddImage = async (e) => {
@@ -243,13 +245,23 @@ function HotelImagesManager({ images, onChange }) {
 
   return (
     <div className="flex flex-col gap-sm border border-outline-variant rounded-xl p-md bg-slate-50 text-on-surface">
-      <span className="font-label-md font-bold text-primary">Hotel Photo Gallery</span>
+      {showStockPicker && (
+        <ImageSearchPicker
+          onSelect={(url) => {
+            onChange([...images, url]);
+            setShowStockPicker(false);
+          }}
+          onClose={() => setShowStockPicker(false)}
+          defaultQuery="luxury hotel"
+        />
+      )}
+      <span className="font-label-md font-bold text-primary">Photo Gallery (Hotels, Activities & Cruises)</span>
       
       {images.length > 0 ? (
         <div className="grid grid-cols-2 gap-sm">
           {images.map((img, i) => (
             <div key={i} className="group relative border border-outline-variant rounded-lg overflow-hidden bg-white h-28 flex items-center justify-center">
-              <img src={img} alt={`Hotel ${i}`} className="max-w-full max-h-full object-contain" />
+              <img src={img} alt={`Gallery ${i}`} className="max-w-full max-h-full object-contain" />
               {i === 0 && (
                 <span className="absolute top-1 left-1 px-1.5 py-0.5 bg-primary text-on-primary text-[9px] font-bold rounded shadow-sm">
                   Primary
@@ -277,11 +289,21 @@ function HotelImagesManager({ images, onChange }) {
         <p className="text-xs text-on-surface-variant italic">No images in gallery</p>
       )}
 
-      <label className="flex items-center justify-center gap-xs p-sm border border-dashed border-outline-variant rounded-lg cursor-pointer hover:bg-white/50 text-xs font-semibold">
-        <span className="material-symbols-outlined text-[16px]">add_a_photo</span>
-        {busy ? 'Uploading...' : 'Add image to gallery'}
-        <input type="file" ref={fileRef} accept="image/*" onChange={onAddImage} className="hidden" />
-      </label>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <button
+          type="button"
+          onClick={() => setShowStockPicker(true)}
+          className="flex items-center justify-center gap-1.5 p-2 bg-secondary text-on-secondary rounded-lg cursor-pointer hover:bg-secondary/90 text-xs font-bold transition-all shadow-sm"
+        >
+          <span className="material-symbols-outlined text-[16px]">photo_library</span>
+          Stock Photos
+        </button>
+        <label className="flex items-center justify-center gap-1.5 p-2 bg-white border border-outline-variant rounded-lg cursor-pointer hover:bg-slate-100 text-xs font-bold transition-all shadow-sm text-primary">
+          <span className="material-symbols-outlined text-[16px]">add_a_photo</span>
+          {busy ? 'Uploading...' : 'Upload Image'}
+          <input type="file" ref={fileRef} accept="image/*" onChange={onAddImage} className="hidden" />
+        </label>
+      </div>
     </div>
   );
 }

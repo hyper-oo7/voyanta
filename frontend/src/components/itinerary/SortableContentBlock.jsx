@@ -2,11 +2,13 @@ import { useState, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { uploadOrEmbed } from '../LogoUploader.jsx';
+import ImageSearchPicker from '../common/ImageSearchPicker.jsx';
 
 export default function SortableContentBlock({ id, item, onChange, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [showStockPicker, setShowStockPicker] = useState(false);
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -154,33 +156,65 @@ export default function SortableContentBlock({ id, item, onChange, onRemove }) {
         
         {item.type === 'image' && (
           <div className="border border-outline-variant rounded-xl overflow-hidden bg-surface-variant relative group/img mt-1">
+            {showStockPicker && (
+              <ImageSearchPicker
+                onSelect={(url) => {
+                  onChange(id, { url });
+                  setShowStockPicker(false);
+                }}
+                onClose={() => setShowStockPicker(false)}
+                defaultQuery="luxury resort"
+              />
+            )}
             {item.data.url ? (
               <img src={item.data.url} alt="" className="w-full max-h-96 object-cover" />
             ) : (
-              <div className="w-full h-32 flex flex-col gap-2 items-center justify-center text-on-surface-variant font-semibold">
+              <div className="w-full h-36 flex flex-col gap-2.5 items-center justify-center text-on-surface-variant font-semibold p-4">
                 <span>Image Placeholder</span>
-                <button 
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                  className="px-3 py-1 bg-primary text-white rounded text-sm hover:bg-primary/90 transition-colors"
-                >
-                  {uploading ? 'Uploading...' : 'Upload Image'}
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => setShowStockPicker(true)}
+                    className="px-3 py-1.5 bg-secondary text-on-secondary rounded-lg text-xs font-bold hover:bg-secondary/90 transition-all flex items-center gap-1 shadow-sm cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">photo_library</span>
+                    Stock Photos
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={uploading}
+                    className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-bold hover:bg-primary/90 transition-all flex items-center gap-1 shadow-sm cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">upload</span>
+                    {uploading ? 'Uploading...' : 'Upload Image'}
+                  </button>
+                </div>
               </div>
             )}
-            <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-2 backdrop-blur-sm opacity-0 group-hover/img:opacity-100 transition-opacity flex gap-2">
+            <div className="absolute bottom-0 left-0 right-0 bg-black/60 p-2 backdrop-blur-sm opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center gap-2">
               <input 
                 type="text" 
                 value={item.data.url || ''} 
                 onChange={(e) => onChange(id, { url: e.target.value })}
                 placeholder="Paste Image URL..."
-                className="flex-1 text-sm bg-transparent border-none outline-none text-white placeholder:text-white/50 p-1"
+                className="flex-1 text-xs bg-transparent border-none outline-none text-white placeholder:text-white/50 px-1"
               />
               <button 
+                type="button"
+                onClick={() => setShowStockPicker(true)}
+                className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 whitespace-nowrap cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[13px]">photo_library</span>
+                Stock
+              </button>
+              <button 
+                type="button"
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading}
-                className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-xs whitespace-nowrap"
+                className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 whitespace-nowrap cursor-pointer"
               >
+                <span className="material-symbols-outlined text-[13px]">upload</span>
                 {uploading ? 'Uploading...' : 'Upload'}
               </button>
             </div>

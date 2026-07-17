@@ -54,7 +54,19 @@ export default {
         "inverse-surface": "#213145",
         "secondary-fixed": "#e0e3e5",
         "secondary-container": "#e0e3e5",
-        "surface-variant": "#d3e4fe"
+        "surface-variant": "#d3e4fe",
+        "foreground": "var(--foreground, #0b1c30)",
+        "card": "var(--card, #ffffff)",
+        "card-foreground": "var(--card-foreground, #0b1c30)",
+        "popover": "var(--popover, #ffffff)",
+        "popover-foreground": "var(--popover-foreground, #0b1c30)",
+        "muted": "var(--muted, #f1f5f9)",
+        "muted-foreground": "var(--muted-foreground, #64748b)",
+        "accent": "var(--accent, #f1f5f9)",
+        "accent-foreground": "var(--accent-foreground, #0f172a)",
+        "border": "var(--border, #c6c6cd)",
+        "input": "var(--input, #c6c6cd)",
+        "ring": "var(--ring, #000000)"
       },
       borderRadius: {
         DEFAULT: "0.25rem",

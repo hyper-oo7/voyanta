@@ -250,6 +250,7 @@ export const useProposalStore = create((set, get) => ({
       },
       itinerary: proposal?.itinerary,
       status: proposal?.status || 'Draft',
+      visibility_mode: proposal?.visibility_mode || 'ITEMIZED',
     };
   },
 
