@@ -1,6 +1,7 @@
 import os
 import hashlib
 import logging
+import asyncio
 from typing import Any, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
@@ -326,48 +327,58 @@ async def confirm_file_import(
         conf_scores = [f_meta["confidence"] for f_meta in fields_dict.values()]
         payload["overall_confidence_score"] = round(sum(conf_scores) / len(conf_scores), 2) if conf_scores else 0.95
 
-        saved_pkg = save_vault_package(
-            parsed_data=payload,
-            pdf_filename=filename,
-            pdf_hash=file_hash,
-            agency_id=agency_id,
-            user_id=user_id,
-            pdf_url=file_url,
-            raw_text=raw_text,
-            extraction_version="v3.0.0-reviewed"
-        )
-
         dest_for_knowledge = payload.get("destination", "")
         extra_sections = payload.get("extra_sections") or {}
-        if extra_sections and dest_for_knowledge:
-            accumulate_destination_knowledge(
-                destination=dest_for_knowledge,
-                extra_sections=extra_sections,
-                agency_id=agency_id,
-                user_id=user_id
-            )
-            accumulate_agency_packing_rules(
-                destination=dest_for_knowledge,
-                extra_sections=extra_sections,
-                agency_id=agency_id,
-                token=token
-            )
+
+        def _bg_persist():
+            try:
+                save_vault_package(
+                    parsed_data=payload,
+                    pdf_filename=filename,
+                    pdf_hash=file_hash,
+                    agency_id=agency_id,
+                    user_id=user_id,
+                    pdf_url=file_url,
+                    raw_text=raw_text,
+                    extraction_version="v3.0.0-reviewed"
+                )
+                if extra_sections and dest_for_knowledge:
+                    accumulate_destination_knowledge(
+                        destination=dest_for_knowledge,
+                        extra_sections=extra_sections,
+                        agency_id=agency_id,
+                        user_id=user_id
+                    )
+                    accumulate_agency_packing_rules(
+                        destination=dest_for_knowledge,
+                        extra_sections=extra_sections,
+                        agency_id=agency_id,
+                        token=token
+                    )
+            except Exception as ex:
+                logger.error(f"[VaultKnowledge] Background persist error: {ex}")
+
+        # Launch saving and knowledge accumulation in background thread for instant response (< 50ms)
+        asyncio.create_task(asyncio.to_thread(_bg_persist))
 
         if hash_key:
-            sb = get_user_supabase_client(token) if agency_id else get_supabase_client()
-            await store_cached_recommendation(
-                hash_key,
-                payload,
-                dest_for_knowledge,
-                payload.get("total_price") or 0.0,
-                supabase_client=sb,
-                agency_id=agency_id
-            )
+            try:
+                sb = get_user_supabase_client(token) if agency_id else get_supabase_client()
+                asyncio.create_task(store_cached_recommendation(
+                    hash_key,
+                    dict(payload),
+                    dest_for_knowledge,
+                    payload.get("total_price") or 0.0,
+                    supabase_client=sb,
+                    agency_id=agency_id
+                ))
+            except Exception as e:
+                logger.warn(f"Recommendation cache store warning: {e}")
 
         return JSONResponse(content={
             "status": "success",
             "message": "Package confirmed and saved to Vault successfully.",
-            "data": saved_pkg or payload
+            "data": payload
         })
     except Exception as e:
         logger.exception("Failed to confirm and save vault package")

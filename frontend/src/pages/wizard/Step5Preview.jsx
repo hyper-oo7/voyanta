@@ -390,7 +390,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
           if (data.flags.length === 0) {
             toast.success("✨ Itinerary flow and pacing check completed successfully! No issues flagged.");
           } else {
-            toast.info(`AI flagged ${data.flags.length} pacing/sequence recommendations.`);
+            toast.info(`VI flagged ${data.flags.length} pacing/sequence recommendations.`);
           }
         }
       }
@@ -562,7 +562,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
           const gType = json?.proposal?.preferences?.group_type || '';
           const tCat = json?.proposal?.preferences?.tour_category || '';
           const duration = json?.proposal?.itinerary?.days?.length || 7;
-          toast.info('Generating luxury title via AI...');
+          toast.info('Generating luxury title via VI...');
           try {
             const res = await api.post('/api/generate-title', {
               destination: dest,
@@ -579,9 +579,9 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
             toast.error('Failed to generate title');
           }
         }}
-        className="px-md py-sm bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg font-label-md flex items-center gap-2 transition-colors">
-          <span className="material-symbols-outlined text-[18px]">magic_button</span>
-          AI Auto-Title
+        title="VI Auto-Title"
+        className="inline-flex items-center justify-center w-9 h-9 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-full transition-colors cursor-pointer shrink-0">
+          <span className="material-symbols-outlined text-[18px]">travel_explore</span>
         </button>
  
         <button 
@@ -589,14 +589,14 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
           onClick={handleValidateSequence} 
           disabled={isValidatingSequence}
           data-testid="ai-itinerary-check"
-          className="px-md py-sm bg-purple-500/10 text-purple-700 border border-purple-500/20 hover:bg-purple-500/20 rounded-lg font-label-md flex items-center gap-2 transition-colors disabled:opacity-50"
+          title="VI Proposal Review"
+          className="inline-flex items-center justify-center w-9 h-9 bg-purple-500/10 text-purple-750 border border-purple-500/20 hover:bg-purple-500/20 rounded-full transition-colors disabled:opacity-50 cursor-pointer shrink-0"
         >
           {isValidatingSequence ? (
             <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
           ) : (
-            <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+            <span className="material-symbols-outlined text-[18px]">travel_explore</span>
           )}
-          {isValidatingSequence ? 'Checking pacing…' : 'AI Itinerary Check'}
         </button>
  
         <button type="button" onClick={() => setIsInteractiveStudio(!isInteractiveStudio)} data-testid="toggle-wysiwyg"
@@ -684,63 +684,84 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
         </div>
       )}
 
-      <div className="flex-1 relative flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
-        {showWarnings && warnings.length > 0 && (
-          <div className="bg-amber-50 border-b border-amber-200 px-lg py-md flex items-start gap-md no-print animate-fade-in">
-            <span className="material-symbols-outlined text-amber-600 mt-xs">warning</span>
-            <div className="flex-1 space-y-xs">
-              <h4 className="font-label-md font-bold text-amber-900">Itinerary Validation Warnings</h4>
-              <ul className="list-disc list-inside space-y-1 text-xs text-amber-850">
-                {warnings.map((w, idx) => (
-                  <li key={idx} className="font-medium">{w.message}</li>
-                ))}
-              </ul>
+      <div className="flex-1 relative flex flex-row overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
+        
+        {/* Left Side: Scrollable Document Preview Area */}
+        <div className="flex-1 overflow-auto flex flex-col relative h-full">
+          {showWarnings && warnings.length > 0 && (
+            <div className="bg-amber-50 border-b border-amber-200 px-lg py-md flex items-start gap-md no-print animate-fade-in">
+              <span className="material-symbols-outlined text-amber-600 mt-xs">warning</span>
+              <div className="flex-1 space-y-xs">
+                <h4 className="font-label-md font-bold text-amber-900">Itinerary Validation Warnings</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs text-amber-850">
+                  {warnings.map((w, idx) => (
+                    <li key={idx} className="font-medium">{w.message}</li>
+                  ))}
+                </ul>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowWarnings(false)} 
+                className="text-amber-500 hover:text-amber-700 p-1 inline-flex items-center justify-center rounded-full hover:bg-amber-100/50"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
             </div>
-            <button 
-              type="button"
-              onClick={() => setShowWarnings(false)} 
-              className="text-amber-500 hover:text-amber-700 p-1 inline-flex items-center justify-center rounded-full hover:bg-amber-100/50"
-            >
-              <span className="material-symbols-outlined text-[18px]">close</span>
-            </button>
+          )}
+          
+          <A4Preview style={style} isInteractiveStudio={isInteractiveStudio} onStudioClick={(el) => setStudioTarget(el)}>
+            <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={localCustomBlocks} viewMode="document" branding={branding} />
+          </A4Preview>
+        </div>
+
+        {/* Right Side: VI Pacing & Sequence Analysis Panel */}
+        {showSequenceFlags && (
+          <div className="w-[340px] border-l border-outline-variant bg-surface-container-low flex flex-col no-print animate-fade-in" data-testid="sequence-warnings">
+            <div className="p-md border-b border-outline-variant flex items-center justify-between bg-surface-container-high">
+              <div className="flex items-center gap-2 text-purple-900">
+                <span className="material-symbols-outlined text-[20px]">travel_explore</span>
+                <span className="font-bold text-xs uppercase tracking-wider">VI Pacing & Sequence</span>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowSequenceFlags(false)} 
+                className="text-on-surface-variant hover:bg-surface-container-lowest w-7 h-7 inline-flex items-center justify-center rounded-full transition-colors cursor-pointer border-none"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-md space-y-md font-sans">
+              {sequenceFlags.length === 0 ? (
+                <div className="text-center py-xl text-on-surface-variant space-y-3">
+                  <span className="material-symbols-outlined text-[36px] text-emerald-600">check_circle</span>
+                  <p className="font-bold text-xs">Itinerary flows perfectly!</p>
+                  <p className="text-[11px] leading-relaxed text-on-surface-variant/80">No pacing anomalies or sequence issues detected by Voyanta Intelligence.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="text-[11px] text-on-surface-variant leading-relaxed">
+                    VI analyzed your itinerary flow. Recommendations details:
+                  </div>
+                  {sequenceFlags.map((flag) => (
+                    <div key={flag.id} className="p-md rounded-xl bg-purple-500/5 border border-purple-500/10 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <span className="material-symbols-outlined text-purple-700 text-[16px] mt-[1px]">flag</span>
+                        <div className="text-xs font-bold text-purple-950 leading-snug">{flag.message}</div>
+                      </div>
+                      {flag.fix && (
+                        <div className="pl-5 border-l border-purple-200/80 ml-2">
+                          <span className="block text-[9px] font-black uppercase tracking-widest text-purple-700">Recommended Fix</span>
+                          <p className="text-[11px] text-purple-850 m-0 leading-relaxed mt-0.5">{flag.fix}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
           </div>
         )}
-        {showSequenceFlags && sequenceFlags.length > 0 && (
-          <div className="bg-purple-50 border-b border-purple-200 px-lg py-md flex items-start gap-md no-print animate-fade-in" data-testid="sequence-warnings">
-            <span className="material-symbols-outlined text-purple-600 mt-xs">auto_awesome</span>
-            <div className="flex-1 space-y-xs">
-              <h4 className="font-label-md font-bold text-purple-900 flex items-center gap-1">
-                AI Itinerary Pacing & Sequence Analysis
-              </h4>
-              <ul className="list-none space-y-md text-xs text-purple-850">
-                {sequenceFlags.map((flag) => (
-                  <li key={flag.id} className="border-l-2 border-purple-300 pl-3 py-1 space-y-0.5">
-                    <p className="font-bold text-purple-950 flex items-center gap-1 m-0">
-                      <span className="material-symbols-outlined text-[14px]">flag</span>
-                      {flag.message}
-                    </p>
-                    {flag.fix && (
-                      <p className="text-purple-850 m-0 leading-relaxed pl-1 text-[11px]">
-                        <strong className="text-[10px] uppercase font-bold tracking-wider text-purple-700 block mt-0.5">Recommended Fix:</strong>
-                        {flag.fix}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <button 
-              type="button"
-              onClick={() => setShowSequenceFlags(false)} 
-              className="text-purple-500 hover:text-purple-700 p-1 inline-flex items-center justify-center rounded-full hover:bg-purple-100/50"
-            >
-              <span className="material-symbols-outlined text-[18px]">close</span>
-            </button>
-          </div>
-        )}
-        <A4Preview style={style} isInteractiveStudio={isInteractiveStudio} onStudioClick={(el) => setStudioTarget(el)}>
-          <TemplateRenderer style={style} data={merged} include={include} order={sectionOrder} customBlocks={localCustomBlocks} viewMode="document" branding={branding} />
-        </A4Preview>
         {isInteractiveStudio && studioTarget && (
           <InlineStudioPopover 
             target={studioTarget} 

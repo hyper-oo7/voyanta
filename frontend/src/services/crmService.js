@@ -122,6 +122,7 @@ export async function createClient(clientData) {
     // Update cache with server-verified data
     const updatedList = [data, ...getLocalClients().filter(c => c.id !== data.id)];
     saveLocalClients(updatedList);
+    if (data.status) syncStatusToInvoices(data, data.status);
     try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
     return data;
   }
@@ -129,8 +130,56 @@ export async function createClient(clientData) {
   // Demo mode
   const updated = [newClient, ...getLocalClients()];
   saveLocalClients(updated);
+  if (newClient.status) syncStatusToInvoices(newClient, newClient.status);
   try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
   return newClient;
+}
+
+function syncStatusToInvoices(client, newStatus) {
+  if (!newStatus || !client) return;
+  try {
+    const raw = localStorage.getItem('voyanta_invoices_data') || '[]';
+    let invList = JSON.parse(raw);
+    if (!Array.isArray(invList)) invList = [];
+    let updated = false;
+    invList = invList.map(inv => {
+      const match = (inv.client_name && client.name && inv.client_name.trim().toLowerCase() === client.name.trim().toLowerCase()) ||
+                    (inv.client_email && client.email && inv.client_email.trim().toLowerCase() === client.email.trim().toLowerCase()) ||
+                    String(inv.id) === `crm_${client.id}` || String(inv.id) === `inv_client_${client.id}`;
+      if (match) {
+        updated = true;
+        return {
+          ...inv,
+          crm_status: newStatus,
+          status: newStatus === 'Booked' ? 'Paid' : (newStatus === 'Approved' && inv.status === 'Draft' ? 'Sent' : inv.status)
+        };
+      }
+      return inv;
+    });
+    if (!updated && ['Approved', 'Booked', 'Proposal Sent'].includes(newStatus)) {
+      const autoInv = {
+        id: `crm_${client.id}`,
+        invoice_number: `INV-${1000 + (Math.abs(String(client.id).split('').reduce((a,b)=>a+b.charCodeAt(0),0)) % 9000)}`,
+        client_name: client.name || 'Client',
+        client_email: client.email || '',
+        client_phone: client.phone || '',
+        destination: client.destination || '',
+        total_amount: Number(client.budget || client.total_amount || 0),
+        paid_amount: newStatus === 'Booked' ? Number(client.budget || client.total_amount || 0) : 0,
+        remaining_balance: newStatus === 'Booked' ? 0 : Number(client.budget || client.total_amount || 0),
+        status: newStatus === 'Booked' ? 'Paid' : (newStatus === 'Approved' ? 'Sent' : 'Draft'),
+        crm_status: newStatus,
+        created_at: new Date().toISOString(),
+        taxes: [{ id: 'tax-1', name: 'GST / Tax', rate: 5, amount: Math.round(Number(client.budget || 0) * 0.05) }],
+        is_auto_linked: true
+      };
+      invList = [autoInv, ...invList];
+    }
+    localStorage.setItem('voyanta_invoices_data', JSON.stringify(invList));
+    try { window.dispatchEvent(new CustomEvent('voyanta:invoices-updated')); } catch {}
+  } catch (e) {
+    console.error('Failed to sync invoice status:', e);
+  }
 }
 
 export async function updateClient(id, patch) {
@@ -150,11 +199,12 @@ export async function updateClient(id, patch) {
     }
     const list = getLocalClients().map(c => String(c.id) === String(id) ? { ...c, ...data } : c);
     saveLocalClients(list);
+    if (data.status) syncStatusToInvoices(data, data.status);
     try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
     return data;
   }
 
-  // Demo Mode
+  // Local / Demo Mode or auto-linked inv_client_ records
   let list = getLocalClients();
   let existingIndex = list.findIndex(c => String(c.id) === String(id));
   if (existingIndex === -1 && patch.name) {
@@ -165,17 +215,16 @@ export async function updateClient(id, patch) {
   }
 
   if (existingIndex === -1) {
-    if (patch.name || patch.email) {
-      list = [{ id, updated_at: now, ...patch }, ...list];
-      saveLocalClients(list);
-    }
+    list = [{ id, updated_at: now, ...patch }, ...list];
+    saveLocalClients(list);
   } else {
     const targetId = list[existingIndex].id;
     list = list.map(c => String(c.id) === String(targetId) ? { ...c, ...updatePayload } : c);
     saveLocalClients(list);
   }
-  try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
   const updated = list.find(c => String(c.id) === String(id));
+  if (patch.status && updated) syncStatusToInvoices(updated, patch.status);
+  try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
   return updated || { id, ...updatePayload };
 }
 

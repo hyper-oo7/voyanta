@@ -42,10 +42,9 @@ function TextareaWithAI({ label, value, onChange, testid, onAI }) {
     <label className="flex flex-col gap-xs">
       <span className="flex items-center justify-between font-label-md text-label-md text-on-surface">
         <span>{label}</span>
-        <button type="button" onClick={onAI} data-testid={`${testid}-ai`}
-          className="inline-flex items-center gap-xs px-md py-xs bg-primary/10 text-primary rounded-full font-label-sm hover:bg-primary/15">
-          <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
-          Draft with AI
+        <button type="button" onClick={onAI} data-testid={`${testid}-ai`} title="Draft with VI"
+          className="inline-flex items-center justify-center w-7 h-7 bg-primary text-white rounded-full hover:bg-primary/90 shadow-sm transition-all cursor-pointer border-none">
+          <span className="material-symbols-outlined text-[16px]">travel_explore</span>
         </button>
       </span>
       <textarea value={safeStr(value)} onChange={onChange} rows={3} data-testid={testid}
@@ -54,11 +53,17 @@ function TextareaWithAI({ label, value, onChange, testid, onAI }) {
   );
 }
 
-export function Step4Branding({ branding, setBranding, customBlocks, proposal, client }) {
+export function Step4Branding({ proposalId, branding, setBranding, client }) {
   const toast = useToast();
   const [activeCategory, setActiveCategory] = useState('All');
   const [showFieldMenu, setShowFieldMenu] = useState(false);
   const [currentPlan, setCurrentPlan] = useState(() => typeof window !== 'undefined' ? (localStorage.getItem('voyanta_active_plan') || 'Starter') : 'Starter');
+  const [knowledgeSources, setKnowledgeSources] = useState({});
+
+  const upd = useCallback((field) => (valOrEvent) => {
+    const val = valOrEvent?.target ? valOrEvent.target.value : valOrEvent;
+    setBranding(s => ({ ...s, [field]: val }));
+  }, [setBranding]);
 
   useEffect(() => {
     const handler = () => setCurrentPlan(localStorage.getItem('voyanta_active_plan') || 'Starter');
@@ -71,39 +76,20 @@ export function Step4Branding({ branding, setBranding, customBlocks, proposal, c
   }, []);
 
   // ── Destination Knowledge Auto-Fill ─────────────────────────────────────
-  // Queries accumulated destination_knowledge from vault and populates:
-  // inclusions, exclusions, what_to_pack, visa_guidelines, important_notes, etc.
-  const [knowledgeSources, setKnowledgeSources] = useState({});
-
   useEffect(() => {
-    const dest = client?.destination || proposal?.destination || '';
+    const dest = client?.destination || '';
     if (!dest) return;
 
     let isMounted = true;
-
     (async () => {
       try {
-        let token = null;
-        try {
-          const supa = (await import('../../lib/supabaseClient.js')).supabase;
-          const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
-          if (session?.access_token) token = session.access_token;
-        } catch {}
-
-        const headers = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const res = await fetch(`/api/vault/knowledge?destination=${encodeURIComponent(dest)}`, { headers });
+        const res = await fetch(`/api/vault/match-rules?destination=${encodeURIComponent(dest)}`);
         if (res.ok && isMounted) {
-          const json = await res.json();
-          const knowledge = json.knowledge || {};
-
-          if (Object.keys(knowledge).length === 0) return;
-
-          const sources = {};
+          const data = await res.json();
+          const knowledge = data?.knowledge || {};
           const updates = {};
+          const sources = {};
 
-          // Auto-fill each section ONLY if not already filled by the agent
           if (knowledge.inclusions && !branding?.inclusions) {
             updates.inclusions = knowledge.inclusions.content;
             sources.inclusions = knowledge.inclusions.source_count;
@@ -111,10 +97,6 @@ export function Step4Branding({ branding, setBranding, customBlocks, proposal, c
           if (knowledge.exclusions && !branding?.exclusions) {
             updates.exclusions = knowledge.exclusions.content;
             sources.exclusions = knowledge.exclusions.source_count;
-          }
-          if (knowledge.what_to_pack && !branding?.what_to_pack) {
-            updates.what_to_pack = knowledge.what_to_pack.content;
-            sources.what_to_pack = knowledge.what_to_pack.source_count;
           }
           if (knowledge.important_notes && !branding?.important_notes) {
             updates.important_notes = knowledge.important_notes.content;
@@ -133,9 +115,8 @@ export function Step4Branding({ branding, setBranding, customBlocks, proposal, c
             sources.terms_of_payment = knowledge.terms_of_payment.source_count;
           }
 
-          // Accumulate dynamic extra sections into custom_fields
           const dynamicSections = Object.entries(knowledge).filter(([k]) =>
-            !['inclusions', 'exclusions', 'what_to_pack', 'important_notes', 'visa_guidelines', 'cancellation_policy', 'terms_of_payment'].includes(k)
+            !['inclusions', 'exclusions', 'important_notes', 'visa_guidelines', 'cancellation_policy', 'terms_of_payment'].includes(k)
           );
           if (dynamicSections.length > 0) {
             const existingCustom = branding?.custom_fields || [];
@@ -144,7 +125,7 @@ export function Step4Branding({ branding, setBranding, customBlocks, proposal, c
               .filter(([k]) => !existingKeys.has(k))
               .map(([k, v]) => ({
                 id: `vault_knowledge_${k}_${Math.random().toString(36).slice(2, 6)}`,
-                label: safeStr(v.title || k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())),
+                label: safeStr(v.title || (k === 'what_to_pack' ? 'Packing Guidelines' : k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))),
                 value: safeStr(v.content),
                 type: 'text',
                 section_type: k,
@@ -163,38 +144,45 @@ export function Step4Branding({ branding, setBranding, customBlocks, proposal, c
           }
         }
       } catch (err) {
-        // Fallback: legacy packing rules
-        const subDests = proposal?.subDestinations || proposal?.sub_destinations || [];
+        const subDests = client?.subDestinations || [];
         const subStr = Array.isArray(subDests) ? subDests.join(',') : subDests;
         fetch(`/api/packing-rules/match?destination=${encodeURIComponent(dest)}&sub_destinations=${encodeURIComponent(subStr)}`)
           .then(r => r.json())
           .then(res => {
             if (res?.rules?.length > 0) {
-              const matched = res.rules.find(r => r.section_type === 'what_to_pack') || res.rules[0];
-              if (matched?.content && !branding?.what_to_pack) {
-                setBranding(s => ({ ...s, what_to_pack: matched.content }));
+              const matched = res.rules.find(r => r.section_type === 'what_to_pack');
+              if (matched?.content) {
+                const existingCustom = branding?.custom_fields || [];
+                const hasPackField = existingCustom.some(f => f.section_type === 'what_to_pack' || f.label?.toLowerCase() === 'packing guidelines' || f.label?.toLowerCase() === 'what to pack');
+                if (!hasPackField) {
+                  const newField = {
+                    id: `vault_knowledge_what_to_pack_${Math.random().toString(36).slice(2, 6)}`,
+                    label: 'Packing Guidelines',
+                    value: matched.content,
+                    type: 'text',
+                    section_type: 'what_to_pack',
+                    vault_auto_filled: true
+                  };
+                  setBranding(s => ({ ...s, custom_fields: [...(s.custom_fields || []), newField] }));
+                }
               }
             }
           })
           .catch(() => {});
       }
     })();
-
     return () => { isMounted = false; };
-  }, [client?.destination, proposal?.destination]);
-  // Note: intentionally omitting branding from deps to avoid re-triggering on every setBranding call
-
+  }, [client?.destination]);
 
   const isStarter = !currentPlan || currentPlan.toLowerCase() === 'starter';
 
-  const upd = (k) => (e) => setBranding((s) => ({ ...s, [k]: e.target.value }));
   const aiDraft = (field, label) => async () => {
     const currentText = branding?.[field] || '';
     if (!currentText) {
-      toast.info(`Please type initial ${label} points first so AI can check grammar and enhance.`);
+      toast.info(`Please type initial ${label} points first so VI can check grammar and enhance.`);
       return;
     }
-    toast.info(`AI checking grammar and rewriting ${label} into luxury agency style...`);
+    toast.info(`VI checking grammar and rewriting ${label} into luxury agency style...`);
     try {
       const res = await api.post('/api/enhance-text', {
         text: currentText,
@@ -353,13 +341,12 @@ export function Step4Branding({ branding, setBranding, customBlocks, proposal, c
         {branding?.highlights_ai_drafted && (
           <span className="text-[11px] font-semibold text-primary/80 flex items-center gap-xs px-xs" data-testid="highlights-ai-warning">
             <span className="material-symbols-outlined text-[14px] text-primary">auto_awesome</span>
-            AI-drafted using your style profile, edit as needed
+            VI-drafted using your style profile, edit as needed
           </span>
         )}
       </div>
       <TextareaWithAI label="What's Included" value={branding?.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" onAI={aiDraft('inclusions', 'inclusions')} />
       <TextareaWithAI label="What's Excluded" value={branding?.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" onAI={aiDraft('exclusions', 'exclusions')} />
-      <TextareaWithAI label="What to Pack (Packing & Trip Essentials)" value={branding?.what_to_pack} onChange={upd('what_to_pack')} testid="brand-what-to-pack" onAI={aiDraft('what_to_pack', 'what to pack')} />
       <TextareaWithAI label="Terms of Payment" value={branding?.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" onAI={aiDraft('terms_of_payment', 'terms')} />
       
       {/* Custom Branding Fields */}

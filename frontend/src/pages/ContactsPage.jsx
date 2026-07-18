@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { logActivity } from '../services/activityLogService.js';
 import { getAgencyId } from '../lib/supabaseClient.js';
+import { createClient, updateClient, deleteClient } from '../services/crmService.js';
 
 export default function ContactsPage() {
   const toast = useToast();
@@ -69,6 +70,37 @@ export default function ContactsPage() {
         });
       }
     });
+
+    // 1.5 Ingest from CRM Clients cache
+    try {
+      const storedCrm = localStorage.getItem('voyanta_crm_clients');
+      if (storedCrm) {
+        JSON.parse(storedCrm).forEach(c => {
+          if (c.name || c.email) {
+            const email = c.email || `${(c.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')}@agency.com`;
+            const key = normKey(email);
+            if (clientMap.has(key)) {
+              const existing = clientMap.get(key);
+              if (!existing.phone && c.phone) existing.phone = c.phone;
+              if (!existing.destination && c.destination) existing.destination = c.destination;
+            } else {
+              clientMap.set(key, {
+                id: c.id || `crm_${Date.now()}_${Math.random()}`,
+                name: c.name || 'Client',
+                email: email,
+                phone: c.phone || '',
+                destination: c.destination || '',
+                status: c.status || 'Active',
+                consentRecorded: c.created_at ? c.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+                source: 'crm',
+                proposalsCount: 0,
+                invoicedAmount: 0
+              });
+            }
+          }
+        });
+      }
+    } catch {}
 
     // 2. Ingest from Proposals cache
     try {
@@ -203,16 +235,15 @@ export default function ContactsPage() {
 
     const targetEmailKey = formData.email.trim().toLowerCase();
 
-    // Check if editing an existing manual contact or adding a new override
+    // Sync with CRM database & local storage
     if (editingId) {
-      // Find if it was in manual contacts
+      updateClient(editingId, formData).catch(() => {});
       const existsInManual = manualContacts.some(c => c.id === editingId || c.email.toLowerCase() === targetEmailKey);
       if (existsInManual) {
         setManualContacts(prev => prev.map(c => 
           (c.id === editingId || c.email.toLowerCase() === targetEmailKey) ? { ...c, ...formData } : c
         ));
       } else {
-        // Add override record
         setManualContacts(prev => [...prev, {
           id: editingId,
           ...formData,
@@ -222,6 +253,7 @@ export default function ContactsPage() {
       logActivity('crm', `Updated contact details for ${formData.name}`);
       toast.success(`Updated contact details for ${formData.name}`);
     } else {
+      createClient(formData).catch(() => {});
       const newContact = {
         id: `manual_${Date.now()}`,
         ...formData,
@@ -243,6 +275,9 @@ export default function ContactsPage() {
     
     // Also clear from manual contacts if exists
     setManualContacts(prev => prev.filter(item => item.email.toLowerCase().trim() !== emailKey));
+    if (c.id && !String(c.id).startsWith('manual_')) {
+      deleteClient(c.id).catch(() => {});
+    }
     
     logActivity('crm', `Deleted contact ${c.name}`);
     toast.info(`Removed ${c.name} from address book`);

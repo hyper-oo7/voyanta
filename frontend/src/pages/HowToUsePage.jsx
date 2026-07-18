@@ -7,7 +7,7 @@ export default function HowToUsePage() {
 
   const tabs = [
     { id: 'pipeline', label: '1. Vault & Matching Pipeline', icon: 'sync_alt' },
-    { id: 'ai-copilot', label: '2. AI Copilot Intelligence', icon: 'auto_awesome' },
+    { id: 'ai-copilot', label: '2. VI Copilot Intelligence', icon: 'auto_awesome' },
     { id: 'operations', label: '3. Agency Operations', icon: 'business_center' },
   ];
 
@@ -185,56 +185,243 @@ export default function HowToUsePage() {
 
           {activeTab === 'ai-copilot' && (
             <div className="space-y-12 animate-fade-in">
-              <div className="text-center max-w-2xl mx-auto mb-8">
-                <h2 className="font-display text-3xl font-bold text-on-surface mb-2">AI Copilot Intelligence</h2>
-                <p className="text-sm text-on-surface-variant">Advanced algorithms tailored specifically to improve margins, automate content generation, and audit proposals.</p>
+              <div className="text-center max-w-3xl mx-auto mb-8">
+                <h2 className="font-display text-3xl font-bold text-on-surface mb-3">VI Copilot Intelligence</h2>
+                <div className="p-6 rounded-2xl bg-gradient-to-br from-primary/10 via-secondary/5 to-emerald-500/10 border border-primary/20 shadow-md text-left mb-6">
+                  <p className="text-sm md:text-base text-on-surface font-semibold leading-relaxed text-center">
+                    <span className="text-primary font-bold">Voyanta Intelligence (VI) is a sophisticated cognitive orchestration engine engineered exclusively for boutique luxury travel consultancies.</span>
+                  </p>
+                  <p className="text-xs text-on-surface-variant mt-2 text-center italic">
+                    By synthesizing multi-layered natural language processing with your agency&apos;s proprietary historical data, Vault contracts, and pricing rules, VI eliminates manual operational friction and elevates every itinerary into a high-converting, bespoke hospitality experience.
+                  </p>
+                </div>
+                <p className="text-sm text-on-surface-variant">Below is a comprehensive operational walkthrough detailing how travel advisors and onboarding specialists can leverage each VI capability to optimize margins and streamline proposal workflow.</p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Cost Optimizer */}
-                <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow">
-                  <div className="w-10 h-10 bg-emerald-500/10 text-emerald-600 rounded-xl flex items-center justify-center">
-                    <span className="material-symbols-outlined">payments</span>
+              {/* Step by Step Guide Cards */}
+              <div className="space-y-8">
+                
+                {/* 1. VI Vault */}
+                <div className="bg-surface-container-lowest p-6 sm:p-8 rounded-3xl border border-outline-variant shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-primary/10 text-primary rounded-2xl flex items-center justify-center font-bold">
+                      <span className="material-symbols-outlined text-2xl">storage</span>
+                    </div>
+                    <div>
+                      <h3 className="font-display text-2xl font-bold text-on-surface">1. VI Vault (Your Agency&apos;s Memory)</h3>
+                      <p className="text-xs text-primary font-bold uppercase tracking-wider">How to teach VI your rates & rules</p>
+                    </div>
                   </div>
-                  <h3 className="font-display text-xl font-bold text-on-surface">AI Cost Optimizer</h3>
-                  <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Compare rates across multiple suppliers automatically. The AI extracts prices from different contracts uploaded to your vault and flags the cheapest option, guaranteeing you pocket maximum profit margins.
+                  <p className="text-sm text-on-surface-variant leading-relaxed">
+                    <strong>In simple words:</strong> Stop typing hotel prices and daily itineraries manually every time. When you drop a file or rate sheet into My Vault, VI reads it, remembers the prices, and auto-suggests them right when you build proposals.
                   </p>
-                  <div className="bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant font-mono text-[10px] space-y-1">
-                    <div className="text-on-surface font-bold">Supplier Comparison:</div>
-                    <div className="flex justify-between text-on-surface-variant"><span>Supplier A (TBO):</span><span>₹26,000</span></div>
-                    <div className="flex justify-between text-emerald-600 font-bold"><span>Supplier B (Contract):</span><span>₹24,500 ✓</span></div>
+                  
+                  <div className="bg-surface-container-low p-5 rounded-2xl border border-outline-variant text-xs space-y-4">
+                    <div>
+                      <div className="font-bold text-on-surface flex items-center gap-1.5 mb-1.5">
+                        <span className="material-symbols-outlined text-sm text-primary">cloud_upload</span>
+                        Step 1: What files to upload
+                      </div>
+                      <p className="text-on-surface-variant pl-5">
+                        Upload supplier rate contracts (in <code>.pdf</code>, <code>.xlsx</code>, <code>.docx</code>, or <code>.csv</code>), hotel flyers, email quotes saved as files, or standard agency packing guidelines.
+                      </p>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-on-surface flex items-center gap-1.5 mb-1.5">
+                        <span className="material-symbols-outlined text-sm text-primary">view_list</span>
+                        Step 2: Required Columns & Content for Hotel Sheets
+                      </div>
+                      <p className="text-on-surface-variant pl-5 mb-1">
+                        For contract rates to sync, your Excel or PDF must clearly mention:
+                      </p>
+                      <ul className="list-disc pl-10 space-y-1 text-on-surface-variant">
+                        <li><code>Hotel Name</code> (e.g. Taj Lake Palace, Udaipur)</li>
+                        <li><code>Room Category</code> (e.g. Luxury Lake View Room, Palace Room)</li>
+                        <li><code>Net Price / Contract Rate</code> (must be a number, e.g. 45000)</li>
+                        <li><code>Season / Validity Dates</code> (e.g. Validity: Oct 01, 2026 - Mar 31, 2027)</li>
+                      </ul>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-on-surface flex items-center gap-1.5 mb-1.5">
+                        <span className="material-symbols-outlined text-sm text-primary">edit_document</span>
+                        Step 3: Uploading Supplier Documents, Packing Guidelines & Custom Rules
+                      </div>
+                      <p className="text-on-surface-variant pl-5">
+                        When you upload supplier documents, PDF itineraries, or rate sheets into <strong>My Vault</strong>, our advanced Voyanta Intelligence pipeline automatically extracts destinations, sub-destinations, hotel categories, activities, and custom sections (such as <i>What to Pack</i>, <i>Important Notes</i>, and <i>Visa Requirements</i>).
+                        <br /><br />
+                        These rules and rate structures are strictly isolated to your account. Whenever you initiate a proposal for a matching destination (e.g., Kashmir or Srinagar), VI automatically retrieves your stored packing checklists, supplier rate cards, and inclusions to populate your wizard steps without requiring any manual tag formatting.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                {/* Itinerary Builder */}
-                <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow">
-                  <div className="w-10 h-10 bg-blue-500/10 text-blue-600 rounded-xl flex items-center justify-center">
-                    <span className="material-symbols-outlined">map</span>
+                {/* 2. VI Cost Optimizer */}
+                <div className="bg-surface-container-lowest p-6 sm:p-8 rounded-3xl border border-outline-variant shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-emerald-500/10 text-emerald-600 rounded-2xl flex items-center justify-center font-bold">
+                      <span className="material-symbols-outlined text-2xl">trending_up</span>
+                    </div>
+                    <div>
+                      <h3 className="font-display text-2xl font-bold text-on-surface">2. VI Cost Optimizer (Margin Booster)</h3>
+                      <p className="text-xs text-emerald-600 font-bold uppercase tracking-wider">How to automatically find cheaper supplier rates</p>
+                    </div>
                   </div>
-                  <h3 className="font-display text-xl font-bold text-on-surface">AI Itinerary Builder</h3>
-                  <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Get destination-focused itinerary drafts instantly. Input the duration (e.g. 6 Days) and traveler interests (e.g. cultural, slow travel), and the AI compiles a customized day-by-day plan mapping hotels, excursions, and timing.
+                  <p className="text-sm text-on-surface-variant leading-relaxed">
+                    <strong>In simple words:</strong> When three different suppliers quote rates for the same hotel or tour, VI instantly checks if a cheaper direct negotiated contract exists in your Vault so you maximize net profit on every booking.
                   </p>
-                  <div className="bg-blue-500/5 p-3 rounded-2xl border border-blue-500/20 text-xs">
-                    <p className="font-bold text-blue-800 dark:text-blue-400">💡 Smart Customization</p>
-                    <p className="text-[10px] text-on-surface-variant">The AI learns your agency's preferred activities and filters out rejected excursions over time.</p>
+                  
+                  <div className="bg-surface-container-low p-5 rounded-2xl border border-outline-variant text-xs space-y-4">
+                    <div>
+                      <div className="font-bold text-on-surface flex items-center gap-1.5 mb-1.5">
+                        <span className="material-symbols-outlined text-sm text-emerald-600">checklist</span>
+                        Required Inputs Before Use
+                      </div>
+                      <p className="text-on-surface-variant pl-5">
+                        You must have supplier rate cards uploaded in <strong>My Vault</strong>, and your current proposal must have costing lines or itinerary items added.
+                      </p>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-on-surface flex items-center gap-1.5 mb-1.5">
+                        <span className="material-symbols-outlined text-sm text-emerald-600">play_circle</span>
+                        Step-by-Step Actions
+                      </div>
+                      <ol className="list-decimal pl-10 space-y-1 text-on-surface-variant">
+                        <li>Navigate to <strong>Step 3 (Costing & Pricing)</strong> inside the Proposal Wizard.</li>
+                        <li>Look at the top header bar next to <strong>Cost Breakdown</strong> and click the green <strong>VI Cost Optimizer</strong> button.</li>
+                        <li>VI cross-references your current costing rows against all verified supplier contracts inside your Vault.</li>
+                        <li>If a cheaper direct rate is identified, VI displays an interactive green banner highlighting exactly how much net profit you can gain (e.g. <i>"Identified potential net price savings by using direct negotiated contract rates!"</i>).</li>
+                        <li>Click <strong>Apply Net Price Savings</strong>. VI will optimize your pricing and discount structure, raising your profit margin instantly.</li>
+                      </ol>
+                    </div>
                   </div>
                 </div>
 
-                {/* Review & Rewrite */}
-                <div className="bg-surface-container-lowest p-6 rounded-3xl border border-outline-variant shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow">
-                  <div className="w-10 h-10 bg-indigo-500/10 text-indigo-600 rounded-xl flex items-center justify-center">
-                    <span className="material-symbols-outlined">spellcheck</span>
+                {/* 3. VI Curated Itinerary */}
+                <div className="bg-surface-container-lowest p-6 sm:p-8 rounded-3xl border border-outline-variant shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-blue-500/10 text-blue-600 rounded-2xl flex items-center justify-center font-bold">
+                      <span className="material-symbols-outlined text-2xl">map</span>
+                    </div>
+                    <div>
+                      <h3 className="font-display text-2xl font-bold text-on-surface">3. VI Curated Itinerary (Day-by-Day Generator)</h3>
+                      <p className="text-xs text-blue-600 font-bold uppercase tracking-wider">How to draft complete trip days in seconds</p>
+                    </div>
                   </div>
-                  <h3 className="font-display text-xl font-bold text-on-surface">AI Proposal Review & Rewrite</h3>
-                  <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Audit proposals for gaps like hotel-flight dates alignment issues, missing meals, or incomplete passenger information. Use the prompt rewrite box to polish paragraphs into rich, luxury hospitality prose instantly.
+                  <p className="text-sm text-on-surface-variant leading-relaxed">
+                    <strong>In simple words:</strong> Tell VI where the client is going and how many days they have, and it generates a complete day-by-day luxury schedule complete with VIP transfers, cultural highlights, and culinary experiences.
                   </p>
-                  <div className="bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant text-[11px] italic text-on-surface-variant">
-                    "Rewrite to sound more exclusive..."
+                  
+                  <div className="bg-surface-container-low p-5 rounded-2xl border border-outline-variant text-xs space-y-4">
+                    <div>
+                      <div className="font-bold text-on-surface flex items-center gap-1.5 mb-1.5">
+                        <span className="material-symbols-outlined text-sm text-blue-600">input</span>
+                        Required Inputs
+                      </div>
+                      <p className="text-on-surface-variant pl-5">
+                        You need: <strong>Destination</strong> (e.g. Kashmir / Dubai / Srinagar) entered in Step 1, and your target travel duration.
+                      </p>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-on-surface flex items-center gap-1.5 mb-1.5">
+                        <span className="material-symbols-outlined text-sm text-blue-600">play_circle</span>
+                        Step-by-Step Actions
+                      </div>
+                      <ol className="list-decimal pl-10 space-y-1 text-on-surface-variant">
+                        <li>Navigate to <strong>Step 2 (Itinerary Builder)</strong> inside the Proposal Wizard.</li>
+                        <li>Look at the top of the timeline section next to the heading <strong>Proposal Itinerary</strong> and click the <strong>Generate Day-by-Day with VI</strong> button.</li>
+                        <li>If your itinerary is empty, VI instantly builds a structured multi-day luxury schedule tailored to your destination. If you already have days, VI enriches every description with elevated luxury phrasing and Vault highlights.</li>
+                        <li>Additionally, check the right-side panel labeled <strong>Suggested from Vault</strong> or click <strong>VI Expand Luxury Experience</strong> inside individual day blocks to further customize daily activities.</li>
+                      </ol>
+                    </div>
                   </div>
                 </div>
+
+                {/* 4. VI Proposal Review */}
+                <div className="bg-surface-container-lowest p-6 sm:p-8 rounded-3xl border border-outline-variant shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-purple-500/10 text-purple-600 rounded-2xl flex items-center justify-center font-bold">
+                      <span className="material-symbols-outlined text-2xl">fact_check</span>
+                    </div>
+                    <div>
+                      <h3 className="font-display text-2xl font-bold text-on-surface">4. VI Proposal Review (Quality, Pacing & Reminders Audit)</h3>
+                      <p className="text-xs text-purple-600 font-bold uppercase tracking-wider">How to audit pacing, hotel transitions & visa reminders before sending</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-on-surface-variant leading-relaxed">
+                    <strong>In simple words:</strong> Like having a meticulous senior hospitality director review your proposal before emailing it out. It checks pacing, mechanical hotel switches, and ensures critical travel reminders are included.
+                  </p>
+                  
+                  <div className="bg-surface-container-low p-5 rounded-2xl border border-outline-variant text-xs space-y-4">
+                    <div>
+                      <div className="font-bold text-on-surface flex items-center gap-1.5 mb-1.5">
+                        <span className="material-symbols-outlined text-sm text-purple-600">visibility</span>
+                        Required Inputs
+                      </div>
+                      <p className="text-on-surface-variant pl-5">
+                        A proposal with itinerary days populated under Step 2.
+                      </p>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-on-surface flex items-center gap-1.5 mb-1.5">
+                        <span className="material-symbols-outlined text-sm text-purple-600">play_circle</span>
+                        Step-by-Step Actions
+                      </div>
+                      <ol className="list-decimal pl-10 space-y-1 text-on-surface-variant">
+                        <li>Navigate to <strong>Step 5 (Preview)</strong> in the Proposal Wizard.</li>
+                        <li>In the top toolbar next to style controls, click the purple <strong>VI Proposal Review</strong> button (or <strong>VI Auto-Title</strong> to generate a premium title).</li>
+                        <li>VI scans your entire itinerary and checks: (a) Are hotel check-ins/check-outs paced comfortably or is the client switching hotels too frequently without reason? (b) Are sightseeing days rushed or repetitive? (c) Did you include important destination-specific reminders such as <strong>Visa requirements</strong>, <strong>passport validity</strong>, or essential <strong>packing guidelines</strong>?</li>
+                        <li>If any recommendations or missing items are identified, VI highlights them under the <strong>VI Itinerary Pacing & Sequence Analysis</strong> panel so you can resolve them before generating your client PDF.</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. VI Rewrite */}
+                <div className="bg-surface-container-lowest p-6 sm:p-8 rounded-3xl border border-outline-variant shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-secondary/10 text-secondary rounded-2xl flex items-center justify-center font-bold">
+                      <span className="material-symbols-outlined text-2xl">edit_note</span>
+                    </div>
+                    <div>
+                      <h3 className="font-display text-2xl font-bold text-on-surface">5. VI Rewrite (Tone & Luxury Polish)</h3>
+                      <p className="text-xs text-secondary font-bold uppercase tracking-wider">How to transform basic notes into rich hospitality phrasing</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-on-surface-variant leading-relaxed">
+                    <strong>In simple words:</strong> If you typed a rough bullet point like *"pick up 9am go to dal lake boat ride"*, VI Rewrite instantly turns it into *"At 9:00 AM, our private chauffeur will escort you to the serene waters of Dal Lake for an exclusive, guided Shikara excursion..."*
+                  </p>
+                  
+                  <div className="bg-surface-container-low p-5 rounded-2xl border border-outline-variant text-xs space-y-4">
+                    <div>
+                      <div className="font-bold text-on-surface flex items-center gap-1.5 mb-1.5">
+                        <span className="material-symbols-outlined text-sm text-secondary">input</span>
+                        Required Inputs
+                      </div>
+                      <p className="text-on-surface-variant pl-5">
+                        Any text block, bullet point list, or rough notes in Step 4 Branding or inside the Step 5 WYSIWYG Live Editor.
+                      </p>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-on-surface flex items-center gap-1.5 mb-1.5">
+                        <span className="material-symbols-outlined text-sm text-secondary">play_circle</span>
+                        Step-by-Step Actions
+                      </div>
+                      <ol className="list-decimal pl-10 space-y-1 text-on-surface-variant">
+                        <li>In <strong>Step 4 (Branding)</strong>, click the <strong>VI Icon button</strong> (featuring the logo) right above Inclusions, Exclusions, or Terms to check grammar and expand bullet points.</li>
+                        <li>In <strong>Step 5 (Preview)</strong>, click <strong>✨ WYSIWYG Live Editor</strong> and click directly on any text paragraph.</li>
+                        <li>An inline popover appears where you can edit your text directly and adjust styling.</li>
+                        <li>Click <strong>Apply</strong> to commit the refined text to your proposal.</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           )}
@@ -317,7 +504,7 @@ export default function HowToUsePage() {
         {/* Action Call Section */}
         <div className="mt-20 py-16 px-6 bg-primary text-white text-center rounded-[32px] shadow-xl relative overflow-hidden">
           <h2 className="font-display text-3xl sm:text-4xl font-bold mb-4">Put Your Skills to Work</h2>
-          <p className="text-sm text-white/80 max-w-xl mx-auto mb-8 font-medium">Ready to create a proposal, upload supplier rate cards, or test the AI optimizer?</p>
+          <p className="text-sm text-white/80 max-w-xl mx-auto mb-8 font-medium">Ready to create a proposal, upload supplier rate cards, or test the VI Cost Optimizer?</p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <button
               onClick={() => navigate('/login?signup=true')}

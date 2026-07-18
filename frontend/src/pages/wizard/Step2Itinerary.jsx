@@ -5,6 +5,7 @@ import { addItem, removeItem } from '../../services/proposalItemService.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useProposalStore } from '../../store/proposalStore.js';
 import { logActivity } from '../../services/activityLogService.js';
+import { buildVIItinerary, getClimateClassification } from '../../lib/viClimateIntelligence.js';
 
 const cleanPrice = (val) => {
   if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
@@ -191,6 +192,101 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
     return () => { isMounted = false; };
   }, [client?.destination, client?.budget, proposal?.destination]);
+
+  const [generatingVI, setGeneratingVI] = useState(false);
+
+  const handleGenerateWithVI = async () => {
+    setGeneratingVI(true);
+    const dest = proposal?.destination || client?.destination || 'Luxury Destination';
+    
+    // Determine dynamic duration from Step 1
+    let numDays = 5; // fallback
+    if (client?.date_mode === 'days' && client?.duration_days) {
+      numDays = parseInt(client.duration_days, 10) || 5;
+    } else if (client?.date_mode === 'dates' && client?.start_date && client?.end_date) {
+      const ms = new Date(client.end_date).getTime() - new Date(client.start_date).getTime();
+      const diffDays = Math.round(ms / (1000 * 60 * 60 * 24)) + 1;
+      numDays = diffDays > 0 ? diffDays : 5;
+    } else if (days.length > 0) {
+      numDays = days.length;
+    }
+
+    const startDateStr = client?.start_date || new Date().toISOString();
+    const climate = getClimateClassification(dest, startDateStr);
+    
+    toast.info(`Generating curated day-by-day itinerary via VI for ${dest} (${numDays} Days, ${climate.seasonName})...`);
+
+    try {
+      await new Promise(r => setTimeout(r, 600));
+      
+      if (days.length === 0) {
+        // Global caching check
+        const cacheKey = `itinerary_${dest.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${numDays}_${climate.seasonName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+        let cachedDays = null;
+        try {
+          const globalCache = JSON.parse(localStorage.getItem('voyanta_global_vi_cache') || '{}');
+          if (globalCache && globalCache[cacheKey]) {
+            cachedDays = globalCache[cacheKey];
+          }
+        } catch (e) {
+          console.warn('Failed to parse global VI cache:', e);
+        }
+
+        if (cachedDays && Array.isArray(cachedDays) && cachedDays.length === numDays) {
+          updateProposal({ itinerary: { days: cachedDays } });
+          logActivity('vi_itinerary_cached_hit', `VI retrieved cached ${numDays}-day itinerary for ${dest} (${climate.seasonName})`, client?.name || 'Agency Team');
+          toast.success(`✨ VI retrieved pre-generated ${numDays}-day itinerary for ${dest} from global cache!`);
+        } else {
+          // Generate new days adaptively
+          const genDays = buildVIItinerary(dest, numDays, startDateStr);
+          updateProposal({ itinerary: { days: genDays } });
+          
+          // Save to global cache
+          try {
+            const globalCache = JSON.parse(localStorage.getItem('voyanta_global_vi_cache') || '{}');
+            globalCache[cacheKey] = genDays;
+            localStorage.setItem('voyanta_global_vi_cache', JSON.stringify(globalCache));
+          } catch (e) {
+            console.warn('Failed to save to global VI cache:', e);
+          }
+
+          logActivity('vi_itinerary_generated', `VI generated ${numDays}-day climate-intelligent itinerary for ${dest}`, client?.name || 'Agency Team');
+          toast.success(`✨ VI generated a complete ${numDays}-day itinerary for ${dest} (${climate.seasonName})!`);
+        }
+      } else {
+        const enriched = days.map(d => {
+          let desc = d.description || `Curated luxury itinerary day exploring the finest highlights of ${dest} with private chauffeur and VIP privileges.`;
+          
+          // Climate adaptive descriptions check for existing days
+          if (climate.isHot && climate.keyMatch !== 'kashmir') {
+            // Avoid stroller or hot afternoon walks
+            if (desc.toLowerCase().includes('walking') || desc.toLowerCase().includes('stroll') || desc.toLowerCase().includes('safari')) {
+              desc = desc.replace(/stroll\b|strolling\b|walking tour\b/gi, 'private AC transport transfer')
+                         .replace(/afternoon excursion\b|afternoon stroll\b/gi, 'evening sunset cruise')
+                         .replace(/guided walking\b/gi, 'chauffeured museum exploration');
+            }
+            if (!desc.toLowerCase().includes('afternoon relaxation') && !desc.toLowerCase().includes('spa')) {
+              desc += ' Spend the warm afternoon hours enjoying premium spa therapy or relaxing indoor amenities.';
+            }
+          }
+
+          return {
+            ...d,
+            title: d.title?.includes('Day') ? d.title : `Exclusive Experience: ${d.title || dest}`,
+            description: desc
+          };
+        });
+
+        updateProposal({ itinerary: { days: enriched } });
+        logActivity('vi_itinerary_enriched', `VI enriched ${days.length} itinerary days with climate intelligence`, client?.name || 'Agency Team');
+        toast.success(`✨ VI enriched ${days.length} itinerary days with climate intelligence & Vault highlights!`);
+      }
+    } catch (err) {
+      toast.error('Failed to generate with VI.');
+    } finally {
+      setGeneratingVI(false);
+    }
+  };
 
   const subDestinationsList = useMemo(() => {
     const set = new Set();
@@ -503,22 +599,22 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       {/* Left Column: Timeline Builder */}
       <div className="lg:col-span-8 min-w-0 space-y-xl">
         <div className="glass-card rounded-2xl p-lg space-y-md border border-outline-variant/50">
-          <h3 className="font-headline-sm text-primary">Proposal Itinerary</h3>
-          <div>
-            <label className="font-label-md text-on-surface block mb-xs font-semibold">My Vault Tour Recommendation / Reference Itinerary</label>
-            <select value={client.itinerary_id || ''} onChange={(e) => handleReferenceChange(e.target.value)} data-testid="ref-itinerary"
-              className="w-full px-md py-md bg-surface-container-lowest border border-outline-variant rounded-xl font-body-md focus:border-primary transition-colors">
-              <option value="">— Start from Scratch —</option>
-              {vaultItems && vaultItems.length > 0 && (
-                <optgroup label="🏆 My Vault Recommendations">
-                  {vaultItems.map((vt) => <option key={vt.id} value={`vault_${vt.id}`}>{vt.option_title || vt.destination} ({vt.duration_days || 7} Days • {vt.currency || '$'}{vt.total_estimated_cost || ''})</option>)}
-                </optgroup>
-              )}
-              <optgroup label="📚 Standard Library Itineraries">
-                {itineraries.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.destination || 'No location'})</option>)}
-              </optgroup>
-            </select>
+          <div className="flex items-center justify-between gap-md flex-wrap">
+            <h3 className="font-headline-sm text-primary">Proposal Itinerary</h3>
+            <button
+              type="button"
+              onClick={handleGenerateWithVI}
+              disabled={generatingVI}
+              data-testid="generate-with-vi-btn"
+              className="px-md py-sm bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-xl font-label-md flex items-center gap-2 font-bold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+            >
+              <span className={`material-symbols-outlined text-[18px] ${generatingVI ? 'animate-spin' : ''}`}>
+                {generatingVI ? 'progress_activity' : 'auto_awesome'}
+              </span>
+              {generatingVI ? 'Generating…' : 'Generate Day-by-Day with VI'}
+            </button>
           </div>
+
         </div>
         
         <div className="space-y-sm pt-md">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useToast } from '../context/ToastContext.jsx';
@@ -97,16 +97,42 @@ export default function DashboardPage() {
   // Compute accurate KPI counts
   const totalProposals = Math.max(serverStats?.totalProposals || 0, safeProposalsList.length);
   const totalTemplates = TEMPLATE_LIST.length;
-  const uniqueProposalClients = new Set(
-    safeProposalsList.map((p) => (p.client_name || p.client || '').trim().toLowerCase()).filter(Boolean)
-  ).size;
-  const activeClients = Math.max(serverStats?.activeClients || 0, crmClientsCount, uniqueProposalClients);
+  const activeClients = useMemo(() => {
+    const namesOrEmails = new Set();
+    const add = (name, email) => {
+      const k = (email || name || '').trim().toLowerCase();
+      if (k && k !== 'unnamed client' && k !== 'valued client' && k !== '—') namesOrEmails.add(k);
+    };
+    // 1. Proposals
+    safeProposalsList.forEach(p => add(p.client_name || p.client, p.client_email));
+    // 2. CRM Clients
+    try {
+      const crm = JSON.parse(localStorage.getItem('voyanta_crm_clients') || '[]');
+      crm.forEach(c => add(c.name, c.email));
+    } catch {}
+    // 3. Contacts
+    try {
+      const cont = JSON.parse(localStorage.getItem('voyanta_crm_contacts') || '[]');
+      cont.forEach(c => add(c.name, c.email));
+    } catch {}
+    // 4. Invoices
+    try {
+      const invs = JSON.parse(localStorage.getItem('voyanta_invoices_data') || '[]');
+      invs.forEach(i => add(i.client_name, i.client_email));
+    } catch {}
+    // 5. Receipts
+    try {
+      const recs = JSON.parse(localStorage.getItem('voyanta_receipts_data') || '[]');
+      recs.forEach(r => add(r.client_name, r.client_email));
+    } catch {}
+    return Math.max(namesOrEmails.size, crmClientsCount, serverStats?.activeClients || 0);
+  }, [safeProposalsList, crmClientsCount, serverStats?.activeClients]);
 
-  // Compute Approvals: approved/booked proposals + invoices (sent/partially paid/paid) minus cancelled
-  const approvedProposalsCount = safeProposalsList.filter(p => ['Approved', 'Booked'].includes(p.status)).length;
-  const validInvoicesCount = invoicesList.filter(i => ['Sent', 'Partially Paid', 'Paid'].includes(i.status)).length;
-  const cancelledInvoicesCount = invoicesList.filter(i => i.status === 'Cancelled').length;
-  const totalApprovalsMetric = Math.max(0, (analytics.totalApprovals || 0) + approvedProposalsCount + validInvoicesCount - cancelledInvoicesCount);
+  // Compute Approvals: approved/booked proposals
+  const approvedProposalsCount = safeProposalsList.filter(p => ['Approved', 'Booked'].includes(p?.status)).length;
+  const totalApprovalsMetric = safeProposalsList.length === 0
+    ? 0
+    : Math.max(approvedProposalsCount, Number(analytics.totalApprovals || 0));
 
   const getMostFreqDest = (list) => {
     const counts = {};
@@ -123,6 +149,73 @@ export default function DashboardPage() {
   const mostSentDestComputed = analytics.mostSentDest !== 'None yet' ? analytics.mostSentDest : getMostFreqDest([...safeProposalsList, ...invoicesList]);
   const mostApprovedDestComputed = analytics.mostApprovedDest !== 'None yet' ? analytics.mostApprovedDest : getMostFreqDest(safeProposalsList.filter(p => ['Approved', 'Booked'].includes(p.status)));
   const mostModifiedDestComputed = analytics.mostModifiedDest !== 'None yet' ? analytics.mostModifiedDest : getMostFreqDest(safeProposalsList.filter(p => p.status === 'Revision Requested'));
+
+  const destinationsListComputed = (() => {
+    const destMap = {};
+
+    const getEntry = (rawName) => {
+      const name = (rawName || '').trim();
+      if (!name || name === 'Concierge Travel Package' || name === 'Custom Travel Package') {
+        return null;
+      }
+      const key = name.toLowerCase();
+      if (!destMap[key]) {
+        destMap[key] = {
+          name,
+          pdf: 0,
+          whatsapp: 0,
+          email: 0,
+          approvals: 0,
+          modifications: 0,
+          totalGenerated: 0,
+        };
+      }
+      return destMap[key];
+    };
+
+    // 1. Process proposals
+    safeProposalsList.forEach(p => {
+      const entry = getEntry(p.destination);
+      if (entry) {
+        entry.totalGenerated += 1;
+        if (['Approved', 'Booked'].includes(p.status)) {
+          entry.approvals += 1;
+        }
+        if (p.status === 'Revision Requested') {
+          entry.modifications += 1;
+        }
+      }
+    });
+
+    // 2. Process invoices
+    (invoicesList || []).forEach(i => {
+      const entry = getEntry(i.destination);
+      if (entry) {
+        entry.totalGenerated += 1;
+        if (['Sent', 'Partially Paid', 'Paid'].includes(i.status)) {
+          entry.approvals += 1;
+        } else if (i.status === 'Cancelled') {
+          entry.approvals = Math.max(0, entry.approvals - 1);
+        }
+      }
+    });
+
+    // 3. Merge database analytics events
+    const dbDests = analytics.destinationsList || [];
+    dbDests.forEach(ad => {
+      const entry = getEntry(ad.name);
+      if (entry) {
+        entry.pdf += Number(ad.pdf || 0);
+        entry.whatsapp += Number(ad.whatsapp || 0);
+        entry.email += Number(ad.email || 0);
+        entry.approvals = Math.max(entry.approvals, Number(ad.approvals || 0));
+        entry.modifications = Math.max(entry.modifications, Number(ad.modifications || 0));
+        entry.totalGenerated = Math.max(entry.totalGenerated, Number(ad.totalGenerated || 0));
+      }
+    });
+
+    return Object.values(destMap).sort((a, b) => b.totalGenerated - a.totalGenerated);
+  })();
 
   const filteredProposals = safeProposalsList.filter(p => {
     if (!searchQuery) return true;
@@ -164,7 +257,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-lg">
         <StatCard title="TOTAL PROPOSALS" value={loading ? "..." : totalProposals} icon="folder" onClick={() => navigate('/proposals')} />
         <StatCard title="TOTAL TEMPLATES" value={loading ? "..." : totalTemplates} icon="description" onClick={() => navigate('/templates')} />
-        <StatCard title="NO OF CLIENTS" value={loading ? "..." : activeClients} icon="person" onClick={() => navigate('/crm')} />
+        <StatCard title="NO OF CLIENTS" value={loading ? "..." : activeClients} icon="person" onClick={() => navigate('/contacts')} />
         <StatCard title="INVOICES & REVENUE" value={loading ? "..." : totalInvoicesCount} icon="account_balance_wallet" onClick={() => navigate('/invoices')} />
       </div>
 
@@ -465,8 +558,8 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/60 text-sm font-medium">
-                    {analytics.destinationsList?.length > 0 ? (
-                      analytics.destinationsList.map((d, i) => (
+                    {destinationsListComputed.length > 0 ? (
+                      destinationsListComputed.map((d, i) => (
                         <tr key={d.name} className="hover:bg-surface-container-lowest transition-colors">
                           <td className="py-3.5 pr-4 font-bold text-on-surface flex items-center gap-2">
                             <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-black">{i + 1}</span>

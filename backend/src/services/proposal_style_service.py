@@ -454,9 +454,10 @@ async def validate_itinerary_sequence(days: list, agency_id: Optional[str] = Non
     full_itinerary_text = "\n\n".join(itinerary_text_list)
     
     system_prompt = (
-        "You are an expert luxury travel consultant validator.\n"
+        "You are an expert luxury travel consultant validator (Voyanta Intelligence / VI).\n"
         "Analyze the following day-by-day travel itinerary. Evaluate if it flows naturally, is paced well, and feels like a human specialist designed it.\n"
         "Identify anything that feels mechanical (e.g. checking into a new hotel every day without reason), repetitive (e.g. repeating the exact same city tours), or poorly paced (e.g. driving 6 hours, doing a 4 hour tour, and driving back in one day).\n"
+        "Note: Having a rest day is NOT necessary or required; do not flag a lack of rest days. Additionally, evaluate whether important Visa Information is missing or should be highlighted. Do NOT check for or recommend adding packing checklists or guidelines.\n"
         "Return a JSON object containing a list of flags under the 'flags' key. Each flag must have a unique 'id' (string), a clear 'message' describing the issue, and a specific recommended 'fix'.\n"
         "Format:\n"
         "{\n"
@@ -483,6 +484,16 @@ async def validate_itinerary_sequence(days: list, agency_id: Optional[str] = Non
                 "id": "hotel-switching",
                 "message": "Frequent hotel transfers may lead to client fatigue.",
                 "fix": "Consolidate stays at a central luxury resort to allow a more relaxed pace."
+            })
+        has_visa = any(
+            any(w in (d.get("description") or "").lower() for w in ["visa", "passport", "entry requirement", "travel document"])
+            for d in days
+        )
+        if not has_visa:
+            flags.append({
+                "id": "visa-check",
+                "message": "Important Visa requirements or travel document reminders are not highlighted yet.",
+                "fix": "Verify that your destination's Visa requirements are included under Step 4 Branding or Proposal Notes."
             })
         return flags
         

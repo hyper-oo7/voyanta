@@ -113,10 +113,102 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
     );
   };
 
+  const syncSingleToLocal = (pkg) => {
+    try {
+      // 1. Save to voyanta_vault_items
+      const existingVault = JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]');
+      const pkgId = pkg.id || `vault_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const savedPkg = {
+        ...pkg,
+        id: pkgId,
+        parsed_data: pkg.parsed_data || pkg,
+        status: 'active',
+        created_at: pkg.created_at || new Date().toISOString()
+      };
+      const filtered = existingVault.filter(item => String(item.id) !== String(pkgId) && !(item.destination && pkg.destination && item.destination.toLowerCase() === pkg.destination.toLowerCase() && item._pdf_filename === pkg._pdf_filename));
+      filtered.unshift(savedPkg);
+      localStorage.setItem('voyanta_vault_items', JSON.stringify(filtered));
+      window.dispatchEvent(new Event('voyanta:vault-updated'));
+
+      // 2. Save to voyanta_unified_library
+      const libraryStr = localStorage.getItem('voyanta_unified_library') || '[]';
+      let library = JSON.parse(libraryStr);
+      let updated = false;
+      const parsed = pkg.parsed_data || pkg || {};
+      const hotels = parsed.hotels || [];
+      const activities = parsed.activities || [];
+
+      hotels.forEach(h => {
+        const id = h.id || `hotel_${pkgId}_${(h.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        if (!library.some(item => String(item.id) === String(id))) {
+          library.push({
+            id,
+            name: h.name || 'Hotel',
+            type: 'hotel',
+            location: h.location || pkg.destination || '',
+            rate: h.rate || h.price || 0,
+            cover_image: h.cover_image || h.image_url || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80',
+            details: h.details || h.description || '',
+            description: h.details || h.description || '',
+            source: 'vault',
+            pkg_id: pkgId
+          });
+          updated = true;
+        }
+      });
+
+      activities.forEach(act => {
+        const id = act.id || `activity_${pkgId}_${(act.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        if (!library.some(item => String(item.id) === String(id))) {
+          library.push({
+            id,
+            name: act.name || 'Activity',
+            type: 'activity',
+            location: act.location || pkg.destination || '',
+            rate: act.rate || act.price || 0,
+            cover_image: act.cover_image || act.image_url || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80',
+            details: act.details || act.description || '',
+            description: act.details || act.description || '',
+            source: 'vault',
+            pkg_id: pkgId
+          });
+          updated = true;
+        }
+      });
+
+      const itineraryId = `itinerary_${pkgId}`;
+      if (!library.some(item => String(item.id) === String(itineraryId))) {
+        library.push({
+          id: itineraryId,
+          name: pkg.name || `${pkg.destination || 'Custom'} Tour Package`,
+          type: 'itinerary',
+          location: pkg.destination || '',
+          rate: pkg.budget || pkg.total_price || 0,
+          cover_image: pkg.cover_image || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&q=80',
+          details: `${pkg.duration_days || parsed.duration_days || 0} Days itinerary package`,
+          description: pkg.itinerary_text || parsed.overview || '',
+          days: parsed.days || [],
+          source: 'vault',
+          pkg_id: pkgId
+        });
+        updated = true;
+      }
+
+      if (updated) {
+        localStorage.setItem('voyanta_unified_library', JSON.stringify(library));
+        window.dispatchEvent(new Event('voyanta:unified-library-updated'));
+      }
+    } catch (err) {
+      console.warn('Local save error:', err);
+    }
+  };
+
   const confirmPackage = async (pkgToConfirm, index) => {
     setConfirming(true);
     setErrorMsg(null);
+    const confirmedPkg = { ...pkgToConfirm, _confirmed: true, id: pkgToConfirm.id || `vault_${Date.now()}_${index}` };
     try {
+      syncSingleToLocal(confirmedPkg);
       let token = null;
       try {
         await supabase?.auth?.refreshSession?.();
@@ -132,16 +224,17 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
       const res = await fetch('/api/import/confirm', {
         method: 'POST',
         headers,
-        body: JSON.stringify(pkgToConfirm)
+        body: JSON.stringify(confirmedPkg)
       });
 
-      const resData = await res.json();
-      if (!res.ok || resData.status === 'error') {
-        throw new Error(resData.message || resData.detail || 'Failed to confirm package');
+      if (!res.ok) {
+        console.warn('Server sync returned error, kept in local vault & library storage');
       }
-
+    } catch (err) {
+      console.warn('Error syncing to server during confirm (offline fallback active):', err);
+    } finally {
       const updated = [...packages];
-      updated[index] = { ...updated[index], _confirmed: true };
+      updated[index] = confirmedPkg;
       setPackages(updated);
 
       const nextUnconfirmed = updated.findIndex((p, i) => i > index && !p._confirmed);
@@ -156,10 +249,6 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
           setActiveIdx(anyRemaining);
         }
       }
-    } catch (err) {
-      console.error('Error confirming package:', err);
-      setErrorMsg(err.message);
-    } finally {
       setConfirming(false);
     }
   };

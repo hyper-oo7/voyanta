@@ -44,17 +44,17 @@ function syncVaultItemsToLibrary(items) {
     let updated = false;
 
     items.forEach(pkg => {
-      const parsed = pkg.parsed_data || {};
+      const parsed = (typeof pkg.parsed_data === 'string' ? JSON.parse(pkg.parsed_data) : pkg.parsed_data) || pkg || {};
       const hotels = parsed.hotels || [];
       const activities = parsed.activities || [];
       
       // 1. Process hotels
       hotels.forEach(h => {
-        const id = h.id || `hotel_${pkg.id}_${h.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        const id = h.id || `hotel_${pkg.id}_${(h.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
         if (!library.some(item => String(item.id) === String(id))) {
           library.push({
             id: id,
-            name: h.name,
+            name: h.name || 'Hotel',
             type: 'hotel',
             location: h.location || pkg.destination || '',
             rate: h.rate || h.price || 0,
@@ -70,11 +70,11 @@ function syncVaultItemsToLibrary(items) {
 
       // 2. Process activities
       activities.forEach(act => {
-        const id = act.id || `activity_${pkg.id}_${act.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        const id = act.id || `activity_${pkg.id}_${(act.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
         if (!library.some(item => String(item.id) === String(id))) {
           library.push({
             id: id,
-            name: act.name,
+            name: act.name || 'Activity',
             type: 'activity',
             location: act.location || pkg.destination || '',
             rate: act.rate || act.price || 0,
@@ -93,13 +93,13 @@ function syncVaultItemsToLibrary(items) {
       if (!library.some(item => String(item.id) === String(itineraryId))) {
         library.push({
           id: itineraryId,
-          name: pkg.name || `${pkg.destination} Tour Package`,
+          name: pkg.name || `${pkg.destination || 'Custom'} Tour Package`,
           type: 'itinerary',
           location: pkg.destination || '',
-          rate: pkg.budget || 0,
+          rate: pkg.budget || pkg.total_price || 0,
           cover_image: pkg.cover_image || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&q=80',
-          details: `${pkg.duration_days || 0} Days itinerary package`,
-          description: pkg.itinerary_text || '',
+          details: `${pkg.duration_days || parsed.duration_days || 0} Days itinerary package`,
+          description: pkg.itinerary_text || parsed.overview || '',
           days: parsed.days || [],
           source: 'vault',
           pkg_id: pkg.id
@@ -161,55 +161,53 @@ export default function MyVaultPage() {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
+      let dbItems = [];
       const res = await fetch(`/api/vault/packages?${params.toString()}`, { headers });
       if (res.ok) {
         const json = await res.json();
-        const dbItems = (json.packages || []).map(pkg => ({
+        dbItems = (json.packages || []).map(pkg => ({
           ...pkg,
-          parsed_data: typeof pkg.parsed_data === 'string' ? JSON.parse(pkg.parsed_data) : pkg.parsed_data,
-          extra_sections: typeof pkg.extra_sections === 'string' ? JSON.parse(pkg.extra_sections) : pkg.extra_sections,
+          parsed_data: typeof pkg.parsed_data === 'string' ? JSON.parse(pkg.parsed_data) : (pkg.parsed_data || pkg),
+          extra_sections: typeof pkg.extra_sections === 'string' ? JSON.parse(pkg.extra_sections) : (pkg.extra_sections || {}),
         }));
-        setVaultItems(dbItems);
-        syncVaultItemsToLibrary(dbItems);
-
-        // One-time migration: import old localStorage items
-        const legacyRaw = localStorage.getItem('voyanta_vault_items');
-        if (legacyRaw && dbItems.length === 0) {
-          try {
-            const legacyItems = JSON.parse(legacyRaw);
-            if (Array.isArray(legacyItems) && legacyItems.length > 0) {
-              toast.info('Migrating your existing vault data to persistent storage...');
-              localStorage.removeItem('voyanta_vault_items');
-            }
-          } catch {}
-        }
-      } else {
-        // Fallback: read from localStorage
-        try {
-          const raw = JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]');
-          setVaultItems(raw || []);
-          syncVaultItemsToLibrary(raw || []);
-        } catch {
-          setVaultItems([]);
-        }
       }
-    } catch (err) {
-      console.error('[MyVault] Failed to load vault items:', err);
-      // Fallback to localStorage
+
+      // Combine with local items from localStorage so vault items are always preserved & visible
+      let localItems = [];
       try {
         const raw = JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]');
-        setVaultItems(raw || []);
-        syncVaultItemsToLibrary(raw || []);
+        localItems = Array.isArray(raw) ? raw : [];
+      } catch {}
+
+      const combined = [...dbItems];
+      localItems.forEach(loc => {
+        if (!combined.some(db => String(db.id) === String(loc.id) || (db.destination && loc.destination && db.destination.toLowerCase() === loc.destination.toLowerCase() && db.pdf_filename === loc.pdf_filename))) {
+          combined.push(loc);
+        }
+      });
+
+      setVaultItems(combined);
+      syncVaultItemsToLibrary(combined);
+    } catch (err) {
+      console.error('[MyVault] Failed to load vault items:', err);
+      try {
+        const raw = JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]');
+        const local = Array.isArray(raw) ? raw : [];
+        setVaultItems(local);
+        syncVaultItemsToLibrary(local);
       } catch {
         setVaultItems([]);
       }
     } finally {
       setIsLoading(false);
     }
-  }, [filterDest, filterBudget, toast]);
+  }, [filterDest, filterBudget]);
 
   useEffect(() => {
     loadVaultItems();
+    const handleSync = () => loadVaultItems();
+    window.addEventListener('voyanta:vault-updated', handleSync);
+    return () => window.removeEventListener('voyanta:vault-updated', handleSync);
   }, [loadVaultItems]);
 
   // ── Process uploaded files with pre-save review and token refresh ──────────

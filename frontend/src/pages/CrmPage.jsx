@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { fetchClients, createClient, updateClient, deleteClient, TRIP_STATUSES } from '../services/crmService.js';
-import { fetchInvoices } from '../services/invoiceService.js';
+import { fetchInvoices, updateInvoice } from '../services/invoiceService.js';
 import { useNavigate } from 'react-router-dom';
 import { Client360Modal } from '../components/crm/Client360Modal.jsx';
 import ContactPicker from '../components/common/ContactPicker.jsx';
@@ -61,6 +61,7 @@ export default function CrmPage() {
           ex.paid_amount += pd;
           ex.invoice_count += 1;
           if (!ex.destination && inv.destination) ex.destination = inv.destination;
+          if (inv.crm_status && !ex.status) ex.status = inv.crm_status;
           clientMap.set(key, ex);
         } else {
           clientMap.set(key, {
@@ -69,7 +70,7 @@ export default function CrmPage() {
             email: inv.client_email || '',
             phone: inv.client_phone || '',
             destination: inv.destination || 'Various',
-            status: inv.status === 'Paid' ? 'BOOKED' : 'SENT',
+            status: inv.crm_status || (inv.status === 'Paid' ? 'Booked' : 'Proposal Sent'),
             notes: `Auto-linked from Invoice #${inv.invoice_number}`,
             invoiced_amount: tot,
             paid_amount: pd,
@@ -165,9 +166,36 @@ export default function CrmPage() {
     }
   };
 
-  const handleStatusChange = async (id, newStatus) => {
+  const handleStatusChange = async (clientOrId, newStatus) => {
+    const client = typeof clientOrId === 'object' && clientOrId !== null ? clientOrId : clients.find(c => c.id === clientOrId);
+    if (!client) return;
     try {
-      await updateClient(id, { status: newStatus });
+      await updateClient(client.id, {
+        name: client.name,
+        email: client.email,
+        phone: client.phone,
+        destination: client.destination,
+        status: newStatus
+      });
+
+      // Sync status to linked invoices (bidirectional linking)
+      try {
+        const invs = await fetchInvoices();
+        for (const inv of invs) {
+          const nameMatch = (inv.client_name || '').toLowerCase().trim() === (client.name || '').toLowerCase().trim();
+          const emailMatch = inv.client_email && client.email && inv.client_email.toLowerCase().trim() === client.email.toLowerCase().trim();
+          const idMatch = client.id.startsWith('inv_client_') && String(inv.id) === String(client.id.replace('inv_client_', ''));
+          if (nameMatch || emailMatch || idMatch) {
+            await updateInvoice(inv.id, {
+              crm_status: newStatus,
+              ...(newStatus === 'Booked' && inv.status === 'Draft' ? { status: 'Sent' } : {})
+            }, { action: 'Status Synced', details: `CRM status updated to ${newStatus}` });
+          }
+        }
+      } catch (e) {
+        console.warn('Failed syncing invoice status:', e);
+      }
+
       toast.success(`Status updated to ${newStatus}`);
       loadClients();
     } catch (err) {
@@ -176,7 +204,7 @@ export default function CrmPage() {
   };
 
   const getStatusBadge = (status) => {
-    const found = TRIP_STATUSES.find(s => s.id === status);
+    const found = TRIP_STATUSES.find(s => s.id.toLowerCase() === (status || '').toLowerCase());
     if (!found) return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-surface-container text-on-surface-variant">{status}</span>;
     return (
       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${found.color}`}>
@@ -217,226 +245,240 @@ export default function CrmPage() {
         </div>
       </div>
 
-      {/* Filter & Search Toolbar */}
-      <div className="glass-card p-4 rounded-2xl border border-outline-variant flex flex-col md:flex-row items-center justify-between gap-4 bg-surface-container-lowest/60">
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 no-scrollbar">
-          <button
-            onClick={() => { setStatusFilter('ALL'); setPage(0); }}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 ${statusFilter === 'ALL' ? 'bg-primary text-on-primary shadow-md' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
-          >
-            <span>All Clients</span>
-            <span className="px-1.5 py-0.5 rounded-md text-[10px] bg-black/20">{statusFilter === 'ALL' ? totalCount : ''}</span>
-          </button>
-          {TRIP_STATUSES.map(s => (
+      {/* Breakout Wrapper for Filter Toolbar & CRM Table */}
+      <div className="-mx-6 lg:-mx-12 xl:-mx-16 space-y-6">
+        {/* Filter & Search Toolbar */}
+        <div className="glass-card p-4 rounded-2xl border border-outline-variant flex flex-col md:flex-row items-center justify-between gap-4 bg-surface-container-lowest/60 mx-6 lg:mx-12 xl:mx-16">
+          <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 no-scrollbar">
             <button
-              key={s.id}
-              onClick={() => { setStatusFilter(s.id); setPage(0); }}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 ${statusFilter === s.id ? 'bg-primary text-on-primary shadow-md' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
+              onClick={() => { setStatusFilter('ALL'); setPage(0); }}
+              className={`px-4 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 ${statusFilter === 'ALL' ? 'bg-primary text-on-primary shadow-md' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
             >
-              <span>{s.label}</span>
+              <span>All Clients</span>
+              <span className="px-1.5 py-0.5 rounded-md text-[10px] bg-black/20">{statusFilter === 'ALL' ? totalCount : ''}</span>
             </button>
-          ))}
+            {TRIP_STATUSES.map(s => (
+              <button
+                key={s.id}
+                onClick={() => { setStatusFilter(s.id); setPage(0); }}
+                className={`px-4 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 ${statusFilter === s.id ? 'bg-primary text-on-primary shadow-md' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
+              >
+                <span>{s.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full md:w-72">
+            <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
+            <input
+              type="text"
+              placeholder="Search name, email, destination..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 rounded-xl bg-surface-container-low border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-xs text-on-surface font-medium placeholder:text-on-surface-variant/60"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-on-surface-variant hover:text-primary">
+                CLEAR
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="relative w-full md:w-72">
-          <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
-          <input
-            type="text"
-            placeholder="Search name, email, destination..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-xl bg-surface-container-low border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-xs text-on-surface font-medium placeholder:text-on-surface-variant/60"
-          />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-on-surface-variant hover:text-primary">
-              CLEAR
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* CRM Client Table */}
-      <div className="glass-card rounded-2xl overflow-hidden border border-outline-variant shadow-xl bg-surface-container-lowest/80">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-surface-container-low border-b border-outline-variant">
-                <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Client Name</th>
-                <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Contact Info</th>
-                <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Destination</th>
-                <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Invoiced & Revenue</th>
-                <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Pipeline Status</th>
-                <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Notes / Remarks</th>
-                <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/60">
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-on-surface-variant">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <span className="material-symbols-outlined animate-spin text-3xl text-primary">progress_activity</span>
-                      <span className="text-sm font-semibold">Loading client directory...</span>
-                    </div>
-                  </td>
+        {/* CRM Client Table */}
+        <div className="glass-card rounded-2xl overflow-hidden border border-outline-variant shadow-xl bg-surface-container-lowest/80 mx-6 lg:mx-12 xl:mx-16">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-surface-container-low border-b border-outline-variant">
+                  <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Client Name</th>
+                  <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Contact Info</th>
+                  <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Destination</th>
+                  <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Invoiced & Revenue</th>
+                  <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Pipeline Status</th>
+                  <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Notes / Remarks</th>
+                  <th className="py-3.5 px-6 font-label-sm text-xs font-extrabold uppercase tracking-widest text-on-surface-variant text-right">Actions</th>
                 </tr>
-              ) : filteredClients.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-16 text-center text-on-surface-variant">
-                    <div className="flex flex-col items-center justify-center gap-3 max-w-sm mx-auto">
-                      <div className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant">
-                        <span className="material-symbols-outlined text-2xl">person_off</span>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/60">
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-on-surface-variant">
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <span className="material-symbols-outlined animate-spin text-3xl text-primary">progress_activity</span>
+                        <span className="text-sm font-semibold">Loading client directory...</span>
                       </div>
-                      <p className="text-base font-bold text-on-surface">No clients found</p>
-                      <p className="text-xs text-on-surface-variant">No client profiles match your current filter criteria or search query. Click &ldquo;Add Client&rdquo; to create one.</p>
-                      <button onClick={handleOpenAdd} className="mt-2 px-4 py-2 rounded-xl bg-primary text-on-primary font-bold text-xs uppercase tracking-wider">
-                        + Add First Client
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredClients.map((client) => (
-                  <tr key={client.id} className="hover:bg-surface-container-low/50 transition-colors group">
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-primary/20 to-accent/20 border border-primary/30 flex items-center justify-center text-primary font-black text-sm uppercase flex-shrink-0">
-                          {(client.name || 'C').charAt(0)}
+                    </td>
+                  </tr>
+                ) : filteredClients.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-16 text-center text-on-surface-variant">
+                      <div className="flex flex-col items-center justify-center gap-3 max-w-sm mx-auto">
+                        <div className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant">
+                          <span className="material-symbols-outlined text-2xl">person_off</span>
                         </div>
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => setClient360(client)}
-                            className="font-bold text-sm text-on-surface hover:text-primary transition-colors text-left flex items-center gap-1.5 m-0 leading-tight group/link"
-                          >
-                            <span className="group-hover/link:underline">{client.name}</span>
-                            <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full uppercase tracking-wider font-extrabold flex items-center gap-0.5" title="Open Client 360 & Invoices">
-                              ⚡ 360°
-                            </span>
-                          </button>
-                          <span className="text-[10px] font-mono text-on-surface-variant/70 uppercase tracking-wider mt-0.5 block">
-                            Added {new Date(client.created_at || Date.now()).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="space-y-1">
-                        {client.email ? (
-                          <a href={`mailto:${client.email}`} className="flex items-center gap-1.5 text-xs font-medium text-on-surface hover:text-primary transition-colors">
-                            <span className="material-symbols-outlined text-[15px] text-on-surface-variant">mail</span>
-                            {client.email}
-                          </a>
-                        ) : <span className="text-xs text-on-surface-variant/50 italic">No email</span>}
-                        {client.phone && (
-                          <a href={`tel:${client.phone}`} className="flex items-center gap-1.5 text-xs font-mono text-on-surface-variant hover:text-primary transition-colors">
-                            <span className="material-symbols-outlined text-[15px]">call</span>
-                            {client.phone}
-                          </a>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      {client.destination ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container text-xs font-semibold text-primary border border-outline-variant/50">
-                          <span className="material-symbols-outlined text-[14px]">flight_land</span>
-                          {client.destination}
-                        </span>
-                      ) : <span className="text-xs text-on-surface-variant/50 italic">—</span>}
-                    </td>
-                    <td className="py-4 px-6 font-mono text-xs">
-                      {client.invoice_count > 0 ? (
-                        <div>
-                          <div className="font-black text-emerald-600 dark:text-emerald-400">
-                            {formatCurr(client.paid_amount || 0, client.currency || 'INR')} Paid
-                          </div>
-                          <div className="text-[10px] text-on-surface-variant font-semibold">
-                            {formatCurr(client.invoiced_amount || 0, client.currency || 'INR')} Billed ({client.invoice_count} inv)
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-on-surface-variant/40 italic">0 Invoices</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-2">
-                        {getStatusBadge(client.status)}
-                        <select
-                          value={client.status || 'Inquiry'}
-                          onChange={(e) => handleStatusChange(client.id, e.target.value)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity bg-surface-container border border-outline-variant rounded-lg px-1.5 py-1 text-[11px] font-bold text-on-surface cursor-pointer outline-none"
-                          title="Change status"
-                        >
-                          {TRIP_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                        </select>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6 max-w-xs">
-                      <p className="text-xs text-on-surface-variant line-clamp-2 m-0 leading-relaxed font-normal">
-                        {client.notes || <span className="italic opacity-50">No notes</span>}
-                      </p>
-                    </td>
-                    <td className="py-4 px-6 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setClient360(client)}
-                          className="px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-on-primary font-bold text-[11px] transition-colors flex items-center gap-1 shadow-xs mr-1"
-                          title="View Client 360 & Invoices"
-                        >
-                          <span className="material-symbols-outlined text-[15px]">receipt_long</span>
-                          <span>Invoices</span>
-                        </button>
-                        <button
-                          onClick={() => handleOpenEdit(client)}
-                          className="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors"
-                          title="Edit Client"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">edit</span>
-                        </button>
-                        <button
-                          onClick={() => handleDelete(client.id)}
-                          className="w-8 h-8 rounded-lg hover:bg-error-container/20 flex items-center justify-center text-on-surface-variant hover:text-error transition-colors"
-                          title="Delete Client"
-                        >
-                          <span className="material-symbols-outlined text-[18px]">delete</span>
+                        <p className="text-base font-bold text-on-surface">No clients found</p>
+                        <p className="text-xs text-on-surface-variant">No client profiles match your current filter criteria or search query. Click &ldquo;Add Client&rdquo; to create one.</p>
+                        <button onClick={handleOpenAdd} className="mt-2 px-4 py-2 rounded-xl bg-primary text-on-primary font-bold text-xs uppercase tracking-wider">
+                          + Add First Client
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination Toolbar */}
-        {!loading && totalCount > 0 && (
-          <div className="px-6 py-4 bg-surface-container-low border-t border-outline-variant flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-xs font-semibold text-on-surface-variant">
-              Showing <span className="font-bold text-on-surface">{page * pageSize + 1}</span> to <span className="font-bold text-on-surface">{Math.min((page + 1) * pageSize, totalCount)}</span> of <span className="font-bold text-primary">{totalCount}</span> total clients
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage(p => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest text-xs font-bold text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-container transition-colors flex items-center gap-1"
-              >
-                <span className="material-symbols-outlined text-[16px]">chevron_left</span> Prev
-              </button>
-              <span className="px-3 py-1 text-xs font-extrabold text-primary font-mono">
-                Page {page + 1} of {totalPages}
-              </span>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                disabled={page >= totalPages - 1}
-                className="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest text-xs font-bold text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-container transition-colors flex items-center gap-1"
-              >
-                Next <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-              </button>
-            </div>
+                ) : (
+                  filteredClients.map((client) => (
+                    <tr key={client.id} className="hover:bg-surface-container-low/50 transition-colors group">
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-primary/20 to-accent/20 border border-primary/30 flex items-center justify-center text-primary font-black text-sm uppercase flex-shrink-0">
+                            {(client.name || 'C').charAt(0)}
+                          </div>
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => setClient360(client)}
+                              className="font-bold text-sm text-on-surface hover:text-primary transition-colors text-left flex items-center gap-1.5 m-0 leading-tight group/link"
+                            >
+                              <span className="group-hover/link:underline">{client.name}</span>
+                              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full uppercase tracking-wider font-extrabold flex items-center gap-0.5" title="Open Client 360 & Invoices">
+                                ⚡ 360°
+                              </span>
+                            </button>
+                            <span className="text-[10px] font-mono text-on-surface-variant/70 uppercase tracking-wider mt-0.5 block">
+                              Added {new Date(client.created_at || Date.now()).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="space-y-1">
+                          {client.email ? (
+                            <a href={`mailto:${client.email}`} className="flex items-center gap-1.5 text-xs font-medium text-on-surface hover:text-primary transition-colors">
+                              <span className="material-symbols-outlined text-[15px] text-on-surface-variant">mail</span>
+                              {client.email}
+                            </a>
+                          ) : <span className="text-xs text-on-surface-variant/50 italic">No email</span>}
+                          {client.phone && (
+                            <a href={`tel:${client.phone}`} className="flex items-center gap-1.5 text-xs font-mono text-on-surface-variant hover:text-primary transition-colors">
+                              <span className="material-symbols-outlined text-[15px]">call</span>
+                              {client.phone}
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        {client.destination ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container text-xs font-semibold text-primary border border-outline-variant/50">
+                            <span className="material-symbols-outlined text-[14px]">flight_land</span>
+                            {client.destination}
+                          </span>
+                        ) : <span className="text-xs text-on-surface-variant/50 italic">—</span>}
+                      </td>
+                      <td className="py-4 px-6 font-mono text-xs">
+                        {client.invoice_count > 0 ? (
+                          <div>
+                            <div className="font-black text-emerald-600 dark:text-emerald-400">
+                              {formatCurr(client.paid_amount || 0, client.currency || 'INR')} Paid
+                            </div>
+                            <div className="text-[10px] text-on-surface-variant font-semibold">
+                              {formatCurr(client.invoiced_amount || 0, client.currency || 'INR')} Billed ({client.invoice_count} inv)
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-on-surface-variant/40 italic">0 Invoices</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6">
+                        {(() => {
+                          const currentStatus = TRIP_STATUSES.find(s => s.id.toLowerCase() === (client.status || '').toLowerCase()) || TRIP_STATUSES[0];
+                          return (
+                            <div className="relative inline-flex items-center">
+                              <select
+                                value={currentStatus.id}
+                                onChange={(e) => handleStatusChange(client, e.target.value)}
+                                className={`appearance-none cursor-pointer pl-3 pr-7 py-1.5 rounded-full text-xs font-bold border outline-none transition-all ${currentStatus.color}`}
+                                title="Change status"
+                              >
+                                {TRIP_STATUSES.map(s => (
+                                  <option key={s.id} value={s.id} className="bg-surface text-on-surface font-semibold">
+                                    {s.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-[15px] pointer-events-none opacity-80">
+                                expand_more
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="py-4 px-6 max-w-xs">
+                        <p className="text-xs text-on-surface-variant line-clamp-2 m-0 leading-relaxed font-normal">
+                          {client.notes || <span className="italic opacity-50">No notes</span>}
+                        </p>
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setClient360(client)}
+                            className="px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-on-primary font-bold text-[11px] transition-colors flex items-center gap-1 shadow-xs mr-1"
+                            title="View Client 360 & Invoices"
+                          >
+                            <span className="material-symbols-outlined text-[15px]">receipt_long</span>
+                            <span>Invoices</span>
+                          </button>
+                          <button
+                            onClick={() => handleOpenEdit(client)}
+                            className="w-8 h-8 rounded-lg hover:bg-surface-container flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors"
+                            title="Edit Client"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">edit</span>
+                          </button>
+                          <button
+                            onClick={() => handleDelete(client.id)}
+                            className="w-8 h-8 rounded-lg hover:bg-error-container/20 flex items-center justify-center text-on-surface-variant hover:text-error transition-colors"
+                            title="Delete Client"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">delete</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        )}
+
+          {/* Pagination Toolbar */}
+          {!loading && totalCount > 0 && (
+            <div className="px-6 py-4 bg-surface-container-low border-t border-outline-variant flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-xs font-semibold text-on-surface-variant">
+                Showing <span className="font-bold text-on-surface">{page * pageSize + 1}</span> to <span className="font-bold text-on-surface">{Math.min((page + 1) * pageSize, totalCount)}</span> of <span className="font-bold text-primary">{totalCount}</span> total clients
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest text-xs font-bold text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-container transition-colors flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-[16px]">chevron_left</span> Prev
+                </button>
+                <span className="px-3 py-1 text-xs font-extrabold text-primary font-mono">
+                  Page {page + 1} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest text-xs font-bold text-on-surface disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-container transition-colors flex items-center gap-1"
+                >
+                  Next <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Modal for Add / Edit Client */}

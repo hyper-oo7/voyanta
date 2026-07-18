@@ -85,34 +85,157 @@ export default function AppLayout() {
       if (notifRef.current && !notifRef.current.contains(event.target)) setShowNotifications(false);
       if (helpRef.current && !helpRef.current.contains(event.target)) setShowHelp(false);
     };
+    const handleScroll = () => {
+      if (showNotifications) setShowNotifications(false);
+      if (showHelp) setShowHelp(false);
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [showNotifications, showHelp]);
 
-  const [notifications, setNotifications] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('voyanta_notifications') || 'null');
-      if (stored && Array.isArray(stored) && stored.length > 0) return stored;
-    } catch {}
-    return [
-      { id: 1, icon: 'mail', title: 'Proposal Sent', desc: "Alex sent 'Tokyo Neon Nights' to Marcus Thorne.", time: '2 hours ago', unread: true },
-      { id: 2, icon: 'check_circle', title: 'Proposal Accepted', desc: "'Alpine Escape' was accepted by Eleanor Vance.", time: '5 hours ago', unread: true },
-      { id: 3, icon: 'sync', title: 'Database Sync', desc: 'Global hotel inventory updated successfully.', time: 'Yesterday', unread: false }
-    ];
-  });
+  const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
-    const handler = () => {
+    const loadRealNotifications = () => {
+      let items = [];
       try {
-        const stored = JSON.parse(localStorage.getItem('voyanta_notifications') || 'null');
-        if (stored && Array.isArray(stored) && stored.length > 0) setNotifications(stored);
+        const storedLogs = JSON.parse(localStorage.getItem('voyanta_notifications') || '[]');
+        if (Array.isArray(storedLogs)) {
+          items.push(...storedLogs);
+        }
       } catch {}
+
+      // Check real proposals
+      try {
+        const props = JSON.parse(localStorage.getItem('voyanta_proposals') || '[]');
+        if (Array.isArray(props)) {
+          props.forEach(p => {
+            if (p.status === 'Sent' || p.status === 'Proposal Sent') {
+              items.push({
+                id: `prop_sent_${p.id}`,
+                icon: 'mail',
+                title: 'Proposal Sent',
+                desc: `Sent '${p.title || p.destination || 'Proposal'}' to ${p.client_name || p.client || 'client'}.`,
+                time: p.sent_at || p.created_at || 'Recent',
+                unread: true,
+                ts: new Date(p.sent_at || p.created_at || Date.now()).getTime()
+              });
+            } else if (p.status === 'Approved' || p.status === 'Accepted' || p.status === 'Booked') {
+              items.push({
+                id: `prop_app_${p.id}`,
+                icon: 'check_circle',
+                title: 'Proposal Approved',
+                desc: `'${p.title || p.destination || 'Proposal'}' was approved by ${p.client_name || p.client || 'client'}.`,
+                time: p.updated_at || p.created_at || 'Recent',
+                unread: true,
+                ts: new Date(p.updated_at || p.created_at || Date.now()).getTime()
+              });
+            } else if (p.status === 'Modification Requested' || p.status === 'Changes Requested') {
+              items.push({
+                id: `prop_mod_${p.id}`,
+                icon: 'edit_note',
+                title: 'Modification Request',
+                desc: `${p.client_name || 'Client'} requested changes for '${p.title || p.destination || 'Proposal'}'.`,
+                time: p.updated_at || p.created_at || 'Recent',
+                unread: true,
+                ts: new Date(p.updated_at || p.created_at || Date.now()).getTime()
+              });
+            }
+          });
+        }
+      } catch {}
+
+      // Check real invoices & payments
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('voyanta_invoices_data_')) {
+            const invs = JSON.parse(localStorage.getItem(key) || '[]');
+            if (Array.isArray(invs)) {
+              invs.forEach(inv => {
+                items.push({
+                  id: `inv_gen_${inv.id}`,
+                  icon: 'receipt_long',
+                  title: 'Invoice Generated',
+                  desc: `Generated invoice #${inv.invoice_number} for ${inv.client_name || 'client'}.`,
+                  time: inv.invoice_date || inv.created_at || 'Recent',
+                  unread: false,
+                  ts: new Date(inv.invoice_date || inv.created_at || Date.now()).getTime()
+                });
+                if (inv.status === 'Paid' || inv.status === 'Partially Paid' || Number(inv.paid_amount) > 0) {
+                  items.push({
+                    id: `inv_paid_${inv.id}`,
+                    icon: 'payments',
+                    title: 'Payment Received',
+                    desc: `Received payment (${inv.currency || 'INR'} ${inv.paid_amount || inv.total_amount || 0}) for invoice #${inv.invoice_number} from ${inv.client_name || 'client'}.`,
+                    time: inv.updated_at || inv.invoice_date || 'Recent',
+                    unread: true,
+                    ts: new Date(inv.updated_at || inv.invoice_date || Date.now()).getTime()
+                  });
+                }
+              });
+            }
+          }
+        }
+      } catch {}
+
+      // Check CRM contacts added
+      try {
+        const crmKeys = ['voyanta_crm_clients'];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('voyanta_clients_data_')) crmKeys.push(k);
+        }
+        crmKeys.forEach(key => {
+          const clients = JSON.parse(localStorage.getItem(key) || '[]');
+          if (Array.isArray(clients)) {
+            clients.forEach(c => {
+              if (c.name) {
+                items.push({
+                  id: `crm_add_${c.id || c.name}`,
+                  icon: 'person_add',
+                  title: 'Contact Added',
+                  desc: `Added contact '${c.name}' (${c.email || c.phone || 'CRM'}) to client directory.`,
+                  time: c.created_at || 'Recent',
+                  unread: false,
+                  ts: new Date(c.created_at || Date.now()).getTime()
+                });
+              }
+            });
+          }
+        });
+      } catch {}
+
+      // Deduplicate by ID and sort by newest first
+      const seen = new Set();
+      const uniqueItems = [];
+      items.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      items.forEach(it => {
+        if (!seen.has(it.id)) {
+          seen.add(it.id);
+          uniqueItems.push(it);
+        }
+      });
+
+      setNotifications(uniqueItems.slice(0, 20));
     };
-    window.addEventListener('voyanta:notifications-updated', handler);
-    window.addEventListener('storage', handler);
+
+    loadRealNotifications();
+    window.addEventListener('voyanta:notifications-updated', loadRealNotifications);
+    window.addEventListener('voyanta:proposals-updated', loadRealNotifications);
+    window.addEventListener('voyanta:invoices-updated', loadRealNotifications);
+    window.addEventListener('voyanta:clients-updated', loadRealNotifications);
+    window.addEventListener('storage', loadRealNotifications);
     return () => {
-      window.removeEventListener('voyanta:notifications-updated', handler);
-      window.removeEventListener('storage', handler);
+      window.removeEventListener('voyanta:notifications-updated', loadRealNotifications);
+      window.removeEventListener('voyanta:proposals-updated', loadRealNotifications);
+      window.removeEventListener('voyanta:invoices-updated', loadRealNotifications);
+      window.removeEventListener('voyanta:clients-updated', loadRealNotifications);
+      window.removeEventListener('storage', loadRealNotifications);
     };
   }, []);
 
@@ -174,14 +297,7 @@ export default function AppLayout() {
                 <p className="font-label-md text-label-md text-on-surface truncate m-0">
                   {user?.user_metadata?.full_name || (isDemo ? 'Demo User' : (user?.email || 'Voyanta Agent'))}
                 </p>
-                <p className="font-label-sm text-label-sm text-on-surface-variant truncate m-0">
-                  {isDemo ? 'Demo Session' : user?.email}
-                </p>
               </div>
-            </div>
-            <div className="flex justify-between items-center mt-sm px-xs border-t border-outline-variant pt-sm">
-              <Link to="/plan" className="text-[11px] font-bold text-primary hover:underline uppercase tracking-wider">My Plan</Link>
-              <button onClick={handleSignOut} className="text-[11px] font-bold text-error hover:underline uppercase tracking-wider bg-transparent border-none cursor-pointer">Log Out</button>
             </div>
           </div>
         </div>
@@ -242,19 +358,29 @@ export default function AppLayout() {
                     <button onClick={markAllRead} className="text-[11px] font-bold text-primary hover:underline bg-transparent border-none p-0 cursor-pointer">Mark all read</button>
                   </div>
                   <div className="divide-y divide-outline-variant max-h-[300px] overflow-y-auto">
-                    {notifications.map(n => (
-                      <div key={n.id} className={`flex items-start gap-md p-md hover:bg-surface-container-lowest transition-colors ${n.unread ? 'bg-surface-container-low/20' : ''}`}>
-                        <div className="w-8 h-8 bg-primary-container rounded-full flex items-center justify-center flex-shrink-0 text-on-primary-container">
-                          <span className="material-symbols-outlined text-[16px]">{n.icon}</span>
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-body-md text-xs font-semibold text-on-surface m-0">{n.title}</p>
-                          <p className="font-body-md text-xs text-on-surface-variant m-0 mt-0.5 leading-snug">{n.desc}</p>
-                          <p className="font-label-sm text-[10px] text-on-surface-variant uppercase tracking-wider m-0 mt-xs">{n.time}</p>
-                        </div>
-                        {n.unread && <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2"></div>}
+                    {notifications.length === 0 ? (
+                      <div className="p-8 text-center text-on-surface-variant flex flex-col items-center gap-2">
+                        <span className="material-symbols-outlined text-3xl text-on-surface-variant/40">notifications_off</span>
+                        <p className="font-bold text-xs text-on-surface m-0">No Recent Activity</p>
+                        <p className="text-[11px] text-on-surface-variant m-0 max-w-xs">Your notifications will appear here as proposals are sent, approved, invoices generated, payments received, or contacts added.</p>
                       </div>
-                    ))}
+                    ) : (
+                      notifications.map(n => (
+                        <div key={n.id} className={`flex items-start gap-md p-md hover:bg-surface-container-lowest transition-colors ${n.unread ? 'bg-surface-container-low/20' : ''}`}>
+                          <div className="w-8 h-8 bg-primary-container rounded-full flex items-center justify-center flex-shrink-0 text-on-primary-container">
+                            <span className="material-symbols-outlined text-[16px]">{n.icon}</span>
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-body-md text-xs font-semibold text-on-surface m-0">{n.title}</p>
+                            <p className="font-body-md text-xs text-on-surface-variant m-0 mt-0.5 leading-snug">{n.desc}</p>
+                            <p className="font-label-sm text-[10px] text-on-surface-variant uppercase tracking-wider m-0 mt-xs">
+                              {typeof n.time === 'string' && (n.time.includes('ago') || n.time.includes('Yesterday') || n.time.includes('Recent')) ? n.time : new Date(n.time || Date.now()).toLocaleDateString()}
+                            </p>
+                          </div>
+                          {n.unread && <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2"></div>}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               )}

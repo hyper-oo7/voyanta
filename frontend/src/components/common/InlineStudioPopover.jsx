@@ -249,19 +249,6 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
     onClose();
   };
 
-  const handleAiPolish = (tone) => {
-    let polished = textVal;
-    if (tone === 'luxury') {
-      polished = textVal.replace(/tour|trip/gi, 'Exclusive Odyssey').replace(/hotel/gi, '5-Star Sanctuary');
-      if (!polished.includes('✨')) polished = `✨ ${polished}`;
-    } else if (tone === 'concise') {
-      polished = textVal.split('. ')[0] + '.';
-    } else if (tone === 'enthusiastic') {
-      polished = textVal.endsWith('!') ? textVal : `${textVal} — Unforgettable Memories Await!`;
-    }
-    setTextVal(polished);
-    toast?.info(`Applied ${tone} tone polish! Click Apply to save.`);
-  };
 
   return createPortal(
     <div 
@@ -342,14 +329,6 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
             )}
           </div>
 
-          <div>
-            <label className="block text-[11px] font-bold text-on-surface-variant uppercase mb-1">✨ AI Tone Polish</label>
-            <div className="flex gap-1.5 flex-wrap">
-              <button type="button" onClick={() => handleAiPolish('luxury')} className="px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary font-bold text-[11px] transition-colors">👑 Luxury</button>
-              <button type="button" onClick={() => handleAiPolish('enthusiastic')} className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 font-bold text-[11px] transition-colors">🔥 Enthusiastic</button>
-              <button type="button" onClick={() => handleAiPolish('concise')} className="px-2 py-1 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 font-bold text-[11px] transition-colors">✂️ Concise</button>
-            </div>
-          </div>
 
           <div className="grid grid-cols-2 gap-2 pt-1">
             <div>

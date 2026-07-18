@@ -104,10 +104,10 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
                     <button
                       type="button"
                       onClick={() => setShowAIPanel(true)}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2.5 py-1 rounded-full transition-colors border-none cursor-pointer"
+                      title="VI Expand Luxury Experience"
+                      className="inline-flex items-center justify-center w-7 h-7 bg-primary text-white hover:bg-primary/90 rounded-full transition-all border-none cursor-pointer shadow-sm"
                     >
-                      <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
-                      AI Expand Luxury Experience
+                      <span className="material-symbols-outlined text-[16px]">travel_explore</span>
                     </button>
                   )}
                 </div>
@@ -157,7 +157,7 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
                             return;
                           }
                           setIsExpanding(true);
-                          toast.info('Expanding day into luxury experience via AI...');
+                          toast.info('Expanding day into luxury experience via VI...');
                           try {
                             const res = await api.post('/api/enhance-text', {
                               text: txt,

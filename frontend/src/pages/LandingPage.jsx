@@ -53,6 +53,39 @@ export default function LandingPage() {
   const [billingCycle, setBillingCycle] = useState('monthly');
   const [heroImage] = useState(() => INDIAN_LANDSCAPE_HEROES[Math.floor(Math.random() * INDIAN_LANDSCAPE_HEROES.length)]);
   const [scrolled, setScrolled] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [contactData, setContactData] = useState({
+    name: '',
+    agencyName: '',
+    email: '',
+    phone: '',
+    subject: 'General Inquiry',
+    message: ''
+  });
+
+  const handleContactChange = (e) => {
+    setContactData(prev => ({
+      ...prev,
+      [e.target.name]: e.target.value
+    }));
+  };
+
+  const handleContactSubmit = (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setTimeout(() => {
+      toast.success('Thank you for reaching out! A Voyanta representative will contact you shortly.');
+      setContactData({
+        name: '',
+        agencyName: '',
+        email: '',
+        phone: '',
+        subject: 'General Inquiry',
+        message: ''
+      });
+      setSubmitting(false);
+    }, 1000);
+  };
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 30);
@@ -221,7 +254,15 @@ export default function LandingPage() {
             <a href="#how-it-works" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>How It Works</a>
             <a href="#pricing" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>Pricing</a>
             <Link to="/how-to-use" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>How to Use</Link>
-            <Link to="/contact" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>Contact Us</Link>
+            <button
+              onClick={() => {
+                const el = document.getElementById('contact');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors bg-transparent border-none p-0 cursor-pointer`}
+            >
+              Contact Us
+            </button>
           </div>
 
           <div className="flex items-center gap-3">
@@ -266,7 +307,7 @@ export default function LandingPage() {
           </h1>
           
           <p className="text-lg md:text-xl text-white/90 max-w-2xl mb-10 drop-shadow-md font-medium leading-relaxed">
-            Stop starting proposals from scratch. Every hotel contract, itinerary, and flight you upload becomes searchable, reusable AI knowledge tailored in your agency’s exact voice.
+            Stop starting proposals from scratch. Every hotel contract, itinerary, and flight you upload becomes searchable, reusable VI knowledge (Voyanta Intelligence) tailored in your agency’s exact voice.
           </p>
           
           <div className="flex flex-col sm:flex-row items-center gap-4 mb-14">
@@ -299,7 +340,7 @@ export default function LandingPage() {
                 </div>
               </div>
               <span className="px-3 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs rounded-full">
-                AI OPTIMIZED
+                VI OPTIMIZED
               </span>
             </div>
             <div className="grid grid-cols-3 gap-3 text-center">
@@ -398,12 +439,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Outcome-Focused AI Features Bento Grid */}
+      {/* Outcome-Focused VI Features Bento Grid */}
       <section id="features" className="py-24 px-6 bg-surface">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider">
-              Outcome-Focused AI Intelligence
+              Outcome-Focused VI Intelligence (Voyanta Intelligence)
             </span>
             <h2 className="font-display text-4xl md:text-5xl font-bold text-on-surface mt-3 mb-4">
               Real Mechanisms, Not SaaS Filler
@@ -414,12 +455,12 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* AI Vault */}
+            {/* VI Vault */}
             <div className="md:col-span-2 bg-gradient-to-br from-primary/5 to-surface-container-lowest border border-outline-variant rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all duration-300">
               <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
                 <span className="material-symbols-outlined text-primary text-2xl">storage</span>
               </div>
-              <div className="text-xs font-bold text-primary uppercase tracking-wider mb-1">AI Vault</div>
+              <div className="text-xs font-bold text-primary uppercase tracking-wider mb-1">VI Vault</div>
               <h3 className="font-display text-2xl md:text-3xl font-bold text-on-surface mb-3">
                 Save and reuse successful proposals, itineraries, hotels & rates
               </h3>
@@ -443,12 +484,12 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* AI Rewrite */}
+            {/* VI Rewrite */}
             <div className="bg-gradient-to-br from-surface-container-low to-surface-container-lowest border border-outline-variant rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all duration-300">
               <div className="w-12 h-12 bg-secondary/10 rounded-2xl flex items-center justify-center mb-6">
                 <span className="material-symbols-outlined text-secondary text-2xl">edit_note</span>
               </div>
-              <div className="text-xs font-bold text-secondary uppercase tracking-wider mb-1">AI Rewrite</div>
+              <div className="text-xs font-bold text-secondary uppercase tracking-wider mb-1">VI Rewrite</div>
               <h3 className="font-display text-2xl font-bold text-on-surface mb-3">
                 Speaks in your agency&apos;s voice
               </h3>
@@ -457,12 +498,12 @@ export default function LandingPage() {
               </p>
             </div>
 
-            {/* AI Proposal Review */}
+            {/* VI Proposal Review */}
             <div className="bg-gradient-to-br from-surface-container-low to-surface-container-lowest border border-outline-variant rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all duration-300">
               <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center mb-6">
                 <span className="material-symbols-outlined text-amber-600 text-2xl">fact_check</span>
               </div>
-              <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">AI Proposal Review</div>
+              <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">VI Proposal Review</div>
               <h3 className="font-display text-2xl font-bold text-on-surface mb-3">
                 Built-in sanity checks
               </h3>
@@ -471,12 +512,12 @@ export default function LandingPage() {
               </p>
             </div>
 
-            {/* AI Curated Itinerary */}
+            {/* VI Curated Itinerary */}
             <div className="bg-gradient-to-br from-surface-container-low to-surface-container-lowest border border-outline-variant rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all duration-300">
               <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-6">
                 <span className="material-symbols-outlined text-blue-600 text-2xl">map</span>
               </div>
-              <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">AI Curated Itinerary</div>
+              <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">VI Curated Itinerary</div>
               <h3 className="font-display text-2xl font-bold text-on-surface mb-3">
                 Learns what you hate, automatically
               </h3>
@@ -485,12 +526,12 @@ export default function LandingPage() {
               </p>
             </div>
 
-            {/* AI Cost Optimizer */}
+            {/* VI Cost Optimizer */}
             <div className="bg-gradient-to-br from-surface-container-low to-surface-container-lowest border border-outline-variant rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all duration-300">
               <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-6">
                 <span className="material-symbols-outlined text-emerald-600 text-2xl">trending_up</span>
               </div>
-              <div className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">AI Cost Optimizer</div>
+              <div className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">VI Cost Optimizer</div>
               <h3 className="font-display text-2xl font-bold text-on-surface mb-3">
                 Always the cheapest verified supplier
               </h3>
@@ -648,7 +689,7 @@ export default function LandingPage() {
                 </li>
                 <li className="flex items-center gap-2.5">
                   <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span>AI Vault document storage</span>
+                  <span>VI Vault document storage</span>
                 </li>
                 <li className="flex items-center gap-2.5">
                   <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
@@ -710,11 +751,11 @@ export default function LandingPage() {
                 </li>
                 <li className="flex items-center gap-2.5">
                   <span className="material-symbols-outlined text-primary text-base">check_circle</span>
-                  <span><strong>AI Proposal Rewrite</strong></span>
+                  <span><strong>VI Proposal Rewrite</strong></span>
                 </li>
                 <li className="flex items-center gap-2.5">
                   <span className="material-symbols-outlined text-primary text-base">check_circle</span>
-                  <span><strong>AI Proposal Review</strong> (missing details & quality checks)</span>
+                  <span><strong>VI Proposal Review</strong> (missing details & quality checks)</span>
                 </li>
                 <li className="flex items-center gap-2.5">
                   <span className="material-symbols-outlined text-primary text-base">check_circle</span>
@@ -772,11 +813,11 @@ export default function LandingPage() {
                 </li>
                 <li className="flex items-center gap-2.5">
                   <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span><strong>AI Curated Itinerary</strong> generation</span>
+                  <span><strong>VI Curated Itinerary</strong> generation</span>
                 </li>
                 <li className="flex items-center gap-2.5">
                   <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span><strong>AI Cost Optimizer</strong></span>
+                  <span><strong>VI Cost Optimizer</strong></span>
                 </li>
                 <li className="flex items-center gap-2.5">
                   <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
@@ -885,6 +926,181 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Contact Section */}
+      <section id="contact" className="py-24 px-6 bg-surface-container-low/40 border-y border-outline-variant scroll-mt-20">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start text-left">
+            
+            {/* Left Side: Contact Information */}
+            <div className="lg:col-span-5 space-y-8">
+              <div>
+                <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-4">
+                  📞 Get In Touch
+                </span>
+                <h2 className="font-display text-4xl sm:text-5xl font-bold text-on-surface leading-tight mb-4">
+                  We&apos;d love to hear from you.
+                </h2>
+                <p className="text-base text-on-surface-variant leading-relaxed">
+                  Whether you need help onboarding your agency&apos;s supplier contracts, want a tailored team demo, or need technical support, our team is always ready to assist.
+                </p>
+              </div>
+
+              <div className="space-y-6">
+                {/* Email */}
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-xl">mail</span>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-on-surface font-headline-sm">Email Us</h4>
+                    <a href="mailto:support@voyanta.com" className="text-sm text-primary hover:underline font-semibold block mt-0.5">
+                      support@voyanta.com
+                    </a>
+                    <span className="text-xs text-on-surface-variant">Response within 12 hours</span>
+                  </div>
+                </div>
+
+                {/* Call */}
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-xl">call</span>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-on-surface font-headline-sm">Concierge Hotline</h4>
+                    <a href="tel:+1800VOYANTA" className="text-sm text-primary hover:underline font-semibold block mt-0.5">
+                      +1-800-VOYANTA
+                    </a>
+                    <span className="text-xs text-on-surface-variant">Mon-Sat, 9:00 AM - 7:00 PM IST</span>
+                  </div>
+                </div>
+
+                {/* Offices */}
+                <div className="flex items-start gap-4 border-t border-outline-variant/60 pt-6">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-xl">apartment</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 flex-1">
+                    <div>
+                      <h4 className="font-bold text-sm text-on-surface font-headline-sm">Headquarters (Bangalore)</h4>
+                      <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">
+                        Voyanta Technologies Pvt. Ltd.<br />
+                        100 Feet Road, Indiranagar,<br />
+                        Bengaluru, Karnataka 560038
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-on-surface font-headline-sm">Regional Office (Srinagar)</h4>
+                      <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">
+                        Boulevard Road, Dal Lake,<br />
+                        Srinagar, Jammu & Kashmir 190001
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Side: Contact Form Card */}
+            <div className="lg:col-span-7 bg-surface-container-lowest p-8 sm:p-10 rounded-[32px] border border-outline-variant shadow-xl">
+              <h3 className="font-display text-2xl font-bold text-on-surface mb-6">Send us a Message</h3>
+              <form onSubmit={handleContactSubmit} className="space-y-5">
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Full Name</label>
+                    <input
+                      type="text"
+                      name="name"
+                      required
+                      value={contactData.name}
+                      onChange={handleContactChange}
+                      className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
+                      placeholder="Alex Sterling"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Agency Name</label>
+                    <input
+                      type="text"
+                      name="agencyName"
+                      required
+                      value={contactData.agencyName}
+                      onChange={handleContactChange}
+                      className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
+                      placeholder="Sterling Luxury Travel"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Email Address</label>
+                    <input
+                      type="email"
+                      name="email"
+                      required
+                      value={contactData.email}
+                      onChange={handleContactChange}
+                      className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
+                      placeholder="alex@sterling.com"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Phone Number</label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={contactData.phone}
+                      onChange={handleContactChange}
+                      className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
+                      placeholder="+91 98765 43210"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Subject</label>
+                  <select
+                    name="subject"
+                    value={contactData.subject}
+                    onChange={handleContactChange}
+                    className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
+                  >
+                    <option value="General Inquiry">General Inquiry</option>
+                    <option value="Supplier Onboarding Support">Supplier Onboarding Support</option>
+                    <option value="Custom Demo Request">Custom Demo Request</option>
+                    <option value="Billing & Pricing Inquiry">Billing & Pricing Inquiry</option>
+                    <option value="Partnerships">Partnerships</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Message</label>
+                  <textarea
+                    name="message"
+                    required
+                    rows={4}
+                    value={contactData.message}
+                    onChange={handleContactChange}
+                    className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm resize-none text-on-surface"
+                    placeholder="How can we help you?"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-primary/25 hover:shadow-xl transition-all disabled:opacity-50 mt-2 border-none cursor-pointer text-sm"
+                >
+                  {submitting ? 'Sending Message...' : 'Send Message'}
+                </button>
+              </form>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
       {/* DPDP Act Compliant Consent Banner */}
       <DpdpConsentBanner />
 
@@ -902,7 +1118,10 @@ export default function LandingPage() {
           </div>
           <div className="flex gap-6 text-sm font-medium">
             <button onClick={() => navigate('/how-to-use')} className="text-on-surface-variant hover:text-primary transition-colors">How to Use</button>
-            <button onClick={() => navigate('/contact')} className="text-on-surface-variant hover:text-primary transition-colors">Contact Us</button>
+            <button onClick={() => {
+              const el = document.getElementById('contact');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }} className="text-on-surface-variant hover:text-primary transition-colors bg-transparent border-none p-0 cursor-pointer">Contact Us</button>
             <button onClick={() => navigate('/privacy')} className="text-on-surface-variant hover:text-primary transition-colors">Privacy Policy</button>
             <button onClick={() => navigate('/terms')} className="text-on-surface-variant hover:text-primary transition-colors">Terms of Service</button>
             <button onClick={() => navigate('/cookies')} className="text-on-surface-variant hover:text-primary transition-colors">Cookie Policy</button>

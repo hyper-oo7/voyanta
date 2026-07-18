@@ -359,7 +359,8 @@ export async function saveInvoiceRecord(invoice, isNew = false) {
         client_name: updated.client_name,
         client_email: updated.client_email || '',
         client_phone: updated.client_phone || '',
-        destination: updated.destination || 'Concierge Travel Package'
+        destination: updated.destination || 'Concierge Travel Package',
+        status: updated.crm_status || (updated.status === 'Paid' ? 'Booked' : (updated.status === 'Sent' ? 'Proposal Sent' : undefined))
       }).catch(() => {});
     }
   } catch {}

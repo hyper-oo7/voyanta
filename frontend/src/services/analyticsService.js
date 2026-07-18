@@ -6,6 +6,21 @@ import { supabase, getAgencyId } from '../lib/supabaseClient.js';
 export async function addNotification(icon, title, desc) {
   const agencyId = getAgencyId();
   try {
+    const newNotif = {
+      id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      icon: icon || 'notifications',
+      title: title || 'New Activity',
+      desc: desc || '',
+      time: new Date().toLocaleDateString(),
+      unread: true,
+      ts: Date.now()
+    };
+    try {
+      const existing = JSON.parse(localStorage.getItem('voyanta_notifications') || '[]');
+      const updated = Array.isArray(existing) ? [newNotif, ...existing.slice(0, 49)] : [newNotif];
+      localStorage.setItem('voyanta_notifications', JSON.stringify(updated));
+    } catch {}
+
     if (supabase) {
       let userId = null;
       try {
