@@ -16,6 +16,7 @@ import WeatherWidget from '../components/WeatherWidget.jsx';
 import MapWidget from '../components/MapWidget.jsx';
 import TemplateRenderer, { ALL as ALL_SECTIONS, SECTIONS } from '../components/TemplateRenderer.jsx';
 import InlineStudioPopover from '../components/common/InlineStudioPopover.jsx';
+import ImageSearchPicker from '../components/common/ImageSearchPicker.jsx';
 
 const INDIAN_LANGUAGES = [
   { code: 'en', label: 'English', native: 'English' },
@@ -74,6 +75,62 @@ export default function WebViewPage() {
   const [showConfetti, setShowConfetti] = useState(false);
 
   const toast = useToast();
+
+  // Activity click, details modal, and stock photo picker states
+  const [selectedActivityBlock, setSelectedActivityBlock] = useState(null);
+  const [selectedActivityDayIdx, setSelectedActivityDayIdx] = useState(null);
+  const [showStockPicker, setShowStockPicker] = useState(false);
+
+  const handleActivityClick = (block, dayIdx) => {
+    setSelectedActivityBlock(block);
+    setSelectedActivityDayIdx(dayIdx);
+  };
+
+  const updateActivityImage = async (dayIdx, blockId, newImageUrl) => {
+    try {
+      const nextDays = (data?.proposal?.itinerary?.days || []).map((d, dIdx) => {
+        if (dIdx !== dayIdx) return d;
+        const nextContent = (d.content || []).map(b => {
+          if (b.id !== blockId) return b;
+          return {
+            ...b,
+            data: {
+              ...b.data,
+              image_url: newImageUrl,
+              photos: newImageUrl ? [newImageUrl] : []
+            }
+          };
+        });
+        return { ...d, content: nextContent };
+      });
+
+      const updatedProposal = {
+        ...data.proposal,
+        itinerary: {
+          ...data.proposal.itinerary,
+          days: nextDays
+        }
+      };
+
+      const localKey = `voyanta_proposal_${p.id}`;
+      localStorage.setItem(localKey, JSON.stringify(updatedProposal));
+
+      setData(prev => ({
+        ...prev,
+        proposal: updatedProposal
+      }));
+
+      if (!isDemo && p.id) {
+        await api.put(`/api/proposals/${p.id}`, updatedProposal);
+        toast.success('Activity image updated successfully!');
+      } else {
+        toast.success('Activity image updated locally!');
+      }
+    } catch (err) {
+      console.error("Failed to update activity image:", err);
+      toast.error("Failed to update image: " + err.message);
+    }
+  };
 
   const toggleTheme = () => {
     const next = !isDarkMode;
@@ -601,6 +658,7 @@ export default function WebViewPage() {
                   dayNumber={idx + 1}
                   lang={lang}
                   defaultExpanded={allExpanded}
+                  onActivityClick={handleActivityClick}
                 />
               ))}
             </div>
@@ -1130,6 +1188,119 @@ export default function WebViewPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ACTIVITY DETAIL & IMAGE CAROUSEL WINDOW MODAL */}
+      <AnimatePresence>
+        {selectedActivityBlock && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 no-print"
+            onClick={() => setSelectedActivityBlock(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-surface border border-outline-variant rounded-3xl overflow-hidden max-w-lg w-full shadow-2xl flex flex-col max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Media Carousel */}
+              <div className="h-64 w-full relative bg-zinc-900 flex-shrink-0">
+                <MediaCarousel
+                  images={
+                    selectedActivityBlock.data?.image_url
+                      ? [selectedActivityBlock.data.image_url]
+                      : ['https://images.unsplash.com/photo-1533105079780-92b9be482077?w=1200&q=80']
+                  }
+                  autoPlay={false}
+                  className="w-full h-full"
+                />
+                <button
+                  onClick={() => setSelectedActivityBlock(null)}
+                  className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/85 transition-colors border-none cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-base">close</span>
+                </button>
+              </div>
+
+              {/* Detail Content */}
+              <div className="p-6 overflow-y-auto space-y-4 flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded uppercase tracking-wider">
+                    {selectedActivityBlock.type}
+                  </span>
+                  {selectedActivityBlock.data?.duration && (
+                    <span className="text-xs text-on-surface-variant font-medium flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[16px]">schedule</span>
+                      {selectedActivityBlock.data.duration}
+                    </span>
+                  )}
+                </div>
+
+                <h3 className="font-display font-bold text-xl md:text-2xl text-on-surface">
+                  {selectedActivityBlock.data?.name || 'Activity details'}
+                </h3>
+
+                {selectedActivityBlock.data?.location && (
+                  <p className="text-xs text-on-surface-variant font-medium flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[16px] text-primary">location_on</span>
+                    {selectedActivityBlock.data.location}
+                  </p>
+                )}
+
+                <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
+                  {selectedActivityBlock.data?.description || 'No detailed description available.'}
+                </div>
+
+                {/* Agent Edit Tools */}
+                {user && isInteractiveStudio && (
+                  <div className="pt-4 border-t border-outline-variant/60 flex flex-wrap gap-2 justify-end">
+                    <button
+                      onClick={() => setShowStockPicker(true)}
+                      className="px-4 py-2 rounded-full bg-primary text-on-primary font-bold text-xs shadow-sm hover:shadow-md transition-all flex items-center gap-1.5 border-none cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">add_photo_alternate</span>
+                      Add / Edit Image
+                    </button>
+                    {selectedActivityBlock.data?.image_url && (
+                      <button
+                        onClick={() => updateActivityImage(selectedActivityDayIdx, selectedActivityBlock.id, '')}
+                        className="px-4 py-2 rounded-full bg-red-50 text-red-600 border border-red-200 font-bold text-xs hover:bg-red-100 transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
+                        Remove Image
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* STOCK IMAGE PICKER DIALOG */}
+      {showStockPicker && (
+        <ImageSearchPicker
+          defaultQuery={selectedActivityBlock?.data?.name || ''}
+          onSelect={(photo) => {
+            if (selectedActivityBlock && selectedActivityDayIdx !== null) {
+              updateActivityImage(selectedActivityDayIdx, selectedActivityBlock.id, photo.url);
+              setSelectedActivityBlock(prev => ({
+                ...prev,
+                data: {
+                  ...prev.data,
+                  image_url: photo.url
+                }
+              }));
+            }
+            setShowStockPicker(false);
+          }}
+          onClose={() => setShowStockPicker(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1189,6 +1360,64 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
                     autoPlay={false}
                     className="w-full h-full"
                   />
+                </div>
+              )}
+
+              {/* Render Day Content Blocks */}
+              {Array.isArray(day.content) && day.content.length > 0 && (
+                <div className="space-y-4 pt-2">
+                  {day.content.map(block => {
+                    if (block.type === 'heading') {
+                      return <h4 key={block.id} className="text-base font-bold text-on-surface mt-4">{block.data?.text}</h4>;
+                    }
+                    if (block.type === 'text') {
+                      return <p key={block.id} className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">{block.data?.text}</p>;
+                    }
+                    if (block.type === 'image' && block.data?.url) {
+                      return <img key={block.id} src={block.data.url} alt="" className="rounded-xl w-full max-h-72 object-cover my-2 shadow-xs border border-outline-variant/30" />;
+                    }
+                    if (block.type === 'gallery' && block.data?.urls) {
+                      const urls = block.data.urls.split('\n').map(u => u.trim()).filter(Boolean);
+                      if (urls.length === 0) return null;
+                      return (
+                        <div key={block.id} className="grid grid-cols-2 sm:grid-cols-3 gap-2 my-2">
+                          {urls.map((u, idx) => (
+                            <img key={idx} src={u} alt="" className="rounded-lg aspect-[4/3] object-cover shadow-xs border border-outline-variant/30" />
+                          ))}
+                        </div>
+                      );
+                    }
+                    if (['hotel', 'activity', 'flight', 'transfer', 'meal', 'meals', 'cruise', 'destination', 'custom'].includes(block.type)) {
+                      const isActivity = block.type === 'activity';
+                      const img = block.data?.image_url || block.data?.cover_image || '';
+                      return (
+                        <div 
+                          key={block.id} 
+                          onClick={() => { if (isActivity && onActivityClick) onActivityClick(block, dayNumber - 1); }}
+                          className={`flex items-stretch gap-4 p-4 rounded-xl my-2 border border-outline-variant/60 bg-surface-container-low shadow-xs ${isActivity ? 'cursor-pointer hover:border-primary hover:shadow-md hover:scale-[1.005] transition-all group' : ''}`}
+                        >
+                          <div className="flex-1 min-w-0 flex flex-col justify-center">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-primary/10 text-primary">
+                                {block.type}
+                              </span>
+                            </div>
+                            <h4 className={`text-sm font-bold text-on-surface ${isActivity ? 'group-hover:text-primary transition-colors' : ''}`}>
+                              {block.data?.name || block.data?.venue || 'Untitled element'}
+                            </h4>
+                            {block.data?.details && <p className="text-xs text-on-surface-variant mt-0.5">{block.data.details}</p>}
+                            {block.data?.description && <p className="text-xs text-on-surface-variant/80 mt-1 line-clamp-2">{block.data.description}</p>}
+                          </div>
+                          {img && (
+                            <div className="w-20 md:w-28 flex-shrink-0 rounded-lg overflow-hidden border border-outline-variant/40 flex">
+                              <img src={img} alt="" className="w-full h-full object-cover" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
                 </div>
               )}
             </div>

@@ -107,7 +107,7 @@ export default function AppLayout() {
         if (Array.isArray(storedLogs)) {
           items.push(...storedLogs);
         }
-      } catch {}
+      } catch { }
 
       // Check real proposals
       try {
@@ -147,7 +147,7 @@ export default function AppLayout() {
             }
           });
         }
-      } catch {}
+      } catch { }
 
       // Check real invoices & payments
       try {
@@ -181,7 +181,7 @@ export default function AppLayout() {
             }
           }
         }
-      } catch {}
+      } catch { }
 
       // Check CRM contacts added
       try {
@@ -208,7 +208,7 @@ export default function AppLayout() {
             });
           }
         });
-      } catch {}
+      } catch { }
 
       // Deduplicate by ID and sort by newest first
       const seen = new Set();
@@ -242,7 +242,7 @@ export default function AppLayout() {
   const markAllRead = () => {
     setNotifications(prev => {
       const updated = prev.map(n => ({ ...n, unread: false }));
-      try { localStorage.setItem('voyanta_notifications', JSON.stringify(updated)); } catch {}
+      try { localStorage.setItem('voyanta_notifications', JSON.stringify(updated)); } catch { }
       return updated;
     });
   };
@@ -269,10 +269,9 @@ export default function AppLayout() {
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
-                `flex items-center gap-md py-md px-lg rounded-r-lg transition-all duration-200 ${
-                  isActive
-                    ? 'bg-surface-container-high text-primary font-semibold border-l-4 border-primary scale-[0.98]'
-                    : 'text-on-surface-variant hover:bg-surface-container-low border-l-4 border-transparent'
+                `flex items-center gap-md py-md px-lg rounded-r-lg transition-all duration-200 ${isActive
+                  ? 'bg-surface-container-high text-primary font-semibold border-l-4 border-primary scale-[0.98]'
+                  : 'text-on-surface-variant hover:bg-surface-container-low border-l-4 border-transparent'
                 }`
               }
             >
@@ -287,20 +286,7 @@ export default function AppLayout() {
           ))}
         </nav>
 
-        <div className="px-lg pt-xl border-t border-outline-variant mt-auto">
-          <div className="flex flex-col p-sm rounded-xl bg-surface-container-low border border-outline-variant">
-            <div className="flex items-center gap-md p-xs">
-              <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-primary">
-                <span className="material-symbols-outlined">person</span>
-              </div>
-              <div className="overflow-hidden">
-                <p className="font-label-md text-label-md text-on-surface truncate m-0">
-                  {user?.user_metadata?.full_name || (isDemo ? 'Demo User' : (user?.email || 'Voyanta Agent'))}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+
       </aside>
 
       {/* Main Content Wrapper */}
@@ -335,93 +321,93 @@ export default function AppLayout() {
 
         {/* Top Navigation Bar */}
         {isDashboard && (
-        <header className="flex-shrink-0 flex justify-between items-center w-full px-lg py-md bg-surface shadow-sm z-40">
-          <div className="flex items-center flex-1 max-w-2xl gap-lg">
-            {/* Search bar removed per request */}
-          </div>
-          <div className="flex items-center gap-md ml-lg relative">
-            <div ref={notifRef} className="relative">
-              <button 
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="p-sm text-on-surface-variant hover:bg-surface-container-low rounded-full transition-colors relative border-none bg-transparent cursor-pointer flex items-center justify-center"
-              >
-                <span className="material-symbols-outlined">notifications</span>
-                {notifications.some(n => n.unread) && (
-                  <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full animate-pulse"></span>
-                )}
-              </button>
-              
-              {showNotifications && (
-                <div className="absolute right-0 top-full mt-sm w-96 bg-surface border border-outline-variant rounded-xl shadow-xl z-50 py-sm overflow-hidden">
-                  <div className="px-lg py-sm border-b border-outline-variant flex justify-between items-center">
-                    <h4 className="font-display text-sm font-bold text-on-surface m-0">Recent Activity</h4>
-                    <button onClick={markAllRead} className="text-[11px] font-bold text-primary hover:underline bg-transparent border-none p-0 cursor-pointer">Mark all read</button>
-                  </div>
-                  <div className="divide-y divide-outline-variant max-h-[300px] overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="p-8 text-center text-on-surface-variant flex flex-col items-center gap-2">
-                        <span className="material-symbols-outlined text-3xl text-on-surface-variant/40">notifications_off</span>
-                        <p className="font-bold text-xs text-on-surface m-0">No Recent Activity</p>
-                        <p className="text-[11px] text-on-surface-variant m-0 max-w-xs">Your notifications will appear here as proposals are sent, approved, invoices generated, payments received, or contacts added.</p>
-                      </div>
-                    ) : (
-                      notifications.map(n => (
-                        <div key={n.id} className={`flex items-start gap-md p-md hover:bg-surface-container-lowest transition-colors ${n.unread ? 'bg-surface-container-low/20' : ''}`}>
-                          <div className="w-8 h-8 bg-primary-container rounded-full flex items-center justify-center flex-shrink-0 text-on-primary-container">
-                            <span className="material-symbols-outlined text-[16px]">{n.icon}</span>
-                          </div>
-                          <div className="flex-1">
-                            <p className="font-body-md text-xs font-semibold text-on-surface m-0">{n.title}</p>
-                            <p className="font-body-md text-xs text-on-surface-variant m-0 mt-0.5 leading-snug">{n.desc}</p>
-                            <p className="font-label-sm text-[10px] text-on-surface-variant uppercase tracking-wider m-0 mt-xs">
-                              {typeof n.time === 'string' && (n.time.includes('ago') || n.time.includes('Yesterday') || n.time.includes('Recent')) ? n.time : new Date(n.time || Date.now()).toLocaleDateString()}
-                            </p>
-                          </div>
-                          {n.unread && <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2"></div>}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
+          <header className="flex-shrink-0 flex justify-between items-center w-full px-lg py-md bg-surface shadow-sm z-40">
+            <div className="flex items-center flex-1 max-w-2xl gap-lg">
+              {/* Search bar removed per request */}
             </div>
+            <div className="flex items-center gap-md ml-lg relative">
+              <div ref={notifRef} className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="p-sm text-on-surface-variant hover:bg-surface-container-low rounded-full transition-colors relative border-none bg-transparent cursor-pointer flex items-center justify-center"
+                >
+                  <span className="material-symbols-outlined">notifications</span>
+                  {notifications.some(n => n.unread) && (
+                    <span className="absolute top-2 right-2 w-2 h-2 bg-error rounded-full animate-pulse"></span>
+                  )}
+                </button>
 
-            <div ref={helpRef} className="relative">
-              <button 
-                onClick={() => setShowHelp(!showHelp)}
-                className="p-sm text-on-surface-variant hover:bg-surface-container-low rounded-full transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
-              >
-                <span className="material-symbols-outlined">help</span>
-              </button>
-              {showHelp && (
-                <div className="absolute right-0 top-full mt-sm w-64 bg-surface border border-outline-variant rounded-xl shadow-xl z-50 p-lg">
-                  <h4 className="font-headline-sm text-sm font-bold text-on-surface mb-sm">Voyanta Support</h4>
-                  <p className="font-body-md text-xs text-on-surface-variant mb-md leading-relaxed">Need help configuring your account or creating a proposal? Our concierge team is here for you.</p>
-                  <div className="space-y-xs">
-                    <div className="flex items-center gap-sm text-sm">
-                      <span className="material-symbols-outlined text-[18px] text-primary">mail</span>
-                      <a href="mailto:support@voyanta.com" className="text-on-surface hover:text-primary transition-colors">support@voyanta.com</a>
+                {showNotifications && (
+                  <div className="absolute right-0 top-full mt-sm w-96 bg-surface border border-outline-variant rounded-xl shadow-xl z-50 py-sm overflow-hidden">
+                    <div className="px-lg py-sm border-b border-outline-variant flex justify-between items-center">
+                      <h4 className="font-display text-sm font-bold text-on-surface m-0">Recent Activity</h4>
+                      <button onClick={markAllRead} className="text-[11px] font-bold text-primary hover:underline bg-transparent border-none p-0 cursor-pointer">Mark all read</button>
                     </div>
-                    <div className="flex items-center gap-sm text-sm">
-                      <span className="material-symbols-outlined text-[18px] text-primary">call</span>
-                      <a href="tel:+1800VOYANTA" className="text-on-surface hover:text-primary transition-colors">+1-800-VOYANTA</a>
-                    </div>
-                    <div className="flex items-center gap-sm text-sm pt-2 border-t border-outline-variant mt-2">
-                      <span className="material-symbols-outlined text-[18px] text-primary font-bold">menu_book</span>
-                      <Link to="/how-to-use" className="text-primary hover:underline font-bold transition-colors">How to Use Guide</Link>
+                    <div className="divide-y divide-outline-variant max-h-[300px] overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <div className="p-8 text-center text-on-surface-variant flex flex-col items-center gap-2">
+                          <span className="material-symbols-outlined text-3xl text-on-surface-variant/40">notifications_off</span>
+                          <p className="font-bold text-xs text-on-surface m-0">No Recent Activity</p>
+                          <p className="text-[11px] text-on-surface-variant m-0 max-w-xs">Your notifications will appear here as proposals are sent, approved, invoices generated, payments received, or contacts added.</p>
+                        </div>
+                      ) : (
+                        notifications.map(n => (
+                          <div key={n.id} className={`flex items-start gap-md p-md hover:bg-surface-container-lowest transition-colors ${n.unread ? 'bg-surface-container-low/20' : ''}`}>
+                            <div className="w-8 h-8 bg-primary-container rounded-full flex items-center justify-center flex-shrink-0 text-on-primary-container">
+                              <span className="material-symbols-outlined text-[16px]">{n.icon}</span>
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-body-md text-xs font-semibold text-on-surface m-0">{n.title}</p>
+                              <p className="font-body-md text-xs text-on-surface-variant m-0 mt-0.5 leading-snug">{n.desc}</p>
+                              <p className="font-label-sm text-[10px] text-on-surface-variant uppercase tracking-wider m-0 mt-xs">
+                                {typeof n.time === 'string' && (n.time.includes('ago') || n.time.includes('Yesterday') || n.time.includes('Recent')) ? n.time : new Date(n.time || Date.now()).toLocaleDateString()}
+                              </p>
+                            </div>
+                            {n.unread && <div className="w-1.5 h-1.5 bg-primary rounded-full mt-2"></div>}
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              <div ref={helpRef} className="relative">
+                <button
+                  onClick={() => setShowHelp(!showHelp)}
+                  className="p-sm text-on-surface-variant hover:bg-surface-container-low rounded-full transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                >
+                  <span className="material-symbols-outlined">help</span>
+                </button>
+                {showHelp && (
+                  <div className="absolute right-0 top-full mt-sm w-64 bg-surface border border-outline-variant rounded-xl shadow-xl z-50 p-lg">
+                    <h4 className="font-headline-sm text-sm font-bold text-on-surface mb-sm">Voyanta Support</h4>
+                    <p className="font-body-md text-xs text-on-surface-variant mb-md leading-relaxed">Need help configuring your account or creating a proposal? Our concierge team is here for you.</p>
+                    <div className="space-y-xs">
+                      <div className="flex items-center gap-sm text-sm">
+                        <span className="material-symbols-outlined text-[18px] text-primary">mail</span>
+                        <a href="mailto:support@voyanta.com" className="text-on-surface hover:text-primary transition-colors">support@voyanta.com</a>
+                      </div>
+                      <div className="flex items-center gap-sm text-sm">
+                        <span className="material-symbols-outlined text-[18px] text-primary">call</span>
+                        <a href="tel:+1800VOYANTA" className="text-on-surface hover:text-primary transition-colors">+1-800-VOYANTA</a>
+                      </div>
+                      <div className="flex items-center gap-sm text-sm pt-2 border-t border-outline-variant mt-2">
+                        <span className="material-symbols-outlined text-[18px] text-primary font-bold">menu_book</span>
+                        <Link to="/how-to-use" className="text-primary hover:underline font-bold transition-colors">How to Use Guide</Link>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
         )}
 
         {/* Dashboard Canvas */}
         <div className="flex-1 overflow-y-auto px-lg lg:px-xxl pb-xxl pt-md">
           <div className="max-w-7xl mx-auto w-full">
-             <Outlet />
+            <Outlet />
           </div>
         </div>
       </main>

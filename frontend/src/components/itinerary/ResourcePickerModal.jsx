@@ -1,9 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { hotelsService, activitiesService, flightsService } from '../../services/resourceService.js';
 
-export default function ResourcePickerModal({ type, onSelect, onClose }) {
+export default function ResourcePickerModal({ type, onSelect, onClose, destination, subDestination }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const cleanPrice = (val) => {
+    if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+    if (!val) return 0;
+    const cleaned = String(val).replace(/[^0-9.-]+/g, '');
+    const parsed = parseFloat(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -16,13 +24,79 @@ export default function ResourcePickerModal({ type, onSelect, onClose }) {
       } else if (type === 'flight') {
         data = await flightsService.list();
       }
+
+      // Query knowledge objects from Supabase to merge from vault dynamically
+      if (destination && (type === 'hotel' || type === 'activity')) {
+        try {
+          const supa = (await import('../../lib/supabaseClient.js')).supabase;
+          const { data: dbObjects } = await supa
+            .from('knowledge_objects')
+            .select('*')
+            .eq('object_type', type)
+            .eq('is_active', true)
+            .ilike('destination', `%${destination}%`);
+
+          if (dbObjects && dbObjects.length > 0) {
+            const mappedObjects = dbObjects.map(obj => {
+              const attrs = obj.attributes || {};
+              return {
+                id: obj.id,
+                name: obj.name,
+                location: obj.area || obj.destination || '',
+                destination: obj.destination || '',
+                area: obj.area || '',
+                image_url: attrs.photos?.[0] || attrs.image_url || '',
+                cover_image: attrs.photos?.[0] || attrs.image_url || '',
+                category: attrs.star_rating || '',
+                duration_hours: attrs.duration || '',
+                price: cleanPrice(attrs.price || attrs.price_per_night || attrs.cost || 0),
+                price_per_night: cleanPrice(attrs.price_per_night || attrs.price || 0),
+                is_from_vault: true
+              };
+            });
+            // Merge and de-duplicate by name
+            const seenNames = new Set(data.map(i => (i.name || '').toLowerCase().trim()));
+            mappedObjects.forEach(mo => {
+              const nameKey = mo.name.toLowerCase().trim();
+              if (!seenNames.has(nameKey)) {
+                data.push(mo);
+                seenNames.add(nameKey);
+              }
+            });
+          }
+        } catch (dbErr) {
+          console.error("Failed to query knowledge_objects in picker:", dbErr);
+        }
+      }
+
+      // Filter dynamically by destination and sub-destination (area)
+      if (destination) {
+        const destLower = destination.toLowerCase().trim();
+        data = data.filter(item => {
+          const itemDest = (item.destination || item.location || '').toLowerCase().trim();
+          const itemArea = (item.area || item.location || '').toLowerCase().trim();
+          
+          const matchesDest = itemDest.includes(destLower) || itemArea.includes(destLower);
+          if (!matchesDest) return false;
+
+          if (subDestination) {
+            const subLower = subDestination.toLowerCase().trim();
+            const cleanedSub = subLower.replace(/day in\s+/g, '').trim();
+            if (cleanedSub) {
+              return itemArea.includes(cleanedSub) || itemDest.includes(cleanedSub);
+            }
+          }
+          return true;
+        });
+      }
+
       setItems(data);
     } catch (e) {
       console.error('Failed to load resources', e);
     } finally {
       setLoading(false);
     }
-  }, [type]);
+  }, [type, destination, subDestination]);
 
   useEffect(() => {
     loadData();

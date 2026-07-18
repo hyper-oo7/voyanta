@@ -30,6 +30,7 @@ class EnhanceTextInput(BaseModel):
     destination: str = ""
     length: Optional[str] = None
     format: Optional[str] = None
+    tier: Optional[str] = None
 
 @router.post("/parse-itinerary")
 async def parse_itinerary(input: ParseItineraryInput, user: Any = Depends(verify_token_optional)):
@@ -70,7 +71,7 @@ async def enhance_text(input: EnhanceTextInput, user: Any = Depends(verify_token
         prompt_version = "v1.1.0"
         schema_version = "v1.1.0"
         
-        normalized_input = f"mode:{input.mode}|dest:{input.destination}|len:{input.length or 'default'}|fmt:{input.format or 'default'}|text:{input.text}"
+        normalized_input = f"mode:{input.mode}|dest:{input.destination}|len:{input.length or 'default'}|fmt:{input.format or 'default'}|tier:{input.tier or 'default'}|text:{input.text}"
 
         from src.services.ai_cache_service import get_cached_extraction, save_cached_extraction
         
@@ -87,7 +88,7 @@ async def enhance_text(input: EnhanceTextInput, user: Any = Depends(verify_token
             return {"success": True, "enhanced_text": cached["enhanced_text"], "cached": True}
 
         # If cache miss, generate via Gemini
-        enhanced = await enhance_luxury_text(input.text, input.mode, input.destination, input.length, input.format)
+        enhanced = await enhance_luxury_text(input.text, input.mode, input.destination, input.length, input.format, input.tier)
         
         # Save to global cache
         await save_cached_extraction(

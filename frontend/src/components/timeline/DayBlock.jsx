@@ -18,7 +18,7 @@ import ResourcePickerModal from '../itinerary/ResourcePickerModal.jsx';
 import { api } from '../../services/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 
-export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, removeDay, items = [], onRemoveItem, onAddResourceItem }) {
+export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, removeDay, items = [], onRemoveItem, onAddResourceItem, proposalDestination, tourType }) {
   const toast = useToast();
   const upd = (key) => (e) => updateDay(index, { [key]: e.target.value });
   const [showBlockMenu, setShowBlockMenu] = useState(false);
@@ -162,9 +162,10 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
                             const res = await api.post('/api/enhance-text', {
                               text: txt,
                               mode: 'day_description',
-                              destination: dayData.title || '',
+                              destination: proposalDestination || dayData.title || '',
                               length: aiLength,
-                              format: aiFormat
+                              format: aiFormat,
+                              tier: tourType
                             });
                             if (res?.enhanced_text) {
                               updateDay(index, { description: res.enhanced_text });
@@ -284,6 +285,8 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
       {pickerType && (
         <ResourcePickerModal 
           type={pickerType} 
+          destination={proposalDestination}
+          subDestination={dayData?.sub_destination || dayData?.title || ''}
           onSelect={(data) => {
             if (onAddResourceItem && data.rawItem) {
               onAddResourceItem(data.rawItem, pickerType, index);

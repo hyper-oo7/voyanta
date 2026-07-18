@@ -194,6 +194,24 @@ async def get_proposal_suggestions_service(
     audience_tags = criteria["audience_tags"]
     travel_month = criteria["travel_month"]
 
+    # Fetch sub-destinations dynamically
+    sub_destinations = []
+    if destination:
+        try:
+            sub_query = sb.table("knowledge_objects")\
+                .select("*")\
+                .eq("object_type", "destination")\
+                .eq("is_active", True)\
+                .ilike("destination", f"%{destination}%")
+            if agency_id:
+                sub_query = sub_query.or_(f"agency_id.eq.{agency_id},agency_id.is.null")
+            else:
+                sub_query = sub_query.is_("agency_id", "null")
+            sub_res = sub_query.execute()
+            sub_destinations = sub_res.data or []
+        except Exception as e:
+            logger.error(f"Failed to query sub-destinations: {e}")
+
     # Fetch seasonal rules if destination and month are available
     seasonal_rules = []
     if destination and travel_month:
@@ -234,7 +252,8 @@ async def get_proposal_suggestions_service(
                 "price_tier": price_tier,
                 "audience_tags": list(audience_tags)
             },
-            "suggestions": []
+            "suggestions": [],
+            "sub_destinations": sub_destinations
         }
 
     # Fetch tags & affinity
@@ -334,5 +353,6 @@ async def get_proposal_suggestions_service(
             "travel_month": travel_month
         },
         "suggestions": ranked_suggestions[:20],
-        "related_suggestions": related_suggestions[:10]
+        "related_suggestions": related_suggestions[:10],
+        "sub_destinations": sub_destinations
     }

@@ -120,6 +120,7 @@ async def test_get_proposal_suggestions_service():
     mock_execute_side_effect = [
         MagicMock(data=proposal_data), # proposal
         MagicMock(data=client_data),   # client
+        MagicMock(data=[]),            # sub-destinations (new execute call)
         MagicMock(data=seasonal_data), # seasonal rules
         MagicMock(data=ko_data),       # knowledge objects
         MagicMock(data=tags_data),     # tags

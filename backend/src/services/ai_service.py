@@ -284,26 +284,39 @@ async def enhance_luxury_text(
     mode: str,
     destination: str = "",
     length: Optional[str] = None,
-    format: Optional[str] = None
+    format: Optional[str] = None,
+    tier: Optional[str] = None
 ) -> str:
     api_key_gemini = os.environ.get("GEMINI_API_KEY")
     if not api_key_gemini:
         return text
 
     if mode == "day_description":
+        is_premium = False
+        if tier:
+            tier_lower = tier.lower().strip()
+            if "luxury" in tier_lower or "corporate" in tier_lower:
+                is_premium = True
+
+        if is_premium:
+            role_desc = "You are an elite, ultra-luxury travel curator writing for high-net-worth individuals and corporate executives."
+            tone_desc = "Use sophisticated, elevated, elegant, and highly polished vocabulary. Emphasize exclusive access, sensory indulgence, private arrangements, and refined executive comforts."
+        else:
+            role_desc = "You are a warm, friendly travel coordinator writing for families and group travelers."
+            tone_desc = "Use clear, friendly, engaging, and simple vocabulary. Avoid overly flowery, complex, or 'heavy' words, keeping the descriptions easy to read and highly welcoming."
+
         length_norm = (length or "medium").lower().strip()
         if length_norm in ("brief", "short"):
             length_instruction = "The response must be brief. Tell just about what is necessary, nothing extra."
         elif length_norm in ("detailed", "long"):
-            length_instruction = "The response must be detailed and rich. Give detailed descriptions of the place, activities, and ambiance, separated into distinct paragraphs (do NOT combine everything into one single paragraph)."
+            length_instruction = f"The response must be detailed and rich. {tone_desc} Give detailed descriptions of the place, activities, and ambiance, separated into distinct paragraphs (do NOT combine everything into one single paragraph)."
         else: # medium
-            length_instruction = "The response must be of medium length (usually 1 well-structured paragraph). Tell something about the place and how the traveler will feel experiencing it."
+            length_instruction = f"The response must be of medium length (usually 1 well-structured paragraph). {tone_desc} Tell something about the place and how the traveler will feel experiencing it."
 
         format_str = f" The format of the response should be: {format}." if format else " Return the response in clean paragraphs."
         prompt = (
-            f"You are a luxury travel curator writing about {destination or 'this destination'}. "
-            "Expand and rewrite the following itinerary day description to create an immersive, sensory luxury experience. "
-            "Make the traveler feel like they are personally in that place experiencing the sights, sounds, and executive comforts. "
+            f"{role_desc} Writing about {destination or 'this destination'}. "
+            "Expand and rewrite the following itinerary day description. "
             f"{length_instruction}{format_str} "
             "Return ONLY the expanded text, no quotes, intro, or markdown commentary.\n\n"
             f"Original text: {text}"

@@ -20,7 +20,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   const toast = useToast();
   const { saveDraftBackground } = useProposalStore();
   const days = proposal?.itinerary?.days || [];
-  
+
   const [activeTab, setActiveTab] = useState('sub_destinations');
   const [libraryData, setLibraryData] = useState({ hotels: [], flights: [], itinerary: [] });
   const [search, setSearch] = useState('');
@@ -28,6 +28,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   const [vaultItems, setVaultItems] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [relatedSuggestions, setRelatedSuggestions] = useState([]);
+  const [subDestinations, setSubDestinations] = useState([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
 
   const shownRef = useRef(new Set());
@@ -36,7 +37,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   // Load ranked suggestions from vault for this proposal
   useEffect(() => {
     if (!proposal?.id) return;
-    
+
     let isMounted = true;
     setSuggestionsLoading(true);
 
@@ -47,7 +48,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           const supa = (await import('../../lib/supabaseClient.js')).supabase;
           const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
           if (session?.access_token) token = session.access_token;
-        } catch {}
+        } catch { }
 
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -63,21 +64,29 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         let relHotels = [];
         let relActivities = [];
 
+        let tempSubDestinations = [];
         if (resHotels.ok) {
           const data = await resHotels.json();
           hotels = data.suggestions || [];
           relHotels = data.related_suggestions || [];
+          if (data.sub_destinations) {
+            tempSubDestinations = data.sub_destinations;
+          }
         }
         if (resActivities.ok) {
           const data = await resActivities.json();
           activities = data.suggestions || [];
           relActivities = data.related_suggestions || [];
+          if (data.sub_destinations && tempSubDestinations.length === 0) {
+            tempSubDestinations = data.sub_destinations;
+          }
         }
 
         if (isMounted) {
           const merged = [...hotels, ...activities];
           setSuggestions(merged);
-          
+          setSubDestinations(tempSubDestinations);
+
           // Merge related suggestions and de-duplicate by ID
           const mergedRelated = [...relHotels, ...relActivities];
           const uniqueRelatedMap = {};
@@ -85,7 +94,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
             uniqueRelatedMap[item.id] = item;
           });
           setRelatedSuggestions(Object.values(uniqueRelatedMap));
-          
+
           // Log suggestion_shown for any newly shown suggestions
           merged.forEach(sug => {
             if (!shownRef.current.has(sug.id)) {
@@ -119,28 +128,28 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
   const handleDismissRelation = async (sug) => {
     if (!sug.relation) return;
-    
+
     // Optimistically update UI
     setRelatedSuggestions(prev => prev.filter(item => item.id !== sug.id));
-    
+
     try {
       let token = null;
       try {
         const supa = (await import('../../lib/supabaseClient.js')).supabase;
         const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
         if (session?.access_token) token = session.access_token;
-      } catch {}
+      } catch { }
 
       const headers = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      
+
       const { based_on_id, relation_type } = sug.relation;
-      
+
       await fetch(`/api/knowledge-objects/relations/${based_on_id}/${sug.id}/${relation_type}/dismiss`, {
         method: 'PATCH',
         headers
       });
-      
+
       logActivity('suggestion_dismissed', `Relation dismissed: ${sug.name}`, 'Agency Team', 'knowledge_object', sug.id);
       toast.success('Recommendation dismissed');
     } catch (err) {
@@ -166,7 +175,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           const supa = (await import('../../lib/supabaseClient.js')).supabase;
           const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
           if (session?.access_token) token = session.access_token;
-        } catch {}
+        } catch { }
 
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -186,7 +195,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         try {
           const raw = JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]');
           if (isMounted) setVaultItems(raw);
-        } catch {}
+        } catch { }
       }
     })();
 
@@ -198,7 +207,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   const handleGenerateWithVI = async () => {
     setGeneratingVI(true);
     const dest = proposal?.destination || client?.destination || 'Luxury Destination';
-    
+
     // Determine dynamic duration from Step 1
     let numDays = 5; // fallback
     if (client?.date_mode === 'days' && client?.duration_days) {
@@ -213,12 +222,12 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
     const startDateStr = client?.start_date || new Date().toISOString();
     const climate = getClimateClassification(dest, startDateStr);
-    
+
     toast.info(`Generating curated day-by-day itinerary via VI for ${dest} (${numDays} Days, ${climate.seasonName})...`);
 
     try {
       await new Promise(r => setTimeout(r, 600));
-      
+
       if (days.length === 0) {
         // Global caching check
         const cacheKey = `itinerary_${dest.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${numDays}_${climate.seasonName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
@@ -240,7 +249,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           // Generate new days adaptively
           const genDays = buildVIItinerary(dest, numDays, startDateStr);
           updateProposal({ itinerary: { days: genDays } });
-          
+
           // Save to global cache
           try {
             const globalCache = JSON.parse(localStorage.getItem('voyanta_global_vi_cache') || '{}');
@@ -256,14 +265,14 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       } else {
         const enriched = days.map(d => {
           let desc = d.description || `Curated luxury itinerary day exploring the finest highlights of ${dest} with private chauffeur and VIP privileges.`;
-          
+
           // Climate adaptive descriptions check for existing days
           if (climate.isHot && climate.keyMatch !== 'kashmir') {
             // Avoid stroller or hot afternoon walks
             if (desc.toLowerCase().includes('walking') || desc.toLowerCase().includes('stroll') || desc.toLowerCase().includes('safari')) {
               desc = desc.replace(/stroll\b|strolling\b|walking tour\b/gi, 'private AC transport transfer')
-                         .replace(/afternoon excursion\b|afternoon stroll\b/gi, 'evening sunset cruise')
-                         .replace(/guided walking\b/gi, 'chauffeured museum exploration');
+                .replace(/afternoon excursion\b|afternoon stroll\b/gi, 'evening sunset cruise')
+                .replace(/guided walking\b/gi, 'chauffeured museum exploration');
             }
             if (!desc.toLowerCase().includes('afternoon relaxation') && !desc.toLowerCase().includes('spa')) {
               desc += ' Spend the warm afternoon hours enjoying premium spa therapy or relaxing indoor amenities.';
@@ -296,6 +305,11 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       if (Array.isArray(data.sub_destinations)) data.sub_destinations.forEach(sd => set.add(sd));
       if (Array.isArray(vt.sub_destinations)) vt.sub_destinations.forEach(sd => set.add(sd));
     });
+    // Add subDestinations retrieved from backend suggestions dynamically
+    (subDestinations || []).forEach(sd => {
+      const name = typeof sd === 'object' ? sd.name : sd;
+      if (name) set.add(name);
+    });
     return Array.from(set).map((name, idx) => ({
       id: `sub_${idx}_${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
       name: name,
@@ -311,7 +325,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         return null;
       })()
     }));
-  }, [vaultItems, client?.destination, proposal?.destination]);
+  }, [vaultItems, subDestinations, client?.destination, proposal?.destination]);
 
 
   // Duration-Driven Builder: Prepopulate days if empty
@@ -400,12 +414,12 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         return;
       }
     }
-    
+
     let label = '';
     let price = 0;
-    
+
     if (kind === 'hotel') { label = resourceItem.name || resourceItem.label || 'Hotel'; }
-    else if (kind === 'flight') { label = `${resourceItem.airline||'Flight'} ${resourceItem.flight_no||''} ${resourceItem.origin||''}→${resourceItem.destination||''}`.trim(); }
+    else if (kind === 'flight') { label = `${resourceItem.airline || 'Flight'} ${resourceItem.flight_no || ''} ${resourceItem.origin || ''}→${resourceItem.destination || ''}`.trim(); }
     else if (kind === 'activity') { label = resourceItem.name || resourceItem.label || 'Activity'; }
     else { label = resourceItem.name || resourceItem.label || `${kind.toUpperCase()} Item`; }
     price = extractPrice(resourceItem);
@@ -417,7 +431,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         currency: resourceItem.currency || 'INR',
         meta: { source: kind + 's', day: dayIndex + 1 }
       };
-      
+
       // Optimistic save instead of blocking db call
       await addItemsOptimistic([newItem]);
 
@@ -496,52 +510,84 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
       // Find real vault data for this sub-destination
       const subDest = subDestinationsList.find(s => s.name === subDestName);
-      const vaultDayData = subDest?.vaultData?.days?.[0];
+      let vaultDayData = subDest?.vaultData?.days?.[0];
+      const vaultCurrency = subDest?.vaultData?.currency || proposalCurrency || 'INR';
+
+      const contentBlocks = [];
+      const newItems = [];
 
       if (vaultDayData) {
         // ── Real vault data path — import ACTUAL hotel/activity/meal/transfer from PDF ──
-        const vaultCurrency = subDest.vaultData?.currency || proposalCurrency;
-        const contentBlocks = [];
-        const newItems = [];
-
         (vaultDayData.hotels || []).forEach(h => {
-          const price = h.price_per_night || 0;
-          contentBlocks.push({ id: crypto.randomUUID(), type: 'hotel', data: { name: h.name, category: h.category, price_per_night: price, location: h.location, image_url: h.image_url || '' } });
-          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'hotel', label: h.name, details: h.location || '', qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+          const price = h.price_per_night || h.price || 0;
+          contentBlocks.push({ id: crypto.randomUUID(), type: 'hotel', data: { name: h.name, category: h.category, price_per_night: price, location: h.location || subDestName, image_url: h.image_url || '' } });
+          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'hotel', label: h.name, details: h.location || subDestName, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
         });
         (vaultDayData.activities || []).forEach(a => {
           const price = a.price || 0;
-          contentBlocks.push({ id: crypto.randomUUID(), type: 'activity', data: { name: a.name, duration: a.duration, timing: a.timing, price, location: a.location, image_url: a.image_url || '', description: a.description } });
-          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'activity', label: a.name, details: a.location || '', qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+          contentBlocks.push({ id: crypto.randomUUID(), type: 'activity', data: { name: a.name, duration: a.duration, timing: a.timing, price, location: a.location || subDestName, image_url: a.image_url || '', description: a.description } });
+          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'activity', label: a.name, details: a.location || subDestName, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
         });
         (vaultDayData.transfers || []).forEach(tr => {
           const price = tr.price || 0;
-          contentBlocks.push({ id: crypto.randomUUID(), type: 'transfer', data: { name: tr.type || 'Transfer', vehicle_type: tr.vehicle, price, from: tr.from, to: tr.to, timing: tr.timing } });
-          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'transfer', label: tr.type || 'Transfer', details: `${tr.from || ''} → ${tr.to || ''}`, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+          contentBlocks.push({ id: crypto.randomUUID(), type: 'transfer', data: { name: tr.type || 'Transfer', vehicle_type: tr.vehicle, price, from: tr.from || subDestName, to: tr.to, timing: tr.timing } });
+          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'transfer', label: tr.type || 'Transfer', details: `${tr.from || subDestName} → ${tr.to || ''}`, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
         });
         (vaultDayData.meals || []).forEach(m => {
           const price = m.price || 0;
           contentBlocks.push({ id: crypto.randomUUID(), type: 'meal', data: { venue: m.venue || m.type, type: m.type, price, image_url: m.image_url || '' } });
           newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'meal', label: m.venue || m.type, details: m.cuisine || '', qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
         });
+      } else {
+        // Fallback: Query knowledge objects matching this subDestName (area) dynamically from database
+        try {
+          const supa = (await import('../../lib/supabaseClient.js')).supabase;
+          const { data: objects } = await supa
+            .from('knowledge_objects')
+            .select('*')
+            .eq('is_active', true)
+            .ilike('destination', `%${proposal?.destination}%`)
+            .eq('area', subDestName);
 
+          if (objects && objects.length > 0) {
+            objects.forEach(obj => {
+              const attrs = obj.attributes || {};
+              const price = cleanPrice(attrs.price_per_night || attrs.price || attrs.cost || 0);
+              const img = attrs.photos?.[0] || attrs.image_url || '';
+              if (obj.object_type === 'hotel') {
+                contentBlocks.push({ id: crypto.randomUUID(), type: 'hotel', data: { name: obj.name, category: attrs.star_rating || '', price_per_night: price, location: obj.area || subDestName, image_url: img } });
+                newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'hotel', label: obj.name, details: obj.area || subDestName, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+              } else if (obj.object_type === 'activity') {
+                contentBlocks.push({ id: crypto.randomUUID(), type: 'activity', data: { name: obj.name, duration: attrs.duration || '', timing: attrs.timing || '', price, location: obj.area || subDestName, image_url: img, description: attrs.description || '' } });
+                newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'activity', label: obj.name, details: obj.area || subDestName, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+              } else if (obj.object_type === 'transfer') {
+                contentBlocks.push({ id: crypto.randomUUID(), type: 'transfer', data: { name: obj.name, vehicle_type: attrs.vehicle || '', price, from: attrs.from || subDestName, to: attrs.to || '' } });
+                newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'transfer', label: obj.name, details: `${attrs.from || subDestName} → ${attrs.to || ''}`, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+              }
+            });
+          }
+        } catch (dbErr) {
+          console.error("Failed to fetch matching atomic objects from DB:", dbErr);
+        }
+      }
+
+      if (contentBlocks.length > 0) {
         const currentContent = Array.isArray(currentDay.content) ? [...currentDay.content] : [];
         updateDay(dayIndex, {
-          title: vaultDayData.title || `Day in ${subDestName}`,
-          description: vaultDayData.description || '',
+          title: vaultDayData?.title || `Day in ${subDestName}`,
+          description: vaultDayData?.description || `Explore the beautiful sights and experiences in ${subDestName}.`,
           content: [...currentContent, ...contentBlocks]
         });
         if (addItemsOptimistic && newItems.length > 0) addItemsOptimistic(newItems);
-        toast.success(`Imported REAL vault data for ${subDestName} (${contentBlocks.length} items from PDF)!`);
+        toast.success(`Imported ${contentBlocks.length} items for ${subDestName} from Vault!`);
       } else {
-        // ── Fallback: no vault data — create placeholder so user can edit ──
         const currentContent = Array.isArray(currentDay.content) ? [...currentDay.content] : [];
         updateDay(dayIndex, {
           title: `Day in ${subDestName}`,
           description: `Itinerary for ${subDestName}. Add hotels, activities, meals, and transfers.`,
           content: currentContent
         });
-        toast.info(`No vault data for "${subDestName}" yet. Upload a PDF for this destination to auto-fill!`);
+        toast.info(`No vault items found for "${subDestName}" yet. You can add them manually to this day.`);
       }
     } catch (err) { toast.error('Failed to import: ' + err.message); }
   };
@@ -595,7 +641,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-xl relative items-start" data-testid="step-2">
-      
+
       {/* Left Column: Timeline Builder */}
       <div className="lg:col-span-8 min-w-0 space-y-xl">
         <div className="glass-card rounded-2xl p-lg space-y-md border border-outline-variant/50">
@@ -616,7 +662,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           </div>
 
         </div>
-        
+
         <div className="space-y-sm pt-md">
           {days.length === 0 && (
             <div className="text-center py-xl border-2 border-dashed border-outline-variant rounded-2xl text-on-surface-variant bg-white/50">
@@ -629,103 +675,87 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           {days.map((dayData, i) => {
             const dayItems = items.filter(it => it.meta?.day === i + 1);
             return (
-              <DayBlock 
-                key={i} 
-                index={i} 
-                dayData={dayData} 
-                updateDay={updateDay} 
+              <DayBlock
+                key={i}
+                index={i}
+                dayData={dayData}
+                updateDay={updateDay}
                 removeDay={removeDay}
                 items={dayItems}
                 onRemoveItem={onRemoveProposalItem}
                 onAddResourceItem={onAddItemToDay}
+                proposalDestination={proposal?.destination}
+                tourType={proposal?.tour_type || proposal?.preferences?.tour_type || ''}
               />
             );
           })}
 
           <div className="pl-xl pt-lg pb-36">
-             <button onClick={addDay} className="flex items-center gap-xs px-xl py-md bg-surface-container-highest text-primary font-label-md rounded-full hover:bg-primary hover:text-on-primary transition-colors shadow-sm">
-                <span className="material-symbols-outlined text-[20px]">add</span>
-                Add Day {days.length + 1}
-             </button>
+            <button onClick={addDay} className="flex items-center gap-xs px-xl py-md bg-surface-container-highest text-primary font-label-md rounded-full hover:bg-primary hover:text-on-primary transition-colors shadow-sm">
+              <span className="material-symbols-outlined text-[20px]">add</span>
+              Add Day {days.length + 1}
+            </button>
           </div>
         </div>
       </div>
 
       {/* Right Column: Inventory Library Sidebar */}
       <div className="lg:col-span-4 sticky top-6 space-y-md h-[calc(100vh-120px)] flex flex-col">
-        <div className="glass-card rounded-2xl border border-outline-variant/50 overflow-hidden flex flex-col h-[55%] shadow-lg">
-          <div className="p-md border-b border-outline-variant/50 bg-white/50 backdrop-blur-md">
-            <h4 className="font-label-md text-on-surface uppercase tracking-widest mb-sm">Library</h4>
-            <div className="flex bg-surface-container rounded-lg p-1">
-              <button onClick={() => setActiveTab('sub_destinations')} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'sub_destinations' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Sub-Destinations</button>
-              <button onClick={() => setActiveTab('hotels')} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'hotels' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Hotels</button>
-              <button onClick={() => setActiveTab('flights')} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'flights' ? 'bg-white shadow text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>Flights</button>
-            </div>
-            <div className="mt-sm relative">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
-              <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} 
-                className="w-full pl-xl pr-md py-sm bg-surface-container-lowest border border-outline-variant rounded-lg font-body-sm focus:ring-2 focus:ring-primary/20" />
-            </div>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-md space-y-sm bg-gradient-to-b from-white/50 to-transparent">
-            {filteredItems.length === 0 && <p className="text-center text-sm text-on-surface-variant mt-md">No items found.</p>}
-            {filteredItems.map(item => (
-              <div key={item.id} className="bg-white border border-outline-variant rounded-xl p-md shadow-sm hover:shadow-md transition-all group">
-                <p className="font-label-md text-on-surface">{activeTab === 'flights' ? `${item.airline} ${item.flight_no}` : item.name}</p>
-                <p className="text-xs text-on-surface-variant truncate">
-                  {activeTab === 'hotels' && item.location}
-                  {activeTab === 'flights' && `${item.origin} → ${item.destination}`}
-                  {activeTab === 'sub_destinations' && item.description}
-                </p>
-                <div className="mt-sm pt-sm border-t border-outline-variant/50">
-                  {activeTab === 'sub_destinations' ? (
-                    <select 
-                      className="w-full text-xs py-1.5 px-2 bg-primary/10 hover:bg-primary/20 rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-bold"
-                      onChange={(e) => {
-                        if(e.target.value !== '') {
-                          importSubDestinationToDay(item.name, parseInt(e.target.value));
-                          e.target.value = '';
-                        }
-                      }}
-                    >
-                      <option value="">+ Import to Day...</option>
-                      {days.map((d, i) => (
-                        <option key={i} value={i}>Day {d.day}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <select 
-                      className="w-full text-xs py-1 px-2 bg-surface-container rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-medium"
-                      onChange={(e) => {
-                        if(e.target.value) {
-                          onAddItemToDay(item, activeTab === 'hotels' ? 'hotel' : 'flight', parseInt(e.target.value));
-                          e.target.value = '';
-                        }
-                      }}
-                    >
-                      <option value="">+ Add to Day...</option>
-                      {days.map((d, i) => (
-                        <option key={i} value={i}>Day {d.day}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+
 
         {/* Suggested from your Vault Panel */}
-        <div className="glass-card rounded-2xl border border-outline-variant/50 overflow-hidden flex flex-col h-[45%] shadow-lg">
+        <div className="glass-card rounded-2xl border border-outline-variant/50 overflow-hidden flex flex-col h-full shadow-lg">
           <div className="p-md border-b border-outline-variant/50 bg-white/50 backdrop-blur-md flex items-center justify-between">
             <h4 className="font-label-md text-on-surface uppercase tracking-widest flex items-center gap-xs font-semibold">
               <span className="material-symbols-outlined text-[18px] text-primary">auto_awesome</span>
               Suggested from Vault
             </h4>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto p-md space-y-sm bg-gradient-to-b from-white/50 to-transparent">
+            {/* Suggested Sub-Destinations Section */}
+            {subDestinationsList.length > 0 && (
+              <div className="pb-md mb-md border-b border-outline-variant/50 space-y-sm">
+                <h5 className="font-label-sm text-on-surface uppercase tracking-widest flex items-center gap-xs font-semibold px-xs text-xs">
+                  <span className="material-symbols-outlined text-[16px] text-primary">explore</span>
+                  Suggested Sub-Destinations
+                </h5>
+                <div className="grid grid-cols-1 gap-xs">
+                  {subDestinationsList.map(sub => (
+                    <div key={sub.id} className="bg-primary/5 hover:bg-primary/10 border border-primary/20 rounded-xl p-md shadow-xs transition-all flex flex-col gap-xs group">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-primary uppercase tracking-widest">Sub-Destination</span>
+                        <span className="text-[10px] text-on-surface-variant font-medium">{sub.location}</span>
+                      </div>
+                      <p className="font-label-md text-on-surface font-semibold">{sub.name}</p>
+                      <div className="mt-xs pt-xs border-t border-primary/10">
+                        <select
+                          className="w-full text-xs py-1.5 px-2 bg-primary/20 hover:bg-primary/30 rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-bold"
+                          onChange={(e) => {
+                            if (e.target.value !== '') {
+                              importSubDestinationToDay(sub.name, parseInt(e.target.value));
+                              e.target.value = '';
+                            }
+                          }}
+                        >
+                          <option value="">+ Import to Day...</option>
+                          {days.map((d, i) => (
+                            <option key={i} value={i}>Day {d.day}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Individual Recommendations Section */}
+            <h5 className="font-label-sm text-on-surface uppercase tracking-widest flex items-center gap-xs font-semibold px-xs text-xs pb-sm">
+              <span className="material-symbols-outlined text-[16px] text-primary">auto_awesome</span>
+              Recommended Items
+            </h5>
+
             {suggestionsLoading ? (
               <div className="space-y-sm">
                 {[1, 2].map(n => (
@@ -754,7 +784,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
                   </div>
                   <p className="font-label-md text-on-surface font-semibold">{sug.name}</p>
                   <BestRateChip objId={sug.id} />
-                  
+
                   {sug.matched_tags && sug.matched_tags.length > 0 && (
                     <div className="flex flex-wrap gap-xs my-1">
                       {sug.matched_tags.map(tag => (
@@ -764,12 +794,12 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
                       ))}
                     </div>
                   )}
-                  
+
                   <div className="mt-xs pt-xs border-t border-outline-variant/50">
-                    <select 
+                    <select
                       className="w-full text-xs py-1 px-2 bg-primary/10 hover:bg-primary/20 rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-bold"
                       onChange={(e) => {
-                        if(e.target.value !== '') {
+                        if (e.target.value !== '') {
                           const resItem = {
                             id: sug.id,
                             name: sug.name,
@@ -811,18 +841,18 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
                         <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${sug.object_type === 'hotel' ? 'bg-blue-50 text-blue-600 border border-blue-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>
                           {sug.object_type}
                         </span>
-                        
+
                         <div className="flex items-center gap-xs">
                           {sug.relation && (
                             <span className="text-[9px] font-bold bg-purple-50 text-purple-600 border border-purple-200 px-2 py-0.5 rounded uppercase tracking-wider">
-                              {sug.relation.relation_type === 'nearby' 
+                              {sug.relation.relation_type === 'nearby'
                                 ? `Nearby (${sug.relation.distance_minutes}m)`
                                 : 'Pairs Well'}
                             </span>
                           )}
-                          <button 
-                            type="button" 
-                            onClick={() => handleDismissRelation(sug)} 
+                          <button
+                            type="button"
+                            onClick={() => handleDismissRelation(sug)}
                             title="Dismiss recommendation"
                             className="text-on-surface-variant hover:text-error flex items-center justify-center p-0.5 rounded-full hover:bg-surface-container transition-colors"
                           >
@@ -830,22 +860,22 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
                           </button>
                         </div>
                       </div>
-                      
+
                       <p className="font-label-md text-on-surface font-semibold">{sug.name}</p>
-                      
+
                       {sug.relation && (
                         <p className="text-[10px] text-on-surface-variant italic">
                           Based on: {sug.relation.based_on_name}
                         </p>
                       )}
-                      
+
                       <BestRateChip objId={sug.id} />
-                      
+
                       <div className="mt-xs pt-xs border-t border-outline-variant/50">
-                        <select 
+                        <select
                           className="w-full text-xs py-1 px-2 bg-primary/10 hover:bg-primary/20 rounded border-none focus:ring-1 focus:ring-primary cursor-pointer text-primary font-bold"
                           onChange={(e) => {
-                            if(e.target.value !== '') {
+                            if (e.target.value !== '') {
                               const resItem = {
                                 id: sug.id,
                                 name: sug.name,
@@ -877,7 +907,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 }
 
@@ -897,7 +927,7 @@ function BestRateChip({ objId }) {
           const supa = (await import('../../lib/supabaseClient.js')).supabase;
           const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
           if (session?.access_token) token = session.access_token;
-        } catch {}
+        } catch { }
 
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
