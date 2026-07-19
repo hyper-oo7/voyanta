@@ -48,10 +48,45 @@ async def _verify_token_optional_network(token: str) -> Optional[dict]:
         logger.warning(f"Optional token verification network error: {e}")
     return None
 
+async def _resolve_user_agency(payload: Optional[dict], token: str) -> Optional[dict]:
+    if not payload:
+        return payload
+    
+    agency_id = (
+        (payload.get("user_metadata") or {}).get("agency_id")
+        or (payload.get("app_metadata") or {}).get("agency_id")
+        or payload.get("agency_id")
+    )
+    if agency_id:
+        payload["agency_id"] = agency_id
+        return payload
+
+    user_id = payload.get("sub") or payload.get("id")
+    if not user_id:
+        return payload
+
+    try:
+        from src.services.supabase_client import get_user_supabase_client
+        sb = get_user_supabase_client(token)
+        if sb:
+            res = sb.table("users").select("agency_id").eq("id", user_id).execute()
+            if res.data and res.data[0].get("agency_id"):
+                resolved_aid = res.data[0]["agency_id"]
+                payload["agency_id"] = resolved_aid
+                if "user_metadata" not in payload:
+                    payload["user_metadata"] = {}
+                payload["user_metadata"]["agency_id"] = resolved_aid
+                logger.info(f"[Security] Resolved agency_id {resolved_aid} for user {user_id}")
+    except Exception as e:
+        logger.warning(f"[Security] Failed to resolve agency_id for user {user_id}: {e}")
+
+    return payload
+
 async def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
     token = credentials.credentials
     secret = os.environ.get('SUPABASE_JWT_SECRET') or os.environ.get('JWT_SECRET')
     
+    payload = None
     if secret:
         try:
             # Local high-performance verification (O(1) CPU, no network call)
@@ -61,7 +96,6 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Security(secu
                 algorithms=["HS256"],
                 options={"verify_aud": False}
             )
-            return payload
         except jwt.ExpiredSignatureError:
             logger.error("Token has expired")
             raise HTTPException(status_code=401, detail="Token has expired")
@@ -73,18 +107,22 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Security(secu
         try:
             if len(token.split(".")) == 3:
                 payload = jwt.decode(token, options={"verify_signature": False})
-                return payload
         except Exception:
             pass
             
-        # Hard fallback to Supabase verification endpoint
-        try:
-            return await _verify_token_network(token)
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to verify token: {e}")
-            raise HTTPException(status_code=401, detail="Invalid auth token")
+        if not payload:
+            # Hard fallback to Supabase verification endpoint
+            try:
+                payload = await _verify_token_network(token)
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to verify token: {e}")
+                raise HTTPException(status_code=401, detail="Invalid auth token")
+                
+    if payload:
+        payload = await _resolve_user_agency(payload, token)
+    return payload
 
 async def verify_token_optional(credentials: HTTPAuthorizationCredentials = Security(security_optional)):
     if not credentials or not credentials.credentials:
@@ -92,6 +130,7 @@ async def verify_token_optional(credentials: HTTPAuthorizationCredentials = Secu
     token = credentials.credentials
     secret = os.environ.get('SUPABASE_JWT_SECRET') or os.environ.get('JWT_SECRET')
     
+    payload = None
     if secret:
         try:
             payload = jwt.decode(
@@ -100,17 +139,21 @@ async def verify_token_optional(credentials: HTTPAuthorizationCredentials = Secu
                 algorithms=["HS256"],
                 options={"verify_aud": False}
             )
-            return payload
         except jwt.PyJWTError:
             return None
     else:
         try:
             if len(token.split(".")) == 3:
                 payload = jwt.decode(token, options={"verify_signature": False})
-                return payload
         except Exception:
             pass
-        return await _verify_token_optional_network(token)
+            
+        if not payload:
+            payload = await _verify_token_optional_network(token)
+            
+    if payload:
+        payload = await _resolve_user_agency(payload, token)
+    return payload
 
 
 async def get_request_token(credentials: HTTPAuthorizationCredentials = Security(security_optional)) -> HTTPAuthorizationCredentials:

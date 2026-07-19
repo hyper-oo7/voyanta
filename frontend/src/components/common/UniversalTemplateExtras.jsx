@@ -24,8 +24,15 @@ export default function UniversalTemplateExtras({ proposal = {}, branding = {}, 
   const textSec = theme.colors?.textSecondary || theme.text || '#64748b';
   const bgColor = theme.colors?.bg || theme.bg || 'transparent';
 
+  const include = proposal.include || proposal.preferences?.branding?.include || branding.include || {};
+
   // Find any custom blocks that were not rendered by the main loop
-  const unrenderedCustomBlocks = (customBlocks || []).filter(cb => !renderedKeys.includes(cb.id));
+  const unrenderedCustomBlocks = (customBlocks || []).filter(cb => {
+    if (renderedKeys.includes(cb.id)) return false;
+    if (include[cb.id] === false || include[cb.section_type] === false) return false;
+    if ((cb.section_type === 'what_to_pack' || cb.label?.toLowerCase().includes('packing')) && include.what_to_pack === false) return false;
+    return true;
+  });
 
   return (
     <div className="universal-template-extras w-full no-print-break">
@@ -74,6 +81,8 @@ export default function UniversalTemplateExtras({ proposal = {}, branding = {}, 
           <div className="flex flex-wrap items-center justify-center gap-6 max-w-5xl mx-auto">
             {branding.custom_fields.map((cf, idx) => {
               if (!cf.label && !cf.value) return null;
+              if (include[cf.id] === false || include[cf.section_type] === false) return null;
+              if ((cf.section_type === 'what_to_pack' || cf.label?.toLowerCase().includes('packing')) && include.what_to_pack === false) return null;
               if (cf.type === 'checklist' || cf.type === 'list') {
                 const items = Array.isArray(cf.value) ? cf.value : (cf.value || '').split('\n');
                 return (

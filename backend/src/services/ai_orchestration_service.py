@@ -89,10 +89,11 @@ async def orchestrate_proposal_extraction(
         schema_version=cache_meta["schema_version"],
         normalized_input=document_text
     )
-    if cached_json:
-        cached_model = FinalProposalSchema.model_validate(cached_json)
-        setattr(cached_model, "model_used", cache_meta.get("model_used", cache_meta["model"]))
-        return cached_model
+    try:
+        if cached_json:
+            cached_model = FinalProposalSchema.model_validate(cached_json)
+            setattr(cached_model, "model_used", cache_meta.get("model_used", cache_meta["model"]))
+            return cached_model
     except Exception as cache_val_err:
         logger.warning(f"[AIOrchestration] Cached schema validation mismatch ({cache_val_err}); re-orchestrating.")
 
@@ -131,7 +132,7 @@ async def orchestrate_proposal_extraction(
                 provider=provider,
                 response_schema=schema_json,
                 temperature=0.0,
-                max_tokens=8192
+                max_tokens=65536
             )
 
             # Extract clean JSON

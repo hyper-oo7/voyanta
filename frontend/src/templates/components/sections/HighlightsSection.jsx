@@ -12,13 +12,10 @@ export default function HighlightsSection({ proposal = {}, theme = {}, variant =
   const overview = proposal.overview || proposal.description || proposal.notes || 
     `Experience the very best of ${dest}. This itinerary has been thoughtfully curated to blend iconic landmarks with authentic local encounters, ensuring a seamless and memorable journey from start to finish.`;
   
-  const highlights = proposal.highlights || proposal.key_highlights || [
-    'Private VIP airport meet and greet with luxury chauffeured transfers',
-    'Hand-selected 5-star accommodations offering panoramic views and premier service',
-    'Exclusive private guided tours of historic and cultural landmarks',
-    'Curated dining recommendations featuring Michelin-starred and authentic local cuisine',
-    'Dedicated 24/7 concierge support throughout your entire journey'
-  ];
+  const rawHighlights = proposal.highlights ?? proposal.key_highlights;
+  const highlights = Array.isArray(rawHighlights) ? rawHighlights : (typeof rawHighlights === 'string' && rawHighlights.trim() ? rawHighlights.split('\n').filter(Boolean) : []);
+
+  if (highlights.length === 0 && !proposal.overview && !proposal.description && !proposal.notes) return null;
 
   const primaryColor = theme.colors?.primary || '#1a1a2e';
   const accentColor = theme.colors?.accent || '#c41e3a';

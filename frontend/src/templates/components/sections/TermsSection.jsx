@@ -8,13 +8,10 @@ import SectionDivider from '../utility/SectionDivider.jsx';
  * Supports 3 variants: minimal-footer, full-page, two-column
  */
 export default function TermsSection({ proposal = {}, theme = {}, variant = 'minimal-footer' }) {
-  const terms = proposal.terms || proposal.preferences?.branding?.terms_conditions || [
-    'A deposit of 30% is required at the time of booking confirmation to guarantee reservations.',
-    'Full balance payment is due 45 days prior to the scheduled date of arrival.',
-    'Cancellations made more than 60 days prior to arrival are eligible for a 90% refund of deposit.',
-    'Cancellations within 30-60 days of arrival incur a 50% cancellation fee. Within 30 days, 100% fee applies.',
-    'All itinerary timings and order of activities are subject to local weather conditions and operational requirements.'
-  ];
+  const rawTerms = proposal.terms ?? proposal.preferences?.branding?.terms_conditions;
+  const terms = Array.isArray(rawTerms) ? rawTerms : (typeof rawTerms === 'string' && rawTerms.trim() ? rawTerms.split('\n').filter(Boolean) : []);
+
+  if (terms.length === 0) return null;
 
   const primaryColor = theme.colors?.primary || '#1a1a2e';
   const accentColor = theme.colors?.accent || '#c41e3a';

@@ -164,8 +164,8 @@ const TagInput = memo(function TagInput({ label, value = [], onChange, suggestio
   );
 });
 
-export const Step1Client = forwardRef(function Step1Client({ client, setClient, isNew }, ref) {
-  const { register, watch, handleSubmit, setValue, formState: { errors } } = useForm({
+export const Step1Client = forwardRef(function Step1Client({ client, setClient, isNew, proposal }, ref) {
+  const { register, watch, handleSubmit, setValue, reset, formState: { errors } } = useForm({
     resolver: zodResolver(clientSchema),
     defaultValues: {
       ...client,
@@ -182,9 +182,48 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
 
   const values = watch();
 
+  useImperativeHandle(ref, () => ({
+    validate: async () => {
+      const result = await handleSubmit(() => {})();
+      return result !== undefined;
+    }
+  }), [handleSubmit]);
+
+  useEffect(() => {
+    if (values && (values.customer_name !== undefined || values.destination !== undefined)) {
+      setClient(prev => {
+        const next = { ...prev, ...values };
+        if (JSON.stringify(prev) !== JSON.stringify(next)) {
+          return next;
+        }
+        return prev;
+      });
+    }
+  }, [values, setClient]);
+
   const [dislikesTags, setDislikesTags] = useState(client.dislikes || []);
   const [availableTags, setAvailableTags] = useState([]);
   const [prefLoadedNote, setPrefLoadedNote] = useState('');
+
+  const lastProposalIdRef = useRef(proposal?.id || null);
+
+  useEffect(() => {
+    const currentPid = proposal?.id || null;
+    if (currentPid !== lastProposalIdRef.current) {
+      lastProposalIdRef.current = currentPid;
+      reset({
+        ...client,
+        num_adults: parseInt(client.num_adults) || 1,
+        num_children: parseInt(client.num_children) || 0,
+        duration_days: parseInt(client.duration_days) || 1,
+        duration_nights: parseInt(client.duration_nights) || 1,
+        dietary: client.dietary || '',
+        pace: client.pace || '',
+        dislikes: client.dislikes || [],
+      });
+      setDislikesTags(client.dislikes || []);
+    }
+  }, [proposal?.id, client, reset]);
 
   // Sync the form value whenever dislikesTags changes
   useEffect(() => {

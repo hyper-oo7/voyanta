@@ -17,8 +17,28 @@ const INDIAN_LANDSCAPE_HEROES = [
     caption: 'Shri Ram Mandir Grand Architecture, Ayodhya'
   },
   {
-    url: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Taj Mahal Monument of Love, Agra'
+    url: 'https://images.unsplash.com/photo-1603258597554-71be68b5774e?auto=format&fit=crop&w=2000&q=85',
+    caption: 'Kailash Temple Architecture, Ellora Caves'
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1605649487212-47bdab064df7?auto=format&fit=crop&w=2000&q=85',
+    caption: 'Statue of Unity Monument, Gujarat'
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1616428612140-523c9a623709?auto=format&fit=crop&w=2000&q=85',
+    caption: 'White Salt Desert, Rann of Kutch'
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1618175550881-2292f7d93465?auto=format&fit=crop&w=2000&q=85',
+    caption: 'Double Decker Living Root Bridge, Cherrapunji'
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1626583223726-d278a2fcddad?auto=format&fit=crop&w=2000&q=85',
+    caption: 'Misty Waterfalls of Cherrapunji, Meghalaya'
+  },
+  {
+    url: 'https://images.unsplash.com/photo-1526481280693-3bfa7568e0f3?auto=format&fit=crop&w=2000&q=85',
+    caption: 'Sikkim Himalayan Ranges, Northeast India'
   },
   {
     url: 'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&w=2000&q=85',
@@ -86,6 +106,14 @@ export default function LandingPage() {
       setSubmitting(false);
     }, 1000);
   };
+
+  useEffect(() => {
+    // Pre-fetch all hero images so they cache in the browser instantly
+    INDIAN_LANDSCAPE_HEROES.forEach(hero => {
+      const img = new Image();
+      img.src = hero.url;
+    });
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 30);

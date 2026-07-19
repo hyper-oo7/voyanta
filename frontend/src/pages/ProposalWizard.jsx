@@ -171,7 +171,9 @@ export default function ProposalWizard() {
                 dietary: client?.dietary || '',
                 pace: client?.pace || '',
                 dislikes: client?.dislikes || []
-              }
+              },
+              num_adults: parseInt(client?.num_adults, 10) || 1,
+              num_children: parseInt(client?.num_children, 10) || 0
             })
           });
 
@@ -639,36 +641,65 @@ export default function ProposalWizard() {
           {status === 'loading' && !proposal ? (
             <div className="glass-card p-xl rounded-xl text-center">Loading Proposal…</div>
           ) : (
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={stepParam}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                >
                   <Suspense fallback={<div className="p-xl text-center"><span className="material-symbols-outlined animate-spin text-2xl">progress_activity</span></div>}>
-                    {stepParam === 1 && <Step1Client ref={step1Ref} client={client} setClient={setClient} isNew={!idParam} />}
-                    {stepParam === 2 && <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={() => loadProposal(proposal?.id)} itineraries={itineraries} onApplyItinerary={triggerApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft} />}
-                    {stepParam === 3 && <Step3Costing proposal={proposal} setProposal={setProposal} proposalId={proposal?.id} items={items} setItems={setItems}
-                      onPatchItem={onPatchItem} onRemoveItem={onRemoveItem} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft}
-                      proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />}
-                    {stepParam === 4 && <Step4Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} proposal={proposal} client={client} />}
-                    {stepParam === 5 && <Step5Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} onAddCustomBlock={(cb) => {
-                      setGlobalCustomBlocks(s => {
-                        const next = [...s, cb];
-                        try { localStorage.setItem('voyanta_global_custom_blocks', JSON.stringify(next)); } catch {}
-                        import('../services/resourceService.js').then(({ settingsService }) => {
-                          settingsService.get().then(old => {
-                            settingsService.save({ ...old, custom_blocks: next }).catch(() => {});
+                    <motion.div
+                      animate={{ opacity: stepParam === 1 ? 1 : 0, y: stepParam === 1 ? 0 : 10 }}
+                      initial={{ opacity: 0, y: 10 }}
+                      transition={{ duration: 0.2 }}
+                      style={{ display: stepParam === 1 ? 'contents' : 'none' }}
+                    >
+                      <Step1Client ref={step1Ref} client={client} setClient={setClient} isNew={!idParam} proposal={proposal} />
+                    </motion.div>
+
+                    <motion.div
+                      animate={{ opacity: stepParam === 2 ? 1 : 0, y: stepParam === 2 ? 0 : 10 }}
+                      initial={{ opacity: 0, y: 10 }}
+                      transition={{ duration: 0.2 }}
+                      style={{ display: stepParam === 2 ? 'contents' : 'none' }}
+                    >
+                      <Step2Itinerary proposal={proposal} setProposal={setProposal} reload={() => loadProposal(proposal?.id)} itineraries={itineraries} onApplyItinerary={triggerApplyItinerary} client={client} items={items} setItems={setItems} proposalCurrency={proposal?.currency || 'INR'} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft} />
+                    </motion.div>
+
+                    <motion.div
+                      animate={{ opacity: stepParam === 3 ? 1 : 0, y: stepParam === 3 ? 0 : 10 }}
+                      initial={{ opacity: 0, y: 10 }}
+                      transition={{ duration: 0.2 }}
+                      style={{ display: stepParam === 3 ? 'contents' : 'none' }}
+                    >
+                      <Step3Costing proposal={proposal} setProposal={setProposal} proposalId={proposal?.id} items={items} setItems={setItems}
+                        onPatchItem={onPatchItem} onRemoveItem={onRemoveItem} addItemsOptimistic={addItemsOptimistic} saveDraft={saveDraft}
+                        proposalCurrency={proposal?.currency || 'INR'} costingPrefs={costingPrefs} setCostingPrefs={setCostingPrefs} />
+                    </motion.div>
+
+                    <motion.div
+                      animate={{ opacity: stepParam === 4 ? 1 : 0, y: stepParam === 4 ? 0 : 10 }}
+                      initial={{ opacity: 0, y: 10 }}
+                      transition={{ duration: 0.2 }}
+                      style={{ display: stepParam === 4 ? 'contents' : 'none' }}
+                    >
+                      <Step4Branding branding={branding} setBranding={setBranding} customBlocks={globalCustomBlocks} proposal={proposal} client={client} />
+                    </motion.div>
+
+                    <motion.div
+                      animate={{ opacity: stepParam === 5 ? 1 : 0, y: stepParam === 5 ? 0 : 10 }}
+                      initial={{ opacity: 0, y: 10 }}
+                      transition={{ duration: 0.2 }}
+                      style={{ display: stepParam === 5 ? 'contents' : 'none' }}
+                    >
+                      <Step5Preview proposalId={proposal?.id} proposalName={proposal?.name} branding={branding} customBlocks={globalCustomBlocks} onAddCustomBlock={(cb) => {
+                        setGlobalCustomBlocks(s => {
+                          const next = [...s, cb];
+                          try { localStorage.setItem('voyanta_global_custom_blocks', JSON.stringify(next)); } catch {}
+                          import('../services/resourceService.js').then(({ settingsService }) => {
+                            settingsService.get().then(old => {
+                              settingsService.save({ ...old, custom_blocks: next }).catch(() => {});
+                            });
                           });
+                          return next;
                         });
-                        return next;
-                      });
-                    }} />}
+                      }} />
+                    </motion.div>
                   </Suspense>
-                </motion.div>
-              </AnimatePresence>
           )}
 
           <motion.div 

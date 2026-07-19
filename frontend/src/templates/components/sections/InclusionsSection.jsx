@@ -8,21 +8,13 @@ import SectionDivider from '../utility/SectionDivider.jsx';
  * Supports 4 variants: two-column-checklist, icon-list, card-pair, compact-list
  */
 export default function InclusionsSection({ proposal = {}, theme = {}, variant = 'two-column-checklist' }) {
-  const inclusions = proposal.inclusions || [
-    'All luxury accommodations as detailed in the itinerary',
-    'Private chauffeured airport transfers in luxury air-conditioned vehicles',
-    'Daily gourmet breakfast and selected special dining experiences',
-    'Private licensed English-speaking expert guides for all scheduled tours',
-    'All entrance fees, national park permits, and VIP fast-track access',
-    '24/7 on-ground concierge and emergency support throughout your stay'
-  ];
+  const rawInc = proposal.inclusions ?? proposal.included_items;
+  const inclusions = Array.isArray(rawInc) ? rawInc : (typeof rawInc === 'string' && rawInc.trim() ? rawInc.split('\n').filter(Boolean) : []);
 
-  const exclusions = proposal.exclusions || [
-    'International airfare and passport/visa processing fees',
-    'Travel insurance and medical coverage (highly recommended)',
-    'Personal expenses, laundry, spa treatments, and premium beverages',
-    'Gratuities for guides, drivers, and hotel staff (at client discretion)'
-  ];
+  const rawExc = proposal.exclusions ?? proposal.excluded_items;
+  const exclusions = Array.isArray(rawExc) ? rawExc : (typeof rawExc === 'string' && rawExc.trim() ? rawExc.split('\n').filter(Boolean) : []);
+
+  if (inclusions.length === 0 && exclusions.length === 0) return null;
 
   const primaryColor = theme.colors?.primary || '#1a1a2e';
   const accentColor = theme.colors?.accent || '#c41e3a';

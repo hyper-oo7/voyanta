@@ -16,6 +16,67 @@ const cleanPrice = (val) => {
 };
 const extractPrice = (item) => cleanPrice(item?.price_per_night ?? item?.price ?? item?.cost ?? item?.rate ?? item?.unit_price ?? item?.amount ?? 0);
 
+const buildDayDescription = (vaultDay, name, contentBlocks = [], vaultItems = [], currentDest = '') => {
+  if (vaultDay?.description && vaultDay.description.trim().length > 10) {
+    return vaultDay.description;
+  }
+
+  // Check all vaultItems matching destination for any day description that belongs to this sub-destination
+  const targetName = (name || '').toLowerCase().trim();
+  if (targetName && Array.isArray(vaultItems)) {
+    const destLower = (currentDest || '').toLowerCase().trim();
+    for (const vt of vaultItems) {
+      const vtDest = (vt.destination || vt.parsed_data?.destination || '').toLowerCase().trim();
+      if (!destLower || (vtDest && (destLower.includes(vtDest) || vtDest.includes(destLower)))) {
+        const data = vt.parsed_data || vt;
+        const matchDay = (data.days || []).find(d => {
+          const subD = (d.sub_destination || '').toLowerCase().trim();
+          const title = (d.title || '').toLowerCase().trim();
+          const desc = (d.description || '').toLowerCase().trim();
+          return (subD === targetName || title.includes(targetName)) && desc.length > 10;
+        });
+        if (matchDay && matchDay.description) {
+          return matchDay.description;
+        }
+      }
+    }
+  }
+
+  // Check if any imported items (activities, hotels) have rich descriptions
+  const itemDescs = (contentBlocks || [])
+    .map(b => b.data?.description || b.data?.details)
+    .filter(d => d && typeof d === 'string' && d.trim().length > 15);
+
+  if (itemDescs.length > 0) {
+    return `Welcome to ${name}.\n\n` + itemDescs.join('\n\n');
+  }
+
+  const parts = [];
+  const hotels = vaultDay?.hotels || [];
+  const activities = vaultDay?.activities || [];
+  const transfers = vaultDay?.transfers || [];
+  const meals = vaultDay?.meals || [];
+
+  if (hotels.length > 0) {
+    parts.push(`Check in to your luxury accommodation at ${hotels.map(h => h.name).join(' / ')}.`);
+  }
+  if (activities.length > 0) {
+    parts.push(`Highlights of the day include: ${activities.map(a => a.name).join(', ')}.`);
+  }
+  if (transfers.length > 0) {
+    parts.push(`Convenient private transfers are arranged (${transfers.map(t => t.type || 'chauffeur transfer').join(', ')}).`);
+  }
+  if (meals.length > 0) {
+    parts.push(`Enjoy curated meals at: ${meals.map(m => m.venue || m.type).join(', ')}.`);
+  }
+
+  if (parts.length > 0) {
+    return `Welcome to ${name}. ` + parts.join(' ');
+  }
+
+  return `Explore the beautiful sights, luxury accommodations, and bespoke experiences in ${name}.`;
+};
+
 export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItinerary, client, items, setItems, proposalCurrency, addItemsOptimistic, saveDraft }) {
   const toast = useToast();
   const { saveDraftBackground, updateProposal } = useProposalStore();
@@ -268,47 +329,69 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     try {
       await new Promise(r => setTimeout(r, 600));
 
-      if (days.length === 0) {
-        // Global caching check
-        const cacheKey = `itinerary_${dest.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${numDays}_${climate.seasonName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
-        let cachedDays = null;
-        try {
-          const globalCache = JSON.parse(localStorage.getItem('voyanta_global_vi_cache') || '{}');
-          if (globalCache && globalCache[cacheKey]) {
-            cachedDays = globalCache[cacheKey];
+      const isPlaceholderShells = days.length === 0 || days.every(d => {
+        const t = (d.title || '').trim().toLowerCase();
+        const desc = (d.description || '').trim().toLowerCase();
+        return (!t || t.startsWith('day ') || t.startsWith('exclusive experience')) &&
+               (!desc || desc.startsWith('curated luxury itinerary') || desc.startsWith('explore the beautiful') || desc.startsWith('itinerary for'));
+      });
+
+      if (isPlaceholderShells) {
+        // 1. First priority: Check if vaultItems has real parsed days from PDF for this exact destination
+        const destLower = dest.toLowerCase().trim();
+        let vaultDays = null;
+        for (const vt of vaultItems || []) {
+          const vtDest = (vt.destination || vt.parsed_data?.destination || '').toLowerCase().trim();
+          if (destLower && vtDest && (destLower.includes(vtDest) || vtDest.includes(destLower))) {
+            const data = vt.parsed_data || vt;
+            if (Array.isArray(data.days) && data.days.length > 0) {
+              vaultDays = data.days;
+              break;
+            }
           }
-        } catch (e) {
-          console.warn('Failed to parse global VI cache:', e);
         }
 
-        if (cachedDays && Array.isArray(cachedDays) && cachedDays.length === numDays) {
-          updateProposal({ itinerary: { days: cachedDays } });
-          logActivity('vi_itinerary_cached_hit', `VI retrieved cached ${numDays}-day itinerary for ${dest} (${climate.seasonName})`, client?.name || 'Agency Team');
-          toast.success(`✨ VI retrieved pre-generated ${numDays}-day itinerary for ${dest} from global cache!`);
+        let nextDays = [];
+        if (vaultDays && vaultDays.length > 0) {
+          for (let i = 0; i < numDays; i++) {
+            const vd = vaultDays[i] || vaultDays[vaultDays.length - 1];
+            nextDays.push({
+              id: `vi_vault_${i + 1}_${Math.random().toString(36).slice(2, 6)}`,
+              day: i + 1,
+              title: vd.title || `Day ${i + 1}: ${vd.sub_destination || dest}`,
+              description: buildDayDescription(vd, vd.sub_destination || dest, [], vaultItems, dest),
+              content: Array.isArray(vd.content) ? vd.content : []
+            });
+          }
+          toast.success(`✨ VI populated ${numDays} authentic day-by-day itinerary directly from your Vault PDF!`);
+        } else if (subDestinationsList && subDestinationsList.length > 0) {
+          // 2. Second priority: If we have real sub-destinations (Guwahati, Shillong, Cherrapunji), assign sequentially
+          for (let i = 0; i < numDays; i++) {
+            const sub = subDestinationsList[i % subDestinationsList.length];
+            const vd = sub?.vaultData?.days?.[0];
+            nextDays.push({
+              id: `vi_sub_${i + 1}_${Math.random().toString(36).slice(2, 6)}`,
+              day: i + 1,
+              title: vd?.title || `Day ${i + 1}: Highlights of ${sub.name}`,
+              description: buildDayDescription(vd, sub.name, [], vaultItems, dest),
+              content: Array.isArray(vd?.content) ? vd.content : []
+            });
+          }
+          toast.success(`✨ VI generated ${numDays}-day itinerary across your sub-destinations (${subDestinationsList.map(s => s.name).join(', ')})!`);
         } else {
-          // Generate new days adaptively
-          const genDays = buildVIItinerary(dest, numDays, startDateStr);
-          updateProposal({ itinerary: { days: genDays } });
-
-          // Save to global cache
-          try {
-            const globalCache = JSON.parse(localStorage.getItem('voyanta_global_vi_cache') || '{}');
-            globalCache[cacheKey] = genDays;
-            localStorage.setItem('voyanta_global_vi_cache', JSON.stringify(globalCache));
-          } catch (e) {
-            console.warn('Failed to save to global VI cache:', e);
-          }
-
-          logActivity('vi_itinerary_generated', `VI generated ${numDays}-day climate-intelligent itinerary for ${dest}`, client?.name || 'Agency Team');
-          toast.success(`✨ VI generated a complete ${numDays}-day itinerary for ${dest} (${climate.seasonName})!`);
+          // 3. Fallback to climate-intelligent adaptive generator
+          nextDays = buildVIItinerary(dest, numDays, startDateStr);
+          toast.success(`✨ VI generated a complete ${numDays}-day climate-intelligent itinerary for ${dest} (${climate.seasonName})!`);
         }
+
+        updateProposal({ itinerary: { days: nextDays } });
+        logActivity('vi_itinerary_generated', `VI generated ${numDays}-day itinerary for ${dest}`, client?.name || 'Agency Team');
       } else {
         const enriched = days.map(d => {
           let desc = d.description || `Curated luxury itinerary day exploring the finest highlights of ${dest} with private chauffeur and VIP privileges.`;
 
           // Climate adaptive descriptions check for existing days
           if (climate.isHot && climate.keyMatch !== 'kashmir') {
-            // Avoid stroller or hot afternoon walks
             if (desc.toLowerCase().includes('walking') || desc.toLowerCase().includes('stroll') || desc.toLowerCase().includes('safari')) {
               desc = desc.replace(/stroll\b|strolling\b|walking tour\b/gi, 'private AC transport transfer')
                 .replace(/afternoon excursion\b|afternoon stroll\b/gi, 'evening sunset cruise')
@@ -339,17 +422,53 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
   const subDestinationsList = useMemo(() => {
     const set = new Set();
+    const currentDest = (client?.destination || proposal?.destination || '').toLowerCase().trim();
+
     // Collect actual sub-destinations from vault packages for this destination
     (vaultItems || []).forEach(vt => {
-      const data = vt.parsed_data || vt;
-      if (Array.isArray(data.sub_destinations)) data.sub_destinations.forEach(sd => set.add(sd));
-      if (Array.isArray(vt.sub_destinations)) vt.sub_destinations.forEach(sd => set.add(sd));
+      const vtDest = (vt.destination || vt.parsed_data?.destination || '').toLowerCase().trim();
+      if (currentDest && vtDest && (currentDest.includes(vtDest) || vtDest.includes(currentDest))) {
+        const data = vt.parsed_data || vt;
+        if (Array.isArray(data.sub_destinations)) data.sub_destinations.forEach(sd => set.add(sd));
+        if (Array.isArray(vt.sub_destinations)) vt.sub_destinations.forEach(sd => set.add(sd));
+        if (Array.isArray(data.days)) {
+          data.days.forEach(d => {
+            if (d.sub_destination && typeof d.sub_destination === 'string' && d.sub_destination.trim()) {
+              set.add(d.sub_destination.trim());
+            }
+          });
+        }
+      }
     });
+
     // Add subDestinations retrieved from backend suggestions dynamically
     (subDestinations || []).forEach(sd => {
       const name = typeof sd === 'object' ? sd.name : sd;
-      if (name) set.add(name);
+      const sdDest = typeof sd === 'object' ? (sd.destination || '').toLowerCase().trim() : '';
+      if (name) {
+        if (sdDest && currentDest) {
+          if (currentDest.includes(sdDest) || sdDest.includes(currentDest)) {
+            set.add(name);
+          }
+        } else if (currentDest) {
+          const isKnownForDest = (vaultItems || []).some(vt => {
+            const vtDest = (vt.destination || vt.parsed_data?.destination || '').toLowerCase().trim();
+            if (vtDest && (currentDest.includes(vtDest) || vtDest.includes(currentDest))) {
+              const data = vt.parsed_data || vt;
+              return (data.sub_destinations || []).some(s => s.toLowerCase() === name.toLowerCase()) ||
+                     (data.days || []).some(d => (d.sub_destination || '').toLowerCase() === name.toLowerCase());
+            }
+            return false;
+          });
+          if (isKnownForDest || currentDest.includes(name.toLowerCase()) || name.toLowerCase().includes(currentDest)) {
+            set.add(name);
+          }
+        } else {
+          set.add(name);
+        }
+      }
     });
+
     return Array.from(set).map((name, idx) => ({
       id: `sub_${idx}_${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
       name: name,
@@ -357,10 +476,19 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       description: `Real data from your vault — hotels, activities, meals, and transfers for ${name} will be imported from your uploaded PDFs.`,
       // Lookup vault data for this sub-destination for import
       vaultData: (() => {
+        const targetName = name.toLowerCase().trim();
         for (const vt of vaultItems) {
-          const data = vt.parsed_data || vt;
-          const matchDays = (data.days || []).filter(d => d.sub_destination === name || (d.title || '').includes(name));
-          if (matchDays.length > 0) return { days: matchDays, currency: data.currency || vt.currency || 'INR' };
+          const vtDest = (vt.destination || vt.parsed_data?.destination || '').toLowerCase().trim();
+          if (currentDest && vtDest && (currentDest.includes(vtDest) || vtDest.includes(currentDest))) {
+            const data = vt.parsed_data || vt;
+            const matchDays = (data.days || []).filter(d => {
+              const subD = (d.sub_destination || '').toLowerCase().trim();
+              const title = (d.title || '').toLowerCase().trim();
+              const desc = (d.description || '').toLowerCase().trim();
+              return subD === targetName || title.includes(targetName) || desc.includes(targetName);
+            });
+            if (matchDays.length > 0) return { days: matchDays, currency: data.currency || vt.currency || 'INR' };
+          }
         }
         return null;
       })()
@@ -615,7 +743,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         const currentContent = Array.isArray(currentDay.content) ? [...currentDay.content] : [];
         updateDay(dayIndex, {
           title: vaultDayData?.title || `Day in ${subDestName}`,
-          description: vaultDayData?.description || `Explore the beautiful sights and experiences in ${subDestName}.`,
+          description: buildDayDescription(vaultDayData, subDestName, contentBlocks, vaultItems, client?.destination || proposal?.destination),
           content: [...currentContent, ...contentBlocks]
         });
         if (addItemsOptimistic && newItems.length > 0) addItemsOptimistic(newItems);

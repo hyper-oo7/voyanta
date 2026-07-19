@@ -115,6 +115,8 @@ class AutoPhraseInput(BaseModel):
     group_type: str = ""
     tour_category: str = ""
     client_preferences: Dict[str, Any] = {}
+    num_adults: int = 2
+    num_children: int = 0
 
 
 @router.post("/agencies/style-profile/rebuild")
@@ -196,7 +198,9 @@ async def auto_phrase_proposal(
         tour_type=input.tour_type,
         client_preferences=input.client_preferences,
         group_type=input.group_type,
-        tour_category=input.tour_category
+        tour_category=input.tour_category,
+        num_adults=input.num_adults,
+        num_children=input.num_children
     )
     return {"status": "success", "draft": draft}
 

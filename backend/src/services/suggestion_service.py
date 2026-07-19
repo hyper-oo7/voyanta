@@ -208,7 +208,15 @@ async def get_proposal_suggestions_service(
             else:
                 sub_query = sub_query.is_("agency_id", "null")
             sub_res = sub_query.execute()
-            sub_destinations = sub_res.data or []
+            raw_subs = sub_res.data or []
+            dest_lower = (destination or "").lower().strip()
+            sub_destinations = []
+            for s in raw_subs:
+                s_dest = (s.get("destination") or "").lower().strip()
+                s_name = (s.get("name") or "").lower().strip()
+                s_area = (s.get("area") or "").lower().strip()
+                if not dest_lower or (dest_lower in s_dest or s_dest in dest_lower or dest_lower in s_name or dest_lower in s_area):
+                    sub_destinations.append(s)
         except Exception as e:
             logger.error(f"Failed to query sub-destinations: {e}")
 

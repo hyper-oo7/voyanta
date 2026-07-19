@@ -48,7 +48,7 @@ const CURATED_PHOTOS = [
   { id: 't1', category: 'city', url: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=1200&q=80', thumb: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=600&q=80', author: 'Unsplash Europe', title: 'Paris Eiffel Tower View' },
   { id: 't2', category: 'city', url: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=1200&q=80', thumb: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=600&q=80', author: 'Unsplash Skyline', title: 'Dubai Downtown & Burj Khalifa' },
   { id: 't3', category: 'city', url: 'https://images.unsplash.com/photo-1534351590666-13e3e96b5017?w=1200&q=80', thumb: 'https://images.unsplash.com/photo-1534351590666-13e3e96b5017?w=600&q=80', author: 'Unsplash Heritage', title: 'Amsterdam Canals at Dusk' },
-  { id: 't4', category: 'city', url: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=1200&q=80', thumb: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=600&q=80', author: 'Unsplash India', title: 'Taj Mahal & Historic Architecture' },
+  { id: 't4', category: 'city', url: 'https://images.unsplash.com/photo-1603258597554-71be68b5774e?w=1200&q=80', thumb: 'https://images.unsplash.com/photo-1603258597554-71be68b5774e?w=600&q=80', author: 'Unsplash India', title: 'Ellora Caves & Historic Architecture' },
   
   // Flights & Aviation
   { id: 'f1', category: 'flight', url: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=1200&q=80', thumb: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=600&q=80', author: 'Unsplash Aviation', title: 'Commercial Jet over Clouds' },

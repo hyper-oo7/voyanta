@@ -106,7 +106,7 @@ async def call_llm(
                 }
             }
             if max_tokens:
-                payload["generationConfig"]["maxOutputTokens"] = max_tokens
+                payload["generationConfig"]["maxOutputTokens"] = min(max_tokens, 8192)
             if response_schema:
                 payload["generationConfig"]["responseMimeType"] = "application/json"
                 
@@ -157,7 +157,7 @@ async def call_llm(
                 "temperature": temperature
             }
             if max_tokens:
-                payload["max_tokens"] = max_tokens
+                payload["max_tokens"] = min(max_tokens, 4096)
             if response_schema:
                 payload["response_format"] = {"type": "json_object"}
                 

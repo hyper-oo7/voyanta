@@ -139,9 +139,10 @@ async def process_vault_pdf(
             )
 
         pdf_hash = hashlib.sha256(file_bytes).hexdigest()
-        storage_meta = save_temporary_pdf(file_bytes, file.filename or "supplier_package.pdf")
+        storage_meta = await asyncio.to_thread(save_temporary_pdf, file_bytes, file.filename or "supplier_package.pdf")
         
-        r2_upload_res = upload_file_to_r2(
+        r2_upload_res = await asyncio.to_thread(
+            upload_file_to_r2,
             file_bytes=file_bytes,
             filename=file.filename or "supplier_package.pdf",
             folder="supplier-pdfs",
@@ -152,7 +153,7 @@ async def process_vault_pdf(
 
         # Insert upload trace to public.supplier_pdfs
         source_pdf_id = None
-        sb = get_user_supabase_client(token)
+        sb = get_user_supabase_client(token, agency_id)
 
         # ── Enforce Entitlement Check ──────────────────────────────────────
         from src.core.entitlements import get_agency_entitlements_data, check_feature_entitlement
@@ -180,7 +181,7 @@ async def process_vault_pdf(
         # ── Step 2: Text extraction ────────────────────────────────────────
         context_prefix = f"Destination hint: {destination}.\n" if destination else ""
         try:
-            extracted_text, extraction_metrics = extract_text_from_pdf(storage_meta["file_path"])
+            extracted_text, extraction_metrics = await asyncio.to_thread(extract_text_from_pdf, storage_meta["file_path"])
             raw_text = context_prefix + extracted_text
             logger.info(
                 f"[VaultProcess] Extraction — strategy={extraction_metrics.get('winning_strategy')}, "
@@ -201,15 +202,15 @@ async def process_vault_pdf(
         try:
             extracted_objs = await extract_knowledge_objects(raw_text)
             if extracted_objs:
-                save_knowledge_objects(extracted_objs, agency_id=agency_id, source_pdf_id=source_pdf_id)
+                await asyncio.to_thread(save_knowledge_objects, extracted_objs, agency_id=agency_id, source_pdf_id=source_pdf_id)
         except Exception as ke_err:
             logger.error(f"[VaultProcess] Knowledge extraction failed: {ke_err}")
 
         # ── Step 3: Deterministic pre-parse (strip only boilerplate) ───────
-        compressed_text, compression_metrics = deterministic_pre_parse_and_compress(raw_text)
+        compressed_text, compression_metrics = await asyncio.to_thread(deterministic_pre_parse_and_compress, raw_text)
 
         # ── Step 4: Extract embedded images from PDF ───────────────────────
-        images_list = extract_images_and_link_spatially(storage_meta["file_path"])
+        images_list = await asyncio.to_thread(extract_images_and_link_spatially, storage_meta["file_path"], agency_id)
 
         # ── Step 5: Semantic Cache check ───────────────────────────────────
         hash_key = compute_content_hash(compressed_text, budget, duration)

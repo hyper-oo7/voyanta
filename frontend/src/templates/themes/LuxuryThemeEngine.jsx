@@ -267,28 +267,28 @@ export default function LuxuryThemeEngine(props) {
       )}
 
       {/* ─── Inclusions & Exclusions ────────────────────────────────────────── */}
-      {((include.inclusions ?? true) || (include.exclusions ?? true)) && (
+      {(((include.inclusions ?? true) && (p.inclusions || p.included_items)) || ((include.exclusions ?? true) && (p.exclusions || p.excluded_items))) && (
         <section className="theme-section bg-slate-50/50">
           <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-            {(include.inclusions ?? true) && (
+            {(include.inclusions ?? true) && (p.inclusions || p.included_items) && (
               <div className="theme-card border-t-4" style={{ borderTopColor: primaryColor }}>
                 <h3 className="text-lg font-bold mb-4 uppercase tracking-wider flex items-center gap-2" style={{ color: primaryColor }}>
                   <span className="material-symbols-outlined text-[20px]" style={{ color: primaryColor }}>check_circle</span>
                   What Is Included
                 </h3>
                 <div className="text-sm text-slate-600 whitespace-pre-line leading-relaxed pl-2">
-                  {safeText(p.inclusions || '• VIP Airport Transfers\n• Luxury Accommodations\n• Daily Gourmet Breakfast\n• Private Guided Tours\n• All Local Taxes & Fees')}
+                  {safeText(p.inclusions || p.included_items)}
                 </div>
               </div>
             )}
-            {(include.exclusions ?? true) && (
+            {(include.exclusions ?? true) && (p.exclusions || p.excluded_items) && (
               <div className="theme-card border-t-4 border-rose-500">
                 <h3 className="text-lg font-bold mb-4 uppercase tracking-wider flex items-center gap-2 text-rose-600">
                   <span className="material-symbols-outlined text-[20px] text-rose-500">cancel</span>
                   What Is Not Included
                 </h3>
                 <div className="text-sm text-slate-600 whitespace-pre-line leading-relaxed pl-2">
-                  {safeText(p.exclusions || '• International Airfare\n• Personal Travel Insurance\n• Gratuities & Tips\n• Personal Expenses')}
+                  {safeText(p.exclusions || p.excluded_items)}
                 </div>
               </div>
             )}
@@ -297,7 +297,7 @@ export default function LuxuryThemeEngine(props) {
       )}
 
       {/* ─── What to Pack & Trip Essentials ─────────────────────────────────── */}
-      {(p.what_to_pack || b.what_to_pack) && (
+      {include?.what_to_pack !== false && include?.packing_list !== false && (p.what_to_pack || b.what_to_pack) && (
         <section className="theme-section">
           <div className="max-w-4xl mx-auto theme-card border-l-4" style={{ borderLeftColor: primaryColor }}>
             <h3 className="text-lg font-bold mb-4 uppercase tracking-wider flex items-center gap-2" style={{ color: primaryColor }}>
@@ -312,12 +312,12 @@ export default function LuxuryThemeEngine(props) {
       )}
 
       {/* ─── Terms & Conditions ─────────────────────────────────────────────── */}
-      {(include.terms ?? true) && (
+      {(include.terms ?? true) && (p.terms || b.terms_conditions) && (
         <section className="theme-section">
           <div className="max-w-4xl mx-auto theme-card">
             <h3 className="text-lg font-bold mb-3 uppercase tracking-widest text-slate-400">Terms & Policy</h3>
             <p className="text-xs text-slate-500 whitespace-pre-line leading-relaxed m-0 font-light">
-              {safeText(p.terms || 'Rates are guaranteed upon receipt of deposit. Cancellations must be made in writing 30 days prior to departure. Standard agency booking terms apply.')}
+              {safeText(p.terms || b.terms_conditions)}
             </p>
           </div>
         </section>

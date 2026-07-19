@@ -103,9 +103,14 @@ async def process_file_import(
             
         logger.info(f"[ImportProcess] Start - file={file.filename}, agency_id={agency_id}, user_id={user_id}, preview_only={preview_only}")
 
+        # Initialize Supabase client
+        if token:
+            sb = get_user_supabase_client(token, agency_id)
+        else:
+            sb = get_supabase_client()
+
         # 3. Entitlements Check (if authenticated with an agency)
         if agency_id:
-            sb = get_user_supabase_client(token)
             from src.core.entitlements import get_agency_entitlements_data, check_feature_entitlement
             try:
                 entitlements = await get_agency_entitlements_data(sb, agency_id)
@@ -116,8 +121,6 @@ async def process_file_import(
                     raise http_e
             except Exception as ent_err:
                 logger.warning(f"[ImportProcess] Entitlements check fallback: {ent_err}")
-        else:
-            sb = get_supabase_client()
 
         # 4. Upload original file to R2
         file_bytes = await file.read()
@@ -157,7 +160,8 @@ async def process_file_import(
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported file type: .{ext}")
 
-        r2_upload_res = upload_file_to_r2(
+        r2_upload_res = await asyncio.to_thread(
+            upload_file_to_r2,
             file_bytes=file_bytes,
             filename=filename,
             folder="supplier-pdfs",
@@ -363,7 +367,7 @@ async def confirm_file_import(
 
         if hash_key:
             try:
-                sb = get_user_supabase_client(token) if agency_id else get_supabase_client()
+                sb = get_user_supabase_client(token, agency_id) if token else get_supabase_client()
                 asyncio.create_task(store_cached_recommendation(
                     hash_key,
                     dict(payload),

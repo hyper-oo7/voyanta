@@ -51,6 +51,66 @@ def save_temporary_pdf(file_bytes: bytes, filename: str) -> Dict[str, Any]:
 #   bounding-box, letting us sort by (y0, x0) to reconstruct top-to-bottom,
 #   left-to-right reading order for any column layout.
 # ─────────────────────────────────────────────────────────────────────────────
+def table_to_markdown(data: List[List[Optional[str]]]) -> str:
+    if not data:
+        return ""
+    
+    # Process cells: replace None with "", strip, and join lines with space
+    processed_data = []
+    for row in data:
+        processed_row = []
+        for cell in row:
+            if cell is None:
+                val = ""
+            else:
+                val = " ".join(cell.split())
+            processed_row.append(val)
+        if any(processed_row):
+            processed_data.append(processed_row)
+            
+    if not processed_data:
+        return ""
+        
+    num_cols = max(len(row) for row in processed_data)
+    
+    # Pad rows to match max number of columns
+    for row in processed_data:
+        while len(row) < num_cols:
+            row.append("")
+            
+    # Find columns that are entirely empty
+    non_empty_col_indices = []
+    for col_idx in range(num_cols):
+        col_has_content = False
+        for row in processed_data:
+            if row[col_idx].strip():
+                col_has_content = True
+                break
+        if col_has_content:
+            non_empty_col_indices.append(col_idx)
+            
+    if not non_empty_col_indices:
+        return ""
+        
+    # Filter columns to only keep non-empty ones
+    filtered_data = []
+    for row in processed_data:
+        filtered_row = [row[idx] for idx in non_empty_col_indices]
+        filtered_data.append(filtered_row)
+        
+    headers = filtered_data[0]
+    headers = [h if h else f"Col {idx+1}" for idx, h in enumerate(headers)]
+    num_filtered_cols = len(headers)
+    separator = ["---"] * num_filtered_cols
+    
+    lines = []
+    lines.append("| " + " | ".join(headers) + " |")
+    lines.append("| " + " | ".join(separator) + " |")
+    for row in filtered_data[1:]:
+        lines.append("| " + " | ".join(row) + " |")
+        
+    return "\n".join(lines)
+
 def _extract_via_pymupdf(file_path: str) -> Optional[str]:
     """
     Per-page dict-mode extraction with spatial reading-order sort.
@@ -105,6 +165,24 @@ def _extract_via_pymupdf(file_path: str) -> Optional[str]:
                 block_lines.append("")  # blank line between blocks
 
             page_text = "\n".join(block_lines).strip()
+            
+            # Extract cell-based tables as Markdown tables (Strategy 4)
+            table_markdowns = []
+            try:
+                tables = page.find_tables()
+                if tables and tables.tables:
+                    for table in tables.tables:
+                        data = table.extract()
+                        if data:
+                            md = table_to_markdown(data)
+                            if md:
+                                table_markdowns.append(md)
+            except Exception as tbl_err:
+                logger.debug(f"[Strategy 1] Table extraction failed on page {page_num}: {tbl_err}")
+
+            if table_markdowns:
+                page_text += "\n\n[Extracted Tables from Page " + str(page_num + 1) + "]\n" + "\n\n".join(table_markdowns)
+
         except Exception as dict_err:
             logger.debug(f"[Strategy 1] dict-mode failed for page {page_num}: {dict_err}")
             # Fallback: plain text mode for this page only
@@ -299,7 +377,7 @@ def _merge_strategy_results(results: Dict[str, Optional[str]]) -> Tuple[str, str
         for para in paragraphs:
             para_stripped = para.strip()
             # Only append paragraphs that are substantial AND absent from the base
-            if len(para_stripped) >= 80 and para_stripped.lower() not in base_lower:
+            if len(para_stripped) >= 40 and para_stripped.lower() not in base_lower:
                 appended_sections.append(para_stripped)
                 base_lower += " " + para_stripped.lower()  # update for dedup
 
@@ -534,6 +612,8 @@ def deterministic_pre_parse_and_compress(text: str) -> Tuple[str, Dict[str, Any]
     skipped_patterns: List[str] = []
     applied_patterns: List[str] = []
 
+    PROTECTED_KEYWORDS = {"hotel", "room", "night", "price", "pricing", "cost", "inclusions", "exclusions", "itinerary", "flight", "transfer", "meal", "day", "destination"}
+
     cleaned = text
     for pattern in legalese_patterns:
         current_len = len(cleaned)
@@ -545,11 +625,27 @@ def deterministic_pre_parse_and_compress(text: str) -> Tuple[str, Dict[str, Any]
         if not matches:
             continue
 
-        # Compute total characters that would be removed by this pattern.
-        total_removed = sum(m.end() - m.start() for m in matches)
+        # Filter out matches that contain protected vocabulary to prevent false-positives
+        safe_matches = []
+        for m in matches:
+            match_text = cleaned[m.start():m.end()].lower()
+            if any(kw in match_text for kw in PROTECTED_KEYWORDS):
+                logger.warning(
+                    f"[Token Compression] SKIPPED strip match: pattern contains protected keyword. "
+                    f"Preview: '{match_text[:120].replace('\n', ' ')}...'"
+                )
+                continue
+            safe_matches.append(m)
+
+        if not safe_matches:
+            skipped_patterns.append(pattern[:60])
+            continue
+
+        # Compute total characters that would be removed by the safe matches.
+        total_removed = sum(m.end() - m.start() for m in safe_matches)
 
         # --- Safety check 1: absolute char cap (per individual match) ---
-        oversized = [m for m in matches if (m.end() - m.start()) > MAX_STRIP_CHARS]
+        oversized = [m for m in safe_matches if (m.end() - m.start()) > MAX_STRIP_CHARS]
         if oversized:
             for m in oversized:
                 span_len = m.end() - m.start()
@@ -566,7 +662,7 @@ def deterministic_pre_parse_and_compress(text: str) -> Tuple[str, Dict[str, Any]
         # --- Safety check 2: percentage of document cap ---
         removed_pct = total_removed / current_len
         if removed_pct > MAX_STRIP_PCT:
-            preview = cleaned[matches[0].start():matches[0].start() + 120].replace("\n", " ")
+            preview = cleaned[safe_matches[0].start():safe_matches[0].start() + 120].replace("\n", " ")
             logger.warning(
                 f"[Token Compression] SKIPPED strip: pattern would remove "
                 f"{total_removed} chars ({removed_pct:.1%} of document, "
@@ -576,8 +672,9 @@ def deterministic_pre_parse_and_compress(text: str) -> Tuple[str, Dict[str, Any]
             skipped_patterns.append(pattern[:60])
             continue
 
-        # Safe to apply — strip all matches for this pattern.
-        cleaned = re.sub(pattern, "", cleaned)
+        # Safe to apply — strip all safe matches for this pattern from end to start to preserve offsets
+        for m in sorted(safe_matches, key=lambda x: x.start(), reverse=True):
+            cleaned = cleaned[:m.start()] + cleaned[m.end():]
         applied_patterns.append(pattern[:60])
 
     # 2. Collapse excessive vertical whitespace and multiple lines

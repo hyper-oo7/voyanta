@@ -108,6 +108,7 @@ class FinalProposalSchema(BaseModel):
     total_price: Optional[float] = Field(None, description="Total package cost if explicitly mentioned")
     price_per_person: Optional[float] = Field(None, description="Per person cost if listed")
     days: List[ProposalDay] = Field(default_factory=list)
+    hotels: List[ProposalHotel] = Field(default_factory=list, description="Top-level list of hotels found in summary tables")
     inclusions: List[str] = Field(default_factory=list, description="Exact list of package inclusions")
     exclusions: List[str] = Field(default_factory=list, description="Exact list of package exclusions")
     extra_sections: ProposalExtraSections = Field(default_factory=ProposalExtraSections)

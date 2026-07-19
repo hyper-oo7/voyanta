@@ -53,7 +53,7 @@ function TextareaWithAI({ label, value, onChange, testid, onAI }) {
   );
 }
 
-export function Step4Branding({ proposalId, branding, setBranding, client }) {
+export function Step4Branding({ proposalId, branding, setBranding, client, customBlocks = [] }) {
   const toast = useToast();
   const [activeCategory, setActiveCategory] = useState('All');
   const [showFieldMenu, setShowFieldMenu] = useState(false);

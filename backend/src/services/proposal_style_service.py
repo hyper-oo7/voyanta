@@ -210,7 +210,9 @@ async def auto_phrase_with_profile(
     tour_type: str,
     client_preferences: dict = None,
     group_type: str = "",
-    tour_category: str = ""
+    tour_category: str = "",
+    num_adults: int = 2,
+    num_children: int = 0
 ) -> Dict[str, str]:
     """
     Generates a draft greeting note and trip highlights blurb using the agency's style profile.
@@ -235,8 +237,45 @@ async def auto_phrase_with_profile(
                 f"dislikes/avoid: {client_preferences.get('dislikes') or 'none'}"
             )
             
+        GROUP_TYPE_PERSONA = {
+            "couple": (
+                "Focus on romance, intimacy, private and curated experiences, candlelight, scenic sunset views, "
+                "personalized touches, relaxing paces, and exclusive retreat highlights. Use words that evoke shared memories, romantic getaways, and special connection."
+            ),
+            "family": (
+                "Focus on safety, child-friendly pacing, inclusive and engaging multi-generational activities, "
+                "spacious accommodation, stress-free transfers, and fun, interactive highlights. Avoid overly exhausting activities in the afternoon."
+            ),
+            "friends": (
+                "Focus on social energy, bonding, group activities, nightlife, adventure, shared memories, photo-worthy spots, "
+                "and vibrant culinary/cultural spots. Maintain a lively, fun, and adventurous tone."
+            ),
+            "solo": (
+                "Focus on personal freedom, flexibility, self-discovery, safe exploration, local immersion, unique self-paced experiences, "
+                "and boutique comfort. Maintain an empowering, introspective, and curious tone."
+            ),
+            "group": (
+                "Focus on group cohesion, collective experiences, ease of coordination, shared private transport, "
+                "vibrant group highlights, and dining. Maintain a warm, welcoming, and inclusive team/group tone."
+            )
+        }
+
+        # Match persona based on group type
+        gt_lower = (group_type or "").lower()
+        persona_instruction = (
+            "Focus on high-end luxury, VIP access, ultimate comfort, bespoke curation, and seamless transfers. "
+            "Maintain an elegant, premium, and sophisticated tone."
+        )
+        for key, desc in GROUP_TYPE_PERSONA.items():
+            if key in gt_lower:
+                persona_instruction = desc
+                break
+
         system_prompt = (
             "You are an expert luxury travel copywriter drafting sections for a travel proposal.\n"
+            f"Write this proposal specifically tailored for a {group_type or 'luxury traveler'} trip. "
+            f"Tone/Style Guidance for this group: {persona_instruction}\n"
+            f"Group details: {num_adults} adults, {num_children} children.\n\n"
             "Based on the agency's style profile guidelines, generate two sections for the proposal:\n"
             "1. A personalized greeting/welcome note to the client (addressing them by name, destination, and tour type/group style).\n"
             "2. A brief, compelling trip highlights blurb summarizing what makes this trip stand out.\n\n"
@@ -256,6 +295,7 @@ async def auto_phrase_with_profile(
             f"Tour Label: {tour_type or 'Concierge Experience'}\n"
             f"Who's Travelling (Group Type): {group_type or 'Not specified'}\n"
             f"Tour Category: {tour_category or tour_type or 'Not specified'}\n"
+            f"Group details: {num_adults} adults, {num_children} children\n"
             f"{pref_str}"
         )
         
@@ -285,8 +325,8 @@ async def auto_phrase_with_profile(
                 "_cache_meta": {
                     "agency_id": agency_id,
                     "entity_type": "auto_phrase",
-                    "prompt_version": "phrase_v1.0.0",
-                    "schema_version": "phrase_schema_v1.0.0",
+                    "prompt_version": "phrase_v1.1.0",
+                    "schema_version": "phrase_schema_v1.1.0",
                     "model": "gemini-2.5-flash",
                     "input_text": user_prompt
                 }
@@ -310,8 +350,8 @@ async def auto_phrase_with_profile(
                 "_cache_meta": {
                     "agency_id": agency_id,
                     "entity_type": "auto_phrase",
-                    "prompt_version": "phrase_v1.0.0",
-                    "schema_version": "phrase_schema_v1.0.0",
+                    "prompt_version": "phrase_v1.1.0",
+                    "schema_version": "phrase_schema_v1.1.0",
                     "model": "gpt-4o-mini",
                     "input_text": user_prompt
                 }

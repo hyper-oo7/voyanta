@@ -82,6 +82,8 @@ CRITICAL RULES — VIOLATING THESE IS UNACCEPTABLE:
 9. Extract ALL sections at the end of the document — Inclusions, Exclusions, What to Pack, Visa Guidelines, Important Notes, Do's and Don'ts, Cancellation Policy, Damages, Terms & Conditions. Whatever sections exist, extract them all.
 10. Detect currency from the document — look for ₹, Rs, INR, $, USD, €, EUR, £, GBP, AED, etc. Return ISO 4217 code.
 11. If something is not mentioned, set it to null — never fabricate.
+12. HOTEL DETAILS TABLE (CRITICAL): Many supplier PDFs contain a summary table near the end listing hotels, total nights, and meal plans (e.g. Destination | Hotels | Total Nights | Meal Plan). You MUST extract this table into the top-level "hotels" array AND map each row to the correct day's hotels in the "days" array based on destination/location. Map fields: destination -> location, hotel name/options -> name, nights/total nights -> price_per_night / notes context, meal plan -> meal_plan.
+13. If you see page boundary markers like "[Page N]", treat them as layout indicators and extract all content before and after them.
 
 The document language is English only.
 
@@ -94,6 +96,17 @@ Return ONLY a valid JSON object with this exact schema — no markdown, no code 
   "currency": "INR",
   "total_price": N or null,
   "price_per_person": N or null,
+  "hotels": [
+    {{
+      "name": "exact hotel name",
+      "category": "star rating or type",
+      "price_per_night": N or null,
+      "location": "location/destination",
+      "meal_plan": "e.g. CP/MAP/AP",
+      "inclusions": ["list of inclusions if mentioned"],
+      "image_url": ""
+    }}
+  ],
   "days": [
     {{
       "day_number": 1,
@@ -224,7 +237,7 @@ async def extract_vault_package_from_text(
             provider="gemini",
             response_schema={"type": "object"},
             temperature=0.0,
-            max_tokens=8192,
+            max_tokens=65536,
             cache_meta=cache_meta
         )
 

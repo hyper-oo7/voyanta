@@ -40,7 +40,7 @@ def get_supabase_client():
         return None
 
 
-def get_user_supabase_client(token: str = None) -> Any:
+def get_user_supabase_client(token: str = None, agency_id: str = None) -> Any:
     """
     Returns a per-request user-scoped Supabase client.
     - If `token` is provided, it creates a new client instance authenticated with the user's JWT
@@ -68,6 +68,8 @@ def get_user_supabase_client(token: str = None) -> Any:
         client = create_client(url, anon_key)
         if token:
             client.postgrest.auth(token)
+            if agency_id:
+                client.postgrest.headers["x-tenant-id"] = str(agency_id)
         return client
     except Exception as e:
         logger.error(f"[Supabase] User client init failed: {e}")
