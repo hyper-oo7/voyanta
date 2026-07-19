@@ -122,10 +122,10 @@ export default function SortableContentBlock({ id, item, onChange, onRemove }) {
                 <span className="material-symbols-outlined text-on-surface-variant/50 text-[24px]">image</span>
               )}
               <div 
-                onClick={() => fileRef.current?.click()}
+                onClick={() => setShowStockPicker(true)}
                 className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/travel:opacity-100 cursor-pointer transition-opacity"
               >
-                <span className="material-symbols-outlined text-white text-[20px]">{uploading ? 'hourglass_empty' : 'upload'}</span>
+                <span className="material-symbols-outlined text-white text-[20px]">{uploading ? 'hourglass_empty' : 'upload_file'}</span>
               </div>
             </div>
             <div className="flex-1 min-w-0 flex flex-col justify-center">
@@ -156,16 +156,6 @@ export default function SortableContentBlock({ id, item, onChange, onRemove }) {
         
         {item.type === 'image' && (
           <div className="border border-outline-variant rounded-xl overflow-hidden bg-surface-variant relative group/img mt-1">
-            {showStockPicker && (
-              <ImageSearchPicker
-                onSelect={(url) => {
-                  onChange(id, { url });
-                  setShowStockPicker(false);
-                }}
-                onClose={() => setShowStockPicker(false)}
-                defaultQuery="luxury resort"
-              />
-            )}
             {item.data.url ? (
               <img src={item.data.url} alt="" className="w-full max-h-96 object-cover" />
             ) : (
@@ -178,16 +168,7 @@ export default function SortableContentBlock({ id, item, onChange, onRemove }) {
                     className="px-3 py-1.5 bg-secondary text-on-secondary rounded-lg text-xs font-bold hover:bg-secondary/90 transition-all flex items-center gap-1 shadow-sm cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[15px]">photo_library</span>
-                    Stock Photos
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    disabled={uploading}
-                    className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-bold hover:bg-primary/90 transition-all flex items-center gap-1 shadow-sm cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[15px]">upload</span>
-                    {uploading ? 'Uploading...' : 'Upload Image'}
+                    Select Media Asset
                   </button>
                 </div>
               </div>
@@ -206,36 +187,57 @@ export default function SortableContentBlock({ id, item, onChange, onRemove }) {
                 className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 whitespace-nowrap cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[13px]">photo_library</span>
-                Stock
-              </button>
-              <button 
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 whitespace-nowrap cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[13px]">upload</span>
-                {uploading ? 'Uploading...' : 'Upload'}
+                Select Media
               </button>
             </div>
           </div>
         )}
 
         {item.type === 'gallery' && (
-          <div className="border border-outline-variant rounded-xl p-sm bg-surface-variant group/img mt-1">
-            <div className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2 px-1">Gallery (Paste URLs below, one per line)</div>
+          <div className="border border-outline-variant rounded-xl p-sm bg-surface-variant group/img mt-1 space-y-sm">
+            <div className="flex justify-between items-center px-1">
+              <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Gallery Images</span>
+              <button
+                type="button"
+                onClick={() => setShowStockPicker(true)}
+                className="px-2.5 py-1 bg-primary text-white rounded-lg text-[10px] font-bold hover:bg-primary/95 transition-all flex items-center gap-1 shadow-sm cursor-pointer select-none"
+              >
+                <span className="material-symbols-outlined text-[13px]">add_photo_alternate</span>
+                Add / Upload Media
+              </button>
+            </div>
+            
             <textarea 
                 value={item.data.urls || ''} 
                 onChange={(e) => onChange(id, { urls: e.target.value })}
-                placeholder="https://image1.jpg&#10;https://image2.jpg"
-                className="w-full text-xs bg-white border border-outline-variant rounded-lg p-2 outline-none mb-2 resize-none"
+                placeholder="Paste Image URLs here (one per line) or use 'Add / Upload Media' button"
+                className="w-full text-xs bg-white border border-outline-variant rounded-lg p-2 outline-none resize-none font-mono"
                 rows={3}
             />
+
             {item.data.urls && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {item.data.urls.split('\n').map((url, i) => url.trim() ? (
-                  <img key={i} src={url.trim()} alt="" className="w-full h-24 object-cover rounded-lg shadow-sm" />
-                ) : null)}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                {item.data.urls.split('\n').map((url, i) => {
+                  const trimmedUrl = url.trim();
+                  if (!trimmedUrl) return null;
+                  return (
+                    <div key={i} className="relative aspect-video rounded-lg overflow-hidden group/gal-item border border-outline-variant shadow-xs">
+                      <img src={trimmedUrl} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const lines = item.data.urls.split('\n');
+                          lines.splice(i, 1);
+                          onChange(id, { urls: lines.join('\n') });
+                        }}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover/gal-item:opacity-100 hover:bg-error transition-all"
+                        title="Remove image"
+                      >
+                        <span className="material-symbols-outlined text-[12px]">close</span>
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -251,6 +253,25 @@ export default function SortableContentBlock({ id, item, onChange, onRemove }) {
         <span className="material-symbols-outlined text-[16px]">close</span>
       </button>
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+
+      {showStockPicker && (
+        <ImageSearchPicker
+          onSelect={(url) => {
+            if (item.type === 'image') {
+              onChange(id, { url });
+            } else if (item.type === 'gallery') {
+              const existing = (item.data.urls || '').trim();
+              const updated = existing ? `${existing}\n${url}` : url;
+              onChange(id, { urls: updated });
+            } else {
+              onChange(id, { ...item.data, image_url: url });
+            }
+            setShowStockPicker(false);
+          }}
+          onClose={() => setShowStockPicker(false)}
+          defaultQuery={item.data.name || item.data.text || 'luxury resort'}
+        />
+      )}
     </div>
   );
 }

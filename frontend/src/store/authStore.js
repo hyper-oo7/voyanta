@@ -8,13 +8,14 @@ export const useAuthStore = create((set, get) => ({
   agencyId: null,
   isDemo: false,
   isLoading: true,
+  hasAcceptedTerms: false,
 
   // Setters
   setUser: (user, session = null, isDemo = false) => set({ user, session, isDemo }),
   setAgencyId: (agencyId) => set({ agencyId }),
   setIsDemo: (isDemo) => set({ isDemo }),
   setLoading: (isLoading) => set({ isLoading }),
-  clearAuth: () => set({ user: null, session: null, agencyId: null, isDemo: false }),
+  clearAuth: () => set({ user: null, session: null, agencyId: null, isDemo: false, hasAcceptedTerms: false }),
 
   // Helpers
   getAgencyId: () => {
@@ -62,6 +63,49 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
+  checkTermsAcceptance: async () => {
+    const { user, isDemo } = get();
+    if (!user || isDemo || !supabase) {
+      set({ hasAcceptedTerms: true });
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('user_terms_acceptances')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('terms_version', 'v1.0')
+        .maybeSingle();
+
+      if (error) throw error;
+      set({ hasAcceptedTerms: !!data });
+    } catch (e) {
+      console.warn('Failed to check terms acceptance:', e);
+      // In case of error (e.g. database loading), default to false to trigger modal for safety
+      set({ hasAcceptedTerms: false });
+    }
+  },
+
+  acceptTerms: async (userAgent) => {
+    const { user, isDemo } = get();
+    if (!user || isDemo || !supabase) return;
+    try {
+      const { error } = await supabase
+        .from('user_terms_acceptances')
+        .insert({
+          user_id: user.id,
+          terms_version: 'v1.0',
+          user_agent: userAgent || navigator.userAgent,
+        });
+
+      if (error) throw error;
+      set({ hasAcceptedTerms: true });
+    } catch (e) {
+      console.error('Failed to log terms acceptance:', e);
+      throw e;
+    }
+  },
+
   // Auth Operations
   initAuth: () => {
     if (!supabase) {
@@ -77,6 +121,7 @@ export const useAuthStore = create((set, get) => ({
         set({ isDemo: false });
         get().setUser(authUser, session, false);
         await get().resolveAgencyId(authUser);
+        await get().checkTermsAcceptance();
       }
       set({ isLoading: false });
 
@@ -86,6 +131,7 @@ export const useAuthStore = create((set, get) => ({
           set({ isDemo: false });
           get().setUser(newUser, session, false);
           await get().resolveAgencyId(newUser);
+          await get().checkTermsAcceptance();
         }
       });
       if (sub?.subscription) {
@@ -105,6 +151,20 @@ export const useAuthStore = create((set, get) => ({
       options: { data: { full_name: fullName } },
     });
     if (error) throw error;
+    
+    // Auto-accept terms upon creation if user object returned immediately
+    if (data?.user) {
+      try {
+        await supabase.from('user_terms_acceptances').insert({
+          user_id: data.user.id,
+          terms_version: 'v1.0',
+          user_agent: navigator.userAgent,
+        });
+        set({ hasAcceptedTerms: true });
+      } catch (e) {
+        console.warn('Failed auto-terms insert on signup:', e);
+      }
+    }
     return data;
   },
 
@@ -115,6 +175,7 @@ export const useAuthStore = create((set, get) => ({
     if (error) throw error;
     if (data?.user) {
       await get().resolveAgencyId(data.user);
+      await get().checkTermsAcceptance();
     }
     return data;
   },

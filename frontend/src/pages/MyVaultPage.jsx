@@ -5,6 +5,7 @@ import { useProposalStore } from '../store/proposalStore.js';
 import { supabase } from '../lib/supabaseClient.js';
 import { api } from '../services/api.js';
 import BatchExtractionReviewModal from '../components/vault/BatchExtractionReviewModal.jsx';
+import { useVaultStore } from '../store/vaultStore.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -125,13 +126,17 @@ export default function MyVaultPage() {
 
   // Upload form state
   const [files, setFiles] = useState([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentFile: '', status: '' });
-  const [metrics, setMetrics] = useState(null);
-
-  // Review Modal State
-  const [reviewBatch, setReviewBatch] = useState([]);
-  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  
+  const {
+    isProcessing,
+    batchProgress,
+    metrics,
+    reviewBatch,
+    isReviewOpen,
+    setIsReviewOpen,
+    setReviewBatch,
+    startBatchProcessing
+  } = useVaultStore();
 
   // Vault items state (loaded from Supabase)
   const [vaultItems, setVaultItems] = useState([]);
@@ -226,112 +231,8 @@ export default function MyVaultPage() {
       return;
     }
 
-    setIsProcessing(true);
-    setMetrics(null);
-    setBatchProgress({ current: 0, total: files.length, currentFile: files[0].name, status: 'Starting...' });
-
-    // Proactively refresh JWT session before starting batch extraction
-    let token = null;
-    try {
-      await supabase?.auth?.refreshSession?.();
-      const { data: { session } } = await supabase?.auth?.getSession?.() || { data: { session: null } };
-      token = session?.access_token || null;
-    } catch (authErr) {
-      console.warn('[MyVault] Proactive session check warning:', authErr);
-    }
-
-    const extractedBatch = [];
-    let cacheHitsCount = 0;
-    const concurrency = 3;
-
-    for (let i = 0; i < files.length; i += concurrency) {
-      const chunk = files.slice(i, i + concurrency);
-      await Promise.all(chunk.map(async (currentF, chunkIdx) => {
-        const fileIndex = i + chunkIdx;
-        setBatchProgress({
-          current: fileIndex + 1,
-          total: files.length,
-          currentFile: currentF.name,
-          status: `Extracting data from ${currentF.name} (${fileIndex + 1}/${files.length})...`
-        });
-
-        const cacheKey = `voyanta_vault_cache_v3_${currentF.name.toLowerCase().replace(/[^a-z0-9]/g, '')}_${currentF.size}`;
-        let resultData = null;
-        try {
-          const cachedStr = localStorage.getItem(cacheKey);
-          if (cachedStr) {
-            resultData = JSON.parse(cachedStr);
-            resultData.cache_hit = true;
-            cacheHitsCount++;
-          }
-        } catch {}
-
-        if (!resultData) {
-          try {
-            const formData = new FormData();
-            formData.append('file', currentF);
-            formData.append('preview_only', 'true');
-            formData.append('currency', 'INR');
-
-            const reqHeaders = {};
-            if (token) reqHeaders['Authorization'] = `Bearer ${token}`;
-
-            let response = await fetch('/api/import/process', {
-              method: 'POST',
-              headers: reqHeaders,
-              body: formData,
-            });
-
-            // Retry without token if auth error occurs
-            if ((response.status === 401 || response.status === 403) && token) {
-              const retryFormData = new FormData();
-              retryFormData.append('file', currentF);
-              retryFormData.append('preview_only', 'true');
-              retryFormData.append('currency', 'INR');
-              response = await fetch('/api/import/process', { method: 'POST', body: retryFormData });
-            }
-
-            if (response.ok) {
-              resultData = await response.json();
-              try { localStorage.setItem(cacheKey, JSON.stringify(resultData)); } catch {}
-            } else {
-              let errText = response.statusText;
-              try {
-                const errJson = await response.json();
-                errText = errJson.detail || errJson.message || errText;
-              } catch {}
-              toast.error(`Error processing ${currentF.name}: ${errText}`);
-              return;
-            }
-          } catch (err) {
-            toast.error(`Failed to process ${currentF.name}: ${err.message}`);
-            return;
-          }
-        }
-
-        if (resultData?.data) {
-          extractedBatch.push(resultData.data);
-          if (fileIndex === files.length - 1) {
-            setMetrics({
-              compression: resultData.compression_metrics,
-              cost: cacheHitsCount === files.length ? '$0.00 (100% Cache Hits)' : 'Optimized via Faithful Extraction',
-              cacheHit: cacheHitsCount > 0,
-            });
-          }
-        }
-      }));
-    }
-
-    setIsProcessing(false);
-    setBatchProgress({ current: 0, total: 0, currentFile: '', status: '' });
-
-    if (extractedBatch.length > 0) {
-      setReviewBatch(extractedBatch);
-      setIsReviewOpen(true);
-      setFiles([]);
-    } else {
-      toast.error('No files were successfully extracted. Check file formats and try again.');
-    }
+    startBatchProcessing(files, toast);
+    setFiles([]);
   };
 
   // ── Apply vault package to proposal wizard ────────────────────────────────

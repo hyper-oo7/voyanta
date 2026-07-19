@@ -11,6 +11,7 @@ export default function AuthenticationPage() {
   
   const [isSignUp, setIsSignUp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -50,6 +51,10 @@ export default function AuthenticationPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (submitting) return;
+    if (isSignUp && !termsAccepted) {
+      toast.error('Please accept the Terms & Conditions and Privacy Policy to continue.');
+      return;
+    }
     setSubmitting(true);
     
     try {
@@ -231,10 +236,25 @@ export default function AuthenticationPage() {
                 </div>
               </div>
 
+              {isSignUp && (
+                <div className="flex items-start gap-3 mt-md select-none">
+                  <input 
+                    type="checkbox" 
+                    id="termsAccepted" 
+                    checked={termsAccepted} 
+                    onChange={e => setTermsAccepted(e.target.checked)} 
+                    className="mt-1 w-4 h-4 accent-primary rounded cursor-pointer"
+                  />
+                  <label htmlFor="termsAccepted" className="text-xs text-on-surface-variant leading-relaxed cursor-pointer">
+                    I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">Privacy Policy</a>, and consent to the collection and processing of my personal data under the DPDP Act 2023.
+                  </label>
+                </div>
+              )}
+
               <button 
                 type="submit" 
-                disabled={submitting}
-                className="w-full bg-on-surface text-surface py-md px-lg rounded-lg font-label-md hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 mt-md border-none"
+                disabled={submitting || (isSignUp && !termsAccepted)}
+                className="w-full bg-on-surface text-surface py-md px-lg rounded-lg font-label-md hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 mt-md border-none cursor-pointer"
               >
                 {submitting ? 'Please wait...' : (isSignUp ? 'Create Account' : 'Sign In')}
               </button>

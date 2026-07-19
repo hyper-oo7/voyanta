@@ -46,9 +46,56 @@ function saveLocalList(key, list) {
   } catch {}
 }
 
+export async function auditAndFixDuplicateInvoiceNumbers(invoices) {
+  if (!Array.isArray(invoices) || invoices.length === 0) return invoices;
+  
+  // Sort by created_at ascending so older invoices keep the lower sequence
+  const sorted = [...invoices].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+  
+  const seenNumbers = new Set();
+  let modifiedAny = false;
+  
+  const fixed = sorted.map((inv, idx) => {
+    let num = (inv.invoice_number || '').trim();
+    if (!num) num = 'INV-000001';
+    
+    // Check if duplicate or if it needs fix
+    if (seenNumbers.has(num.toLowerCase())) {
+      let prefix = 'INV-';
+      let padLen = 6;
+      if (num.includes('-')) {
+        const parts = num.split('-');
+        prefix = parts.slice(0, -1).join('-') + '-';
+        const numPart = parts[parts.length - 1];
+        padLen = /^\d+$/.test(numPart) ? numPart.length : 6;
+      }
+      
+      let nextSeq = idx + 1;
+      let newNum = `${prefix}${String(nextSeq).padStart(padLen, '0')}`;
+      
+      while (seenNumbers.has(newNum.toLowerCase())) {
+        nextSeq++;
+        newNum = `${prefix}${String(nextSeq).padStart(padLen, '0')}`;
+      }
+      
+      inv.invoice_number = newNum;
+      modifiedAny = true;
+      
+      // Save/persist the change back
+      saveInvoiceRecord(inv, false).catch(() => {});
+    }
+    
+    seenNumbers.add(inv.invoice_number.toLowerCase());
+    return inv;
+  });
+  
+  return fixed.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+}
+
 export async function fetchInvoices({ clientName = null, status = null, destination = null, currency = null } = {}) {
   const agencyId = getAgencyId();
   const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
+  let rawList = [];
 
   if (isProd) {
     try {
@@ -56,8 +103,7 @@ export async function fetchInvoices({ clientName = null, status = null, destinat
       if (status && status !== 'ALL') query = query.eq('status', status);
       const { data, error } = await query;
       if (!error && data) {
-        saveLocalList(INVOICE_CACHE_KEY, data);
-        return filterList(data, { clientName, status, destination, currency });
+        rawList = data;
       }
     } catch (e) {
       // Table might not exist yet, try templates table fallback
@@ -69,17 +115,20 @@ export async function fetchInvoices({ clientName = null, status = null, destinat
           .eq('agency_id', agencyId)
           .order('created_at', { ascending: false });
         if (!tErr && tData) {
-          const mapped = tData.map(r => r.data || {});
-          saveLocalList(INVOICE_CACHE_KEY, mapped);
-          return filterList(mapped, { clientName, status, destination, currency });
+          rawList = tData.map(r => r.data || {});
         }
       } catch {}
     }
   }
 
-  // Demo fallback or offline
-  const list = getLocalList(INVOICE_CACHE_KEY);
-  return filterList(list, { clientName, status, destination, currency });
+  if (rawList.length === 0) {
+    rawList = getLocalList(INVOICE_CACHE_KEY);
+  }
+
+  // Audit and fix duplicates or clashing numbers
+  const cleanedList = await auditAndFixDuplicateInvoiceNumbers(rawList);
+  saveLocalList(INVOICE_CACHE_KEY, cleanedList);
+  return filterList(cleanedList, { clientName, status, destination, currency });
 }
 
 function filterList(list, { clientName, status, destination, currency }) {
@@ -118,10 +167,16 @@ export async function getInvoicesByClient(clientName) {
   return all.filter(i => (i.client_name || '').toLowerCase().trim() === clientName.toLowerCase().trim());
 }
 
+let lastUsedSequence = null;
+
 export async function getNextInvoiceNumber() {
   const settings = await settingsService.get();
   const format = settings.invoice_number_format || 'INV-000001';
-  const nextSeq = Number(settings.invoice_next_sequence || 1);
+  let nextSeq = Number(settings.invoice_next_sequence || 1);
+  
+  if (lastUsedSequence !== null && lastUsedSequence >= nextSeq) {
+    nextSeq = lastUsedSequence + 1;
+  }
   
   let prefix = 'INV-';
   let padLen = 6;
@@ -135,6 +190,8 @@ export async function getNextInvoiceNumber() {
   
   const numStr = String(nextSeq).padStart(padLen, '0');
   const invoiceNo = `${prefix}${numStr}`;
+
+  lastUsedSequence = nextSeq;
 
   try {
     settingsService.update({ ...settings, invoice_next_sequence: nextSeq + 1 }).catch(() => {});

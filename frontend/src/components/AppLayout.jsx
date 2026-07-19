@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-do
 import { useAuthStore } from '../store/authStore.js';
 import { useToast } from '../context/ToastContext.jsx';
 import UpgradePlanModal from './billing/UpgradePlanModal.jsx';
+import { useVaultStore } from '../store/vaultStore.js';
 
 const navItems = [
   { path: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
@@ -23,9 +24,20 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { user, isDemo, signOut } = useAuthStore();
+  const { user, isDemo, signOut, hasAcceptedTerms, acceptTerms } = useAuthStore();
+  const { isProcessing, batchProgress } = useVaultStore();
+
+  const [acceptModalChecked, setAcceptModalChecked] = useState(false);
+  const [acceptingTerms, setAcceptingTerms] = useState(false);
 
   const isDashboard = location.pathname === '/dashboard';
+
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
+  const toggleTheme = () => {
+    const nextDark = document.documentElement.classList.toggle('dark');
+    localStorage.setItem('theme', nextDark ? 'dark' : 'light');
+    setIsDark(nextDark);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -85,7 +97,9 @@ export default function AppLayout() {
       if (notifRef.current && !notifRef.current.contains(event.target)) setShowNotifications(false);
       if (helpRef.current && !helpRef.current.contains(event.target)) setShowHelp(false);
     };
-    const handleScroll = () => {
+    const handleScroll = (event) => {
+      if (showNotifications && notifRef.current && notifRef.current.contains(event.target)) return;
+      if (showHelp && helpRef.current && helpRef.current.contains(event.target)) return;
       if (showNotifications) setShowNotifications(false);
       if (showHelp) setShowHelp(false);
     };
@@ -322,10 +336,19 @@ export default function AppLayout() {
         {/* Top Navigation Bar */}
         {isDashboard && (
           <header className="flex-shrink-0 flex justify-between items-center w-full px-lg py-md bg-surface shadow-sm z-40">
-            <div className="flex items-center flex-1 max-w-2xl gap-lg">
-              {/* Search bar removed per request */}
+            <div className="flex items-center gap-sm">
+              <span className="material-symbols-outlined text-primary text-[24px]">dashboard</span>
+              <h2 className="font-headline-md text-lg font-bold text-on-surface m-0 tracking-tight">Agent Dashboard</h2>
             </div>
             <div className="flex items-center gap-md ml-lg relative">
+              {/* Theme Toggle Button */}
+              <button
+                onClick={toggleTheme}
+                className="p-sm text-on-surface-variant hover:bg-surface-container-low rounded-full transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                title={isDark ? "Switch to Bright Mode" : "Switch to Dark Mode"}
+              >
+                <span className="material-symbols-outlined">{isDark ? 'light_mode' : 'dark_mode'}</span>
+              </button>
               <div ref={notifRef} className="relative">
                 <button
                   onClick={() => setShowNotifications(!showNotifications)}
@@ -405,7 +428,7 @@ export default function AppLayout() {
         )}
 
         {/* Dashboard Canvas */}
-        <div className="flex-1 overflow-y-auto px-lg lg:px-xxl pb-xxl pt-md">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 pb-xl pt-md">
           <div className="max-w-7xl mx-auto w-full">
             <Outlet />
           </div>
@@ -439,6 +462,109 @@ export default function AppLayout() {
         onClose={() => setUpgradeModalOpen(false)}
         lockedItemName="Save 20% with Annual Subscription"
       />
+
+      {!hasAcceptedTerms && user && !isDemo && (
+        <div className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-xl flex items-center justify-center p-md">
+          <div className="bg-surface border border-outline-variant max-w-2xl w-full rounded-3xl p-xl shadow-2xl flex flex-col md:flex-row overflow-hidden relative backdrop-blur-md">
+            {/* Visual Brand Panel */}
+            <div className="hidden md:flex md:w-1/3 bg-gradient-to-br from-primary via-primary-container to-secondary-container p-lg flex-col justify-between text-white rounded-2xl relative overflow-hidden">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent)] pointer-events-none"></div>
+              <div>
+                <span className="material-symbols-outlined text-[32px] text-white">security</span>
+                <h3 className="font-display text-lg font-black mt-md leading-snug">Privacy & Compliance</h3>
+              </div>
+              <p className="text-xs text-white/80 leading-relaxed">Voyanta is committed to securing your agency and client data under the Digital Personal Data Protection (DPDP) Act, 2023.</p>
+            </div>
+            
+            {/* Form & Content Panel */}
+            <div className="flex-1 md:pl-xl py-xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-xs text-xs font-bold text-primary uppercase tracking-widest mb-xs">
+                  <span className="material-symbols-outlined text-[14px]">policy</span>
+                  DPDP Act Consent Notice
+                </div>
+                <h2 className="font-display text-2xl font-bold text-on-surface mb-sm">Confirm Your Consent</h2>
+                
+                <p className="text-xs text-on-surface-variant leading-relaxed mb-md">
+                  In compliance with the <strong>Digital Personal Data Protection (DPDP) Act, 2023</strong>, we require your explicit consent to collect, store, and process your personal and operational data (including your name, email, contact info, IP address, and details parsed from uploaded supplier documents).
+                </p>
+                
+                <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-md text-[11px] leading-relaxed text-on-surface-variant space-y-xs max-h-[160px] overflow-y-auto mb-md">
+                  <p><strong>What we process:</strong> Account credentials (name, email), system interaction logs (IP address, browser profile), client profiles (contact lists), and document uploads (rates, flight paths, hotel bookings).</p>
+                  <p><strong>Purposes:</strong> Generating travel itineraries, invoice administration, AI extractions, RAG search indices, and subscription billing.</p>
+                  <p><strong>Rights:</strong> You retain the right to correct, complete, or request erasure of your data, or withdraw consent at any time via <a href="mailto:privacy@voyanta.in" className="text-primary underline">privacy@voyanta.in</a>.</p>
+                  <p><strong>Security:</strong> All operations utilize encrypted isolated storage scoped by Agency ID. We never train public models on your data.</p>
+                </div>
+              </div>
+              
+              <div className="space-y-md">
+                <div className="flex items-start gap-sm select-none">
+                  <input
+                    type="checkbox"
+                    id="modalTermsAccepted"
+                    checked={acceptModalChecked}
+                    onChange={(e) => setAcceptModalChecked(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-primary rounded cursor-pointer shrink-0"
+                  />
+                  <label htmlFor="modalTermsAccepted" className="text-xs text-on-surface-variant leading-normal cursor-pointer">
+                    I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-bold">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-bold">Privacy Policy</a>, and consent to the processing of my personal data.
+                  </label>
+                </div>
+                
+                <div className="flex gap-sm">
+                  <button
+                    onClick={handleSignOut}
+                    className="flex-1 py-3 bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-bold rounded-xl transition-all border border-outline-variant cursor-pointer text-xs"
+                  >
+                    Decline & Sign Out
+                  </button>
+                  <button
+                    disabled={!acceptModalChecked || acceptingTerms}
+                    onClick={async () => {
+                      setAcceptingTerms(true);
+                      try {
+                        await acceptTerms(navigator.userAgent);
+                        toast.success('Terms and Privacy consent successfully logged.');
+                      } catch (err) {
+                        toast.error(err.message || 'Failed to register terms acceptance');
+                      } finally {
+                        setAcceptingTerms(false);
+                      }
+                    }}
+                    className="flex-1.5 py-3 bg-primary hover:opacity-95 text-white font-bold rounded-xl shadow-md transition-all border-none disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-xs"
+                  >
+                    {acceptingTerms ? 'Logging consent...' : 'Accept & Proceed'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isProcessing && (
+        <div 
+          onClick={() => navigate('/vault')}
+          className="fixed bottom-6 right-6 z-[99999] max-w-sm bg-surface/90 dark:bg-surface-container/95 border border-outline-variant/80 rounded-2xl p-4 shadow-2xl backdrop-blur-md cursor-pointer hover:border-primary/50 hover:shadow-primary/5 transition-all flex items-center gap-3 select-none"
+        >
+          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-[20px] animate-spin">sync</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h5 className="text-xs font-bold text-on-surface m-0 truncate">AI Vault Extracting</h5>
+            <p className="text-[10px] text-on-surface-variant m-0 mt-0.5 truncate leading-snug">
+              {batchProgress.currentFile} ({batchProgress.current}/{batchProgress.total})
+            </p>
+            <div className="w-full bg-outline-variant/35 rounded-full h-1 mt-1.5 overflow-hidden">
+              <div 
+                className="bg-primary h-1 rounded-full transition-all duration-300"
+                style={{ width: `${(batchProgress.current / (batchProgress.total || 1)) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+          <span className="material-symbols-outlined text-on-surface-variant/60 text-sm">chevron_right</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,11 +4,13 @@ import { generateQrSvg } from '../../lib/qrEngine.js';
 import { settingsService } from '../../services/resourceService.js';
 import { updateInvoice } from '../../services/invoiceService.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import { ReceiptShareModal } from './ReceiptShareModal.jsx';
 
 export function ReceiptPreviewModal({ invoice, onClose }) {
   const { toast } = useToast();
   const printRef = useRef(null);
   const [settings, setSettings] = useState(null);
+  const [showShare, setShowShare] = useState(false);
 
   useEffect(() => {
     settingsService.get().then(setSettings).catch(() => {});
@@ -175,17 +177,11 @@ export function ReceiptPreviewModal({ invoice, onClose }) {
             </button>
             <button
               type="button"
-              onClick={() => {
-                const waText = `Hello ${clientName}! Here is your official payment receipt #${receiptNumber} from ${agencyName} for ₹${paidAmount} paid on ${datePaid}. Download your official receipt PDF and verify authenticity anytime.`;
-                const phone = invoice?.client_phone || '';
-                const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(waText)}${phone ? `&phone=${encodeURIComponent(phone.replace(/[^0-9]/g, ''))}` : ''}`;
-                toast.info('To attach the PDF receipt to WhatsApp, click "Print / Download PDF" first and attach the file in WhatsApp chat!');
-                window.open(url, '_blank');
-              }}
+              onClick={() => setShowShare(true)}
               className="px-3 py-1.5 rounded-xl bg-[#25D366] text-white font-bold text-xs hover:bg-[#20bd5a] transition-colors flex items-center gap-1 shadow"
             >
-              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-              Share WA / Attach PDF
+              <span className="material-symbols-outlined text-[16px]">share</span>
+              Share (WhatsApp / Gmail)
             </button>
             <button
               type="button"
@@ -373,6 +369,20 @@ export function ReceiptPreviewModal({ invoice, onClose }) {
           </div>
         </div>
       </div>
+
+      {showShare && (
+        <ReceiptShareModal
+          invoice={invoice}
+          receiptNumber={receiptNumber}
+          paidAmount={paidAmount}
+          datePaid={datePaid}
+          clientName={clientName}
+          agencyName={agencyName}
+          notes={notes}
+          onClose={() => setShowShare(false)}
+          onDownloadPdf={handlePrint}
+        />
+      )}
     </div>
   );
 }

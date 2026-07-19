@@ -30,10 +30,20 @@ export async function listItems(proposalId) {
   return [];
 }
 
+const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
 export async function addItem(proposalId, item) {
+  const checkId = item.id;
+  const validId = isUuid(checkId) ? checkId : crypto.randomUUID();
+  const validRefId = item.ref_id || (!isUuid(checkId) && checkId ? checkId : undefined);
+  const sanitizedItem = { ...item, id: validId };
+  if (validRefId) {
+    sanitizedItem.ref_id = validRefId;
+  }
+
   if (supabase && !isDemoSession()) {
     const { data, error } = await supabase.from('proposal_items').insert({
-      proposal_id: proposalId, ...item,
+      proposal_id: proposalId, ...sanitizedItem,
     }).select().maybeSingle();
     if (error) {
       notifyDbError('proposal_items', error);
@@ -42,10 +52,9 @@ export async function addItem(proposalId, item) {
     if (data) return data;
   }
   const newItem = {
-    id: item.id || crypto.randomUUID(),
     proposal_id: proposalId,
     created_at: new Date().toISOString(),
-    ...item
+    ...sanitizedItem
   };
   try {
     const key = `voyanta_proposal_${proposalId}`;

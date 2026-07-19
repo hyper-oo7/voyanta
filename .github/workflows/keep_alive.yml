@@ -6,6 +6,9 @@ on:
     - cron: '15 4 */5 * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   ping-supabase:
     runs-on: ubuntu-latest

@@ -648,8 +648,8 @@ export function InvoicePreviewModal({ invoice, onClose, onUpdate }) {
             {/* Totals & UPI Payment Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-slate-200">
               
-              {/* Left Column: UPI Pay Now Box */}
-              <div>
+              {/* Left/Bottom Column: UPI Pay Now Box */}
+              <div className="order-2 md:order-1">
                 <UpiQrGenerator
                   upiId={current?.upi_id || current?.branding?.upi_id}
                   payeeName={current?.upi_payee_name || current?.branding?.agency_name}
@@ -661,8 +661,8 @@ export function InvoicePreviewModal({ invoice, onClose, onUpdate }) {
                 />
               </div>
 
-              {/* Right Column: Financial Calculation Breakdown */}
-              <div className="space-y-3 bg-slate-50 p-6 rounded-2xl border border-slate-200 flex flex-col justify-center print:bg-white print:border-none print:p-0">
+              {/* Right/Top Column: Financial Calculation Breakdown */}
+              <div className="order-1 md:order-2 space-y-3 bg-slate-50 p-6 rounded-2xl border border-slate-200 flex flex-col justify-center print:bg-white print:border-none print:p-0">
                 <div className="flex items-center justify-between text-xs text-slate-600 font-semibold">
                   <span>{t('Subtotal')}:</span>
                   <span className="font-mono font-bold text-slate-900">{formatCurrency(current.subtotal || 0, current.currency)}</span>

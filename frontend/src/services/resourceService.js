@@ -318,6 +318,15 @@ export const settingsService = {
               const fresh = sanitizeBrandingObject({ ...DEFAULT_SETTINGS, ...data[0].data });
               try {
                 const prevStr = localStorage.getItem(cacheKey);
+                let prevObj = null;
+                try { prevObj = JSON.parse(prevStr); } catch {}
+                if (prevObj) {
+                  const localSeq = Number(prevObj.invoice_next_sequence || 1);
+                  const freshSeq = Number(fresh.invoice_next_sequence || 1);
+                  if (localSeq > freshSeq) {
+                    fresh.invoice_next_sequence = localSeq;
+                  }
+                }
                 const freshStr = JSON.stringify(fresh);
                 if (prevStr !== freshStr) {
                   localStorage.setItem(cacheKey, freshStr);

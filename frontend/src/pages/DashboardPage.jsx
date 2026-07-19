@@ -146,9 +146,15 @@ export default function DashboardPage() {
     });
     return top;
   };
-  const mostSentDestComputed = analytics.mostSentDest !== 'None yet' ? analytics.mostSentDest : getMostFreqDest([...safeProposalsList, ...invoicesList]);
-  const mostApprovedDestComputed = analytics.mostApprovedDest !== 'None yet' ? analytics.mostApprovedDest : getMostFreqDest(safeProposalsList.filter(p => ['Approved', 'Booked'].includes(p.status)));
-  const mostModifiedDestComputed = analytics.mostModifiedDest !== 'None yet' ? analytics.mostModifiedDest : getMostFreqDest(safeProposalsList.filter(p => p.status === 'Revision Requested'));
+  const mostSentDestComputed = (safeProposalsList.length === 0 && invoicesList.length === 0)
+    ? 'None yet'
+    : getMostFreqDest([...safeProposalsList, ...invoicesList]);
+  const mostApprovedDestComputed = (safeProposalsList.length === 0)
+    ? 'None yet'
+    : getMostFreqDest(safeProposalsList.filter(p => ['Approved', 'Booked'].includes(p.status)));
+  const mostModifiedDestComputed = (safeProposalsList.length === 0)
+    ? 'None yet'
+    : getMostFreqDest(safeProposalsList.filter(p => p.status === 'Revision Requested'));
 
   const destinationsListComputed = (() => {
     const destMap = {};
@@ -228,21 +234,9 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-lg border-b border-outline-variant pb-lg">
         <div>
-          <h2 className="font-headline-lg text-[32px] font-bold text-on-surface m-0 tracking-tight">Agent Dashboard</h2>
           <p className="font-body-lg text-on-surface-variant m-0 mt-xs">Your concierge operations at a glance.</p>
         </div>
         <div className="flex items-center gap-md">
-          <button 
-            onClick={() => {
-              const isDark = document.documentElement.classList.toggle('dark');
-              localStorage.setItem('theme', isDark ? 'dark' : 'light');
-            }}
-            className="flex items-center gap-sm px-lg py-md bg-surface-container text-on-surface rounded-lg font-label-md hover:bg-surface-container-high transition-all border border-outline-variant shadow-sm cursor-pointer"
-            title="Toggle Dark Mode"
-          >
-            <span className="material-symbols-outlined text-[20px]">dark_mode</span>
-            Theme
-          </button>
           <button 
             onClick={() => navigate('/proposals/wizard')}
             className="flex items-center gap-sm px-xl py-md bg-on-surface text-surface rounded-lg font-label-md hover:opacity-90 active:scale-[0.98] transition-all border-none shadow-md cursor-pointer"
@@ -254,25 +248,21 @@ export default function DashboardPage() {
       </div>
 
       {/* Top Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <StatCard title="TOTAL PROPOSALS" value={loading ? "..." : totalProposals} icon="folder" onClick={() => navigate('/proposals')} />
-        <StatCard title="TOTAL TEMPLATES" value={loading ? "..." : totalTemplates} icon="description" onClick={() => navigate('/templates')} />
-        <StatCard title="NO OF CLIENTS" value={loading ? "..." : activeClients} icon="person" onClick={() => navigate('/contacts')} />
         <StatCard title="INVOICES & REVENUE" value={loading ? "..." : totalInvoicesCount} icon="account_balance_wallet" onClick={() => navigate('/invoices')} />
       </div>
 
       {/* Engagement & Analytics Grid - Generation */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-lg">
         <MiniStatCard title="PDF DOWNLOADS" value={analytics.totalDownloads} icon="download" color="text-blue-500 bg-blue-500/10" />
         <MiniStatCard title="SHARES (WA / GMAIL)" value={analytics.totalWhatsapp + analytics.totalEmail} subtitle={`${analytics.totalWhatsapp} WA · ${analytics.totalEmail} Email`} icon="share" color="text-emerald-500 bg-emerald-500/10" />
-        <MiniStatCard title="TOTAL ENGAGEMENT" value={analytics.totalEngagement} subtitle="PDFs + Emails + WA" icon="monitoring" color="text-purple-500 bg-purple-500/10" />
         <MiniStatCard title="MOST SENT DEST." value={mostSentDestComputed} subtitle="Click for Breakdown" icon="location_on" color="text-amber-500 bg-amber-500/10" isText onClick={() => setShowDestModal(true)} />
       </div>
 
       {/* Client Action & Plan Insights */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-lg">
         <MiniStatCard title="NO OF APPROVALS" value={totalApprovalsMetric} subtitle="Client Plan Approvals" icon="check_circle" color="text-teal-500 bg-teal-500/10" />
-        <MiniStatCard title="NO OF MODIFICATIONS" value={analytics.totalModifications} subtitle="Client Change Requests" icon="edit_note" color="text-rose-500 bg-rose-500/10" />
         <MiniStatCard title="MOST APPROVED DEST." value={mostApprovedDestComputed} subtitle="Top Approved Plan" icon="thumb_up" color="text-indigo-500 bg-indigo-500/10" isText onClick={() => setShowDestModal(true)} />
         <MiniStatCard title="MOST MODIFIED DEST." value={mostModifiedDestComputed} subtitle="Top Modified Plan" icon="rate_review" color="text-orange-500 bg-orange-500/10" isText onClick={() => setShowDestModal(true)} />
       </div>

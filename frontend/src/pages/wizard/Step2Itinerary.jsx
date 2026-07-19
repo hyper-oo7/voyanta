@@ -18,7 +18,7 @@ const extractPrice = (item) => cleanPrice(item?.price_per_night ?? item?.price ?
 
 export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItinerary, client, items, setItems, proposalCurrency, addItemsOptimistic, saveDraft }) {
   const toast = useToast();
-  const { saveDraftBackground } = useProposalStore();
+  const { saveDraftBackground, updateProposal } = useProposalStore();
   const days = proposal?.itinerary?.days || [];
 
   const [activeTab, setActiveTab] = useState('sub_destinations');
@@ -34,12 +34,40 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   const shownRef = useRef(new Set());
   const addedRef = useRef(new Set());
 
+  // Dynamic filter to exclude already added items from suggestions panel instantly
+  const filteredSuggestions = useMemo(() => {
+    return suggestions.filter(sug => !items.some(it => String(it.ref_id) === String(sug.id)));
+  }, [suggestions, items]);
+
+  const filteredRelatedSuggestions = useMemo(() => {
+    return relatedSuggestions.filter(sug => !items.some(it => String(it.ref_id) === String(sug.id)));
+  }, [relatedSuggestions, items]);
+
   // Load ranked suggestions from vault for this proposal
   useEffect(() => {
     if (!proposal?.id) return;
 
     let isMounted = true;
-    setSuggestionsLoading(true);
+    const cacheKey = `voyanta_suggestions_cache_${proposal.id}`;
+    let hasCache = false;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (data && Array.isArray(data.suggestions)) {
+          setSuggestions(data.suggestions);
+          setSubDestinations(data.subDestinations || []);
+          setRelatedSuggestions(data.relatedSuggestions || []);
+          hasCache = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse suggestions cache:', e);
+    }
+
+    if (!hasCache) {
+      setSuggestionsLoading(true);
+    }
 
     (async () => {
       try {
@@ -93,7 +121,19 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           mergedRelated.forEach(item => {
             uniqueRelatedMap[item.id] = item;
           });
-          setRelatedSuggestions(Object.values(uniqueRelatedMap));
+          const uniqueRelated = Object.values(uniqueRelatedMap);
+          setRelatedSuggestions(uniqueRelated);
+
+          // Save to local cache
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({
+              suggestions: merged,
+              subDestinations: tempSubDestinations,
+              relatedSuggestions: uniqueRelated
+            }));
+          } catch (e) {
+            console.warn('Failed to save suggestions cache:', e);
+          }
 
           // Log suggestion_shown for any newly shown suggestions
           merged.forEach(sug => {
@@ -111,7 +151,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     })();
 
     return () => { isMounted = false; };
-  }, [proposal?.id, items?.length]);
+  }, [proposal?.id]);
 
   // Log suggestion_rejected when the builder step unmounts (closes/finishes)
   useEffect(() => {
@@ -769,12 +809,12 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
                   </div>
                 ))}
               </div>
-            ) : suggestions.length === 0 ? (
+            ) : filteredSuggestions.length === 0 ? (
               <div className="text-center py-lg text-on-surface-variant bg-surface-container-lowest/50 rounded-xl border border-dashed border-outline-variant p-md">
                 <p className="text-xs leading-relaxed">No vault matches yet for this destination — add hotels/activities manually and they'll be remembered next time.</p>
               </div>
             ) : (
-              suggestions.map(sug => (
+              filteredSuggestions.map(sug => (
                 <div key={sug.id} className="bg-white border border-outline-variant rounded-xl p-md shadow-sm hover:shadow-md transition-all flex flex-col gap-xs group">
                   <div className="flex items-center justify-between">
                     <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${sug.object_type === 'hotel' ? 'bg-blue-50 text-blue-600 border border-blue-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>
@@ -828,14 +868,14 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
             )}
 
             {/* Related Suggestions */}
-            {relatedSuggestions && relatedSuggestions.length > 0 && (
+            {filteredRelatedSuggestions && filteredRelatedSuggestions.length > 0 && (
               <div className="pt-md border-t border-outline-variant/50 space-y-sm">
                 <h5 className="font-label-sm text-on-surface uppercase tracking-widest flex items-center gap-xs font-semibold px-xs">
                   <span className="material-symbols-outlined text-[16px] text-primary">join_inner</span>
                   Goes well with what you just added
                 </h5>
                 <div className="space-y-sm animate-fade-in">
-                  {relatedSuggestions.map(sug => (
+                  {filteredRelatedSuggestions.map(sug => (
                     <div key={sug.id} className="bg-white border border-outline-variant rounded-xl p-md shadow-sm hover:shadow-md transition-all flex flex-col gap-xs group">
                       <div className="flex items-center justify-between">
                         <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${sug.object_type === 'hotel' ? 'bg-blue-50 text-blue-600 border border-blue-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>

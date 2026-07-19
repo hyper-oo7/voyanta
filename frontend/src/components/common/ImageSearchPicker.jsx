@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { uploadOrEmbed } from '../LogoUploader.jsx';
 
 const CURATED_CATEGORIES = [
   { id: 'all', label: 'All Luxury Travel', icon: 'travel_explore' },
@@ -56,12 +57,19 @@ const CURATED_PHOTOS = [
 ];
 
 export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = '' }) {
+  const [activeTab, setActiveTab] = useState('stock'); // 'stock' | 'upload' | 'url'
   const [query, setQuery] = useState(defaultQuery);
   const [activeCategory, setActiveCategory] = useState('all');
   const [results, setResults] = useState(CURATED_PHOTOS);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [isApiResults, setIsApiResults] = useState(false);
+
+  // Uploader & URL inputs
+  const [urlInput, setUrlInput] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef(null);
 
   // When category changes, filter curated local results (no API call)
   useEffect(() => {
@@ -123,6 +131,53 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
     }
   };
 
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      await handleFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileChange = async (e) => {
+    if (e.target.files && e.target.files[0]) {
+      await handleFile(e.target.files[0]);
+    }
+  };
+
+  const handleFile = async (file) => {
+    setUploading(true);
+    try {
+      const url = await uploadOrEmbed(file, 'itinerary-blocks');
+      if (url) {
+        onSelect(url);
+      }
+    } catch (err) {
+      console.error("Upload failed in picker:", err);
+      alert("Failed to upload image. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleUrlSubmit = (e) => {
+    if (e) e.preventDefault();
+    if (urlInput.trim()) {
+      onSelect(urlInput.trim());
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-md animate-fade-in">
       <motion.div
@@ -137,10 +192,10 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
           <div>
             <h2 className="text-xl font-bold font-serif text-on-surface flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-[24px]">photo_library</span>
-              Stock Photos (Unsplash & Pexels)
+              Select Media Asset
             </h2>
             <p className="text-xs text-on-surface-variant mt-0.5">
-              Select verified, high-resolution royalty-free luxury travel photos for your proposals and itineraries.
+              Select verified high-resolution stock travel photos, upload from your device, or paste a direct image web link.
             </p>
           </div>
           <button
@@ -151,93 +206,213 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
           </button>
         </div>
 
-        {/* Category Tabs */}
-        <div className="px-5 pt-3 pb-2 bg-surface-container border-b border-outline-variant overflow-x-auto flex gap-2 no-scrollbar">
-          {CURATED_CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setActiveCategory(cat.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
-                activeCategory === cat.id
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'bg-surface text-on-surface-variant hover:bg-surface-variant border border-outline-variant/60'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">{cat.icon}</span>
-              {cat.label}
-            </button>
-          ))}
+        {/* Tab Selector */}
+        <div className="flex border-b border-outline-variant px-5 bg-surface-container-lowest flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab('stock')}
+            className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+              activeTab === 'stock' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">photo_library</span>
+            Stock Photos
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('upload')}
+            className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+              activeTab === 'upload' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">upload</span>
+            Upload from Device
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('url')}
+            className={`px-4 py-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+              activeTab === 'url' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">link</span>
+            Paste Image URL
+          </button>
         </div>
 
-        {/* Search Bar */}
-        <div className="p-4 bg-surface-container-lowest border-b border-outline-variant">
-          <form onSubmit={handleSearchSubmit} className="flex gap-2.5">
-            <div className="relative flex-1">
-              <span className="material-symbols-outlined absolute left-3.5 top-2.5 text-on-surface-variant text-[20px]">search</span>
-              <input
-                type="text"
-                placeholder="Search Unsplash & Pexels (e.g. Maldives Resort, Paris Hotel, Private Yacht...)"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="w-full pl-11 pr-4 py-2 text-sm bg-surface border border-outline-variant rounded-xl focus:ring-2 focus:ring-primary focus:border-primary outline-none text-on-surface transition-all font-medium"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-sm shadow-sm hover:bg-primary/90 transition-all flex gap-2 items-center cursor-pointer disabled:opacity-50"
-            >
-              {loading ? <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span> : 'Search API'}
-            </button>
-          </form>
-        </div>
+        {/* Tab Contents */}
+        <div className="flex-1 overflow-y-auto flex flex-col min-h-0 bg-surface">
+          {activeTab === 'stock' && (
+            <>
+              {/* Category Tabs */}
+              <div className="px-5 pt-3 pb-2 bg-surface-container border-b border-outline-variant overflow-x-auto flex gap-2 no-scrollbar flex-shrink-0">
+                {CURATED_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
+                      activeCategory === cat.id
+                        ? 'bg-primary text-white shadow-sm'
+                        : 'bg-surface text-on-surface-variant hover:bg-surface-variant border border-outline-variant/60'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">{cat.icon}</span>
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
 
-        {/* Photo Grid */}
-        <div className="flex-1 overflow-y-auto p-5 bg-surface">
-          {/* Source / Error notice */}
-          {!loading && apiError && (
-            <div className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-2">
-              <span className="material-symbols-outlined text-[14px]">info</span>
-              {apiError}
+              {/* Search Bar */}
+              <div className="p-4 bg-surface-container-lowest border-b border-outline-variant flex-shrink-0">
+                <form onSubmit={handleSearchSubmit} className="flex gap-2.5">
+                  <div className="relative flex-1">
+                    <span className="material-symbols-outlined absolute left-3.5 top-2.5 text-on-surface-variant text-[20px]">search</span>
+                    <input
+                      type="text"
+                      placeholder="Search Unsplash & Pexels (e.g. Maldives Resort, Paris Hotel, Private Yacht...)"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      className="w-full pl-11 pr-4 py-2 text-sm bg-surface border border-outline-variant rounded-xl focus:ring-2 focus:ring-primary focus:border-primary outline-none text-on-surface transition-all font-medium"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-sm shadow-sm hover:bg-primary/90 transition-all flex gap-2 items-center cursor-pointer disabled:opacity-50"
+                  >
+                    {loading ? <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span> : 'Search API'}
+                  </button>
+                </form>
+              </div>
+
+              {/* Photo Grid */}
+              <div className="p-5 flex-1">
+                {!loading && apiError && (
+                  <div className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[14px]">info</span>
+                    {apiError}
+                  </div>
+                )}
+                {!loading && isApiResults && (
+                  <div className="mb-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                    Live results from Unsplash / Pexels API
+                  </div>
+                )}
+                {loading ? (
+                  <div className="flex flex-col items-center justify-center h-64 text-on-surface-variant gap-3">
+                    <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
+                    <p className="text-sm font-semibold">Searching Unsplash & Pexels for real-time photos...</p>
+                  </div>
+                ) : results.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {results.map((img) => (
+                      <button
+                        key={img.id}
+                        type="button"
+                        onClick={() => onSelect(img.url)}
+                        className="group relative aspect-video sm:aspect-square rounded-xl overflow-hidden border border-outline-variant hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-all cursor-pointer bg-surface-variant shadow-sm"
+                      >
+                        <img src={img.thumb} alt={img.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 text-left">
+                          <span className="font-bold text-white text-xs truncate w-full">{img.title}</span>
+                          <span className="text-[10px] text-white/80 font-medium">{img.author}</span>
+                        </div>
+                        <div className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transform scale-75 group-hover:scale-100 transition-all shadow-md">
+                          <span className="material-symbols-outlined text-[16px]">add</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-64 text-on-surface-variant gap-2">
+                    <span className="material-symbols-outlined text-5xl opacity-40">image_search</span>
+                    <p className="text-base font-bold text-on-surface">No stock photos found</p>
+                    <p className="text-xs text-on-surface-variant">Try selecting a different category or searching a broader keyword.</p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {activeTab === 'upload' && (
+            <div className="p-8 flex flex-col items-center justify-center min-h-[300px] flex-1">
+              <div
+                onDragEnter={handleDrag}
+                onDragOver={handleDrag}
+                onDragLeave={handleDrag}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`w-full max-w-lg border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center gap-4 text-center cursor-pointer transition-all ${
+                  dragActive ? 'border-primary bg-primary/5' : 'border-outline-variant hover:border-primary/50 bg-surface-container-lowest'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                {uploading ? (
+                  <>
+                    <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
+                    <p className="text-sm font-semibold text-on-surface">Uploading and optimizing your media asset...</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-16 h-16 rounded-full bg-primary/5 flex items-center justify-center text-primary border border-primary/10">
+                      <span className="material-symbols-outlined text-[32px]">cloud_upload</span>
+                    </div>
+                    <div>
+                      <p className="text-base font-bold text-on-surface">Drag & drop your image here</p>
+                      <p className="text-xs text-on-surface-variant mt-1">Supports PNG, JPEG, WEBP, or GIF (max 10MB)</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl shadow-sm hover:bg-primary/90 transition-all cursor-pointer"
+                    >
+                      Browse Files
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
-          {!loading && isApiResults && (
-            <div className="mb-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center gap-2">
-              <span className="material-symbols-outlined text-[14px]">check_circle</span>
-              Live results from Unsplash / Pexels API
-            </div>
-          )}
-          {loading ? (
-            <div className="flex flex-col items-center justify-center h-64 text-on-surface-variant gap-3">
-              <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
-              <p className="text-sm font-semibold">Searching Unsplash & Pexels for real-time photos...</p>
-            </div>
-          ) : results.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {results.map((img) => (
+
+          {activeTab === 'url' && (
+            <div className="p-8 flex flex-col items-center justify-center min-h-[300px] flex-1">
+              <form onSubmit={handleUrlSubmit} className="w-full max-w-lg space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-on-surface uppercase tracking-wider">Image Web Address / Link</label>
+                  <input
+                    type="url"
+                    placeholder="https://example.com/luxury-resort-image.jpg"
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    required
+                    className="w-full px-4 py-2.5 text-sm bg-surface-container-lowest border border-outline-variant rounded-xl focus:ring-2 focus:ring-primary focus:border-primary outline-none text-on-surface font-medium"
+                  />
+                </div>
+                {urlInput.trim() && (
+                  <div className="border border-outline-variant rounded-xl overflow-hidden bg-surface-variant max-h-48 flex items-center justify-center">
+                    <img
+                      src={urlInput}
+                      alt="URL Preview"
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
                 <button
-                  key={img.id}
-                  type="button"
-                  onClick={() => onSelect(img.url)}
-                  className="group relative aspect-video sm:aspect-square rounded-xl overflow-hidden border border-outline-variant hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-all cursor-pointer bg-surface-variant shadow-sm"
+                  type="submit"
+                  disabled={!urlInput.trim()}
+                  className="w-full py-2.5 bg-primary text-white font-bold rounded-xl text-sm shadow-sm hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <img src={img.thumb} alt={img.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 text-left">
-                    <span className="font-bold text-white text-xs truncate w-full">{img.title}</span>
-                    <span className="text-[10px] text-white/80 font-medium">{img.author}</span>
-                  </div>
-                  <div className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transform scale-75 group-hover:scale-100 transition-all shadow-md">
-                    <span className="material-symbols-outlined text-[16px]">add</span>
-                  </div>
+                  Insert Image Link
                 </button>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-64 text-on-surface-variant gap-2">
-              <span className="material-symbols-outlined text-5xl opacity-40">image_search</span>
-              <p className="text-base font-bold text-on-surface">No stock photos found</p>
-              <p className="text-xs text-on-surface-variant">Try selecting a different category or searching a broader keyword.</p>
+              </form>
             </div>
           )}
         </div>

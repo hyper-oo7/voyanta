@@ -114,6 +114,52 @@ export function InvoiceShareModal({ invoice, onClose, onShared, onDownloadPdf })
     toast.success('Copied to clipboard');
   };
 
+  const richHtmlText = `
+    <div style="font-family: sans-serif; color: #1e293b; max-width: 600px; line-height: 1.6;">
+      <p>Dear ${invoice?.client_name || 'Valued Client'},</p>
+      <p>We hope this email finds you well.</p>
+      <p>Please find your official invoice <strong>#${invoice?.invoice_number}</strong> for "${invoice?.destination || 'Concierge Travel Service'}" from ${agencyName}.</p>
+      <hr style="border: 0; border-top: 1px solid #cbd5e1; margin: 20px 0;" />
+      <h3 style="color: #0f172a; margin-bottom: 12px;">Invoice Summary</h3>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold; width: 150px;">Invoice Number:</td>
+          <td style="padding: 6px 0; font-family: monospace;">#${invoice?.invoice_number}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold;">Total Amount:</td>
+          <td style="padding: 6px 0; font-family: monospace; color: #10B981; font-weight: bold;">${amountFormatted}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold;">Due Date:</td>
+          <td style="padding: 6px 0;">${invoice?.due_date || 'Upon receipt'}</td>
+        </tr>
+      </table>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${payNowLink}" style="background-color: #10B981; color: #ffffff; padding: 12px 30px; border-radius: 8px; font-weight: bold; text-decoration: none; display: inline-block; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2); font-size: 14px;">⚡ Pay Now via UPI</a>
+      </div>
+      <p style="font-size: 12px; color: #64748b; margin-top: 20px;">You can also pay directly using UPI VPA: <strong>${upiId}</strong></p>
+      <p style="font-size: 12px; color: #64748b;">View dynamic interactive portal: <a href="${docLink}" style="color: #3b82f6;">View Invoice Portal</a></p>
+      <hr style="border: 0; border-top: 1px solid #cbd5e1; margin: 20px 0;" />
+      <p>Sincerely,<br /><strong>${agencyName} Concierge Team</strong></p>
+    </div>
+  `;
+
+  const handleCopyRichEmail = async () => {
+    try {
+      const typeHtml = 'text/html';
+      const typePlain = 'text/plain';
+      const blobHtml = new Blob([richHtmlText], { type: typeHtml });
+      const blobPlain = new Blob([emailBody], { type: typePlain });
+      const data = [new ClipboardItem({ [typeHtml]: blobHtml, [typePlain]: blobPlain })];
+      await navigator.clipboard.write(data);
+      toast.success('Rich Email with styled "Pay Now" button copied! Paste (Ctrl+V) directly into Gmail/Outlook.');
+    } catch (err) {
+      navigator.clipboard.writeText(emailBody);
+      toast.success('Copied text invoice to clipboard');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
       <div className="bg-surface-container-lowest w-full max-w-xl rounded-3xl shadow-2xl border border-outline-variant flex flex-col overflow-hidden">
@@ -267,20 +313,24 @@ export function InvoiceShareModal({ invoice, onClose, onShared, onDownloadPdf })
                 </div>
               </div>
 
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200/50 text-[11px] text-emerald-950 font-medium">
+                💡 <strong>Free Email Enhancement Enabled:</strong> Click "Copy Rich Email (with Button)" below and paste directly inside your Gmail compose window to insert a beautifully formatted invoice message complete with an interactive, styled "Pay Now" button.
+              </div>
+
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => handleCopy(`${emailSubject}\n\n${emailBody}`)}
-                  className="px-4 py-2 rounded-xl border border-outline-variant text-on-surface font-bold text-xs hover:bg-surface-container transition-colors flex items-center gap-1.5"
+                  onClick={handleCopyRichEmail}
+                  className="px-4 py-2 rounded-xl border border-emerald-500 bg-emerald-50 text-emerald-800 font-bold text-xs hover:bg-emerald-100 transition-colors flex items-center gap-1.5"
                 >
-                  <span className="material-symbols-outlined text-[16px]">content_copy</span> Copy Email
+                  <span className="material-symbols-outlined text-[16px]">draw</span> Copy Rich Email (with Button)
                 </button>
                 <button
                   type="button"
                   onClick={handleSendEmail}
                   className="px-6 py-2 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-extrabold text-xs shadow-md transition-all flex items-center gap-1.5"
                 >
-                  <span className="material-symbols-outlined text-[16px]">mail</span> Send via Gmail / Mail Client
+                  <span className="material-symbols-outlined text-[16px]">mail</span> Open Gmail Draft
                 </button>
               </div>
             </div>

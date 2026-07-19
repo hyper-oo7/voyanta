@@ -332,14 +332,13 @@ export default function ContactsPage() {
                 <th className="py-3.5 px-4">Preferred Destination</th>
                 <th className="py-3.5 px-4 text-center">Proposals</th>
                 <th className="py-3.5 px-4 text-right">Invoiced Amount</th>
-                <th className="py-3.5 px-4">Consent Date</th>
                 <th className="py-3.5 px-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/60 text-sm">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center py-8 text-on-surface-variant italic">No client contacts found.</td>
+                  <td colSpan="6" className="text-center py-8 text-on-surface-variant italic">No client contacts found.</td>
                 </tr>
               ) : (
                 filtered.map(c => (
@@ -360,17 +359,21 @@ export default function ContactsPage() {
                     <td className="py-4 px-4">
                       <div className="text-xs font-medium text-on-surface">{c.email}</div>
                       <div className="text-[11px] font-mono text-on-surface-variant">{c.phone || '—'}</div>
+                      <div className="mt-1 flex items-center">
+                        <div className="group relative inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 cursor-help select-none">
+                          <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></span>
+                          Consent: {c.consentRecorded}
+                          <span className="material-symbols-outlined text-[10px] opacity-75">info</span>
+                          <div className="absolute left-0 bottom-full mb-1 hidden group-hover:block w-64 p-2 bg-on-surface text-surface text-[10px] font-normal leading-snug rounded-lg shadow-xl z-50 pointer-events-none">
+                            Verified client communication & data processing consent recorded under DPDP Act 2023.
+                          </div>
+                        </div>
+                      </div>
                     </td>
                     <td className="py-4 px-4 font-medium text-on-surface-variant">{c.destination || '—'}</td>
                     <td className="py-4 px-4 text-center font-bold text-primary">{c.proposalsCount}</td>
                     <td className="py-4 px-4 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
                       {c.invoicedAmount > 0 ? `₹${Number(c.invoicedAmount).toLocaleString('en-IN')}` : '—'}
-                    </td>
-                    <td className="py-4 px-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-600">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                        {c.consentRecorded}
-                      </span>
                     </td>
                     <td className="py-4 px-6 text-right space-x-2">
                       <button

@@ -285,11 +285,21 @@ export const useProposalStore = create((set, get) => ({
     if (!pid) throw new Error('No active proposal');
     
     // 1. Optimistic UI Update with permanent UUIDs
-    const optimisticItems = newItemsToInsert.map((item) => ({
-      ...item,
-      id: item.id || crypto.randomUUID(),
-      proposal_id: pid
-    }));
+    const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+    const optimisticItems = newItemsToInsert.map((item) => {
+      const checkId = item.id;
+      const validId = isUuid(checkId) ? checkId : crypto.randomUUID();
+      const validRefId = item.ref_id || (!isUuid(checkId) && checkId ? checkId : undefined);
+      const resItem = {
+        ...item,
+        id: validId,
+        proposal_id: pid
+      };
+      if (validRefId) {
+        resItem.ref_id = validRefId;
+      }
+      return resItem;
+    });
     set({ items: [...previousItems, ...optimisticItems] });
 
     // 2. Background Database Sync without overwriting live user typing
