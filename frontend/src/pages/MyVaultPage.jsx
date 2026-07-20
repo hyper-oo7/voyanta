@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext.jsx';
 import { useProposalStore } from '../store/proposalStore.js';
@@ -143,16 +143,39 @@ export default function MyVaultPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [activeTab, setActiveTab] = useState({});  // per-card tab: 'itinerary' | 'sections'
+  const [editingPackage, setEditingPackage] = useState(null);
 
   // Filter state
   const [filterDest, setFilterDest] = useState('');
   const [filterBudget, setFilterBudget] = useState('');
 
-  // ── Load vault items from Supabase + migrate localStorage ────────────────
-  const loadVaultItems = useCallback(async () => {
-    setIsLoading(true);
+  const isReviewOpenRef = useRef(isReviewOpen);
+  isReviewOpenRef.current = isReviewOpen;
+  const editingPackageRef = useRef(editingPackage);
+  editingPackageRef.current = editingPackage;
+
+  const activeBatchData = useMemo(() => {
+    if (editingPackage) return [editingPackage];
+    return reviewBatch || [];
+  }, [editingPackage, reviewBatch]);
+
+  // ── Load vault items instantly from localStorage + revalidate with Supabase ──
+  const loadVaultItems = useCallback(async (showLoader = true) => {
+    let localItems = [];
     try {
-      // Try to load from backend vault API
+      const raw = JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]');
+      localItems = Array.isArray(raw) ? raw : [];
+      if (localItems.length > 0) {
+        setVaultItems(localItems);
+        if (showLoader) setIsLoading(false); // Instant 0ms render!
+      } else if (showLoader) {
+        setIsLoading(true);
+      }
+    } catch {
+      if (showLoader) setIsLoading(true);
+    }
+
+    try {
       const params = new URLSearchParams();
       if (filterDest) params.set('destination', filterDest);
       if (filterBudget) params.set('budget', filterBudget);
@@ -177,32 +200,39 @@ export default function MyVaultPage() {
         }));
       }
 
-      // Combine with local items from localStorage so vault items are always preserved & visible
-      let localItems = [];
-      try {
-        const raw = JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]');
-        localItems = Array.isArray(raw) ? raw : [];
-      } catch {}
-
+      // Combine with local items & sync any local-only items up to cloud so data doesn't mismatch!
       const combined = [...dbItems];
       localItems.forEach(loc => {
-        if (!combined.some(db => String(db.id) === String(loc.id) || (db.destination && loc.destination && db.destination.toLowerCase() === loc.destination.toLowerCase() && db.pdf_filename === loc.pdf_filename))) {
+        const existsInDb = combined.some(db => String(db.id) === String(loc.id) || (db.destination && loc.destination && db.destination.toLowerCase() === loc.destination.toLowerCase() && (db._pdf_filename || db.pdf_filename) === (loc._pdf_filename || loc.pdf_filename)));
+        if (!existsInDb) {
           combined.push(loc);
+          // Background cloud sync of local item
+          if (token && loc && (loc.destination || loc.pdf_filename || loc._pdf_filename)) {
+            (async () => {
+              try {
+                const payload = { ...loc, _confirmed: true };
+                if (loc.id && !String(loc.id).startsWith('vault_')) {
+                  await fetch(`/api/vault/packages/${loc.id}`, { method: 'PUT', headers, body: JSON.stringify(payload) });
+                } else {
+                  await fetch('/api/import/confirm', { method: 'POST', headers, body: JSON.stringify(payload) });
+                }
+              } catch (e) {
+                console.warn('Background sync up to cloud failed for local item:', e);
+              }
+            })();
+          }
         }
       });
 
       setVaultItems(combined);
+      try {
+        localStorage.setItem('voyanta_vault_items', JSON.stringify(combined));
+      } catch {}
       syncVaultItemsToLibrary(combined);
     } catch (err) {
       console.error('[MyVault] Failed to load vault items:', err);
-      try {
-        const raw = JSON.parse(localStorage.getItem('voyanta_vault_items') || '[]');
-        const local = Array.isArray(raw) ? raw : [];
-        setVaultItems(local);
-        syncVaultItemsToLibrary(local);
-      } catch {
-        setVaultItems([]);
-      }
+      setVaultItems(localItems);
+      syncVaultItemsToLibrary(localItems);
     } finally {
       setIsLoading(false);
     }
@@ -210,7 +240,10 @@ export default function MyVaultPage() {
 
   useEffect(() => {
     loadVaultItems();
-    const handleSync = () => loadVaultItems();
+    // Guard using refs: skip reload while modal is open without putting state inside dependency array
+    const handleSync = () => {
+      if (!isReviewOpenRef.current && !editingPackageRef.current) loadVaultItems(false);
+    };
     window.addEventListener('voyanta:vault-updated', handleSync);
     return () => window.removeEventListener('voyanta:vault-updated', handleSync);
   }, [loadVaultItems]);
@@ -655,6 +688,14 @@ export default function MyVaultPage() {
                             <span>Use in Proposal</span>
                           </button>
                           <button
+                            onClick={ev => { ev.stopPropagation(); setEditingPackage(item); }}
+                            className="px-3 py-2 rounded-xl bg-surface-container text-on-surface font-bold text-xs hover:bg-surface-variant flex items-center gap-1 border border-outline-variant shadow-sm cursor-pointer"
+                            title="Edit Saved Package"
+                          >
+                            <span className="material-symbols-outlined text-sm text-primary">edit_note</span>
+                            <span className="hidden sm:inline">Edit</span>
+                          </button>
+                          <button
                             onClick={ev => handleDeleteItem(item.id, ev)}
                             className="p-2 rounded-xl text-error hover:bg-error/10 border-none cursor-pointer"
                             title="Remove from Vault"
@@ -893,12 +934,25 @@ export default function MyVaultPage() {
       </div>
 
       <BatchExtractionReviewModal
-        isOpen={isReviewOpen}
-        onClose={() => setIsReviewOpen(false)}
-        batchData={reviewBatch}
-        onSuccess={async (confirmedPackages) => {
-          toast.success(`Batch review completed! Saved ${confirmedPackages.length} package(s) to Vault.`);
-          await loadVaultItems();
+        isOpen={isReviewOpen || Boolean(editingPackage)}
+        onClose={() => {
+          setIsReviewOpen(false);
+          setEditingPackage(null);
+        }}
+        isEditMode={Boolean(editingPackage)}
+        batchData={activeBatchData}
+        onSuccess={(confirmedPackages) => {
+          if (editingPackage && confirmedPackages.length > 0) {
+            toast.success(`Package "${confirmedPackages[0]?.destination || 'Vault Item'}" updated successfully!`);
+            setVaultItems(prev => prev.map(p => p.id === confirmedPackages[0].id || p.id === editingPackage.id ? { ...p, ...confirmedPackages[0], parsed_data: confirmedPackages[0].parsed_data || confirmedPackages[0] } : p));
+            syncVaultItemsToLibrary(confirmedPackages);
+          } else {
+            toast.success(`Batch review completed! Saved ${confirmedPackages.length} package(s) to Vault.`);
+          }
+          setEditingPackage(null);
+          setIsReviewOpen(false);
+          // Background sync refresh without holding open modal or showing spinner
+          loadVaultItems(false);
         }}
       />
     </div>

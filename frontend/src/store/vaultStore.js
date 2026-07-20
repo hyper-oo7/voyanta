@@ -123,8 +123,8 @@ export const useVaultStore = create((set, get) => ({
         reviewBatch: extractedBatch,
         isReviewOpen: true,
       });
-      // Dispatch custom event to notify vault page to reload if mounted
-      window.dispatchEvent(new CustomEvent('voyanta:vault-updated'));
+      // Dispatch after microtask so MyVaultPage guard sees isReviewOpen=true before event fires
+      Promise.resolve().then(() => window.dispatchEvent(new CustomEvent('voyanta:vault-updated')));
     } else {
       toast.error('No files were successfully extracted. Check file formats and try again.');
     }

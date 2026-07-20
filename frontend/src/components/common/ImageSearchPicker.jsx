@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { uploadOrEmbed } from '../LogoUploader.jsx';
 
@@ -178,7 +179,7 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-md animate-fade-in">
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -265,7 +266,7 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
 
               {/* Search Bar */}
               <div className="p-4 bg-surface-container-lowest border-b border-outline-variant flex-shrink-0">
-                <form onSubmit={handleSearchSubmit} className="flex gap-2.5">
+                <div className="flex gap-2.5">
                   <div className="relative flex-1">
                     <span className="material-symbols-outlined absolute left-3.5 top-2.5 text-on-surface-variant text-[20px]">search</span>
                     <input
@@ -273,17 +274,19 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
                       placeholder="Search Unsplash & Pexels (e.g. Maldives Resort, Paris Hotel, Private Yacht...)"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSearchSubmit(e); } }}
                       className="w-full pl-11 pr-4 py-2 text-sm bg-surface border border-outline-variant rounded-xl focus:ring-2 focus:ring-primary focus:border-primary outline-none text-on-surface transition-all font-medium"
                     />
                   </div>
                   <button
-                    type="submit"
+                    type="button"
+                    onClick={handleSearchSubmit}
                     disabled={loading}
                     className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-sm shadow-sm hover:bg-primary/90 transition-all flex gap-2 items-center cursor-pointer disabled:opacity-50"
                   >
                     {loading ? <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span> : 'Search API'}
                   </button>
-                </form>
+                </div>
               </div>
 
               {/* Photo Grid */}
@@ -383,7 +386,7 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
 
           {activeTab === 'url' && (
             <div className="p-8 flex flex-col items-center justify-center min-h-[300px] flex-1">
-              <form onSubmit={handleUrlSubmit} className="w-full max-w-lg space-y-4">
+              <div className="w-full max-w-lg space-y-4">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-on-surface uppercase tracking-wider">Image Web Address / Link</label>
                   <input
@@ -391,6 +394,7 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
                     placeholder="https://example.com/luxury-resort-image.jpg"
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleUrlSubmit(e); } }}
                     required
                     className="w-full px-4 py-2.5 text-sm bg-surface-container-lowest border border-outline-variant rounded-xl focus:ring-2 focus:ring-primary focus:border-primary outline-none text-on-surface font-medium"
                   />
@@ -406,17 +410,19 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
                   </div>
                 )}
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={handleUrlSubmit}
                   disabled={!urlInput.trim()}
                   className="w-full py-2.5 bg-primary text-white font-bold rounded-xl text-sm shadow-sm hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50"
                 >
                   Insert Image Link
                 </button>
-              </form>
+              </div>
             </div>
           )}
         </div>
       </motion.div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -143,9 +143,10 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
         // Fetch suggestions for both hotels and activities
+        const destParam = encodeURIComponent(client?.destination || proposal?.destination || '');
         const [resHotels, resActivities] = await Promise.all([
-          fetch(`/api/proposals/${proposal.id}/suggestions?step=hotels`, { headers }),
-          fetch(`/api/proposals/${proposal.id}/suggestions?step=activities`, { headers })
+          fetch(`/api/proposals/${proposal.id}/suggestions?step=hotels&destination=${destParam}`, { headers }),
+          fetch(`/api/proposals/${proposal.id}/suggestions?step=activities&destination=${destParam}`, { headers })
         ]);
 
         let hotels = [];

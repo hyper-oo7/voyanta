@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useToast } from '../../context/ToastContext.jsx';
 import { updateInvoice, INVOICE_STATUSES, generateRemainingBalanceInvoice } from '../../services/invoiceService.js';
+import { settingsService } from '../../services/resourceService.js';
 import { UpiQrGenerator, formatCurrency } from './UpiQrGenerator.jsx';
 import { ReceiptPreviewModal } from './ReceiptPreviewModal.jsx';
 import { InvoiceShareModal } from './InvoiceShareModal.jsx';
@@ -11,7 +12,22 @@ export function InvoicePreviewModal({ invoice, onClose, onUpdate }) {
   const toast = useToast();
   const printRef = useRef(null);
   
-  const [current, setCurrent] = useState(invoice || {});
+  const [current, setCurrent] = useState(() => {
+    const init = invoice || {};
+    const brandSync = settingsService.getSync();
+    return { ...init, branding: { ...brandSync, ...(init.branding || {}) } };
+  });
+
+  useEffect(() => {
+    settingsService.get().then(brandAsync => {
+      if (brandAsync) {
+        setCurrent(prev => ({
+          ...prev,
+          branding: { ...brandAsync, ...(prev.branding || {}) }
+        }));
+      }
+    }).catch(() => {});
+  }, []);
   const t = (str) => translateCommonTermsOffline(str, current.language || 'en');
   const [theme, setTheme] = useState(invoice?.theme_style || 'safari');
   const [saving, setSaving] = useState(false);
@@ -454,7 +470,7 @@ export function InvoicePreviewModal({ invoice, onClose, onUpdate }) {
           <div ref={printRef} className="max-w-4xl mx-auto bg-white rounded-2xl border border-outline-variant shadow-lg p-8 md:p-12 space-y-8 print:shadow-none print:border-none print:p-4 print:max-w-none text-slate-900 relative overflow-hidden">
             
             {/* Watermark Overlay */}
-            {(current?.branding?.watermark_text || current?.watermark_text) && (
+            {((current?.branding?.watermark_targets || current?.watermark_targets || ['invoice', 'receipt', 'proposal']).includes('invoice')) && (current?.branding?.watermark_text || current?.watermark_text) && (
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0 opacity-[0.05] print:opacity-[0.08]">
                 <span className="text-7xl md:text-9xl font-black uppercase tracking-widest text-slate-900 -rotate-45 select-none whitespace-nowrap">
                   {current?.branding?.watermark_text || current?.watermark_text}
@@ -750,7 +766,11 @@ export function InvoicePreviewModal({ invoice, onClose, onUpdate }) {
 
             {/* Audit Log Footer */}
             <div className="pt-4 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
-              <span>Voyanta Concierge Engine — Invoice ID: #{current.invoice_number || current.id}</span>
+              <span>
+                {current?.branding?.company_legal_name || current?.company_legal_name
+                  ? `${current?.branding?.company_legal_name || current?.company_legal_name} — Invoice ID: #${current.invoice_number || current.id}`
+                  : `Voyanta Concierge Engine — Invoice ID: #${current.invoice_number || current.id}`}
+              </span>
               <span>Last Modified: {new Date(current.updated_at || Date.now()).toLocaleString()}</span>
             </div>
           </div>

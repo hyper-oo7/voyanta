@@ -9,7 +9,7 @@ import { ReceiptShareModal } from './ReceiptShareModal.jsx';
 export function ReceiptPreviewModal({ invoice, onClose }) {
   const { toast } = useToast();
   const printRef = useRef(null);
-  const [settings, setSettings] = useState(null);
+  const [settings, setSettings] = useState(() => settingsService.getSync());
   const [showShare, setShowShare] = useState(false);
 
   useEffect(() => {
@@ -204,9 +204,11 @@ export function ReceiptPreviewModal({ invoice, onClose }) {
         <div ref={printRef} className="p-8 md:p-12 bg-white text-slate-900 space-y-6 relative rounded-b-3xl overflow-hidden print:p-4 print:rounded-none">
           
           {/* Watermark */}
-          <div className="absolute -right-12 -top-12 opacity-5 pointer-events-none transform rotate-12 text-[120px] font-black font-serif text-emerald-900 select-none print:opacity-[0.03] whitespace-nowrap">
-            {invoice?.branding?.watermark_text || invoice?.watermark_text || 'PAID'}
-          </div>
+          {((invoice?.branding?.watermark_targets || invoice?.watermark_targets || ['invoice', 'receipt', 'proposal']).includes('receipt')) && (invoice?.branding?.watermark_text || invoice?.watermark_text) && (
+            <div className="absolute -right-12 -top-12 opacity-5 pointer-events-none transform rotate-12 text-[120px] font-black font-serif text-emerald-900 select-none print:opacity-[0.03] whitespace-nowrap">
+              {invoice?.branding?.watermark_text || invoice?.watermark_text}
+            </div>
+          )}
 
           {/* Header */}
           <div className="flex items-start justify-between pb-6 border-b-2 border-emerald-600 relative z-10">
@@ -364,7 +366,9 @@ export function ReceiptPreviewModal({ invoice, onClose }) {
           {/* Bottom ID Matching Footer */}
           <div className="pt-3 mt-2 border-t border-slate-100 text-center">
             <span className="text-[11px] font-mono text-slate-400">
-              Voyanta Concierge Engine — Invoice ID: #{invoice?.invoice_number || receiptNumber}
+              {invoice?.branding?.company_legal_name || invoice?.company_legal_name
+                ? `${invoice?.branding?.company_legal_name || invoice?.company_legal_name} — Receipt ID: #${receiptNumber}`
+                : `Voyanta Concierge Engine — Invoice ID: #${invoice?.invoice_number || receiptNumber}`}
             </span>
           </div>
         </div>

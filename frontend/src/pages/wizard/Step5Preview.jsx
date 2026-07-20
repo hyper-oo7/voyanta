@@ -238,14 +238,18 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
   // Auto-sync template settings (style, selections, custom sections, order) to Supabase database
   useEffect(() => {
     if (!proposalId) return;
-    const currentPrefs = proposal?.preferences || {};
-    if (
-      currentPrefs.template_style !== style ||
-      JSON.stringify(currentPrefs.include_sections) !== JSON.stringify(include) ||
-      JSON.stringify(currentPrefs.section_order) !== JSON.stringify(sectionOrder) ||
-      JSON.stringify(currentPrefs.custom_blocks) !== JSON.stringify(localCustomBlocks)
-    ) {
-      setProposal({
+    setProposal(p => {
+      const currentPrefs = p?.preferences || {};
+      if (
+        currentPrefs.template_style === style &&
+        JSON.stringify(currentPrefs.include_sections) === JSON.stringify(include) &&
+        JSON.stringify(currentPrefs.section_order) === JSON.stringify(sectionOrder) &&
+        JSON.stringify(currentPrefs.custom_blocks) === JSON.stringify(localCustomBlocks)
+      ) {
+        return p;
+      }
+      return {
+        ...p,
         preferences: {
           ...currentPrefs,
           template_style: style,
@@ -253,9 +257,9 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
           section_order: sectionOrder,
           custom_blocks: localCustomBlocks
         }
-      });
-      saveDraftBackground().catch(() => {});
-    }
+      };
+    });
+    saveDraftBackground().catch(() => {});
   }, [style, include, sectionOrder, localCustomBlocks, proposalId, setProposal, saveDraftBackground]);
 
   useEffect(() => {
@@ -281,11 +285,13 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
     try {
       const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
       if (prefs && prefs.template_style) {
-        setStyle(prefs.template_style);
+        if (style !== prefs.template_style) setStyle(prefs.template_style);
         return;
       }
     } catch {}
-    if (branding?.template_style) setStyle(branding.template_style);
+    if (branding?.template_style && style !== branding.template_style) {
+      setStyle(branding.template_style);
+    }
   }, [branding?.template_style]);
 
   useEffect(() => {

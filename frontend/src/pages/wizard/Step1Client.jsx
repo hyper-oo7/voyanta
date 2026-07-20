@@ -38,12 +38,12 @@ const clientSchema = z.object({
   pace: z.string().optional(),
   dislikes: z.array(z.string()).optional().default([]),
 }).refine(data => {
-  if (data.date_mode === 'dates') {
+  if (data.date_mode === 'dates' && (data.start_date || data.end_date)) {
     return !!data.start_date && !!data.end_date;
   }
   return true;
 }, {
-  message: 'Start and End dates are required',
+  message: 'Start and End dates are required if specifying dates',
   path: ['start_date']
 });
 
@@ -169,10 +169,11 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
     resolver: zodResolver(clientSchema),
     defaultValues: {
       ...client,
+      date_mode: client.date_mode || 'days',
       num_adults: parseInt(client.num_adults) || 1,
       num_children: parseInt(client.num_children) || 0,
-      duration_days: parseInt(client.duration_days) || 1,
-      duration_nights: parseInt(client.duration_nights) || 1,
+      duration_days: parseInt(client.duration_days) || 5,
+      duration_nights: parseInt(client.duration_nights) || 4,
       dietary: client.dietary || '',
       pace: client.pace || '',
       dislikes: client.dislikes || [],
@@ -181,6 +182,7 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
   });
 
   const values = watch();
+  const valuesString = JSON.stringify(values);
 
   useImperativeHandle(ref, () => ({
     validate: async () => {
@@ -199,7 +201,7 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
         return prev;
       });
     }
-  }, [values, setClient]);
+  }, [valuesString, setClient]);
 
   const [dislikesTags, setDislikesTags] = useState(client.dislikes || []);
   const [availableTags, setAvailableTags] = useState([]);
@@ -292,22 +294,6 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
 
     return () => clearTimeout(timer);
   }, [emailVal, phoneVal, isNew, setValue]);
-
-  useEffect(() => {
-    // Keep parent state synced for auto-saving drafts
-    setClient(values);
-  }, [JSON.stringify(values), setClient]);
-
-  useImperativeHandle(ref, () => ({
-    validate: async () => {
-      let isValid = false;
-      await handleSubmit(
-        (data) => { isValid = true; },
-        (err) => { isValid = false; }
-      )();
-      return isValid;
-    }
-  }));
 
   const date_mode = watch('date_mode');
   const start_date = watch('start_date');

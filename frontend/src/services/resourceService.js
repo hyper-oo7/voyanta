@@ -257,6 +257,7 @@ const DEFAULT_SETTINGS = {
   trade_code: '',
   trademarks: '',
   watermark_text: '',
+  watermark_targets: ['invoice', 'receipt', 'proposal'],
   default_tax_rate: 5,
   default_taxes: [{ id: 'tax-1', name: 'GST / Tax', rate: 5, amount: 0 }],
   default_currency: 'INR',
@@ -276,13 +277,13 @@ const DEFAULT_SETTINGS = {
 };
 
 export function sanitizeBrandingObject(raw) {
-  if (!raw || typeof raw !== 'object') return { custom_fields: [] };
+  if (!raw || typeof raw !== 'object') return { custom_fields: [], watermark_targets: ['invoice', 'receipt', 'proposal'] };
   const cleaned = {};
   for (const k in raw) {
     const val = raw[k];
-    if (k === 'custom_fields' || k === 'custom_blocks' || k === 'notification_preferences' || k === 'itinerary' || k === 'preferences' || k === 'computed_totals' || k === 'items' || k === 'taxes' || k === 'default_taxes' || typeof val === 'boolean' || typeof val === 'number') {
-      if ((k === 'custom_fields' || k === 'custom_blocks' || k === 'taxes' || k === 'default_taxes') && !Array.isArray(val)) {
-        cleaned[k] = [];
+    if (k === 'watermark_targets' || k === 'custom_fields' || k === 'custom_blocks' || k === 'notification_preferences' || k === 'itinerary' || k === 'preferences' || k === 'computed_totals' || k === 'items' || k === 'taxes' || k === 'default_taxes' || typeof val === 'boolean' || typeof val === 'number') {
+      if ((k === 'watermark_targets' || k === 'custom_fields' || k === 'custom_blocks' || k === 'taxes' || k === 'default_taxes') && !Array.isArray(val)) {
+        cleaned[k] = k === 'watermark_targets' ? ['invoice', 'receipt', 'proposal'] : [];
       } else {
         cleaned[k] = val;
       }
@@ -305,6 +306,15 @@ export function sanitizeBrandingObject(raw) {
 }
 
 export const settingsService = {
+  getSync: () => {
+    try {
+      const agencyId = getAgencyId();
+      const cacheKey = `voyanta_settings_cache_${agencyId}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) return sanitizeBrandingObject(JSON.parse(cached));
+    } catch {}
+    return sanitizeBrandingObject(DEFAULT_SETTINGS);
+  },
   get: async () => {
     const agencyId = getAgencyId();
     const cacheKey = `voyanta_settings_cache_${agencyId}`;

@@ -632,6 +632,43 @@ function BrandingSettings() {
   const upd = (k) => (e) => setForm((s) => ({ ...(s || settings || {}), [k]: e.target.value }));
   const safeStr = (v) => Array.isArray(v) ? v.join('\n') : (v && typeof v === 'object' ? String(v.url || v.src || v.text || v.label || JSON.stringify(v)) : String(v ?? ''));
 
+  const renderWatermarkTargets = () => {
+    const targets = Array.isArray(current.watermark_targets) ? current.watermark_targets : ['invoice', 'receipt', 'proposal'];
+    return (
+      <div className="md:col-span-2 bg-surface p-4 rounded-xl border border-outline-variant mt-1 space-y-2.5 shadow-sm">
+        <label className="block text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-sm">filter_center_focus</span>
+          Where do you want to show the Watermark?
+        </label>
+        <p className="text-xs text-on-surface-variant">Select exactly which generated documents will embed the watermark across your agency.</p>
+        <div className="flex flex-wrap items-center gap-6 pt-1">
+          {[
+            { id: 'invoice', label: 'Invoices', icon: 'receipt_long' },
+            { id: 'receipt', label: 'Payment Receipts', icon: 'payments' },
+            { id: 'proposal', label: 'Proposals & Itineraries', icon: 'flight_takeoff' }
+          ].map(item => {
+            const checked = targets.includes(item.id);
+            return (
+              <label key={item.id} className="flex items-center gap-2 cursor-pointer select-none text-sm font-semibold text-on-surface hover:text-primary transition-colors">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    const next = checked ? targets.filter(t => t !== item.id) : [...targets, item.id];
+                    setForm(s => ({ ...(s || settings || {}), watermark_targets: next }));
+                  }}
+                  className="w-4 h-4 text-primary rounded border-outline-variant focus:ring-primary cursor-pointer"
+                />
+                <span className="material-symbols-outlined text-base text-primary">{item.icon}</span>
+                <span>{item.label}</span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const mutation = useMutation({
     mutationFn: (newSettings) => settingsService.update(newSettings),
     onSuccess: () => {
@@ -784,6 +821,7 @@ function BrandingSettings() {
                 <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Document Watermark Text</label>
                 <input type="text" placeholder="e.g. APPROVED or CONFIDENTIAL or VOYANTA LUXURY" value={safeStr(current.watermark_text)} onChange={upd('watermark_text')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-bold tracking-widest uppercase text-slate-700" />
               </div>
+              {renderWatermarkTargets()}
             </div>
           </div>
         )}
@@ -795,10 +833,11 @@ function BrandingSettings() {
               Business Legal & Registration Details
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/60">
-              <div>
+              <div className="md:col-span-2">
                 <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Company Legal Name</label>
                 <input type="text" placeholder="e.g. Voyanta Luxury Travel Ltd." value={safeStr(current.company_legal_name)} onChange={upd('company_legal_name')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
               </div>
+              {renderWatermarkTargets()}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Default Tax Rate (%)</label>
                 <input type="number" max="50" step="0.5" placeholder="e.g. 5 for GST 5%" value={safeStr(current.default_tax_rate !== undefined ? current.default_tax_rate : 5)} onChange={upd('default_tax_rate')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />

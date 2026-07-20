@@ -161,7 +161,8 @@ async def get_proposal_suggestions_service(
     sb: Any,
     proposal_id: str,
     step: str,
-    agency_id: Optional[str] = None
+    agency_id: Optional[str] = None,
+    destination_fallback: Optional[str] = None
 ) -> dict:
     """
     Main suggestion flow coordinating data fetching, candidate inference, ranking, and related suggestions.
@@ -169,9 +170,14 @@ async def get_proposal_suggestions_service(
     # 1. Fetch proposal to extract destination and client brief criteria
     proposal_res = sb.table("proposals").select("*").eq("id", proposal_id).execute()
     if not proposal_res.data:
-        return {"error": "Proposal not found", "status_code": 404}
-    
-    proposal_data = proposal_res.data[0]
+        proposal_data = {
+            "id": proposal_id,
+            "destination": destination_fallback or "",
+            "name": "Draft Proposal",
+            "brief": {"destination": destination_fallback or ""}
+        }
+    else:
+        proposal_data = proposal_res.data[0]
     
     # Fetch client preferences (dislikes)
     dislikes_set = set()

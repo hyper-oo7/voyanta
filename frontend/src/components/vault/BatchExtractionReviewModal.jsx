@@ -1,14 +1,30 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient.js';
 
-export default function BatchExtractionReviewModal({ isOpen, onClose, batchData = [], onSuccess }) {
-  if (!isOpen || !batchData || batchData.length === 0) return null;
-
+export default function BatchExtractionReviewModal({ isOpen, onClose, batchData = [], onSuccess, isEditMode = false }) {
   const [activeIdx, setActiveIdx] = useState(0);
-  const [packages, setPackages] = useState(() => JSON.parse(JSON.stringify(batchData)));
+  const [packages, setPackages] = useState(() => (batchData && batchData.length > 0) ? JSON.parse(JSON.stringify(batchData)) : []);
   const [activeTab, setActiveTab] = useState('summary'); // 'summary', 'days', 'hotels', 'extra'
   const [confirming, setConfirming] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  const lastBatchRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (isOpen && batchData && batchData.length > 0) {
+      const batchSig = JSON.stringify(batchData);
+      if (lastBatchRef.current !== batchSig) {
+        lastBatchRef.current = batchSig;
+        setPackages(JSON.parse(batchSig));
+        setActiveIdx(0);
+        setErrorMsg(null);
+      }
+    } else if (!isOpen) {
+      lastBatchRef.current = null;
+    }
+  }, [isOpen, batchData]);
+
+  if (!isOpen || !batchData || batchData.length === 0) return null;
 
   const currentPkg = packages[activeIdx] || {};
   const fieldsMeta = currentPkg.fields || {};
@@ -128,7 +144,8 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
       const filtered = existingVault.filter(item => String(item.id) !== String(pkgId) && !(item.destination && pkg.destination && item.destination.toLowerCase() === pkg.destination.toLowerCase() && item._pdf_filename === pkg._pdf_filename));
       filtered.unshift(savedPkg);
       localStorage.setItem('voyanta_vault_items', JSON.stringify(filtered));
-      window.dispatchEvent(new Event('voyanta:vault-updated'));
+      // NOTE: Do NOT dispatch voyanta:vault-updated here — the modal is still open.
+      // MyVaultPage.onSuccess + loadVaultItems(false) will refresh after modal closes.
 
       // 2. Save to voyanta_unified_library
       const libraryStr = localStorage.getItem('voyanta_unified_library') || '[]';
@@ -209,6 +226,32 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
     const confirmedPkg = { ...pkgToConfirm, _confirmed: true, id: pkgToConfirm.id || `vault_${Date.now()}_${index}` };
     try {
       syncSingleToLocal(confirmedPkg);
+      if (isEditMode && onSuccess) {
+        onSuccess([confirmedPkg]);
+        onClose();
+        // Background optimistic cloud sync without blocking UI
+        (async () => {
+          try {
+            let token = null;
+            await supabase?.auth?.refreshSession?.();
+            const { data: { session } } = await supabase?.auth?.getSession?.() || { data: { session: null } };
+            token = session?.access_token || null;
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            if (confirmedPkg.id && !String(confirmedPkg.id).startsWith('vault_')) {
+              await fetch(`/api/vault/packages/${confirmedPkg.id}`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify(confirmedPkg)
+              });
+            }
+          } catch (err) {
+            console.warn('Background edit sync to server failed (offline fallback active):', err);
+          }
+        })();
+        return;
+      }
+
       let token = null;
       try {
         await supabase?.auth?.refreshSession?.();
@@ -221,11 +264,20 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch('/api/import/confirm', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(confirmedPkg)
-      });
+      let res;
+      if (isEditMode && confirmedPkg.id && !String(confirmedPkg.id).startsWith('vault_')) {
+        res = await fetch(`/api/vault/packages/${confirmedPkg.id}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(confirmedPkg)
+        });
+      } else {
+        res = await fetch('/api/import/confirm', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(confirmedPkg)
+        });
+      }
 
       if (!res.ok) {
         console.warn('Server sync returned error, kept in local vault & library storage');
@@ -279,13 +331,15 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
             </div>
             <div>
               <h2 className="text-lg font-bold text-primary flex items-center gap-2">
-                Agent Review & Accuracy Check
+                {isEditMode ? 'Edit Saved Vault Package' : 'Agent Review & Accuracy Check'}
                 <span className="text-xs font-normal text-tertiary px-2 py-0.5 rounded-full bg-surface border border-subtle">
-                  {packages.length} File{packages.length > 1 ? 's' : ''} in Batch
+                  {packages.length} {isEditMode ? 'Package' : `File${packages.length > 1 ? 's' : ''} in Batch`}
                 </span>
               </h2>
               <p className="text-xs text-secondary">
-                Verify extracted values before persisting to AI Vault. Doubtful fields are underlined with red wavy lines.
+                {isEditMode 
+                  ? 'Modify any extracted field, itinerary days, hotels, or extra sections and save changes directly to your AI Vault.' 
+                  : 'Verify extracted values before persisting to AI Vault. Doubtful fields are underlined with red wavy lines.'}
               </p>
             </div>
           </div>
@@ -634,7 +688,7 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
             )}
           </div>
           <div className="flex items-center gap-3">
-            {packages.length > 1 && (
+            {packages.length > 1 && !isEditMode && (
               <button
                 onClick={confirmAllRemaining}
                 disabled={confirming || packages.every(p => p._confirmed)}
@@ -645,15 +699,15 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
             )}
             <button
               onClick={() => confirmPackage(currentPkg, activeIdx)}
-              disabled={confirming || isConfirmed}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-emerald-600 text-white font-bold text-xs shadow-lg shadow-primary/25 hover:brightness-110 transition-all flex items-center gap-2 disabled:opacity-50"
+              disabled={confirming || (!isEditMode && isConfirmed)}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-emerald-600 text-white font-bold text-xs shadow-lg shadow-primary/25 hover:brightness-110 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {confirming ? (
                 <>
                   <span className="material-symbols-outlined animate-spin text-sm">sync</span>
                   Saving to Vault...
                 </>
-              ) : isConfirmed ? (
+              ) : (!isEditMode && isConfirmed) ? (
                 <>
                   <span className="material-symbols-outlined text-sm">done</span>
                   Already Confirmed
@@ -661,7 +715,7 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
               ) : (
                 <>
                   <span className="material-symbols-outlined text-sm">save</span>
-                  Confirm & Save ({activeIdx + 1}/{packages.length})
+                  {isEditMode ? 'Save Changes' : `Confirm & Save (${activeIdx + 1}/${packages.length})`}
                 </>
               )}
             </button>

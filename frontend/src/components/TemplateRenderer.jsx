@@ -38,15 +38,15 @@ export const THEMES = {
 };
 
 const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 'classic', data, include = ALL, order = SECTIONS, customBlocks = [], viewMode = 'document', activeSlide = 0, branding: brandingProp }) {
-  if (!data) return null;
-  const theme = THEMES[style] || THEMES.classic;
-  
   const [bgImage, setBgImage] = useState('');
   useEffect(() => {
-    const dest = data.proposal?.destination || '';
-    const type = data.proposal?.preferences?.tour_type || '';
+    const dest = data?.proposal?.destination || '';
+    const type = data?.proposal?.preferences?.tour_type || '';
     fetchContextualImage(dest, type).then(setBgImage);
-  }, [data.proposal?.destination, data.proposal?.preferences?.tour_type]);
+  }, [data?.proposal?.destination, data?.proposal?.preferences?.tour_type]);
+
+  if (!data) return null;
+  const theme = THEMES[style] || THEMES.classic;
 
   const p = data.proposal || {};
   const b = (p.preferences && p.preferences.branding) || {};

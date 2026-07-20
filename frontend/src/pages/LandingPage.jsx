@@ -311,14 +311,23 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative min-h-[88vh] flex items-center justify-center pt-32 pb-20 overflow-hidden">
+      <section className="relative min-h-[88vh] flex items-center justify-center pt-32 pb-20 overflow-hidden bg-slate-950">
         <div className="absolute inset-0 z-0">
           <img 
-            src={heroImage.url} 
-            alt={heroImage.caption} 
-            className="w-full h-full object-cover scale-105 transition-all duration-1000" 
+            src={heroImage?.url || 'https://images.unsplash.com/photo-1598091383021-15ddea10925d?auto=format&fit=crop&w=2000&q=85'} 
+            alt={heroImage?.caption || 'Indian Landscape'} 
+            onError={(e) => {
+              e.currentTarget.src = 'https://images.unsplash.com/photo-1598091383021-15ddea10925d?auto=format&fit=crop&w=2000&q=85';
+            }}
+            className="w-full h-full object-cover scale-105 transition-all duration-1000 brightness-95" 
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-surface"></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-surface/95 dark:from-black/80 dark:via-black/50 dark:to-surface/95"></div>
+          {heroImage?.caption && (
+            <div className="absolute bottom-6 right-6 hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white/90 text-xs font-semibold shadow-lg z-10">
+              <span className="material-symbols-outlined text-[14px] text-emerald-400">pin_drop</span>
+              {heroImage.caption}
+            </div>
+          )}
         </div>
 
         <div className="relative z-10 max-w-5xl mx-auto px-6 text-center flex flex-col items-center">

@@ -64,7 +64,15 @@ export default function LuxuryThemeEngine(props) {
   const partySizeStr = childrenNum > 0 ? `${travelers} Persons (${adultsNum} Adults, ${childrenNum} Children)` : `${travelers} Person${travelers === 1 ? '' : 's'}`;
 
   return (
-    <div className="theme-host min-h-screen" style={{ backgroundColor: bgColor, fontFamily }}>
+    <div className="theme-host min-h-screen relative overflow-hidden" style={{ backgroundColor: bgColor, fontFamily }}>
+      {/* ─── Document Watermark ─────────────────────────────────────────────── */}
+      {((b.watermark_targets || ['invoice', 'receipt', 'proposal']).includes('proposal')) && b.watermark_text && (
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0 opacity-[0.04] print:opacity-[0.06]">
+          <span className="text-7xl md:text-9xl font-black uppercase tracking-widest text-slate-900 -rotate-45 select-none whitespace-nowrap">
+            {b.watermark_text}
+          </span>
+        </div>
+      )}
       {/* ─── Hero Cover Section ─────────────────────────────────────────────── */}
       {(include.hero ?? true) && (
         <section className="theme-cover" style={{ backgroundImage: `url("${coverUrl}")` }}>
@@ -325,6 +333,21 @@ export default function LuxuryThemeEngine(props) {
 
 
       <UniversalTemplateExtras proposal={p} branding={b} customBlocks={customBlocks} order={order} style={themeSlug} theme={{ typography: { headline: headlineFont, body: fontFamily }, colors: { primary: primaryColor, accent: accentColor } }} />
+
+      {/* ─── Legal Footer & Branding ─────────────────────────────────────────── */}
+      <footer className="py-8 px-6 mt-12 border-t border-slate-200/80 text-center text-xs text-slate-400 font-mono relative z-10">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+          <span>
+            {b.company_legal_name || agencyName || 'Voyanta Concierge Engine'}
+          </span>
+          {(b.gst_number || b.trade_code) && (
+            <span>
+              {[b.gst_number ? `GST: ${b.gst_number}` : '', b.trade_code ? `Reg: ${b.trade_code}` : ''].filter(Boolean).join(' • ')}
+            </span>
+          )}
+          <span>Generated via Voyanta Luxury Suite</span>
+        </div>
+      </footer>
     </div>
   );
 }

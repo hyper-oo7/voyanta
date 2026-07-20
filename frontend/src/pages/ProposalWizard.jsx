@@ -122,17 +122,22 @@ export default function ProposalWizard() {
       else if (dest.includes('dubai') || dest.includes('paris') || dest.includes('london')) style = 'modern';
     }
 
-    setBranding(b => ({ ...b, template_style: style }));
+    setBranding(b => {
+      if (b.template_style === style) return b;
+      return { ...b, template_style: style };
+    });
   }, [client.tour_type, client.destination, proposal?.destination, idParam, themeParam, setBranding]);
 
   useEffect(() => {
     if (themeParam && !idParam) {
       setBranding(b => {
         const tpl = TEMPLATE_LIST.find(t => t.slug === themeParam || t.id === themeParam || t.theme === themeParam);
+        const nextCover = b.cover_image_url || (tpl ? tpl.thumbnail : '');
+        if (b.template_style === themeParam && b.cover_image_url === nextCover) return b;
         return {
           ...b,
           template_style: themeParam,
-          cover_image_url: b.cover_image_url || (tpl ? tpl.thumbnail : '')
+          cover_image_url: nextCover
         };
       });
     }
@@ -183,17 +188,23 @@ export default function ProposalWizard() {
               const { greeting, highlights } = data.draft;
               
               if (highlights && !branding?.highlights) {
-                setBranding(b => ({ ...b, highlights, highlights_ai_drafted: true }));
+                setBranding(b => {
+                  if (b.highlights === highlights) return b;
+                  return { ...b, highlights, highlights_ai_drafted: true };
+                });
               }
               if (greeting && !proposal?.brief?.special_notes) {
-                setProposal(p => ({
-                  ...p,
-                  brief: {
-                    ...(p?.brief || {}),
-                    special_notes: greeting,
-                    special_notes_ai_drafted: true
-                  }
-                }));
+                setProposal(p => {
+                  if (p?.brief?.special_notes === greeting) return p;
+                  return {
+                    ...p,
+                    brief: {
+                      ...(p?.brief || {}),
+                      special_notes: greeting,
+                      special_notes_ai_drafted: true
+                    }
+                  };
+                });
               }
             }
           }

@@ -212,6 +212,70 @@ def get_vault_package(pkg_id: str, agency_id: Optional[str] = None) -> Optional[
         return None
 
 
+def update_vault_package(pkg_id: str, updated_data: Dict[str, Any], agency_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    from src.services.supabase_client import get_supabase_client
+    from datetime import datetime
+    sb = get_supabase_client()
+    if not sb:
+        return None
+    try:
+        fields = {}
+        for key in ["destination", "total_price", "currency", "duration_days", "overview", "cover_image_url", "package_type"]:
+            if key in updated_data and updated_data[key] is not None:
+                fields[key] = updated_data[key]
+        
+        if "parsed_data" in updated_data:
+            val = updated_data["parsed_data"]
+            fields["parsed_data"] = json.dumps(val) if isinstance(val, (dict, list)) else val
+        elif any(k in updated_data for k in ["title", "days", "sub_destinations", "inclusions", "exclusions", "hotels", "activities"]):
+            # Also update parsed_data object if top-level fields were edited
+            existing = get_vault_package(pkg_id, agency_id)
+            parsed = existing.get("parsed_data", {}) if existing else {}
+            if isinstance(parsed, str):
+                try: parsed = json.loads(parsed)
+                except Exception: parsed = {}
+            if not isinstance(parsed, dict): parsed = {}
+            for k in ["title", "days", "sub_destinations", "inclusions", "exclusions", "hotels", "activities", "overview", "total_price", "currency", "duration_days", "cover_image_url", "extra_sections"]:
+                if k in updated_data:
+                    parsed[k] = updated_data[k]
+            fields["parsed_data"] = json.dumps(parsed)
+
+        if "extra_sections" in updated_data:
+            val = updated_data["extra_sections"]
+            fields["extra_sections"] = json.dumps(val) if isinstance(val, dict) else val
+
+        fields["updated_at"] = datetime.utcnow().isoformat()
+
+        query = sb.table("vault_packages").update(fields).eq("id", pkg_id)
+        if agency_id:
+            query = query.eq("agency_id", agency_id)
+        res = query.execute()
+        if res.data:
+            pkg = res.data[0]
+            if isinstance(pkg.get("parsed_data"), str):
+                try: pkg["parsed_data"] = json.loads(pkg["parsed_data"])
+                except Exception: pass
+            if isinstance(pkg.get("extra_sections"), str):
+                try: pkg["extra_sections"] = json.loads(pkg["extra_sections"])
+                except Exception: pass
+            return pkg
+        # Fallback to update by ID without agency_id check if query returned empty
+        res = sb.table("vault_packages").update(fields).eq("id", pkg_id).execute()
+        if res.data:
+            pkg = res.data[0]
+            if isinstance(pkg.get("parsed_data"), str):
+                try: pkg["parsed_data"] = json.loads(pkg["parsed_data"])
+                except Exception: pass
+            if isinstance(pkg.get("extra_sections"), str):
+                try: pkg["extra_sections"] = json.loads(pkg["extra_sections"])
+                except Exception: pass
+            return pkg
+        return None
+    except Exception as e:
+        logger.error(f"[VaultKnowledge] update_vault_package failed: {e}")
+        return None
+
+
 def delete_vault_package(pkg_id: str, agency_id: Optional[str] = None) -> bool:
     from src.services.supabase_client import get_supabase_client
     sb = get_supabase_client()

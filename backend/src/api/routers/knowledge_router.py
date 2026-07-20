@@ -146,6 +146,7 @@ async def get_knowledge_objects(
 async def get_proposal_suggestions(
     proposal_id: str,
     step: str = Query(..., description="Wizard step ('hotels' or 'activities')"),
+    destination: Optional[str] = Query(None, description="Fallback destination if proposal not yet in DB"),
     user: Any = Depends(verify_token_optional),
     token: Optional[str] = Depends(get_request_token)
 ):
@@ -165,7 +166,7 @@ async def get_proposal_suggestions(
         )
 
     from src.services.suggestion_service import get_proposal_suggestions_service
-    res = await get_proposal_suggestions_service(sb, proposal_id, step, agency_id)
+    res = await get_proposal_suggestions_service(sb, proposal_id, step, agency_id, destination_fallback=destination)
     if "error" in res:
         raise HTTPException(status_code=res.get("status_code", 500), detail=res["error"])
     return JSONResponse(content=res)

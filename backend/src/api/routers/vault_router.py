@@ -12,6 +12,7 @@ from src.core.security import verify_token, verify_token_optional
 from src.services.vault_knowledge_service import (
     list_vault_packages,
     get_vault_package,
+    update_vault_package,
     delete_vault_package,
     get_destination_knowledge,
     accumulate_destination_knowledge,
@@ -75,6 +76,38 @@ async def get_package(pkg_id: str, user: Any = Depends(verify_token_optional)):
     pkg = get_vault_package(pkg_id, agency_id=agency_id)
     if not pkg:
         raise HTTPException(status_code=404, detail="Vault package not found")
+    return JSONResponse(content={"status": "success", "package": pkg})
+
+
+class VaultPackageUpdatePayload(BaseModel):
+    destination: Optional[str] = None
+    total_price: Optional[float] = None
+    currency: Optional[str] = None
+    duration_days: Optional[int] = None
+    overview: Optional[str] = None
+    cover_image_url: Optional[str] = None
+    parsed_data: Optional[dict] = None
+    extra_sections: Optional[dict] = None
+    title: Optional[str] = None
+    days: Optional[list] = None
+    sub_destinations: Optional[list] = None
+    inclusions: Optional[list] = None
+    exclusions: Optional[list] = None
+    hotels: Optional[list] = None
+    activities: Optional[list] = None
+
+    class Config:
+        extra = "allow"
+
+
+@router.put("/packages/{pkg_id}")
+async def update_package(pkg_id: str, payload: VaultPackageUpdatePayload, user: Any = Depends(verify_token_optional)):
+    """Update an existing vault package."""
+    agency_id, _ = _extract_user_context(user)
+    data = payload.dict(exclude_unset=True)
+    pkg = update_vault_package(pkg_id, data, agency_id=agency_id)
+    if not pkg:
+        raise HTTPException(status_code=500, detail="Failed to update vault package")
     return JSONResponse(content={"status": "success", "package": pkg})
 
 
