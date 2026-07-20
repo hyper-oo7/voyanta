@@ -309,15 +309,11 @@ export default function MyVaultPage() {
 
     // Save what_to_pack to packing rules memory (per-agent)
     if (extraSections.what_to_pack && (data.destination || item.destination)) {
-      fetch('/api/packing-rules/upsert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          destination_keyword: (data.destination || item.destination).toLowerCase(),
-          section_type: 'what_to_pack',
-          section_title: 'What to Pack',
-          content: extraSections.what_to_pack,
-        }),
+      api.post('/api/packing-rules/upsert', {
+        destination_keyword: (data.destination || item.destination).toLowerCase(),
+        section_type: 'what_to_pack',
+        section_title: 'What to Pack',
+        content: extraSections.what_to_pack,
       }).catch(() => {});
     }
 

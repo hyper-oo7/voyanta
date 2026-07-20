@@ -196,7 +196,11 @@ export default function WebViewPage() {
   const items = data?.items || [];
   const visibilityMode = (p.visibility_mode || data?.visibility_mode || 'ITEMIZED').toUpperCase();
   const branding = p.preferences?.branding || {};
-  const daysList = p.trip_details?.days || [];
+  const daysList = (p.itinerary && Array.isArray(p.itinerary.days) && p.itinerary.days.length > 0)
+    ? p.itinerary.days
+    : (p.trip_details && Array.isArray(p.trip_details.days) && p.trip_details.days.length > 0
+      ? p.trip_details.days
+      : (Array.isArray(p.days) ? p.days : []));
 
   const include = p.preferences?.include_sections || ALL_SECTIONS;
   const sectionOrder = p.preferences?.section_order || SECTIONS;
@@ -585,7 +589,10 @@ export default function WebViewPage() {
       >
         <MediaCarousel
           images={
-            p.heroImages || [
+            (Array.isArray(p.heroImages) && p.heroImages.length > 0 ? p.heroImages : null) ||
+            (branding.cover_image_url ? [branding.cover_image_url] : null) ||
+            (p.cover_image_url ? [p.cover_image_url] : null) ||
+            (daysList.length > 0 && (daysList[0].images?.[0] || daysList[0].image_url) ? [daysList[0].images?.[0] || daysList[0].image_url] : null) || [
               'https://images.unsplash.com/photo-1599661046289-e31897846e41?w=1200&q=80',
               'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=1200&q=80',
             ]
@@ -600,10 +607,10 @@ export default function WebViewPage() {
           <div className="max-w-7xl mx-auto w-full">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-white text-xs font-semibold mb-3 border border-white/20">
               <span className="material-symbols-outlined text-sm">flight_takeoff</span>
-              {translateText(p.destination || 'Jaipur & Udaipur', lang)} • {p.travelers || 2} {getUIText(lang, 'travelers')}
+              {translateText(p.destination || branding.destination || 'Destination', lang)} • {p.travelers || p.brief?.num_adults || 2} {getUIText(lang, 'travelers')}
             </div>
             <h1 className="text-3xl md:text-5xl font-display font-extrabold text-white tracking-tight drop-shadow-md">
-              {p.name || 'Royal Rajasthan Heritage Tour'}
+              {p.name || p.client_name || 'Travel Proposal'}
             </h1>
           </div>
         </div>
@@ -620,6 +627,34 @@ export default function WebViewPage() {
         {/* LEFT COLUMN: ALL CONFIGURED SECTIONS (8 cols) */}
         <div className="lg:col-span-8 space-y-8">
           
+          {/* Trip Brief / Executive Summary */}
+          {include.brief && p.brief && Object.keys(p.brief).length > 0 && (
+            <div id="brief-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
+              <h2 className="text-2xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">summarize</span>
+                Trip Overview & Executive Summary
+              </h2>
+              <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
+                {typeof p.brief === 'string' ? p.brief : (p.brief.summary || p.brief.description || JSON.stringify(p.brief, null, 2))}
+              </div>
+            </div>
+          )}
+
+          {/* Destination Knowledge */}
+          {include.destination_knowledge !== false && (p.destination_knowledge || p.preferences?.destination_knowledge) && (
+            <div id="destination-knowledge-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
+              <h2 className="text-2xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">travel_explore</span>
+                Destination Guide & Climate Insights
+              </h2>
+              <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
+                {typeof (p.destination_knowledge || p.preferences?.destination_knowledge) === 'string'
+                  ? (p.destination_knowledge || p.preferences?.destination_knowledge)
+                  : JSON.stringify(p.destination_knowledge || p.preferences?.destination_knowledge, null, 2)}
+              </div>
+            </div>
+          )}
+
           {/* Highlights Section */}
           {include.highlights && p.highlights && (
             <div id="highlights-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
@@ -711,6 +746,68 @@ export default function WebViewPage() {
                   </ul>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* What to Pack Section */}
+          {include.what_to_pack !== false && (p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines) && (
+            <div id="what-to-pack-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4 pt-4">
+              <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">backpack</span>
+                What to Pack & Packing Guidelines
+              </h3>
+              <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
+                {typeof (p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines) === 'string'
+                  ? (p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines)
+                  : JSON.stringify(p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines, null, 2)}
+              </div>
+            </div>
+          )}
+
+          {/* Important Notes Section */}
+          {include.important_notes !== false && (p.important_notes || p.preferences?.important_notes) && (
+            <div id="important-notes-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4 pt-4">
+              <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-amber-600">notification_important</span>
+                Important Notes & Advisories
+              </h3>
+              <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
+                {typeof (p.important_notes || p.preferences?.important_notes) === 'string'
+                  ? (p.important_notes || p.preferences?.important_notes)
+                  : JSON.stringify(p.important_notes || p.preferences?.important_notes, null, 2)}
+              </div>
+            </div>
+          )}
+
+          {/* Visa & Documentation Guidelines Section */}
+          {include.visa_guidelines !== false && (p.visa_guidelines || p.preferences?.visa_guidelines) && (
+            <div id="visa-guidelines-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4 pt-4">
+              <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">badge</span>
+                Visa & Travel Documentation
+              </h3>
+              <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
+                {typeof (p.visa_guidelines || p.preferences?.visa_guidelines) === 'string'
+                  ? (p.visa_guidelines || p.preferences?.visa_guidelines)
+                  : JSON.stringify(p.visa_guidelines || p.preferences?.visa_guidelines, null, 2)}
+              </div>
+            </div>
+          )}
+
+          {/* Photo Gallery Section */}
+          {include.gallery !== false && (p.gallery || p.preferences?.gallery) && Array.isArray(p.gallery || p.preferences?.gallery) && (p.gallery || p.preferences?.gallery).length > 0 && (
+            <div id="gallery-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4 pt-4">
+              <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">photo_library</span>
+                Trip Photo Gallery
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {(p.gallery || p.preferences?.gallery).map((img, i) => (
+                  <div key={i} className="aspect-video rounded-xl overflow-hidden border border-outline-variant shadow-xs">
+                    <img src={typeof img === 'string' ? img : img.url} alt="" className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -806,13 +903,13 @@ export default function WebViewPage() {
         <div className="lg:col-span-4 space-y-6">
           {/* WEATHER WIDGET */}
           <WeatherWidget
-            destination={p.destination || 'Jaipur'}
+            destination={p.destination || branding.destination || 'Destination'}
             lang={lang}
           />
 
           {/* LIVE MAP WIDGET */}
           <MapWidget
-            destination={p.destination || 'Jaipur'}
+            destination={p.destination || branding.destination || 'Destination'}
             lang={lang}
           />
 
@@ -1353,15 +1450,24 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
               <p>{day.description || 'No description provided.'}</p>
 
               {/* Day Block Image Carousel */}
-              {Array.isArray(day.images) && day.images.length > 0 && (
-                <div className="h-52 md:h-64 rounded-xl overflow-hidden border border-outline-variant/60 shadow-xs">
-                  <MediaCarousel
-                    images={day.images}
-                    autoPlay={false}
-                    className="w-full h-full"
-                  />
-                </div>
-              )}
+              {(() => {
+                const dayImages = Array.isArray(day.images) && day.images.length > 0
+                  ? day.images
+                  : (Array.isArray(day.photos) && day.photos.length > 0
+                    ? day.photos
+                    : (day.image_url ? [day.image_url] : []));
+                if (dayImages.length === 0) return null;
+                return (
+                  <div className="h-52 md:h-64 rounded-xl overflow-hidden border border-outline-variant/60 shadow-xs">
+                    <MediaCarousel
+                      images={dayImages}
+                      autoPlay={dayImages.length > 1}
+                      interval={4500}
+                      className="w-full h-full"
+                    />
+                  </div>
+                );
+              })()}
 
               {/* Render Day Content Blocks */}
               {Array.isArray(day.content) && day.content.length > 0 && (
@@ -1389,7 +1495,11 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
                     }
                     if (['hotel', 'activity', 'flight', 'transfer', 'meal', 'meals', 'cruise', 'destination', 'custom'].includes(block.type)) {
                       const isActivity = block.type === 'activity';
-                      const img = block.data?.image_url || block.data?.cover_image || '';
+                      const blockImages = Array.isArray(block.data?.images) && block.data.images.length > 0
+                        ? block.data.images
+                        : (Array.isArray(block.data?.photos) && block.data.photos.length > 0
+                          ? block.data.photos
+                          : (block.data?.image_url || block.data?.cover_image ? [block.data?.image_url || block.data?.cover_image] : []));
                       return (
                         <div 
                           key={block.id} 
@@ -1408,9 +1518,13 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
                             {block.data?.details && <p className="text-xs text-on-surface-variant mt-0.5">{block.data.details}</p>}
                             {block.data?.description && <p className="text-xs text-on-surface-variant/80 mt-1 line-clamp-2">{block.data.description}</p>}
                           </div>
-                          {img && (
-                            <div className="w-20 md:w-28 flex-shrink-0 rounded-lg overflow-hidden border border-outline-variant/40 flex">
-                              <img src={img} alt="" className="w-full h-full object-cover" />
+                          {blockImages.length > 0 && (
+                            <div className="w-24 md:w-32 flex-shrink-0 rounded-lg overflow-hidden border border-outline-variant/40 flex relative">
+                              {blockImages.length > 1 ? (
+                                <MediaCarousel images={blockImages} autoPlay={true} interval={4000} className="w-full h-full" />
+                              ) : (
+                                <img src={blockImages[0]} alt="" className="w-full h-full object-cover" />
+                              )}
                             </div>
                           )}
                         </div>

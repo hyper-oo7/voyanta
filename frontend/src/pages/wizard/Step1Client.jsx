@@ -165,7 +165,7 @@ const TagInput = memo(function TagInput({ label, value = [], onChange, suggestio
 });
 
 export const Step1Client = forwardRef(function Step1Client({ client, setClient, isNew, proposal }, ref) {
-  const { register, watch, handleSubmit, setValue, reset, formState: { errors } } = useForm({
+  const { register, watch, handleSubmit, trigger, setValue, reset, formState: { errors } } = useForm({
     resolver: zodResolver(clientSchema),
     defaultValues: {
       ...client,
@@ -186,10 +186,10 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
 
   useImperativeHandle(ref, () => ({
     validate: async () => {
-      const result = await handleSubmit(() => {})();
-      return result !== undefined;
+      const isValid = await trigger();
+      return isValid;
     }
-  }), [handleSubmit]);
+  }), [trigger]);
 
   useEffect(() => {
     if (values && (values.customer_name !== undefined || values.destination !== undefined)) {

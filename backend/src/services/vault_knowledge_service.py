@@ -426,6 +426,7 @@ def get_destination_knowledge(
     Retrieve all accumulated knowledge for a destination.
     Returns a dict: { section_type: { title, content, source_count } }
     Used to auto-fill proposal wizard Steps 4.
+    Queries both destination_knowledge and agency_packing_rules tables for agency isolation (Rule 5).
     """
     from src.services.supabase_client import get_supabase_client
     sb = get_supabase_client()
@@ -437,19 +438,37 @@ def get_destination_knowledge(
     result = {}
 
     try:
+        # Scope by agency_id only — user_id is an audit field, not a row-level scope key.
+        # Filtering by both agency_id AND user_id creates a double-AND that silently returns
+        # nothing for rows stored with only agency_id set (the common case).
         query = sb.table("destination_knowledge").select("*").ilike("destination", f"%{dest_lower}%")
         if agency_id:
             query = query.eq("agency_id", agency_id)
-        if user_id:
-            query = query.eq("user_id", user_id)
+        # NOTE: do NOT filter by user_id here — knowledge is agency-scoped, not per-user.
 
         res = query.execute()
         for row in (res.data or []):
             result[row["section_type"]] = {
-                "title": row["section_title"],
+                "title": row.get("section_title") or row["section_type"].replace('_', ' ').title(),
                 "content": row["content"],
                 "source_count": row.get("source_count", 1),
             }
+
+        if agency_id:
+            try:
+                res_packing = sb.table("agency_packing_rules").select("*").eq("agency_id", agency_id).execute()
+                for rule in (res_packing.data or []):
+                    kw = (rule.get("destination_keyword") or "").lower().strip()
+                    if kw and (dest_lower in kw or kw in dest_lower):
+                        stype = rule.get("section_type") or "what_to_pack"
+                        if stype not in result or not result[stype].get("content"):
+                            result[stype] = {
+                                "title": rule.get("section_title") or ("What to Pack" if stype == "what_to_pack" else stype.replace('_', ' ').title()),
+                                "content": rule.get("content", ""),
+                                "source_count": 1,
+                            }
+            except Exception as e_pack:
+                logger.error(f"[VaultKnowledge] agency_packing_rules query failed: {e_pack}")
     except Exception as e:
         logger.error(f"[VaultKnowledge] get_destination_knowledge failed: {e}")
 

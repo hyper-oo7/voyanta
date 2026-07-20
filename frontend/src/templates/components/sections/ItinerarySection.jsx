@@ -42,7 +42,7 @@ export default function ItinerarySection({ proposal = {}, items = [], theme = {}
           const layoutId = sequence[idx % sequence.length] || 'alternating-layout';
           
           // Determine image for this day
-          const imgUrl = day.image_url || day.url || day.photo || dayImages[idx] || 
+          const imgUrl = (Array.isArray(day.images) && day.images[0]) || (Array.isArray(day.photos) && day.photos[0]) || day.image_url || day.url || day.photo || dayImages[idx] || 
             `https://images.unsplash.com/photo-${1500000000000 + (idx * 1234567)}?auto=format&fit=crop&w=800&q=80`;
           
           // Find any items (flights, activities, hotels) assigned specifically to this day

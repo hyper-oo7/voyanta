@@ -17,12 +17,32 @@ import SortableContentBlock from '../itinerary/SortableContentBlock.jsx';
 import ResourcePickerModal from '../itinerary/ResourcePickerModal.jsx';
 import { api } from '../../services/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import ImageSearchPicker from '../common/ImageSearchPicker.jsx';
+import { uploadOrEmbed } from '../LogoUploader.jsx';
 
 export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, removeDay, items = [], onRemoveItem, onAddResourceItem, proposalDestination, tourType }) {
   const toast = useToast();
   const upd = (key) => (e) => updateDay(index, { [key]: e.target.value });
   const [showBlockMenu, setShowBlockMenu] = useState(false);
   const [pickerType, setPickerType] = useState(null);
+  const [showDayImagePicker, setShowDayImagePicker] = useState(false);
+
+  const dayImages = Array.isArray(dayData.images) && dayData.images.length > 0
+    ? dayData.images
+    : (Array.isArray(dayData.photos) && dayData.photos.length > 0
+      ? dayData.photos
+      : (dayData.image_url ? [dayData.image_url] : []));
+
+  const addDayImage = (url) => {
+    if (!url) return;
+    const next = [...dayImages, url];
+    updateDay(index, { images: next, photos: next, image_url: next[0] });
+  };
+
+  const removeDayImage = (imgIdx) => {
+    const next = dayImages.filter((_, i) => i !== imgIdx);
+    updateDay(index, { images: next, photos: next, image_url: next[0] || null });
+  };
   
   // AI Expansion states
   const [showAIPanel, setShowAIPanel] = useState(false);
@@ -193,6 +213,52 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
                 rows={2}
                 className="w-full px-3 py-2 text-sm bg-surface-container-lowest border border-outline-variant rounded-lg font-body-sm focus:ring-2 focus:ring-primary/20"
               />
+
+              {/* Day Header & Carousel Images UI */}
+              <div className="pt-3 mt-3 border-t border-outline-variant/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[15px] text-primary">collections</span>
+                    Day Header & Carousel Images ({dayImages.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowDayImagePicker(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2.5 py-1 rounded-lg transition-colors cursor-pointer border-none"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">add_photo_alternate</span>
+                    + Add Carousel Image
+                  </button>
+                </div>
+                {dayImages.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                    {dayImages.map((imgUrl, i) => (
+                      <div key={i} className="relative aspect-video rounded-xl overflow-hidden group/day-img border border-outline-variant shadow-xs bg-surface-variant">
+                        <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+                        <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-bold uppercase">
+                          {i === 0 ? 'Cover' : `#${i + 1}`}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeDayImage(i)}
+                          className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover/day-img:opacity-100 hover:bg-error transition-all cursor-pointer border-none shadow-sm"
+                          title="Remove image from carousel"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">close</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div 
+                    onClick={() => setShowDayImagePicker(true)}
+                    className="w-full py-4 border-2 border-dashed border-outline-variant/60 rounded-xl flex flex-col items-center justify-center gap-1 text-on-surface-variant/60 hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer text-xs font-semibold"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">add_photo_alternate</span>
+                    Click to add header / carousel images for Day {dayData.day || index + 1}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <button onClick={() => removeDay(index)} title="Remove Day" data-testid={`remove-day-${index}`}
@@ -296,6 +362,17 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
             setPickerType(null);
           }} 
           onClose={() => setPickerType(null)} 
+        />
+      )}
+
+      {showDayImagePicker && (
+        <ImageSearchPicker
+          onSelect={(url) => {
+            addDayImage(url);
+            setShowDayImagePicker(false);
+          }}
+          onClose={() => setShowDayImagePicker(false)}
+          defaultQuery={dayData.title || proposalDestination || 'luxury resort tour'}
         />
       )}
     </div>

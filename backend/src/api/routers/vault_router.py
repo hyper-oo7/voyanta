@@ -126,6 +126,7 @@ async def delete_package(pkg_id: str, user: Any = Depends(verify_token_optional)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/knowledge")
+@router.get("/match-rules")
 async def get_knowledge(
     destination: str = Query(..., description="Destination name e.g. Ladakh"),
     user: Any = Depends(verify_token_optional),
@@ -133,6 +134,7 @@ async def get_knowledge(
     """
     Get accumulated knowledge sections for a destination.
     Used by Step4Branding to auto-fill inclusions, exclusions, what to pack, etc.
+    Exposed at both /knowledge and /match-rules for backward/forward compatibility.
     """
     agency_id, user_id = _extract_user_context(user)
     knowledge = get_destination_knowledge(destination, agency_id=agency_id, user_id=user_id)

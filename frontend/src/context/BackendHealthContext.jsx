@@ -14,8 +14,15 @@ export function BackendHealthProvider({ children }) {
 
   const checkHealth = useCallback(async () => {
     try {
-      const res = await api.get('/api/health', { timeout: 5000 });
-      const healthy = res && res.status === 'ok';
+      // Use raw fetch — NOT api.get() — to avoid false OFFLINE reports.
+      // api.get() calls supabase.auth.getSession() which can throw during
+      // session refresh, causing the health endpoint to appear unreachable.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch('/api/health', { signal: controller.signal });
+      clearTimeout(timeoutId);
+      const data = res.ok ? await res.json().catch(() => ({})) : {};
+      const healthy = res.ok && (data.status === 'ok' || res.ok);
       setIsHealthy(healthy);
       setLastChecked(new Date());
       return healthy;
@@ -31,11 +38,11 @@ export function BackendHealthProvider({ children }) {
     // Check health once on startup
     checkHealth();
 
-    // In dev mode, check periodically every 60s if it's down, to auto-recover
+    // In dev mode, check periodically every 15s if it's down, to auto-recover
     if (import.meta.env.MODE === 'development') {
       const intervalId = setInterval(() => {
         checkHealth();
-      }, 60000);
+      }, 15000);
       return () => clearInterval(intervalId);
     }
   }, [checkHealth]);

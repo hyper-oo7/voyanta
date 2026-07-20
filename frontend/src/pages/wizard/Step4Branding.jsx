@@ -53,7 +53,7 @@ function TextareaWithAI({ label, value, onChange, testid, onAI }) {
   );
 }
 
-export function Step4Branding({ proposalId, branding, setBranding, client, customBlocks = [] }) {
+export function Step4Branding({ proposalId, branding, setBranding, client, customBlocks = [], proposal }) {
   const toast = useToast();
   const [activeCategory, setActiveCategory] = useState('All');
   const [showFieldMenu, setShowFieldMenu] = useState(false);
@@ -77,78 +77,79 @@ export function Step4Branding({ proposalId, branding, setBranding, client, custo
 
   // ── Destination Knowledge Auto-Fill ─────────────────────────────────────
   useEffect(() => {
-    const dest = client?.destination || '';
+    const dest = client?.destination || proposal?.destination || '';
     if (!dest) return;
 
     let isMounted = true;
     (async () => {
       try {
-        const res = await fetch(`/api/vault/match-rules?destination=${encodeURIComponent(dest)}`);
-        if (res.ok && isMounted) {
-          const data = await res.json();
-          const knowledge = data?.knowledge || {};
-          const updates = {};
-          const sources = {};
+        const data = await api.get(`/api/vault/knowledge?destination=${encodeURIComponent(dest)}`);
+        if (!isMounted) return;
+        const knowledge = data?.knowledge || {};
+        const updates = {};
+        const sources = {};
 
-          if (knowledge.inclusions && !branding?.inclusions) {
-            updates.inclusions = knowledge.inclusions.content;
-            sources.inclusions = knowledge.inclusions.source_count;
-          }
-          if (knowledge.exclusions && !branding?.exclusions) {
-            updates.exclusions = knowledge.exclusions.content;
-            sources.exclusions = knowledge.exclusions.source_count;
-          }
-          if (knowledge.important_notes && !branding?.important_notes) {
-            updates.important_notes = knowledge.important_notes.content;
-            sources.important_notes = knowledge.important_notes.source_count;
-          }
-          if (knowledge.visa_guidelines && !branding?.visa_guidelines) {
-            updates.visa_guidelines = knowledge.visa_guidelines.content;
-            sources.visa_guidelines = knowledge.visa_guidelines.source_count;
-          }
-          if (knowledge.cancellation_policy && !branding?.cancellation_policy) {
-            updates.cancellation_policy = knowledge.cancellation_policy.content;
-            sources.cancellation_policy = knowledge.cancellation_policy.source_count;
-          }
-          if (knowledge.terms_of_payment && !branding?.terms_of_payment) {
-            updates.terms_of_payment = knowledge.terms_of_payment.content;
-            sources.terms_of_payment = knowledge.terms_of_payment.source_count;
-          }
+        if (knowledge.inclusions && !branding?.inclusions) {
+          updates.inclusions = knowledge.inclusions.content;
+          sources.inclusions = knowledge.inclusions.source_count;
+        }
+        if (knowledge.exclusions && !branding?.exclusions) {
+          updates.exclusions = knowledge.exclusions.content;
+          sources.exclusions = knowledge.exclusions.source_count;
+        }
+        if (knowledge.important_notes && !branding?.important_notes) {
+          updates.important_notes = knowledge.important_notes.content;
+          sources.important_notes = knowledge.important_notes.source_count;
+        }
+        if (knowledge.visa_guidelines && !branding?.visa_guidelines) {
+          updates.visa_guidelines = knowledge.visa_guidelines.content;
+          sources.visa_guidelines = knowledge.visa_guidelines.source_count;
+        }
+        if (knowledge.cancellation_policy && !branding?.cancellation_policy) {
+          updates.cancellation_policy = knowledge.cancellation_policy.content;
+          sources.cancellation_policy = knowledge.cancellation_policy.source_count;
+        }
+        if (knowledge.terms_of_payment && !branding?.terms_of_payment) {
+          updates.terms_of_payment = knowledge.terms_of_payment.content;
+          sources.terms_of_payment = knowledge.terms_of_payment.source_count;
+        }
 
-          const dynamicSections = Object.entries(knowledge).filter(([k]) =>
-            !['inclusions', 'exclusions', 'important_notes', 'visa_guidelines', 'cancellation_policy', 'terms_of_payment'].includes(k)
-          );
-          if (dynamicSections.length > 0) {
-            const existingCustom = branding?.custom_fields || [];
-            const existingKeys = new Set(existingCustom.map(f => f.section_type || f.label?.toLowerCase()));
-            const newFields = dynamicSections
-              .filter(([k]) => !existingKeys.has(k))
-              .map(([k, v]) => ({
-                id: `vault_knowledge_${k}_${Math.random().toString(36).slice(2, 6)}`,
-                label: safeStr(v.title || (k === 'what_to_pack' ? 'Packing Guidelines' : k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))),
-                value: safeStr(v.content),
-                type: 'text',
-                section_type: k,
-                vault_auto_filled: true,
-                source_count: v.source_count,
-              }));
-            if (newFields.length > 0) {
-              updates.custom_fields = [...existingCustom, ...newFields];
-            }
-          }
-
-          if (Object.keys(updates).length > 0) {
-            setBranding(s => ({ ...s, ...updates }));
-            setKnowledgeSources(sources);
-            toast.info(`Auto-filled ${Object.keys(updates).length} sections from Vault knowledge for "${dest}"`, { duration: 4000 });
+        const dynamicSections = Object.entries(knowledge).filter(([k]) =>
+          !['inclusions', 'exclusions', 'important_notes', 'visa_guidelines', 'cancellation_policy', 'terms_of_payment'].includes(k)
+        );
+        if (dynamicSections.length > 0) {
+          const existingCustom = branding?.custom_fields || [];
+          const existingKeys = new Set(existingCustom.map(f => f.section_type || f.label?.toLowerCase()));
+          const newFields = dynamicSections
+            .filter(([k]) => !existingKeys.has(k))
+            .map(([k, v]) => ({
+              id: `vault_knowledge_${k}_${Math.random().toString(36).slice(2, 6)}`,
+              label: safeStr(v.title || (k === 'what_to_pack' ? 'Packing Guidelines' : k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))),
+              value: safeStr(v.content),
+              type: 'text',
+              section_type: k,
+              vault_auto_filled: true,
+              source_count: v.source_count,
+            }));
+          if (newFields.length > 0) {
+            updates.custom_fields = [...existingCustom, ...newFields];
           }
         }
+
+        if (Object.keys(updates).length > 0) {
+          setBranding(s => ({ ...s, ...updates }));
+          setKnowledgeSources(sources);
+          toast.info(`Auto-filled ${Object.keys(updates).length} sections from Vault knowledge for "${dest}"`, { duration: 4000 });
+        } else if (Object.keys(knowledge).length === 0) {
+          throw new Error('No sections found, checking packing rules');
+        }
       } catch (err) {
-        const subDests = client?.subDestinations || [];
+        if (!isMounted) return;
+        const subDests = client?.subDestinations || proposal?.subDestinations || proposal?.sub_destinations || [];
         const subStr = Array.isArray(subDests) ? subDests.join(',') : subDests;
-        fetch(`/api/packing-rules/match?destination=${encodeURIComponent(dest)}&sub_destinations=${encodeURIComponent(subStr)}`)
-          .then(r => r.json())
+        api.get(`/api/packing-rules/match?destination=${encodeURIComponent(dest)}&sub_destinations=${encodeURIComponent(subStr)}`)
           .then(res => {
+            if (!isMounted) return;
             if (res?.rules?.length > 0) {
               const matched = res.rules.find(r => r.section_type === 'what_to_pack');
               if (matched?.content) {
@@ -172,7 +173,7 @@ export function Step4Branding({ proposalId, branding, setBranding, client, custo
       }
     })();
     return () => { isMounted = false; };
-  }, [client?.destination]);
+  }, [client?.destination, proposal?.destination]);
 
   const isStarter = !currentPlan || currentPlan.toLowerCase() === 'starter';
 

@@ -113,46 +113,95 @@ export default function SortableContentBlock({ id, item, onChange, onRemove }) {
           />
         )}
         
-        {(item.type === 'hotel' || item.type === 'activity' || item.type === 'flight' || item.type === 'transfer' || item.type === 'meals' || item.type === 'cruise' || item.type === 'destination' || item.type === 'custom') && (
-          <div className="flex gap-md items-stretch mt-1 group/travel">
-            <div className="relative w-20 rounded-lg bg-surface-variant flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm border border-outline-variant min-h-[60px]">
-              {item.data.image_url ? (
-                <img src={item.data.image_url} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <span className="material-symbols-outlined text-on-surface-variant/50 text-[24px]">image</span>
-              )}
-              <div 
-                onClick={() => setShowStockPicker(true)}
-                className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/travel:opacity-100 cursor-pointer transition-opacity"
-              >
-                <span className="material-symbols-outlined text-white text-[20px]">{uploading ? 'hourglass_empty' : 'upload_file'}</span>
+        {(item.type === 'hotel' || item.type === 'activity' || item.type === 'flight' || item.type === 'transfer' || item.type === 'meals' || item.type === 'cruise' || item.type === 'destination' || item.type === 'custom') && (() => {
+          const blockImages = Array.isArray(item.data.images) && item.data.images.length > 0
+            ? item.data.images
+            : (Array.isArray(item.data.photos) && item.data.photos.length > 0
+              ? item.data.photos
+              : (item.data.image_url ? [item.data.image_url] : []));
+
+          const removeBlockImage = (idxToRemove) => {
+            const next = blockImages.filter((_, i) => i !== idxToRemove);
+            onChange(id, { ...item.data, images: next, photos: next, image_url: next[0] || '' });
+          };
+
+          return (
+            <div className="flex flex-col gap-2 mt-1 w-full">
+              <div className="flex gap-md items-stretch group/travel">
+                <div className="relative w-20 rounded-lg bg-surface-variant flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm border border-outline-variant min-h-[60px]">
+                  {blockImages[0] ? (
+                    <img src={blockImages[0]} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="material-symbols-outlined text-on-surface-variant/50 text-[24px]">image</span>
+                  )}
+                  <div 
+                    onClick={() => setShowStockPicker(true)}
+                    className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/travel:opacity-100 cursor-pointer transition-opacity"
+                  >
+                    <span className="material-symbols-outlined text-white text-[20px]">{uploading ? 'hourglass_empty' : 'upload_file'}</span>
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                  <input 
+                    type="text" 
+                    value={item.data.name || ''} 
+                    onChange={(e) => onChange(id, { ...item.data, name: e.target.value })}
+                    placeholder={`${info.label} name...`}
+                    className="w-full text-lg font-bold bg-transparent border-none outline-none focus:ring-0 p-0 text-on-surface"
+                  />
+                  <input 
+                    type="text" 
+                    value={item.data.details || ''} 
+                    onChange={(e) => onChange(id, { ...item.data, details: e.target.value })}
+                    placeholder={
+                      item.type === 'hotel' ? 'Details (e.g. check-in time, room type)...' :
+                      item.type === 'flight' ? 'Details (e.g. flight number, departure time)...' :
+                      item.type === 'activity' ? 'Details (e.g. start time, meeting point)...' :
+                      item.type === 'transfer' ? 'Details (e.g. pick-up time, vehicle type)...' :
+                      item.type === 'meals' ? 'Details (e.g. reservation time, dietary notes)...' :
+                      'Details...'
+                    }
+                    className="w-full text-sm text-on-surface-variant bg-transparent border-none outline-none focus:ring-0 p-0 mt-0.5"
+                  />
+                </div>
+              </div>
+
+              {/* Multi-Photo Carousel Strip */}
+              <div className="pt-2 border-t border-outline-variant/40 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[13px] text-primary">collections</span>
+                    Block Photos ({blockImages.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowStockPicker(true)}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded transition-colors cursor-pointer border-none"
+                  >
+                    <span className="material-symbols-outlined text-[12px]">add</span> Add Photo
+                  </button>
+                </div>
+                {blockImages.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {blockImages.map((imgUrl, idx) => (
+                      <div key={idx} className="relative w-14 h-10 rounded-md overflow-hidden group/thumb border border-outline-variant bg-surface-variant">
+                        <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removeBlockImage(idx)}
+                          className="absolute inset-0 bg-black/60 text-white flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity cursor-pointer border-none"
+                          title="Remove photo"
+                        >
+                          <span className="material-symbols-outlined text-[12px]">close</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-            <div className="flex-1 min-w-0 flex flex-col justify-center">
-              <input 
-                type="text" 
-                value={item.data.name || ''} 
-                onChange={(e) => onChange(id, { ...item.data, name: e.target.value })}
-                placeholder={`${info.label} name...`}
-                className="w-full text-lg font-bold bg-transparent border-none outline-none focus:ring-0 p-0 text-on-surface"
-              />
-              <input 
-                type="text" 
-                value={item.data.details || ''} 
-                onChange={(e) => onChange(id, { ...item.data, details: e.target.value })}
-                placeholder={
-                  item.type === 'hotel' ? 'Details (e.g. check-in time, room type)...' :
-                  item.type === 'flight' ? 'Details (e.g. flight number, departure time)...' :
-                  item.type === 'activity' ? 'Details (e.g. start time, meeting point)...' :
-                  item.type === 'transfer' ? 'Details (e.g. pick-up time, vehicle type)...' :
-                  item.type === 'meals' ? 'Details (e.g. reservation time, dietary notes)...' :
-                  'Details...'
-                }
-                className="w-full text-sm text-on-surface-variant bg-transparent border-none outline-none focus:ring-0 p-0 mt-0.5"
-              />
-            </div>
-          </div>
-        )}
+          );
+        })()}
         
         {item.type === 'image' && (
           <div className="border border-outline-variant rounded-xl overflow-hidden bg-surface-variant relative group/img mt-1">
@@ -264,7 +313,13 @@ export default function SortableContentBlock({ id, item, onChange, onRemove }) {
               const updated = existing ? `${existing}\n${url}` : url;
               onChange(id, { urls: updated });
             } else {
-              onChange(id, { ...item.data, image_url: url });
+              const existing = Array.isArray(item.data.images) && item.data.images.length > 0
+                ? item.data.images
+                : (Array.isArray(item.data.photos) && item.data.photos.length > 0
+                  ? item.data.photos
+                  : (item.data.image_url ? [item.data.image_url] : []));
+              const next = [...existing, url];
+              onChange(id, { ...item.data, images: next, photos: next, image_url: next[0] });
             }
             setShowStockPicker(false);
           }}
