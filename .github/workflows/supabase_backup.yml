@@ -32,12 +32,12 @@ jobs:
       - name: Dump Supabase Database & Upload to R2
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || 'tnttcvrxzvkrxoivintw' }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          CF_R2_PRIVATE_BUCKET: ${{ secrets.CF_R2_PRIVATE_BUCKET }}
-          CF_R2_PRIVATE_ACCESS_KEY_ID: ${{ secrets.CF_R2_PRIVATE_ACCESS_KEY_ID }}
-          CF_R2_PRIVATE_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_PRIVATE_SECRET_ACCESS_KEY }}
-          CF_R2_PRIVATE_ENDPOINT: ${{ secrets.CF_R2_PRIVATE_ENDPOINT }}
+          CF_R2_PRIVATE_BUCKET: ${{ secrets.CF_R2_PRIVATE_BUCKET || 'voyanta' }}
+          CF_R2_PRIVATE_ACCESS_KEY_ID: ${{ secrets.CF_R2_PRIVATE_ACCESS_KEY_ID || 'ab4455fde8c5586c6eab966e2702fa8c' }}
+          CF_R2_PRIVATE_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_PRIVATE_SECRET_ACCESS_KEY || '89101c50b35d43f7b4fe46eaf7b572dd3cab7d1d4d099dc58fb8bf2252ac2874' }}
+          CF_R2_PRIVATE_ENDPOINT: ${{ secrets.CF_R2_PRIVATE_ENDPOINT || 'https://2cd2f60f2aa335782fcb5a4766118677.r2.cloudflarestorage.com' }}
         run: |
           if [ -z "$SUPABASE_PROJECT_ID" ] || [ -z "$SUPABASE_DB_PASSWORD" ]; then
             echo "Supabase project credentials not configured. Skipping backup."

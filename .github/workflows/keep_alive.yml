@@ -15,8 +15,9 @@ jobs:
     steps:
       - name: Ping Supabase Database via REST API
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://tnttcvrxzvkrxoivintw.supabase.co' }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'sb_publishable_MSgPxDAxT8elQmOip2gijw_GWmvcD6r' }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || 'tnttcvrxzvkrxoivintw' }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
             echo "Supabase secrets not configured. Skipping ping."
