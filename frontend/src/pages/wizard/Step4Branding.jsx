@@ -57,7 +57,8 @@ export function Step4Branding({ proposalId, branding, setBranding, client, custo
   const toast = useToast();
   const [activeCategory, setActiveCategory] = useState('All');
   const [showFieldMenu, setShowFieldMenu] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState(() => typeof window !== 'undefined' ? (localStorage.getItem('voyanta_active_plan') || 'Starter') : 'Starter');
+  const getStoredPlan = () => typeof window !== 'undefined' ? (localStorage.getItem('voyanta_active_plan') || localStorage.getItem('voyanta_pending_subscription_plan') || localStorage.getItem('voyanta_user_plan') || 'Starter') : 'Starter';
+  const [currentPlan, setCurrentPlan] = useState(getStoredPlan);
   const [knowledgeSources, setKnowledgeSources] = useState({});
 
   const upd = useCallback((field) => (valOrEvent) => {
@@ -66,7 +67,7 @@ export function Step4Branding({ proposalId, branding, setBranding, client, custo
   }, [setBranding]);
 
   useEffect(() => {
-    const handler = () => setCurrentPlan(localStorage.getItem('voyanta_active_plan') || 'Starter');
+    const handler = () => setCurrentPlan(getStoredPlan());
     window.addEventListener('voyanta:plan-updated', handler);
     window.addEventListener('storage', handler);
     return () => {

@@ -8,10 +8,21 @@ export const useAuthStore = create((set, get) => ({
   agencyId: null,
   isDemo: false,
   isLoading: true,
+  isInitialized: false,
   hasAcceptedTerms: false,
 
   // Setters
-  setUser: (user, session = null, isDemo = false) => set({ user, session, isDemo }),
+  setUser: (user, session = null, isDemo = false) => {
+    if (user) {
+      const pending = localStorage.getItem('voyanta_pending_subscription_plan');
+      if (pending) {
+        localStorage.setItem('voyanta_active_plan', pending);
+        localStorage.removeItem('voyanta_pending_subscription_plan');
+      }
+      user.plan = localStorage.getItem('voyanta_active_plan') || 'Starter';
+    }
+    set({ user, session, isDemo, isLoading: false, isInitialized: true });
+  },
   setAgencyId: (agencyId) => set({ agencyId }),
   setIsDemo: (isDemo) => set({ isDemo }),
   setLoading: (isLoading) => set({ isLoading }),
@@ -109,7 +120,7 @@ export const useAuthStore = create((set, get) => ({
   // Auth Operations
   initAuth: () => {
     if (!supabase) {
-      set({ isLoading: false });
+      set({ isLoading: false, isInitialized: true });
       return () => {};
     }
 
@@ -123,7 +134,7 @@ export const useAuthStore = create((set, get) => ({
         await get().resolveAgencyId(authUser);
         await get().checkTermsAcceptance();
       }
-      set({ isLoading: false });
+      set({ isLoading: false, isInitialized: true });
 
       const { data: sub } = supabase.auth.onAuthStateChange(async (_e, session) => {
         const newUser = session?.user ?? null;
@@ -132,6 +143,8 @@ export const useAuthStore = create((set, get) => ({
           get().setUser(newUser, session, false);
           await get().resolveAgencyId(newUser);
           await get().checkTermsAcceptance();
+        } else {
+          set({ user: null, session: null, isLoading: false, isInitialized: true });
         }
       });
       if (sub?.subscription) {
@@ -144,7 +157,7 @@ export const useAuthStore = create((set, get) => ({
 
   signUp: async ({ email, password, fullName }) => {
     if (!supabase) throw new Error('Supabase not configured');
-    set({ isDemo: false });
+    set({ isDemo: false, isLoading: true });
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -152,8 +165,8 @@ export const useAuthStore = create((set, get) => ({
     });
     if (error) throw error;
     
-    // Auto-accept terms upon creation if user object returned immediately
     if (data?.user) {
+      get().setUser(data.user, data.session, false);
       try {
         await supabase.from('user_terms_acceptances').insert({
           user_id: data.user.id,
@@ -164,19 +177,24 @@ export const useAuthStore = create((set, get) => ({
       } catch (e) {
         console.warn('Failed auto-terms insert on signup:', e);
       }
+      await get().resolveAgencyId(data.user);
+      await get().checkTermsAcceptance();
     }
+    set({ isLoading: false, isInitialized: true });
     return data;
   },
 
   signIn: async ({ email, password }) => {
     if (!supabase) throw new Error('Supabase not configured');
-    set({ isDemo: false });
+    set({ isDemo: false, isLoading: true });
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     if (data?.user) {
+      get().setUser(data.user, data.session, false);
       await get().resolveAgencyId(data.user);
       await get().checkTermsAcceptance();
     }
+    set({ isLoading: false, isInitialized: true });
     return data;
   },
 

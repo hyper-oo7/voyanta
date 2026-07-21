@@ -1,6 +1,50 @@
 import { logger } from '../utils/logger.js';
 import { supabase } from '../lib/supabaseClient.js';
 
+export function getBackendUrl(path = '') {
+  let base = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+  if (!path) return base;
+  if (path.startsWith('/api')) {
+    if (base) return `${base}${path}`;
+    return path;
+  }
+  if (base && !path.startsWith('http://') && !path.startsWith('https://')) {
+    return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+  }
+  return path;
+}
+
+if (typeof window !== 'undefined' && !window.__voyantaFetchIntercepted) {
+  window.__voyantaFetchIntercepted = true;
+  const originalFetch = window.fetch;
+  window.fetch = async function(input, init = {}) {
+    let urlString = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : (input?.url || ''));
+    if (urlString && urlString.startsWith('/api')) {
+      const targetUrl = getBackendUrl(urlString);
+      if (typeof input === 'string') {
+        input = targetUrl;
+      } else if (input instanceof URL) {
+        input = new URL(targetUrl, window.location.origin);
+      }
+      
+      if (supabase && (!init.headers || !JSON.stringify(init.headers).toLowerCase().includes('authorization'))) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            init.headers = {
+              ...init.headers,
+              'Authorization': `Bearer ${session.access_token}`
+            };
+          }
+        } catch (e) {
+          // ignore session fetch errors
+        }
+      }
+    }
+    return originalFetch.call(window, input, init);
+  };
+}
+
 class ApiError extends Error {
   constructor(message, status, data) {
     super(message);
@@ -48,8 +92,10 @@ async function fetchWithRetry(endpoint, options = {}, retries = 1) {
     config.body = JSON.stringify(config.body);
   }
 
+  const targetUrl = endpoint.startsWith('http://') || endpoint.startsWith('https://') ? endpoint : getBackendUrl(endpoint);
+
   try {
-    const response = await fetch(endpoint, config);
+    const response = await fetch(targetUrl, config);
     clearTimeout(timeoutId);
 
     if (!response.ok) {

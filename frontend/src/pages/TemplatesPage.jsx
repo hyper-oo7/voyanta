@@ -70,7 +70,8 @@ export default function TemplatesPage() {
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [lockedTemplateName, setLockedTemplateName] = useState('');
 
-  const currentPlan = backendPlan || 'Starter';
+  const storedPlan = typeof window !== 'undefined' ? (localStorage.getItem('voyanta_active_plan') || localStorage.getItem('voyanta_pending_subscription_plan') || localStorage.getItem('voyanta_user_plan') || 'Starter') : 'Starter';
+  const currentPlan = (backendPlan && backendPlan.toLowerCase() !== 'starter') ? backendPlan : storedPlan;
   const isStarter = !currentPlan || currentPlan.toLowerCase() === 'starter';
 
   useEffect(() => {
