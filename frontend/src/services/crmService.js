@@ -32,7 +32,7 @@ function getLocalClients() {
 function saveLocalClients(list) {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(list));
-  } catch {}
+  } catch { }
 }
 
 export async function fetchClients({ page = 0, pageSize = PAGE_SIZE, status = null } = {}) {
@@ -79,7 +79,7 @@ export async function fetchClients({ page = 0, pageSize = PAGE_SIZE, status = nu
 export async function createClient(clientData) {
   const normEmail = (clientData.email || '').trim().toLowerCase();
   const normName = (clientData.name || '').trim().toLowerCase();
-  
+
   const list = getLocalClients();
   let existing = null;
   if (normEmail) {
@@ -95,9 +95,9 @@ export async function createClient(clientData) {
   const agencyId = getAgencyId();
   const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
   const now = new Date().toISOString();
-  
+
   const newClient = {
-    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
       var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
     }),
@@ -114,6 +114,8 @@ export async function createClient(clientData) {
   };
 
   if (isProd) {
+    console.log("clientData", clientData);
+    console.log("newClient", newClient);
     const { data, error } = await supabase.from(TABLE).insert([newClient]).select().single();
     if (error) {
       notifyDbError('createClient', error);
@@ -123,7 +125,7 @@ export async function createClient(clientData) {
     const updatedList = [data, ...getLocalClients().filter(c => c.id !== data.id)];
     saveLocalClients(updatedList);
     if (data.status) syncStatusToInvoices(data, data.status);
-    try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
+    try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
     return data;
   }
 
@@ -131,7 +133,7 @@ export async function createClient(clientData) {
   const updated = [newClient, ...getLocalClients()];
   saveLocalClients(updated);
   if (newClient.status) syncStatusToInvoices(newClient, newClient.status);
-  try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
+  try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
   return newClient;
 }
 
@@ -144,8 +146,8 @@ function syncStatusToInvoices(client, newStatus) {
     let updated = false;
     invList = invList.map(inv => {
       const match = (inv.client_name && client.name && inv.client_name.trim().toLowerCase() === client.name.trim().toLowerCase()) ||
-                    (inv.client_email && client.email && inv.client_email.trim().toLowerCase() === client.email.trim().toLowerCase()) ||
-                    String(inv.id) === `crm_${client.id}` || String(inv.id) === `inv_client_${client.id}`;
+        (inv.client_email && client.email && inv.client_email.trim().toLowerCase() === client.email.trim().toLowerCase()) ||
+        String(inv.id) === `crm_${client.id}` || String(inv.id) === `inv_client_${client.id}`;
       if (match) {
         updated = true;
         return {
@@ -159,7 +161,7 @@ function syncStatusToInvoices(client, newStatus) {
     if (!updated && ['Approved', 'Booked', 'Proposal Sent'].includes(newStatus)) {
       const autoInv = {
         id: `crm_${client.id}`,
-        invoice_number: `INV-${1000 + (Math.abs(String(client.id).split('').reduce((a,b)=>a+b.charCodeAt(0),0)) % 9000)}`,
+        invoice_number: `INV-${1000 + (Math.abs(String(client.id).split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % 9000)}`,
         client_name: client.name || 'Client',
         client_email: client.email || '',
         client_phone: client.phone || '',
@@ -176,7 +178,7 @@ function syncStatusToInvoices(client, newStatus) {
       invList = [autoInv, ...invList];
     }
     localStorage.setItem('voyanta_invoices_data', JSON.stringify(invList));
-    try { window.dispatchEvent(new CustomEvent('voyanta:invoices-updated')); } catch {}
+    try { window.dispatchEvent(new CustomEvent('voyanta:invoices-updated')); } catch { }
   } catch (e) {
     console.error('Failed to sync invoice status:', e);
   }
@@ -200,7 +202,7 @@ export async function updateClient(id, patch) {
     const list = getLocalClients().map(c => String(c.id) === String(id) ? { ...c, ...data } : c);
     saveLocalClients(list);
     if (data.status) syncStatusToInvoices(data, data.status);
-    try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
+    try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
     return data;
   }
 
@@ -224,7 +226,7 @@ export async function updateClient(id, patch) {
   }
   const updated = list.find(c => String(c.id) === String(id));
   if (patch.status && updated) syncStatusToInvoices(updated, patch.status);
-  try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
+  try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
   return updated || { id, ...updatePayload };
 }
 
@@ -242,7 +244,7 @@ export async function deleteClient(id) {
 
   const list = getLocalClients().filter(c => String(c.id) !== String(id));
   saveLocalClients(list);
-  try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch {}
+  try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
   return true;
 }
 
@@ -280,7 +282,7 @@ export async function upsertClientFromProposal(proposal) {
         const { data } = await supabase.from(TABLE).select('*').eq('agency_id', agencyId).ilike('name', normName).limit(1);
         if (data && data.length > 0) existing = data[0];
       }
-    } catch {}
+    } catch { }
   } else {
     // Demo Mode lookup
     const list = getLocalClients();
@@ -333,7 +335,7 @@ export async function findClientByContact({ phone, email }) {
   if (isProd) {
     try {
       let query = supabase.from(TABLE).select('*').eq('agency_id', agencyId);
-      
+
       const conditions = [];
       if (normEmail) {
         conditions.push(`email.ilike.${normEmail}`);
@@ -341,7 +343,7 @@ export async function findClientByContact({ phone, email }) {
       if (normPhone && normPhone.length >= 7) {
         conditions.push(`phone.like.%${normPhone}%`);
       }
-      
+
       if (conditions.length > 0) {
         query = query.or(conditions.join(','));
         const { data, error } = await query.limit(1).maybeSingle();
