@@ -21,21 +21,22 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
         run: |
           pip install boto3 python-dotenv
 
-       - name: Install Supabase CLI
+      - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
 
-       - name: Check Supabase CLI Version
+      - name: Check Supabase CLI Version
         run: |
-            supabase --version
-            supabase link --help
+          supabase --version
+          supabase link --help
 
-       - name: Dump Supabase Database & Upload to R2
-         env:
+      - name: Dump Supabase Database & Upload to R2
+        env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -43,6 +44,7 @@ jobs:
           CF_R2_PRIVATE_ACCESS_KEY_ID: ${{ secrets.CF_R2_PRIVATE_ACCESS_KEY_ID }}
           CF_R2_PRIVATE_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_PRIVATE_SECRET_ACCESS_KEY }}
           CF_R2_PRIVATE_ENDPOINT: ${{ secrets.CF_R2_PRIVATE_ENDPOINT }}
+          PYTHONPATH: backend
         run: |
           echo "Project ID length: ${#SUPABASE_PROJECT_ID}"
           echo "DB Password length: ${#SUPABASE_DB_PASSWORD}"
@@ -52,12 +54,12 @@ jobs:
           fi
           echo "Dumping database..."
           supabase link \
-           --project-ref "$SUPABASE_PROJECT_ID" \
-           --password "$SUPABASE_DB_PASSWORD"
+            --project-ref "$SUPABASE_PROJECT_ID" \
+            --password "$SUPABASE_DB_PASSWORD"
           supabase db dump \
-           --linked \
-           --password "$SUPABASE_DB_PASSWORD" \
-           -f backup.sql
+            --linked \
+            --password "$SUPABASE_DB_PASSWORD" \
+            -f backup.sql
           gzip backup.sql
           echo "Uploading backup.sql.gz to Cloudflare R2..."
           python backend/scripts/backup_supabase_to_r2.py backup.sql.gz
