@@ -28,5 +28,5 @@ COPY . .
 # Expose microservice port
 EXPOSE 8000
 
-# Run FastAPI using uvicorn server with explicit IPv4 loopback handling
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run FastAPI using uvicorn server with dynamic Railway $PORT handling
+CMD ["sh", "-c", "uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
