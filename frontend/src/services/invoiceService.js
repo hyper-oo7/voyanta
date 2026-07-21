@@ -143,7 +143,10 @@ function filterList(list, { clientName, status, destination, currency }) {
       copy.remaining_balance = Math.max(0, Number(copy.total_amount || 0) - Number(copy.paid_amount || 0));
     }
     if (!Array.isArray(copy.taxes) || copy.taxes.length === 0) {
-      copy.taxes = [{ id: 'tax-1', name: 'GST / Tax', rate: Number(copy.tax_rate !== undefined ? copy.tax_rate : 5), amount: Number(copy.tax_amount || 0) }];
+      copy.taxes = copy.branding?.taxes || [{ id: 'tax-1', name: 'GST / Tax', rate: Number(copy.tax_rate !== undefined ? copy.tax_rate : 5), amount: Number(copy.tax_amount || 0) }];
+    }
+    if (!copy.custom_columns && copy.branding?.custom_columns) {
+      copy.custom_columns = copy.branding.custom_columns;
     }
     return copy;
   });
@@ -381,6 +384,31 @@ export async function createInvoice(customData = {}) {
   return await saveInvoiceRecord(newInvoice, true);
 }
 
+function toDbPayload(invoice) {
+  const allowed = new Set([
+    'id', 'agency_id', 'proposal_id', 'invoice_number', 'client_name', 'client_email',
+    'client_phone', 'destination', 'status', 'issue_date', 'due_date', 'currency',
+    'subtotal', 'tax_rate', 'tax_amount', 'total_amount', 'paid_amount', 'remaining_balance',
+    'parent_invoice_id', 'items', 'notes', 'terms', 'upi_id', 'upi_payee_name',
+    'branding', 'activity_log', 'created_at', 'updated_at', 'custom_columns', 'taxes'
+  ]);
+  const payload = {};
+  for (const key of Object.keys(invoice)) {
+    if (allowed.has(key)) {
+      payload[key] = invoice[key];
+    }
+  }
+  // Safely preserve custom_columns and taxes inside branding jsonb so they persist across reloads
+  if (invoice.custom_columns || invoice.taxes) {
+    payload.branding = {
+      ...(payload.branding || {}),
+      custom_columns: invoice.custom_columns || payload.branding?.custom_columns,
+      taxes: invoice.taxes || payload.branding?.taxes
+    };
+  }
+  return payload;
+}
+
 export async function saveInvoiceRecord(invoice, isNew = false) {
   const agencyId = getAgencyId();
   const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
@@ -388,17 +416,39 @@ export async function saveInvoiceRecord(invoice, isNew = false) {
   const updated = { ...invoice, updated_at: now };
 
   if (isProd) {
+    const dbPayload = toDbPayload(updated);
     if (isNew) {
-      const { error } = await supabase.from('invoices').insert([updated]);
+      const { error } = await supabase.from('invoices').insert([dbPayload]);
       if (error) {
-        notifyDbError('invoices', error);
-        throw error;
+        // If custom_columns/taxes column doesn't exist yet, retry without them in top-level payload
+        if (error.message?.includes('schema cache') || error.message?.includes('column')) {
+          delete dbPayload.custom_columns;
+          delete dbPayload.taxes;
+          const { error: retryErr } = await supabase.from('invoices').insert([dbPayload]);
+          if (retryErr) {
+            notifyDbError('invoices', retryErr);
+            throw retryErr;
+          }
+        } else {
+          notifyDbError('invoices', error);
+          throw error;
+        }
       }
     } else {
-      const { error } = await supabase.from('invoices').update(updated).eq('id', updated.id);
+      const { error } = await supabase.from('invoices').update(dbPayload).eq('id', updated.id);
       if (error) {
-        notifyDbError('invoices', error);
-        throw error;
+        if (error.message?.includes('schema cache') || error.message?.includes('column')) {
+          delete dbPayload.custom_columns;
+          delete dbPayload.taxes;
+          const { error: retryErr } = await supabase.from('invoices').update(dbPayload).eq('id', updated.id);
+          if (retryErr) {
+            notifyDbError('invoices', retryErr);
+            throw retryErr;
+          }
+        } else {
+          notifyDbError('invoices', error);
+          throw error;
+        }
       }
     }
   }
