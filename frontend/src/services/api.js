@@ -3,6 +3,11 @@ import { supabase } from '../lib/supabaseClient.js';
 
 export function getBackendUrl(path = '') {
   let base = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    if (base.includes('localhost') || base.includes('127.0.0.1')) {
+      base = '';
+    }
+  }
   if (!path) return base;
   if (path.startsWith('/api')) {
     if (base) return `${base}${path}`;
