@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { uploadOrEmbed } from '../LogoUploader.jsx';
+import { api, getBackendUrl } from '../../services/api.js';
 
 const CURATED_CATEGORIES = [
   { id: 'all', label: 'All Luxury Travel', icon: 'travel_explore' },
@@ -98,10 +99,7 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
 
     try {
       const searchQuery = [trimmed, activeCategory !== 'all' ? activeCategory.replace('_', ' ') : ''].filter(Boolean).join(' ');
-      const resp = await fetch(`/api/public/images/search?query=${encodeURIComponent(searchQuery)}`);
-      if (!resp.ok) throw new Error(`API responded ${resp.status}`);
-
-      const data = await resp.json();
+      const data = await api.get(`/api/public/images/search?query=${encodeURIComponent(searchQuery)}`);
       const apiResults = (data.results || []).map(img => ({
         ...img,
         title: img.title || `${trimmed} by ${img.author || 'Stock Photo'}`,
@@ -316,11 +314,7 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
                         type="button"
                         onClick={() => {
                           if (img.download_location) {
-                            fetch('/api/public/images/download', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ download_location: img.download_location })
-                            }).catch(() => {});
+                            api.post('/api/public/images/download', { download_location: img.download_location }).catch(() => {});
                           }
                           onSelect(img.url);
                         }}

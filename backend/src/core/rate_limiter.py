@@ -21,7 +21,7 @@ class DistributedRateLimiterMiddleware(BaseHTTPMiddleware):
     Uses Redis when configured (REDIS_URL) for horizontal scaling across instances.
     Falls back gracefully to memory cache with automatic TTL eviction if Redis is offline.
     """
-    def __init__(self, app, max_requests: int = 200, window_seconds: int = 60):
+    def __init__(self, app, max_requests: int = 1000, window_seconds: int = 60):
         super().__init__(app)
         self.max_requests = max_requests
         self.window_seconds = window_seconds
@@ -84,16 +84,18 @@ class DistributedRateLimiterMiddleware(BaseHTTPMiddleware):
         return True
 
     async def dispatch(self, request: Request, call_next):
-        # Exclude health endpoints from rate limiting
-        if request.url.path in ("/api/health", "/api/pdf/health", "/api/ppt/health"):
+        # Exclude health endpoints and public stock photo searches from rate limiting
+        if request.url.path in ("/api/health", "/api/pdf/health", "/api/ppt/health", "/api/public/images/search"):
             return await call_next(request)
 
-        # Identity key: Only inspect X-Forwarded-For if immediate peer is a verified trusted proxy
+        # Identity key: Inspect X-Forwarded-For if immediate peer is a loopback/private proxy or trusted
         immediate_ip = request.client.host if request.client else "127.0.0.1"
-        trusted_proxies_str = os.environ.get("TRUSTED_PROXIES", "127.0.0.1,::1,localhost")
+        trusted_proxies_str = os.environ.get("TRUSTED_PROXIES", "127.0.0.1,::1,localhost,*")
         trusted_proxies = {p.strip() for p in trusted_proxies_str.split(",") if p.strip()}
         
-        if immediate_ip in trusted_proxies and request.headers.get("x-forwarded-for"):
+        is_private_proxy = immediate_ip.startswith(("10.", "172.", "192.168.", "127.", "::1")) or "*" in trusted_proxies or immediate_ip in trusted_proxies
+        
+        if is_private_proxy and request.headers.get("x-forwarded-for"):
             key = request.headers.get("x-forwarded-for").split(",")[0].strip()
         else:
             key = immediate_ip

@@ -4,24 +4,33 @@ import logging
 import httpx
 import re
 from typing import Any, Dict, List, Optional
+import tenacity
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-1.5-flash"
 OPENAI_MODEL = "gpt-4o-mini"
 
 class AIServiceError(Exception):
     pass
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+class RetriableAIServiceError(AIServiceError):
+    pass
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=5),
+    retry=tenacity.retry_if_exception_type((RetriableAIServiceError, httpx.NetworkError, httpx.TimeoutException))
+)
 async def _post_http_call(url: str, json_payload: dict, headers: dict) -> dict:
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=45.0) as client:
         r = await client.post(url, json=json_payload, headers=headers)
         if r.status_code == 429 or r.status_code >= 500:
-            logger.warning(f"LLM API error {r.status_code}, retrying...")
-            raise AIServiceError(f"LLM error {r.status_code}: {r.text}")
+            logger.warning(f"LLM API retriable error {r.status_code}, retrying...")
+            raise RetriableAIServiceError(f"LLM error {r.status_code}: {r.text}")
         if r.status_code != 200:
+            # Non-retriable error (400, 401, 403, 404). Raise AIServiceError so we try next model/provider immediately!
             raise AIServiceError(f"LLM API processing failed: {r.status_code} - {r.text}")
         return r.json()
 
@@ -83,7 +92,7 @@ async def call_llm(
     # Helper function to perform the actual call based on the resolved provider
     async def execute_call(active_provider: str) -> str:
         if active_provider == "gemini":
-            models_to_try = [GEMINI_MODEL, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.5-flash"]
+            models_to_try = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-1.5-pro"]
             last_err = None
             for g_model in models_to_try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{g_model}:generateContent?key={api_key_gemini}"
@@ -123,7 +132,7 @@ async def call_llm(
                     return res["candidates"][0]["content"]["parts"][0]["text"]
                 except Exception as e:
                     last_err = e
-                    logger.warning(f"Gemini model {g_model} failed: {e}. Trying fallback Gemini model.")
+                    logger.warning(f"Gemini model {g_model} failed: {e}. Trying next Gemini model immediately.")
             raise last_err or AIServiceError("All Gemini model endpoints failed.")
             
         else:  # openai

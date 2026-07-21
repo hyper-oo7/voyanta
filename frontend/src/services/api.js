@@ -7,6 +7,9 @@ export function getBackendUrl(path = '') {
     if (base.includes('localhost') || base.includes('127.0.0.1')) {
       base = '';
     }
+    if (!base) {
+      base = 'https://voyanta-production-138b.up.railway.app';
+    }
   }
   if (!path) return base;
   if (path.startsWith('/api')) {
