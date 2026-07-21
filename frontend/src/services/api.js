@@ -4,6 +4,12 @@ import { supabase } from '../lib/supabaseClient.js';
 export function getBackendUrl(path = '') {
   let base = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    // When running on Vercel (or any production host), route /api through same-origin (/api/...)
+    // so Vercel's Edge CDN reverse-proxies directly to Railway (as defined in vercel.json).
+    // This completely bypasses local ISP/router DNS blocking of *.up.railway.app and CORS restrictions.
+    if (path.startsWith('/api')) {
+      return path;
+    }
     if (base.includes('localhost') || base.includes('127.0.0.1')) {
       base = '';
     }
