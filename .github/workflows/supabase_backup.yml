@@ -39,6 +39,8 @@ jobs:
           CF_R2_PRIVATE_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_PRIVATE_SECRET_ACCESS_KEY }}
           CF_R2_PRIVATE_ENDPOINT: ${{ secrets.CF_R2_PRIVATE_ENDPOINT }}
         run: |
+          echo "Project ID length: ${#SUPABASE_PROJECT_ID}"
+          echo "DB Password length: ${#SUPABASE_DB_PASSWORD}"
           if [ -z "$SUPABASE_PROJECT_ID" ] || [ -z "$SUPABASE_DB_PASSWORD" ]; then
             echo "Supabase project credentials not configured. Skipping backup."
             exit 0
