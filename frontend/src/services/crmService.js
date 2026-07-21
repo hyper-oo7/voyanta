@@ -134,7 +134,14 @@ export async function createClient(clientData) {
   if (isProd) {
     console.log("clientData", clientData);
     console.log("newClient", newClient);
-    const { data, error } = await supabase.from(TABLE).insert([newClient]).select().single();
+    let { data, error } = await supabase.from(TABLE).insert([newClient]).select().single();
+    if (error && (error.message?.includes('clients_status_check') || error.code === '23514')) {
+      console.warn('clients_status_check error encountered; retrying insert with default Inquiry status');
+      const fallbackClient = { ...newClient, status: 'Inquiry' };
+      const retryRes = await supabase.from(TABLE).insert([fallbackClient]).select().single();
+      data = retryRes.data;
+      error = retryRes.error;
+    }
     if (error) {
       notifyDbError('createClient', error);
       throw error;
@@ -215,7 +222,14 @@ export async function updateClient(id, patch) {
   const updatePayload = { ...cleanPatch, agency_id: agencyId, updated_at: now };
 
   if (isProd && !String(id).startsWith('inv_client_')) {
-    const { data, error } = await supabase.from(TABLE).update(updatePayload).eq('id', id).select().single();
+    let { data, error } = await supabase.from(TABLE).update(updatePayload).eq('id', id).select().single();
+    if (error && (error.message?.includes('clients_status_check') || error.code === '23514')) {
+      console.warn('clients_status_check error encountered in updateClient; retrying update with default Inquiry status');
+      const retryPayload = { ...updatePayload, status: 'Inquiry' };
+      const retryRes = await supabase.from(TABLE).update(retryPayload).eq('id', id).select().single();
+      data = retryRes.data;
+      error = retryRes.error;
+    }
     if (error) {
       notifyDbError('updateClient', error);
       throw error;
