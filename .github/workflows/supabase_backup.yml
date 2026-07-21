@@ -46,10 +46,10 @@ jobs:
           CF_R2_PRIVATE_ENDPOINT: ${{ secrets.CF_R2_PRIVATE_ENDPOINT }}
           PYTHONPATH: backend
         run: |
-          # Sanitize secrets to remove any trailing newlines/carriage returns (\r, \n) or spaces pasted into GitHub Secrets
-          CLEAN_PROJECT_ID=$(echo -n "$SUPABASE_PROJECT_ID" | tr -d '\r\n ')
-          CLEAN_DB_PASSWORD=$(echo -n "$SUPABASE_DB_PASSWORD" | tr -d '\r\n ')
-          CLEAN_ACCESS_TOKEN=$(echo -n "$SUPABASE_ACCESS_TOKEN" | tr -d '\r\n ')
+          # Sanitize secrets to remove tabs, quotes, or invisible characters pasted into GitHub Secrets
+          CLEAN_PROJECT_ID=$(echo -n "$SUPABASE_PROJECT_ID" | tr -cd 'a-zA-Z0-9')
+          CLEAN_DB_PASSWORD=$(echo -n "$SUPABASE_DB_PASSWORD" | tr -d '\r\n\t ' | sed -e 's/^["\x27]//' -e 's/["\x27]$//')
+          CLEAN_ACCESS_TOKEN=$(echo -n "$SUPABASE_ACCESS_TOKEN" | tr -d '\r\n\t ' | sed -e 's/^["\x27]//' -e 's/["\x27]$//')
           export SUPABASE_ACCESS_TOKEN="$CLEAN_ACCESS_TOKEN"
 
           echo "Sanitized Project ID length: ${#CLEAN_PROJECT_ID}"
@@ -63,13 +63,15 @@ jobs:
           echo "Linking database project ${CLEAN_PROJECT_ID}..."
           supabase link \
             --project-ref "$CLEAN_PROJECT_ID" \
-            --password "$CLEAN_DB_PASSWORD"
+            --password "$CLEAN_DB_PASSWORD" \
+            --debug
 
           echo "Dumping database schema and data..."
           supabase db dump \
             --linked \
             --password "$CLEAN_DB_PASSWORD" \
-            -f backup.sql
+            -f backup.sql \
+            --debug
 
           gzip -f backup.sql
           echo "Uploading backup.sql.gz to Cloudflare R2..."
