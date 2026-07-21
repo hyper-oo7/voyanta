@@ -331,7 +331,11 @@ export default function TemplatesPage() {
         onClose={() => setUpgradeModalOpen(false)}
         lockedItemName={lockedTemplateName}
         onUpgradeSuccess={(newPlan) => {
-          toast.success(`Upgraded to ${newPlan}! All Premium layouts unlocked.`);
+          const formatted = newPlan || 'Professional';
+          localStorage.setItem('voyanta_active_plan', formatted);
+          localStorage.setItem('voyanta_user_plan', formatted);
+          window.dispatchEvent(new CustomEvent('voyanta:plan-updated'));
+          toast.success(`Upgraded to ${formatted}! All Premium layouts unlocked.`);
           refreshEntitlement();
         }}
       />

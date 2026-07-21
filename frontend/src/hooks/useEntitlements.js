@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { api } from '../services/api.js';
 
 const DEFAULT_ENTITLEMENT = {
   plan: 'Starter',
@@ -43,23 +44,20 @@ export function useEntitlements() {
     setLoading(true);
     const storedPlan = typeof window !== 'undefined' ? (localStorage.getItem('voyanta_active_plan') || localStorage.getItem('voyanta_pending_subscription_plan') || localStorage.getItem('voyanta_user_plan')) : null;
     try {
-      const res = await fetch('/api/billing/entitlements?agency_id=demo-agency-id');
-      if (res.ok) {
-        const data = await res.json();
-        if (storedPlan && storedPlan.toLowerCase() !== 'starter') {
-          data.plan = storedPlan.charAt(0).toUpperCase() + storedPlan.slice(1);
-          data.allowed_template_tiers = ['Basic', 'Premium', 'Bespoke', 'Luxury', 'Enterprise'];
-          data.features = {
-            ...data.features,
-            ai_rewrite: true,
-            ai_proposal_review: true,
-            ai_curated_itinerary: true,
-            ai_cost_optimizer: true
-          };
-        }
-        setEntitlement(data);
-        return;
+      const data = await api.get('/api/billing/entitlements?agency_id=demo-agency-id');
+      if (storedPlan && storedPlan.toLowerCase() !== 'starter') {
+        data.plan = storedPlan.charAt(0).toUpperCase() + storedPlan.slice(1);
+        data.allowed_template_tiers = ['Basic', 'Premium', 'Bespoke', 'Luxury', 'Enterprise'];
+        data.features = {
+          ...data.features,
+          ai_rewrite: true,
+          ai_proposal_review: true,
+          ai_curated_itinerary: true,
+          ai_cost_optimizer: true
+        };
       }
+      setEntitlement(data);
+      return;
     } catch (err) {
       console.warn('Using fallback entitlement:', err);
     } finally {

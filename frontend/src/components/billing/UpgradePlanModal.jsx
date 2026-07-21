@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { api } from '../../services/api.js';
 
 export default function UpgradePlanModal({ isOpen, onClose, lockedItemName, onUpgradeSuccess }) {
   const [selectedPlan, setSelectedPlan] = useState('professional');
@@ -20,42 +21,28 @@ export default function UpgradePlanModal({ isOpen, onClose, lockedItemName, onUp
     setError(null);
     try {
       // Step 1: Create subscription order
-      const orderRes = await fetch('/api/billing/create-subscription', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          plan_slug: selectedPlan,
-          billing_cycle: billingCycle,
-          agency_id: 'demo-agency-id'
-        })
+      const orderData = await api.post('/api/billing/create-subscription', {
+        plan_slug: selectedPlan,
+        billing_cycle: billingCycle,
+        agency_id: 'demo-agency-id'
       });
-
-      if (!orderRes.ok) {
-        throw new Error('Failed to initialize Razorpay order');
-      }
-
-      const orderData = await orderRes.json();
 
       // Step 2: Verify payment (using mock verification signature for instant test/demo)
-      const verifyRes = await fetch('/api/billing/verify-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agency_id: 'demo-agency-id',
-          plan_slug: selectedPlan,
-          razorpay_payment_id: `pay_${Date.now()}`,
-          razorpay_subscription_id: orderData.subscription_id,
-          razorpay_signature: 'mock_signature',
-          amount_inr: getPriceInr(selectedPlan)
-        })
+      const result = await api.post('/api/billing/verify-payment', {
+        agency_id: 'demo-agency-id',
+        plan_slug: selectedPlan,
+        razorpay_payment_id: `pay_${Date.now()}`,
+        razorpay_subscription_id: orderData.subscription_id,
+        razorpay_signature: 'mock_signature',
+        amount_inr: getPriceInr(selectedPlan)
       });
 
-      if (!verifyRes.ok) {
-        throw new Error('Payment signature verification failed');
-      }
+      const formattedPlan = selectedPlan === 'enterprise' ? 'Enterprise' : selectedPlan === 'professional_plus' ? 'Professional Plus' : 'Professional';
+      localStorage.setItem('voyanta_active_plan', formattedPlan);
+      localStorage.setItem('voyanta_user_plan', formattedPlan);
+      window.dispatchEvent(new CustomEvent('voyanta:plan-updated'));
 
-      const result = await verifyRes.json();
-      if (onUpgradeSuccess) onUpgradeSuccess(result.plan);
+      if (onUpgradeSuccess) onUpgradeSuccess(result.plan || formattedPlan);
       onClose();
     } catch (err) {
       setError(err.message || 'Checkout failed');
