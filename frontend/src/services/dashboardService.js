@@ -67,9 +67,22 @@ export async function fetchDashboardSummary() {
   }
 }
 
-function fallbackSummary(proposalsParam) {
+async function fallbackSummary(proposalsParam) {
   const proposals = Array.isArray(proposalsParam) ? proposalsParam : [];
   const recentProposals = proposals.slice(0, 4);
+  
+  let recentActivity = [];
+  try {
+    const activityLogs = await getActivityLogs(10);
+    recentActivity = (activityLogs || []).map((log, i) => ({
+      id: log.id || i,
+      type: log.type === 'approval' ? 'check_circle' : log.type === 'modification' ? 'edit_note' : log.type === 'pdf' ? 'picture_as_pdf' : log.type === 'invoice' ? 'receipt' : log.type === 'crm' ? 'person_add' : 'sync',
+      title: log.description?.split(' ').slice(0, 4).join(' ') || log.type || 'Activity',
+      detail: log.description || '',
+      when: formatRelativeTime(log.timestamp || log.created_at),
+    }));
+  } catch {}
+
   return {
     totalProposals: proposals.length,
     totalTemplates: 0,
@@ -79,7 +92,7 @@ function fallbackSummary(proposalsParam) {
     totalApprovals: 0,
     totalModifications: 0,
     recentProposals,
-    recentActivity: [],
+    recentActivity,
   };
 }
 

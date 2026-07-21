@@ -123,6 +123,24 @@ export default function AppLayout() {
         }
       } catch { }
 
+      // Read real activity logs
+      try {
+        const actLogs = JSON.parse(localStorage.getItem('voyanta_activity_logs') || '[]');
+        if (Array.isArray(actLogs)) {
+          actLogs.forEach(log => {
+            items.push({
+              id: `act_log_${log.id}`,
+              icon: log.type === 'approval' ? 'check_circle' : log.type === 'modification' ? 'edit_note' : log.type === 'pdf' ? 'picture_as_pdf' : log.type === 'invoice' ? 'receipt' : log.type === 'crm' ? 'person_add' : 'sync',
+              title: log.type ? log.type.toUpperCase() : 'Activity',
+              desc: log.description || '',
+              time: log.timestamp || log.created_at || 'Just now',
+              unread: true,
+              ts: new Date(log.timestamp || log.created_at || Date.now()).getTime()
+            });
+          });
+        }
+      } catch { }
+
       // Check real proposals
       try {
         const props = JSON.parse(localStorage.getItem('voyanta_proposals') || '[]');

@@ -107,21 +107,28 @@ export async function createClient(clientData) {
 
   const validStatus = sanitizeStatus(clientData.status);
 
+  // Filter payload to only include valid Supabase columns for public.clients
+  const rawId = clientData.id;
+  const isValidUuid = rawId && typeof rawId === 'string' && !rawId.startsWith('manual_') && !rawId.startsWith('proposal_') && !rawId.startsWith('invoice_') && !rawId.startsWith('receipt_');
+  const clientId = isValidUuid ? rawId : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  }));
+
   const newClient = {
-    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-      var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    }),
-    name: clientData.name || 'Unnamed Client',
-    email: clientData.email || '',
-    phone: clientData.phone || '',
+    id: clientId,
+    name: (clientData.name || 'Unnamed Client').trim(),
+    email: (clientData.email || '').trim(),
+    phone: (clientData.phone || '').trim(),
     destination: clientData.destination || '',
+    status: validStatus,
     notes: clientData.notes || '',
+    preferences: clientData.preferences || {},
+    tags: Array.isArray(clientData.tags) ? clientData.tags : [],
+    total_spend: Number(clientData.total_spend) || 0,
     created_at: now,
     updated_at: now,
-    ...clientData,
-    status: validStatus, // Force valid status after spreading clientData to prevent invalid values like 'Active'
-    agency_id: agencyId // Force current active agency_id at the end to prevent overwrite
+    agency_id: agencyId
   };
 
   if (isProd) {
@@ -311,9 +318,11 @@ export async function upsertClientFromProposal(proposal) {
     }
   }
 
+  const targetStatus = sanitizeStatus(proposal.status);
+
   if (existing) {
     return updateClient(existing.id, {
-      status: proposal.status || 'Proposal Sent',
+      status: targetStatus,
       destination: destination || existing.destination,
       phone: phone || existing.phone,
       preferences: {
@@ -327,7 +336,7 @@ export async function upsertClientFromProposal(proposal) {
       email,
       phone,
       destination,
-      status: proposal.status || 'Proposal Sent',
+      status: targetStatus,
       notes: `Generated proposal: ${proposal.name || 'Safari Adventure'}`,
       preferences: clientPreferences
     });
