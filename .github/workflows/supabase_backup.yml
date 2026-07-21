@@ -46,7 +46,13 @@ jobs:
             exit 0
           fi
           echo "Dumping database..."
-          supabase db dump --project-ref "$SUPABASE_PROJECT_ID" -f backup.sql
+          supabase link \
+           --project-ref "$SUPABASE_PROJECT_ID" \
+           --password "$SUPABASE_DB_PASSWORD"
+          supabase db dump \
+           --linked \
+           --password "$SUPABASE_DB_PASSWORD" \
+           -f backup.sql
           gzip backup.sql
           echo "Uploading backup.sql.gz to Cloudflare R2..."
           python backend/scripts/backup_supabase_to_r2.py backup.sql.gz
