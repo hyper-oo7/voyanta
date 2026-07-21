@@ -11,7 +11,7 @@ export default function ContactsPage() {
   const [editingId, setEditingId] = useState(null);
   
   const [formData, setFormData] = useState({
-    name: '', email: '', phone: '', destination: '', status: 'Active'
+    name: '', email: '', phone: '', destination: '', status: 'Inquiry'
   });
 
   // Blacklisted/hidden contacts
@@ -31,8 +31,8 @@ export default function ContactsPage() {
       if (stored) return JSON.parse(stored);
     } catch {}
     return [
-      { id: '1', name: 'Marcus Thorne', email: 'marcus.t@venturecap.io', phone: '+91 98200 11223', destination: 'Tokyo, Japan', status: 'VIP Client', consentRecorded: '2026-06-15' },
-      { id: '2', name: 'Eleanor Vance', email: 'eleanor.vance@vancemedia.com', phone: '+91 98110 44556', destination: 'Swiss Alps', status: 'Active', consentRecorded: '2026-06-20' }
+      { id: '1', name: 'Marcus Thorne', email: 'marcus.t@venturecap.io', phone: '+91 98200 11223', destination: 'Tokyo, Japan', status: 'Inquiry', consentRecorded: '2026-06-15' },
+      { id: '2', name: 'Eleanor Vance', email: 'eleanor.vance@vancemedia.com', phone: '+91 98110 44556', destination: 'Swiss Alps', status: 'Inquiry', consentRecorded: '2026-06-20' }
     ];
   });
 
@@ -90,7 +90,7 @@ export default function ContactsPage() {
                 email: email,
                 phone: c.phone || '',
                 destination: c.destination || '',
-                status: c.status || 'Active',
+                status: c.status || 'Inquiry',
                 consentRecorded: c.created_at ? c.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
                 source: 'crm',
                 proposalsCount: 0,
@@ -123,7 +123,7 @@ export default function ContactsPage() {
                 email: email,
                 phone: p.client_phone || '',
                 destination: p.destination || '',
-                status: p.status || 'Active',
+                status: p.status || 'Inquiry',
                 consentRecorded: p.created_at ? p.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
                 source: 'proposal',
                 proposalsCount: 1,
@@ -158,7 +158,7 @@ export default function ContactsPage() {
                 email: email,
                 phone: inv.client_phone || '',
                 destination: inv.destination || '',
-                status: 'Active',
+                status: 'Inquiry',
                 consentRecorded: inv.created_at ? inv.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
                 source: 'invoice',
                 proposalsCount: 0,
@@ -190,7 +190,7 @@ export default function ContactsPage() {
                 email: email,
                 phone: rec.client_phone || '',
                 destination: rec.destination || '',
-                status: 'Active',
+                status: 'Inquiry',
                 consentRecorded: rec.created_at ? rec.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
                 source: 'receipt',
                 proposalsCount: 0,
@@ -210,7 +210,7 @@ export default function ContactsPage() {
 
   const handleOpenNew = () => {
     setEditingId(null);
-    setFormData({ name: '', email: '', phone: '', destination: '', status: 'Active' });
+    setFormData({ name: '', email: '', phone: '', destination: '', status: 'Inquiry' });
     setShowModal(true);
   };
 
@@ -221,7 +221,7 @@ export default function ContactsPage() {
       email: c.email,
       phone: c.phone || '',
       destination: c.destination || '',
-      status: c.status || 'Active'
+      status: c.status || 'Inquiry'
     });
     setShowModal(true);
   };

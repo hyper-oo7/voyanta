@@ -20,6 +20,15 @@ export const TRIP_STATUSES = [
   { id: 'Booked', label: 'Booked', color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' }
 ];
 
+export const VALID_CLIENT_STATUSES = ['Inquiry', 'Proposal Sent', 'Approved', 'Booked', 'Completed', 'Cancelled'];
+
+export function sanitizeStatus(status) {
+  if (!status) return 'Inquiry';
+  if (VALID_CLIENT_STATUSES.includes(status)) return status;
+  const match = VALID_CLIENT_STATUSES.find(s => s.toLowerCase() === String(status).toLowerCase());
+  return match || 'Inquiry';
+}
+
 function getLocalClients() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -96,6 +105,8 @@ export async function createClient(clientData) {
   const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
   const now = new Date().toISOString();
 
+  const validStatus = sanitizeStatus(clientData.status);
+
   const newClient = {
     id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
       var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
@@ -105,11 +116,11 @@ export async function createClient(clientData) {
     email: clientData.email || '',
     phone: clientData.phone || '',
     destination: clientData.destination || '',
-    status: clientData.status || 'Inquiry',
     notes: clientData.notes || '',
     created_at: now,
     updated_at: now,
     ...clientData,
+    status: validStatus, // Force valid status after spreading clientData to prevent invalid values like 'Active'
     agency_id: agencyId // Force current active agency_id at the end to prevent overwrite
   };
 
@@ -191,6 +202,9 @@ export async function updateClient(id, patch) {
 
   // Strip agency_id from updates to avoid RLS constraint checks
   const { agency_id, ...cleanPatch } = patch;
+  if (cleanPatch.status) {
+    cleanPatch.status = sanitizeStatus(cleanPatch.status);
+  }
   const updatePayload = { ...cleanPatch, agency_id: agencyId, updated_at: now };
 
   if (isProd && !String(id).startsWith('inv_client_')) {
