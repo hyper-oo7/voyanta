@@ -60,9 +60,14 @@ export default function AuthenticationPage() {
     
     try {
       if (isSignUp) {
-        await signUp({ email, password, fullName });
-        toast.success('Account created! Please check your inbox.');
-        setIsSignUp(false);
+        const res = await signUp({ email, password, fullName });
+        if (res?.session) {
+          toast.success('Account created successfully!');
+          setTimeout(() => navigate(redirectTo, { replace: true }), 300);
+        } else {
+          toast.success('Account created successfully! Please sign in with your credentials.');
+          setIsSignUp(false);
+        }
       } else {
         await signIn({ email, password });
         toast.success('Welcome back!');
