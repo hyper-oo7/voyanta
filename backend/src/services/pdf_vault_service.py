@@ -632,7 +632,7 @@ def deterministic_pre_parse_and_compress(text: str) -> Tuple[str, Dict[str, Any]
             if any(kw in match_text for kw in PROTECTED_KEYWORDS):
                 logger.warning(
                     f"[Token Compression] SKIPPED strip match: pattern contains protected keyword. "
-                    f"Preview: '{match_text[:120].replace('\n', ' ')}...'"
+                    f"Preview: '{preview}...'"
                 )
                 continue
             safe_matches.append(m)
