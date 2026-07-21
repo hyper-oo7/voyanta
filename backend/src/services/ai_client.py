@@ -8,7 +8,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-2.0-flash"
 OPENAI_MODEL = "gpt-4o-mini"
 
 class AIServiceError(Exception):
@@ -36,7 +36,8 @@ async def call_llm(
     cache_meta: Optional[dict] = None
 ) -> str:
     """
-    Unified entrypoint for all AI service calls.
+    Unified entry point for AI text & vision generation across all modules.
+    
     Implements:
     - Automatic provider fallback (e.g. Gemini falls back to OpenAI if Gemini fails or is not configured)
     - Semantic / exact input caching via get_cached_extraction & save_cached_extraction
@@ -82,41 +83,48 @@ async def call_llm(
     # Helper function to perform the actual call based on the resolved provider
     async def execute_call(active_provider: str) -> str:
         if active_provider == "gemini":
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key_gemini}"
-            headers = {"Content-Type": "application/json"}
-            
-            parts = [{"text": prompt}]
-            if images:
-                for img in images:
-                    if "mime_type" in img and "data" in img:
-                        parts.append({
-                            "inlineData": {
-                                "mimeType": img["mime_type"],
-                                "data": img["data"]
-                            }
-                        })
-            
-            payload = {
-                "contents": [{
-                    "role": "user",
-                    "parts": parts
-                }],
-                "generationConfig": {
-                    "temperature": temperature,
-                }
-            }
-            if max_tokens:
-                payload["generationConfig"]["maxOutputTokens"] = min(max_tokens, 8192)
-            if response_schema:
-                payload["generationConfig"]["responseMimeType"] = "application/json"
+            models_to_try = [GEMINI_MODEL, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.5-flash"]
+            last_err = None
+            for g_model in models_to_try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{g_model}:generateContent?key={api_key_gemini}"
+                headers = {"Content-Type": "application/json"}
                 
-            if system_prompt:
-                payload["systemInstruction"] = {
-                    "parts": [{"text": system_prompt}]
-                }
+                parts = [{"text": prompt}]
+                if images:
+                    for img in images:
+                        if "mime_type" in img and "data" in img:
+                            parts.append({
+                                "inlineData": {
+                                    "mimeType": img["mime_type"],
+                                    "data": img["data"]
+                                }
+                            })
                 
-            res = await _post_http_call(url, payload, headers)
-            return res["candidates"][0]["content"]["parts"][0]["text"]
+                payload = {
+                    "contents": [{
+                        "role": "user",
+                        "parts": parts
+                    }],
+                    "generationConfig": {
+                        "temperature": temperature,
+                    }
+                }
+                if max_tokens:
+                    payload["generationConfig"]["maxOutputTokens"] = min(max_tokens, 8192)
+                if response_schema:
+                    payload["generationConfig"]["responseMimeType"] = "application/json"
+                    
+                if system_prompt:
+                    payload["systemInstruction"] = {
+                        "parts": [{"text": system_prompt}]
+                    }
+                try:
+                    res = await _post_http_call(url, payload, headers)
+                    return res["candidates"][0]["content"]["parts"][0]["text"]
+                except Exception as e:
+                    last_err = e
+                    logger.warning(f"Gemini model {g_model} failed: {e}. Trying fallback Gemini model.")
+            raise last_err or AIServiceError("All Gemini model endpoints failed.")
             
         else:  # openai
             url = "https://api.openai.com/v1/chat/completions"

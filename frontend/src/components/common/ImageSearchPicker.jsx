@@ -314,13 +314,30 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
                       <button
                         key={img.id}
                         type="button"
-                        onClick={() => onSelect(img.url)}
+                        onClick={() => {
+                          if (img.download_location) {
+                            fetch('/api/public/images/download', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ download_location: img.download_location })
+                            }).catch(() => {});
+                          }
+                          onSelect(img.url);
+                        }}
                         className="group relative aspect-video sm:aspect-square rounded-xl overflow-hidden border border-outline-variant hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-all cursor-pointer bg-surface-variant shadow-sm"
                       >
                         <img src={img.thumb} alt={img.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 text-left">
                           <span className="font-bold text-white text-xs truncate w-full">{img.title}</span>
-                          <span className="text-[10px] text-white/80 font-medium">{img.author}</span>
+                          <span className="text-[10px] text-white/90 font-medium truncate w-full">
+                            Photo by {img.author_url ? (
+                              <a href={img.author_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline hover:text-white font-semibold">
+                                {img.author}
+                              </a>
+                            ) : (
+                              img.author
+                            )} on <a href={img.unsplash_url || "https://unsplash.com/?utm_source=voyanta&utm_medium=referral"} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline hover:text-white font-semibold">Unsplash</a>
+                          </span>
                         </div>
                         <div className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transform scale-75 group-hover:scale-100 transition-all shadow-md">
                           <span className="material-symbols-outlined text-[16px]">add</span>
