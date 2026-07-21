@@ -46,20 +46,31 @@ jobs:
           CF_R2_PRIVATE_ENDPOINT: ${{ secrets.CF_R2_PRIVATE_ENDPOINT }}
           PYTHONPATH: backend
         run: |
-          echo "Project ID length: ${#SUPABASE_PROJECT_ID}"
-          echo "DB Password length: ${#SUPABASE_DB_PASSWORD}"
-          if [ -z "$SUPABASE_PROJECT_ID" ] || [ -z "$SUPABASE_DB_PASSWORD" ]; then
+          # Sanitize secrets to remove any trailing newlines/carriage returns (\r, \n) or spaces pasted into GitHub Secrets
+          CLEAN_PROJECT_ID=$(echo -n "$SUPABASE_PROJECT_ID" | tr -d '\r\n ')
+          CLEAN_DB_PASSWORD=$(echo -n "$SUPABASE_DB_PASSWORD" | tr -d '\r\n ')
+          CLEAN_ACCESS_TOKEN=$(echo -n "$SUPABASE_ACCESS_TOKEN" | tr -d '\r\n ')
+          export SUPABASE_ACCESS_TOKEN="$CLEAN_ACCESS_TOKEN"
+
+          echo "Sanitized Project ID length: ${#CLEAN_PROJECT_ID}"
+          echo "Sanitized DB Password length: ${#CLEAN_DB_PASSWORD}"
+
+          if [ -z "$CLEAN_PROJECT_ID" ] || [ -z "$CLEAN_DB_PASSWORD" ]; then
             echo "Supabase project credentials not configured. Skipping backup."
             exit 0
           fi
-          echo "Dumping database..."
+
+          echo "Linking database project ${CLEAN_PROJECT_ID}..."
           supabase link \
-            --project-ref "$SUPABASE_PROJECT_ID" \
-            --password "$SUPABASE_DB_PASSWORD"
+            --project-ref "$CLEAN_PROJECT_ID" \
+            --password "$CLEAN_DB_PASSWORD"
+
+          echo "Dumping database schema and data..."
           supabase db dump \
             --linked \
-            --password "$SUPABASE_DB_PASSWORD" \
+            --password "$CLEAN_DB_PASSWORD" \
             -f backup.sql
-          gzip backup.sql
+
+          gzip -f backup.sql
           echo "Uploading backup.sql.gz to Cloudflare R2..."
           python backend/scripts/backup_supabase_to_r2.py backup.sql.gz
