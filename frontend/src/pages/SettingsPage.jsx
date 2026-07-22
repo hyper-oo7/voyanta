@@ -851,6 +851,13 @@ function BrandingSettings() {
                 <input type="text" placeholder="e.g. LIC-DL-2026-8890" value={safeStr(current.trade_code)} onChange={upd('trade_code')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm font-mono" />
               </div>
               <div className="md:col-span-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Branding Position (GST & License)</label>
+                <select value={safeStr(current.branding_position) || 'bottom'} onChange={upd('branding_position')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm">
+                  <option value="top">Top (Header)</option>
+                  <option value="bottom">Bottom (Footer)</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
                 <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Trademarks & Accreditations</label>
                 <input type="text" placeholder="e.g. IATA Approved Agency • TAFI Member • ISO 9001 Certified" value={safeStr(current.trademarks)} onChange={upd('trademarks')} className="w-full px-4 py-2 border border-outline rounded-lg bg-white text-sm" />
               </div>

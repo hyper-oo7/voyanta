@@ -498,22 +498,22 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
       URL.revokeObjectURL(url);
       incrementAnalytics('download', proposalId);
       logActivity('pdf', `Generated PDF for proposal "${proposalName || proposalId}"`, proposal?.client_name || 'Client');
-      setProposal({ status: 'Proposal Sent' });
+      setProposal({ status: 'Sent' });
       try {
         const pStore = useProposalStore.getState();
         const payload = pStore.buildPayload();
         const pid = proposalId || pStore.activeId || payload.id;
         if (pid) {
-          await updateProposal(pid, { ...payload, status: 'Proposal Sent' });
+          await updateProposal(pid, { ...payload, status: 'Sent' });
         } else {
-          const created = await createProposal({ ...payload, status: 'Proposal Sent' });
+          const created = await createProposal({ ...payload, status: 'Sent' });
           pStore.setActiveId(created.id);
         }
         await upsertClientFromProposal({
           ...pStore.client,
           ...proposal,
           ...payload,
-          status: 'Proposal Sent',
+          status: 'Sent',
           name: proposalName || proposal?.name || proposalId
         });
       } catch (err) {
@@ -651,7 +651,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
                   type="button"
                   onClick={() => {
                     setShareDropdownOpen(false);
-                    setProposal({ ...proposal, status: 'Proposal Sent' });
+                    setProposal({ ...proposal, status: 'Sent' });
                     saveDraftBackground();
                     const url = `${window.location.origin}/view/${proposal?.share_token || 'demo'}?mode=client`;
                     navigator.clipboard.writeText(url);
@@ -687,7 +687,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
                   type="button"
                   onClick={() => {
                     setShareDropdownOpen(false);
-                    setProposal({ ...proposal, status: 'Proposal Sent' });
+                    setProposal({ ...proposal, status: 'Sent' });
                     saveDraftBackground();
                     const destName = proposal?.destination || proposal?.preferences?.client?.destination || 'your trip';
                     const clientUrl = `${window.location.origin}/view/${proposal?.share_token || 'demo'}?mode=client`;
@@ -707,7 +707,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
                   type="button"
                   onClick={() => {
                     setShareDropdownOpen(false);
-                    setProposal({ ...proposal, status: 'Proposal Sent' });
+                    setProposal({ ...proposal, status: 'Sent' });
                     saveDraftBackground();
                     const destName = proposal?.destination || proposal?.preferences?.client?.destination || 'Your Trip';
                     const clientUrl = `${window.location.origin}/view/${proposal?.share_token || 'demo'}?mode=client`;

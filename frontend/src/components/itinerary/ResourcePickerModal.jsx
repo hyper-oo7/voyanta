@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { hotelsService, activitiesService, flightsService } from '../../services/resourceService.js';
+import { isLocationMatch } from '../../lib/destinationHierarchy.js';
 
 export default function ResourcePickerModal({ type, onSelect, onClose, destination, subDestination }) {
   const [items, setItems] = useState([]);
@@ -26,7 +27,7 @@ export default function ResourcePickerModal({ type, onSelect, onClose, destinati
       }
 
       // Query knowledge objects from Supabase to merge from vault dynamically
-      if (destination && (type === 'hotel' || type === 'activity')) {
+      if ((destination || subDestination) && (type === 'hotel' || type === 'activity')) {
         try {
           const supa = (await import('../../lib/supabaseClient.js')).supabase;
           const { data: dbObjects } = await supa
@@ -34,7 +35,7 @@ export default function ResourcePickerModal({ type, onSelect, onClose, destinati
             .select('*')
             .eq('object_type', type)
             .eq('is_active', true)
-            .ilike('destination', `%${destination}%`);
+            .limit(100);
 
           if (dbObjects && dbObjects.length > 0) {
             const mappedObjects = dbObjects.map(obj => {
@@ -69,25 +70,9 @@ export default function ResourcePickerModal({ type, onSelect, onClose, destinati
         }
       }
 
-      // Filter dynamically by destination and sub-destination (area)
-      if (destination) {
-        const destLower = destination.toLowerCase().trim();
-        data = data.filter(item => {
-          const itemDest = (item.destination || item.location || '').toLowerCase().trim();
-          const itemArea = (item.area || item.location || '').toLowerCase().trim();
-          
-          const matchesDest = itemDest.includes(destLower) || itemArea.includes(destLower);
-          if (!matchesDest) return false;
-
-          if (subDestination) {
-            const subLower = subDestination.toLowerCase().trim();
-            const cleanedSub = subLower.replace(/day in\s+/g, '').trim();
-            if (cleanedSub) {
-              return itemArea.includes(cleanedSub) || itemDest.includes(cleanedSub);
-            }
-          }
-          return true;
-        });
+      // Filter dynamically by destination and sub-destination (area) using dynamic hierarchy engine
+      if (destination || subDestination) {
+        data = data.filter(item => isLocationMatch(item, destination, subDestination));
       }
 
       setItems(data);

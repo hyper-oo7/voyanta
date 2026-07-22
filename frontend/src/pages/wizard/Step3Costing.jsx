@@ -14,6 +14,14 @@ const cleanPrice = (val) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const handleNumericInput = (e) => {
+  let val = e.target.value;
+  if (val.length > 1 && val.startsWith('0') && !val.includes('.')) {
+    val = val.replace(/^0+/, '');
+    e.target.value = val;
+  }
+};
+
 const KINDS = ['Hotel', 'Flight', 'Activity', 'Transfer', 'Meals', 'Custom', 'Visa', 'Tax', 'Margin', 'Fee', 'Discount'];
 
 const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveItem, currency = 'INR' }) {
@@ -41,6 +49,7 @@ const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveI
       </td>
       <td className="px-lg py-md w-[110px]">
         <input type="number" min="0" step="0.5" value={qty}
+          onInput={handleNumericInput}
           onChange={(e) => {
             setQty(e.target.value);
             const parsed = parseFloat(e.target.value);
@@ -56,6 +65,7 @@ const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveI
       </td>
       <td className="px-lg py-md w-[140px]">
         <input type="number" min="0" step="0.01" value={unitPrice}
+          onInput={handleNumericInput}
           onChange={(e) => {
             setUnitPrice(e.target.value);
             const parsed = parseFloat(e.target.value);
@@ -287,20 +297,20 @@ export function Step3Costing({ proposal, setProposal, proposalId, items, setItem
            <div className="grid grid-cols-2 md:grid-cols-4 gap-md flex-1">
              <label className="flex flex-col gap-xs">
                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Fixed Markup</span>
-               <input type="number" step="0.01" value={costingPrefs?.fixed_markup || 0} onChange={updPref('fixed_markup')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
+               <input type="number" step="0.01" value={costingPrefs?.fixed_markup || 0} onChange={updPref('fixed_markup')} onInput={handleNumericInput} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
              </label>
              <label className="flex flex-col gap-xs">
                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">% Markup</span>
-               <input type="number" step="0.1" value={costingPrefs?.pct_markup || 0} onChange={updPref('pct_markup')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
+               <input type="number" step="0.1" value={costingPrefs?.pct_markup || 0} onChange={updPref('pct_markup')} onInput={handleNumericInput} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
              </label>
              <label className="flex flex-col gap-xs">
                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Discount (Flat)</span>
-               <input type="number" step="0.01" value={costingPrefs?.discount || 0} onChange={updPref('discount')} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
+               <input type="number" step="0.01" value={costingPrefs?.discount || 0} onChange={updPref('discount')} onInput={handleNumericInput} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
              </label>
              <div className="flex flex-col gap-xs">
                <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Tax / GST (%)</span>
                <div className="flex items-center gap-1">
-                 <input type="number" step="0.1" value={costingPrefs?.tax || 0} onChange={updPref('tax')} className="w-16 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm font-bold" />
+                 <input type="number" step="0.1" value={costingPrefs?.tax || 0} onChange={updPref('tax')} onInput={handleNumericInput} className="w-16 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm font-bold" />
                  <div className="flex gap-1">
                    {[0, 5, 18].map(rate => (
                      <button

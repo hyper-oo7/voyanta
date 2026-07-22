@@ -178,7 +178,7 @@ export function Step4Branding({ proposalId, branding, setBranding, client, custo
 
   const isStarter = !currentPlan || currentPlan.toLowerCase() === 'starter';
 
-  const aiDraft = (field, label) => async () => {
+  const aiDraft = (field, label, format = 'paragraph') => async () => {
     const currentText = branding?.[field] || '';
     if (!currentText) {
       toast.info(`Please type initial ${label} points first so VI can check grammar and enhance.`);
@@ -189,6 +189,7 @@ export function Step4Branding({ proposalId, branding, setBranding, client, custo
       const res = await api.post('/api/enhance-text', {
         text: currentText,
         mode: field,
+        format: format,
         destination: client?.destination || proposal?.destination || ''
       });
       if (res?.enhanced_text) {
@@ -333,12 +334,12 @@ export function Step4Branding({ proposalId, branding, setBranding, client, custo
         <Field label="LinkedIn"  value={branding?.social_linkedin}  onChange={upd('social_linkedin')}  testid="brand-li" />
       </div>
       <div className="space-y-xs">
-        <Textarea 
-          label="Highlights" 
+        <TextareaWithAI 
+          label="Trip Highlights (Bullet points of standout moments)" 
           value={branding?.highlights} 
           onChange={(e) => setBranding(s => ({ ...s, highlights: e.target.value, highlights_ai_drafted: false }))} 
           testid="brand-highlights" 
-          placeholder="Bullet points of the trip's standout moments…" 
+          onAI={aiDraft('highlights', 'highlights', 'bullet points')}
         />
         {branding?.highlights_ai_drafted && (
           <span className="text-[11px] font-semibold text-primary/80 flex items-center gap-xs px-xs" data-testid="highlights-ai-warning">

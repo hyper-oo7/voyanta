@@ -73,6 +73,12 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
     const newBlock = { id: crypto.randomUUID(), type, data: defaultData };
     const currentContent = Array.isArray(dayData.content) ? [...dayData.content] : [];
     updateDay(index, { content: [...currentContent, newBlock] });
+    
+    // Auto-add to costing items list if it's an inventory-type block
+    if (['hotel', 'flight', 'activity', 'transfer', 'meals', 'custom'].includes(type) && onAddResourceItem) {
+       onAddResourceItem({ id: newBlock.id, name: presetData.name || `Custom ${type}`, price: 0 }, type, index);
+    }
+    
     setShowBlockMenu(false);
   };
 

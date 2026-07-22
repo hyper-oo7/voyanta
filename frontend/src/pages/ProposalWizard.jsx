@@ -40,6 +40,30 @@ export default function ProposalWizard() {
   const idParam   = params.get('id') || '';
   const stepParam = Math.max(1, Math.min(5, parseInt(params.get('step') || '1', 10) || 1));
 
+  // Auto-restore last active proposal and step when navigating back to wizard without explicit URL params
+  useEffect(() => {
+    const isNew = params.get('new') === 'true';
+    if (isNew) {
+      localStorage.removeItem('voyanta_wizard_last_id');
+      localStorage.removeItem('voyanta_wizard_last_step');
+      return;
+    }
+
+    const hasId = !!params.get('id');
+    const hasStep = !!params.get('step');
+    const lastId = localStorage.getItem('voyanta_wizard_last_id') || '';
+    const lastStep = localStorage.getItem('voyanta_wizard_last_step') || '';
+
+    if (!hasId && !hasStep && (lastId || lastStep)) {
+      setParams(prev => {
+        const next = new URLSearchParams(prev);
+        if (lastId && !next.has('id')) next.set('id', lastId);
+        if (lastStep && !next.has('step')) next.set('step', lastStep);
+        return next;
+      }, { replace: true });
+    }
+  }, []);
+
   // Zustand Store
   const { 
     activeId, proposal, items, client, branding, costingPrefs, status,
@@ -47,6 +71,17 @@ export default function ProposalWizard() {
     loadProposal, saveDraftBackground, addItemsOptimistic, 
     removeItemOptimistic, updateItemOptimistic
   } = useProposalStore();
+
+  // Keep last active ID & step persisted in localStorage
+  useEffect(() => {
+    const targetId = idParam || proposal?.id || activeId;
+    if (targetId) {
+      localStorage.setItem('voyanta_wizard_last_id', targetId);
+    }
+    if (stepParam) {
+      localStorage.setItem('voyanta_wizard_last_step', String(stepParam));
+    }
+  }, [stepParam, idParam, proposal?.id, activeId]);
 
   const [itineraries, setItineraries] = useState([]);
   const [importOpen, setImportOpen] = useState(false);

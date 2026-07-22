@@ -94,7 +94,7 @@ export default function WebViewPage() {
       const newList = cachedList.map((item) => {
         if (String(item.id) === String(p.id) && (item.status === 'Draft' || !item.status || item.status === 'pending')) {
           updated = true;
-          return { ...item, status: 'Proposal Sent' };
+          return { ...item, status: 'Sent' };
         }
         return item;
       });

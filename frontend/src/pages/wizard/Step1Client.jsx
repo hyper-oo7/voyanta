@@ -48,10 +48,22 @@ const clientSchema = z.object({
 });
 
 const Field = memo(function Field({ label, register, name, type = 'text', testid, extraClass = '', error, disabled = false }) {
+  // Fix Issue 4: Strip leading zeros for numeric inputs on focus/change
+  const handleNumericInput = (e) => {
+    if (type === 'number') {
+      let val = e.target.value;
+      if (val.length > 1 && val.startsWith('0') && !val.includes('.')) {
+        val = val.replace(/^0+/, '');
+        e.target.value = val;
+      }
+    }
+  };
+
   return (
     <label className={'flex flex-col gap-xs ' + extraClass}>
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
       <input type={type} disabled={disabled} {...register(name, { valueAsNumber: type === 'number' })} data-testid={testid}
+        onInput={handleNumericInput}
         className={`px-md py-md bg-surface-container-lowest border rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 ${disabled ? 'opacity-70 cursor-not-allowed bg-surface-container/40' : ''} ${error ? 'border-error' : 'border-outline-variant'}`} />
       {error && <span className="text-xs text-error">{error.message}</span>}
     </label>

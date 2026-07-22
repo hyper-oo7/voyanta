@@ -151,8 +151,24 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
       case 'highlights':
         return (
           <section key={key} className={sectionClass} style={sectionStyle}>
-            <Title>{getI18nLabel('destinationOverview', lang)}</Title>
-            <div className="text-lg leading-relaxed whitespace-pre-wrap" style={{ fontFamily: fontBody }}>{b.highlights || '—'}</div>
+            {p.overview && (
+              <div className={b.highlights ? "mb-8" : ""}>
+                <Title>{getI18nLabel('destinationOverview', lang) || 'Destination Overview'}</Title>
+                <div className="text-lg leading-relaxed whitespace-pre-wrap" style={{ fontFamily: fontBody }}>{p.overview}</div>
+              </div>
+            )}
+            {b.highlights && (
+              <div>
+                <Title>{getI18nLabel('tripHighlights', lang) || 'Trip Highlights'}</Title>
+                <div className="text-lg leading-relaxed whitespace-pre-wrap" style={{ fontFamily: fontBody }}>{b.highlights}</div>
+              </div>
+            )}
+            {!p.overview && !b.highlights && (
+              <>
+                <Title>{getI18nLabel('destinationOverview', lang) || 'Destination Overview'}</Title>
+                <div className="text-lg leading-relaxed whitespace-pre-wrap" style={{ fontFamily: fontBody }}>—</div>
+              </>
+            )}
           </section>
         );
 

@@ -6,6 +6,7 @@ import { useToast } from '../../context/ToastContext.jsx';
 import { useProposalStore } from '../../store/proposalStore.js';
 import { logActivity } from '../../services/activityLogService.js';
 import { buildVIItinerary, getClimateClassification } from '../../lib/viClimateIntelligence.js';
+import { isLocationMatch, registerDestinationHierarchy } from '../../lib/destinationHierarchy.js';
 
 const cleanPrice = (val) => {
   if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
@@ -509,28 +510,44 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   }, []);
 
   useEffect(() => {
-    if (days.length === 0) {
-      let numDays = 0;
-      if (client.date_mode === 'days' && client.duration_days) {
-        numDays = parseInt(client.duration_days, 10) || 1;
-      } else if (client.date_mode === 'dates' && client.start_date && client.end_date) {
-        const ms = new Date(client.end_date).getTime() - new Date(client.start_date).getTime();
-        const diffDays = Math.round(ms / (1000 * 60 * 60 * 24)) + 1;
-        numDays = diffDays > 0 ? diffDays : 1;
-      } else if (proposal?.id) {
-        numDays = 1; // Fallback if saved but no dates
+    let numDays = 0;
+    if (client.date_mode === 'days' && client.duration_days) {
+      numDays = parseInt(client.duration_days, 10) || 1;
+    } else if (client.date_mode === 'dates' && client.start_date && client.end_date) {
+      const ms = new Date(client.end_date).getTime() - new Date(client.start_date).getTime();
+      const diffDays = Math.round(ms / (1000 * 60 * 60 * 24)) + 1;
+      numDays = diffDays > 0 ? diffDays : 1;
+    } else if (proposal?.id && days.length === 0) {
+      numDays = 1; // Fallback if saved but no dates
+    }
+
+    if (numDays > 0 && days.length !== numDays) {
+      const nextDays = [...days];
+      if (nextDays.length < numDays) {
+        // Add days
+        for (let i = nextDays.length; i < numDays; i++) {
+          nextDays.push({
+            day: i + 1,
+            title: '',
+            description: '',
+            image_url: null,
+            block_type: i === 0 ? 'arrival' : (i === numDays - 1 ? 'departure' : 'day')
+          });
+        }
+      } else {
+        // Truncate days
+        nextDays.length = numDays;
+      }
+      
+      // Update block_type for first and last
+      if (nextDays.length > 0) {
+        nextDays[0].block_type = 'arrival';
+        if (nextDays.length > 1) {
+          nextDays[nextDays.length - 1].block_type = 'departure';
+        }
       }
 
-      if (numDays > 0) {
-        const nextDays = Array.from({ length: numDays }, (_, i) => ({
-          day: i + 1,
-          title: '',
-          description: '',
-          image_url: null,
-          block_type: i === 0 ? 'arrival' : (i === numDays - 1 ? 'departure' : 'day')
-        }));
-        setProposal(prev => ({ ...(prev || {}), itinerary: { ...(prev?.itinerary || {}), days: nextDays } }));
-      }
+      setProposal(prev => ({ ...(prev || {}), itinerary: { ...(prev?.itinerary || {}), days: nextDays } }));
     }
   }, [days.length, proposal?.id, client.date_mode, client.duration_days, client.start_date, client.end_date, setProposal]);
 
@@ -605,11 +622,21 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       await addItemsOptimistic([newItem]);
 
       let blockData = null;
+      const itemLoc = resourceItem.location || resourceItem.destination || resourceItem.area || '';
       const baseMeta = {
         id: resourceItem.id,
         rawItem: resourceItem,
-        price: extractPrice(resourceItem)
+        price: extractPrice(resourceItem),
+        location: itemLoc,
+        destination: resourceItem.destination || itemLoc
       };
+
+      // Dynamically register hierarchy relationship for future suggestions
+      const activeDest = proposal?.destination || client?.destination || '';
+      if (activeDest && itemLoc) {
+        registerDestinationHierarchy(activeDest, itemLoc);
+      }
+
       if (kind === 'hotel') {
         blockData = {
           id: crypto.randomUUID(),
@@ -617,7 +644,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           data: {
             ...baseMeta,
             name: resourceItem.name,
-            details: `${resourceItem.location || ''} ${resourceItem.category ? `· ${resourceItem.category}` : ''}`.trim(),
+            details: `${itemLoc} ${resourceItem.category ? `· ${resourceItem.category}` : ''}`.trim(),
             image_url: resourceItem.cover_image || resourceItem.image_url || ''
           }
         };
@@ -639,7 +666,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           data: {
             ...baseMeta,
             name: resourceItem.name,
-            details: `${resourceItem.location || ''} ${resourceItem.duration_hours ? `· ${resourceItem.duration_hours}h` : ''}`.trim(),
+            details: `${itemLoc} ${resourceItem.duration_hours ? `· ${resourceItem.duration_hours}h` : ''}`.trim(),
             image_url: resourceItem.image_url || ''
           }
         };

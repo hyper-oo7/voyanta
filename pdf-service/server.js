@@ -257,7 +257,7 @@ app.post('/generate', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[pdf-service] listening on :${PORT}`));
+app.listen(PORT, '127.0.0.1', () => console.log(`[pdf-service] listening on 127.0.0.1:${PORT}`));
 
 // Graceful shutdown
 ['SIGTERM', 'SIGINT'].forEach((sig) => process.on(sig, async () => {
