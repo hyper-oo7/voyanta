@@ -372,7 +372,7 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
             setShowDayImagePicker(false);
           }}
           onClose={() => setShowDayImagePicker(false)}
-          defaultQuery={dayData.title || proposalDestination || 'luxury resort tour'}
+          defaultQuery={dayData.title || proposalDestination || ''}
         />
       )}
     </div>

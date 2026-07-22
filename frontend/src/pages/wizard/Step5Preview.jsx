@@ -281,6 +281,27 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
     }
   }, [proposalId, saveDraftBackground]);
 
+  const autoGenerateOverview = useCallback(() => {
+    const dest = proposal?.destination || proposal?.preferences?.client?.destination || 'your destination';
+    const daysCount = proposal?.itinerary?.days?.length || proposal?.preferences?.client?.duration_days || 5;
+    const nightsCount = Math.max(0, daysCount - 1);
+    const who = proposal?.preferences?.client?.group_type || 'Travelers';
+    const category = proposal?.preferences?.client?.tour_category || proposal?.preferences?.client?.tour_type || 'Curated';
+    
+    const cities = Array.from(new Set(
+      (proposal?.itinerary?.days || [])
+        .map(d => d.title || d.destination || '')
+        .filter(Boolean)
+        .map(t => t.split('-')[0].trim())
+    )).slice(0, 4);
+    const citiesStr = cities.length > 0 ? ` exploring highlights across ${cities.join(', ')}` : '';
+
+    const text = `Embark on an exclusive ${daysCount}-day, ${nightsCount}-night ${category.toLowerCase()} journey through ${dest}${citiesStr}, tailored specifically for ${who.toLowerCase()}. This meticulously crafted itinerary combines immersive cultural encounters, handpicked luxury accommodations, and seamless private transfers. Every day is thoughtfully paced to provide the perfect balance of discovery, relaxation, and authentic local experiences.`;
+    setProposal(p => ({ ...p, overview: text }));
+    toast.success('✨ Destination overview auto-generated!');
+    saveDraftBackground().catch(() => {});
+  }, [proposal, setProposal, saveDraftBackground]);
+
   useEffect(() => {
     try {
       const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
@@ -518,161 +539,193 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
 
   return (
     <div className="h-full flex flex-col space-y-md" data-testid="step-preview">
-      <div className="glass-card p-md rounded-xl flex items-center gap-md flex-wrap no-print">
-        <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest">Theme</span>
-        <select value={style} onChange={(e) => setStyle(e.target.value)} data-testid="preview-style"
-          className="px-md py-sm bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md">
-          <option value="modern">Modern Luxury</option>
-          <option value="minimal">Minimal Editorial</option>
-          <option value="dark">Dark Luxury</option>
-          <option value="classic">Classic European</option>
-          <option value="tropical">Tropical Escape</option>
-          <option value="corporate">Corporate Executive</option>
-        </select>
-        
-        <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest ml-2">Language</span>
-        <select 
-          value={proposal?.language || proposal?.lang || 'en'} 
-          onChange={(e) => {
-            const newLang = e.target.value;
-            setProposal({ ...proposal, language: newLang, lang: newLang });
-            
-            // Programmatically trigger Google Translate if widget is present on page
-            const googleSelect = document.querySelector('.goog-te-combo');
-            if (googleSelect) {
-              toast.info(`Translating page to ${newLang.toUpperCase()} via Google Translate...`);
-              googleSelect.value = newLang;
-              googleSelect.dispatchEvent(new Event('change'));
-            } else {
-              toast.info(`Proposal language set to ${newLang.toUpperCase()} for client Web View.`);
-            }
-          }} 
-          data-testid="preview-language"
-          className="px-md py-sm bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md"
-        >
-          <option value="en">English</option>
-          <option value="hi">Hindi (हिंदी)</option>
-          <option value="bn">Bengali (বাংলা)</option>
-          <option value="te">Telugu (తెలుగు)</option>
-          <option value="mr">Marathi (मराठी)</option>
-          <option value="ta">Tamil (தமிழ்)</option>
-          <option value="gu">Gujarati (ગુજરાતી)</option>
-          <option value="kn">Kannada (ಕನ್ನಡ)</option>
-          <option value="pa">Punjabi (ਪੰਜਾਬੀ)</option>
-          <option value="ml">Malayalam (മലയാളം)</option>
-        </select>
- 
-        <button type="button" onClick={async () => {
-          const dest = json?.proposal?.destination || 'Destination';
-          const tType = json?.proposal?.preferences?.tour_type || 'Luxury';
-          const gType = json?.proposal?.preferences?.group_type || '';
-          const tCat = json?.proposal?.preferences?.tour_category || '';
-          const duration = json?.proposal?.itinerary?.days?.length || 7;
-          toast.info('Generating luxury title via VI...');
-          try {
-            const res = await api.post('/api/generate-title', {
-              destination: dest,
-              tour_type: tType,
-              group_type: gType,
-              tour_category: tCat,
-              duration: duration
-            });
-            if (res?.title) {
-              setProposal({ ...proposal, name: res.title });
-              toast.success('Generated title: ' + res.title);
-            }
-          } catch (err) {
-            toast.error('Failed to generate title');
-          }
-        }}
-        title="VI Auto-Title"
-        className="inline-flex items-center justify-center w-9 h-9 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-full transition-colors cursor-pointer shrink-0">
-          <span className="material-symbols-outlined text-[18px]">travel_explore</span>
-        </button>
- 
-        <button 
-          type="button" 
-          onClick={handleValidateSequence} 
-          disabled={isValidatingSequence}
-          data-testid="ai-itinerary-check"
-          title="VI Proposal Review"
-          className="inline-flex items-center justify-center w-9 h-9 bg-purple-500/10 text-purple-750 border border-purple-500/20 hover:bg-purple-500/20 rounded-full transition-colors disabled:opacity-50 cursor-pointer shrink-0"
-        >
-          {isValidatingSequence ? (
-            <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
-          ) : (
-            <span className="material-symbols-outlined text-[18px]">travel_explore</span>
-          )}
-        </button>
- 
-        <button type="button" onClick={() => setIsInteractiveStudio(!isInteractiveStudio)} data-testid="toggle-wysiwyg"
-          className={`px-lg py-md border rounded-lg font-label-md flex items-center gap-xs shadow-sm transition-all ${isInteractiveStudio ? 'bg-emerald-600 text-white font-bold border-emerald-600 shadow-lg animate-pulse' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'}`}>
-          <span className="material-symbols-outlined text-[18px]">edit_document</span> {isInteractiveStudio ? '✨ WYSIWYG Active (Click Text to Edit)' : '✨ WYSIWYG Live Editor'}
-        </button>
+      <div className="glass-card px-md py-sm rounded-xl flex items-center justify-between gap-md flex-wrap no-print border border-outline-variant/80 shadow-sm bg-surface-container-lowest/90 backdrop-blur-md">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Sleek Theme Pill Selector */}
+          <div className="flex items-center gap-1.5 bg-surface-container px-2.5 py-1 rounded-lg border border-outline-variant/60">
+            <span className="material-symbols-outlined text-primary text-[16px]">palette</span>
+            <span className="font-label-md text-xs font-bold text-on-surface-variant uppercase tracking-wider mr-1">Theme</span>
+            <select 
+              value={style} 
+              onChange={(e) => setStyle(e.target.value)} 
+              data-testid="preview-style"
+              className="bg-transparent text-xs font-bold text-primary border-none outline-none cursor-pointer pr-4 focus:ring-0"
+            >
+              <option value="modern">Modern Luxury</option>
+              <option value="minimal">Minimal Editorial</option>
+              <option value="dark">Dark Luxury</option>
+              <option value="classic">Classic European</option>
+              <option value="tropical">Tropical Escape</option>
+              <option value="corporate">Corporate Executive</option>
+            </select>
+          </div>
 
-        <button 
-          type="button" 
-          onClick={() => window.open(`/view/${proposal?.share_token || 'demo'}`, '_blank')} 
-          className="px-lg py-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 rounded-lg font-label-md flex items-center gap-xs shadow-sm transition-all cursor-pointer"
-        >
-          <span className="material-symbols-outlined text-[18px]">edit</span>
-          Edit Web View
-        </button>
- 
-        <button type="button" onClick={() => setExportOpen(true)} data-testid="open-export-modal"
-          className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">tune</span> Customize Sections
-        </button>
-        <button type="button" onClick={() => setShowTemplatePrompt(true)} 
-          className="px-lg py-md bg-surface-container hover:bg-surface-container-high text-on-surface rounded-lg font-label-md flex items-center gap-xs border border-outline-variant shadow-sm transition-all">
-          <span className="material-symbols-outlined text-[18px]">bookmark_add</span>
-          Save Template
-        </button>
+          {/* VI Auto Title */}
+          <button type="button" onClick={async () => {
+            const dest = json?.proposal?.destination || 'Destination';
+            const tType = json?.proposal?.preferences?.tour_type || 'Luxury';
+            const gType = json?.proposal?.preferences?.group_type || '';
+            const tCat = json?.proposal?.preferences?.tour_category || '';
+            const duration = json?.proposal?.itinerary?.days?.length || 7;
+            toast.info('Generating luxury title via VI...');
+            try {
+              const res = await api.post('/api/generate-title', {
+                destination: dest,
+                tour_type: tType,
+                group_type: gType,
+                tour_category: tCat,
+                duration: duration
+              });
+              if (res?.title) {
+                setProposal({ ...proposal, name: res.title });
+                toast.success('Generated title: ' + res.title);
+              }
+            } catch (err) {
+              toast.error('Failed to generate title');
+            }
+          }}
+          title="VI Auto-Title based on destination, tour type & who's travelling"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary border border-primary/25 hover:bg-primary/20 rounded-lg font-bold text-xs transition-colors cursor-pointer shrink-0">
+            <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+            <span>✨ VI Title</span>
+          </button>
 
-        <div className="relative" ref={shareDropdownRef}>
+          {/* VI Proposal Review */}
           <button 
             type="button" 
-            onClick={() => setShareDropdownOpen(!shareDropdownOpen)}
-            className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 flex items-center gap-xs shadow-md font-bold transition-all border-none cursor-pointer"
+            onClick={handleValidateSequence} 
+            disabled={isValidatingSequence}
+            data-testid="ai-itinerary-check"
+            title="VI Proposal Review"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/25 hover:bg-purple-500/20 rounded-lg font-bold text-xs transition-colors disabled:opacity-50 cursor-pointer shrink-0"
           >
-            <span className="material-symbols-outlined text-[18px]">share</span> Share / Export
-            <span className="material-symbols-outlined text-[16px]">arrow_drop_down</span>
+            {isValidatingSequence ? (
+              <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+            ) : (
+              <span className="material-symbols-outlined text-[16px]">verified</span>
+            )}
+            <span>🔍 VI Review</span>
           </button>
-          
-          {shareDropdownOpen && (
-            <div className="absolute right-0 top-full mt-sm w-64 bg-surface border border-outline-variant rounded-xl shadow-xl z-[95] py-sm overflow-hidden animate-fade-in font-sans">
-              <button 
-                type="button"
-                onClick={() => {
-                  setShareDropdownOpen(false);
-                  window.open(`/view/${proposal?.share_token || 'demo'}`, '_blank');
-                }}
-                className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-primary text-[20px]">edit</span>
-                <div>
-                  <div className="font-semibold text-xs text-on-surface">Edit Web View</div>
-                  <div className="text-[10px] text-on-surface-variant">Open live editor on web view</div>
-                </div>
-              </button>
+        </div>
 
-              <button 
-                type="button"
-                onClick={() => {
-                  setShareDropdownOpen(false);
-                  onGeneratePdf();
-                }}
-                disabled={generating || !isHealthy}
-                className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer disabled:opacity-50"
-              >
-                <span className="material-symbols-outlined text-error text-[20px]">picture_as_pdf</span>
-                <div>
-                  <div className="font-semibold text-xs text-on-surface">{generating ? 'Generating PDF...' : 'Generate PDF'}</div>
-                  <div className="text-[10px] text-on-surface-variant">Download A4 printed PDF</div>
-                </div>
-              </button>
-            </div>
-          )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Editor Mode */}
+          <button type="button" onClick={() => setIsInteractiveStudio(!isInteractiveStudio)} data-testid="toggle-wysiwyg"
+            className={`px-3 py-1.5 border rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${isInteractiveStudio ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'bg-surface-container-lowest text-on-surface border-outline-variant hover:border-primary/50'}`}>
+            <span className="material-symbols-outlined text-[16px]">{isInteractiveStudio ? 'edit_square' : 'edit'}</span>
+            <span>{isInteractiveStudio ? '✏️ Editor Active' : '✏️ Editor Mode'}</span>
+          </button>
+
+          {/* Edit Web View */}
+          <button 
+            type="button" 
+            onClick={() => window.open(`/view/${proposal?.share_token || 'demo'}`, '_blank')} 
+            className="px-3 py-1.5 border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+            <span>Edit Web View</span>
+          </button>
+
+          {/* Customize Sections */}
+          <button type="button" onClick={() => setExportOpen(true)} data-testid="open-export-modal"
+            className="px-3 py-1.5 border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low text-on-surface rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer">
+            <span className="material-symbols-outlined text-[16px]">tune</span>
+            <span>Customize Sections</span>
+          </button>
+
+          {/* Share / Export with high Z-Index */}
+          <div className="relative" ref={shareDropdownRef}>
+            <button 
+              type="button" 
+              onClick={() => setShareDropdownOpen(!shareDropdownOpen)}
+              className="px-4 py-1.5 bg-primary text-on-primary rounded-lg font-bold text-xs hover:opacity-90 flex items-center gap-1 shadow-md transition-all border-none cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px]">share</span>
+              <span>Share / Export</span>
+              <span className="material-symbols-outlined text-[16px]">arrow_drop_down</span>
+            </button>
+            
+            {shareDropdownOpen && (
+              <div className="absolute right-0 top-full mt-2 w-72 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-2xl z-[9999] py-1.5 overflow-hidden animate-fade-in font-sans">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setShareDropdownOpen(false);
+                    setProposal({ ...proposal, status: 'Proposal Sent' });
+                    saveDraftBackground();
+                    const url = `${window.location.origin}/view/${proposal?.share_token || 'demo'}?mode=client`;
+                    navigator.clipboard.writeText(url);
+                    toast.success('Client Web View URL copied to clipboard!');
+                    window.open(url, '_blank');
+                  }}
+                  className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-blue-600 text-[20px]">public</span>
+                  <div>
+                    <div className="font-semibold text-xs text-on-surface">Client Web View</div>
+                    <div className="text-[10px] text-on-surface-variant">Copy link & open customer view</div>
+                  </div>
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setShareDropdownOpen(false);
+                    onGeneratePdf();
+                  }}
+                  disabled={generating || !isHealthy}
+                  className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-rose-600 text-[20px]">picture_as_pdf</span>
+                  <div>
+                    <div className="font-semibold text-xs text-on-surface">{generating ? 'Generating PDF...' : 'Download PDF (A4 Print)'}</div>
+                    <div className="text-[10px] text-on-surface-variant">Export high-res proposal document</div>
+                  </div>
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setShareDropdownOpen(false);
+                    setProposal({ ...proposal, status: 'Proposal Sent' });
+                    saveDraftBackground();
+                    const destName = proposal?.destination || proposal?.preferences?.client?.destination || 'your trip';
+                    const clientUrl = `${window.location.origin}/view/${proposal?.share_token || 'demo'}?mode=client`;
+                    const text = `Hi! 🌟 We have curated a custom travel proposal for ${destName}.\n\nYou can view the interactive live proposal, translate languages, and accept or request modifications right here:\n👉 ${clientUrl}\n\n(We have also attached your detailed A4 PDF itinerary for your records. Let us know if you need any customizations!)`;
+                    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+                  }}
+                  className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-emerald-600 text-[20px]">chat</span>
+                  <div>
+                    <div className="font-semibold text-xs text-on-surface">Share via WhatsApp</div>
+                    <div className="text-[10px] text-on-surface-variant">Send interactive link & PDF note</div>
+                  </div>
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setShareDropdownOpen(false);
+                    setProposal({ ...proposal, status: 'Proposal Sent' });
+                    saveDraftBackground();
+                    const destName = proposal?.destination || proposal?.preferences?.client?.destination || 'Your Trip';
+                    const clientUrl = `${window.location.origin}/view/${proposal?.share_token || 'demo'}?mode=client`;
+                    const subject = `Your Exclusive Travel Proposal: ${destName}`;
+                    const body = `Hi,\n\nWe are delighted to share your custom travel proposal for ${destName}.\n\nYou can explore your complete interactive itinerary, view inclusions/exclusions, and accept or request modifications directly online:\n${clientUrl}\n\nWe have also prepared an A4 PDF document for offline viewing and printing.\n\nPlease feel free to reply to this email with any questions or special preferences.\n\nWarm regards,\n${branding?.agency_name || 'Voyanta Travel Team'}`;
+                    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_self');
+                  }}
+                  className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-amber-600 text-[20px]">mail</span>
+                  <div>
+                    <div className="font-semibold text-xs text-on-surface">Share via Email</div>
+                    <div className="text-[10px] text-on-surface-variant">Draft pre-filled email with link</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -802,6 +855,34 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
               </button>
             </div>
             <ExportOptionsBar value={include} onChange={setInclude} order={sectionOrder} setOrder={setSectionOrder} customBlocks={localCustomBlocks} />
+            <div className="pt-4 border-t border-outline-variant space-y-3">
+              <div className="bg-surface-container-low p-4 rounded-xl border border-outline-variant/60 space-y-2.5">
+                <div className="flex justify-between items-center flex-wrap gap-2">
+                  <h4 className="font-headline-sm text-sm font-bold text-primary m-0 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-base">description</span>
+                    Destination Overview
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={autoGenerateOverview}
+                    className="px-3 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/30 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                    ✨ Auto-Generate Overview
+                  </button>
+                </div>
+                <textarea
+                  value={proposal?.overview || ''}
+                  onChange={(e) => {
+                    setProposal({ ...proposal, overview: e.target.value });
+                  }}
+                  onBlur={() => saveDraftBackground().catch(() => {})}
+                  placeholder="Click '✨ Auto-Generate Overview' or type your custom destination introduction here..."
+                  rows="3"
+                  className="w-full px-3 py-2 rounded-lg text-sm bg-surface-container-lowest border border-outline-variant text-on-surface focus:ring-2 focus:ring-primary/20 outline-none"
+                />
+              </div>
+            </div>
             <div className="pt-4 border-t border-outline-variant">
               {!showAddCustom ? (
                 <button

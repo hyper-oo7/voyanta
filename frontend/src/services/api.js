@@ -1,7 +1,21 @@
 import { logger } from '../utils/logger.js';
 import { supabase } from '../lib/supabaseClient.js';
 
+export function normalizeStorageUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    if (url.startsWith('http://127.0.0.1:8000/api/') || url.startsWith('http://localhost:8000/api/')) {
+      const path = url.replace(/http:\/\/(127\.0\.0\.1|localhost):8000/, '');
+      return getBackendUrl(path);
+    }
+  }
+  return url;
+}
+
 export function getBackendUrl(path = '') {
+  if (path && typeof path === 'string' && (path.startsWith('http://127.0.0.1:8000/api') || path.startsWith('http://localhost:8000/api'))) {
+    path = path.replace(/http:\/\/(127\.0\.0\.1|localhost):8000/, '');
+  }
   let base = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
     // When running on Vercel (or any production host), route /api through same-origin (/api/...)
@@ -33,7 +47,10 @@ if (typeof window !== 'undefined' && !window.__voyantaFetchIntercepted) {
   const originalFetch = window.fetch;
   window.fetch = async function(input, init = {}) {
     let urlString = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : (input?.url || ''));
-    if (urlString && urlString.startsWith('/api')) {
+    if (urlString && (urlString.startsWith('/api') || urlString.startsWith('http://127.0.0.1:8000/api') || urlString.startsWith('http://localhost:8000/api'))) {
+      if (urlString.startsWith('http://127.0.0.1:8000/api') || urlString.startsWith('http://localhost:8000/api')) {
+        urlString = urlString.replace(/http:\/\/(127\.0\.0\.1|localhost):8000/, '');
+      }
       const targetUrl = getBackendUrl(urlString);
       if (typeof input === 'string') {
         input = targetUrl;

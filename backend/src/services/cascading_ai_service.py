@@ -290,12 +290,34 @@ async def extract_vault_package_from_text(
                     meal["image_url"] = images[img_idx]["url"]
                     img_idx += 1
 
-    # Clean up null extra_sections
+    # Clean up null extra_sections and enhance with deterministic pure-code extraction
     if isinstance(parsed.get("extra_sections"), dict):
         extra = parsed.get("extra_sections") or {}
         parsed["extra_sections"] = {k: v for k, v in extra.items() if v and isinstance(v, str) and v.strip()}
     else:
         parsed["extra_sections"] = {}
+
+    # Pure-code multi-reader pipeline enhancement (Rule 5 compliance)
+    pure_extra = _extract_sections_pure_code(full_text)
+    for k, v in pure_extra.items():
+        if not parsed["extra_sections"].get(k):
+            parsed["extra_sections"][k] = v
+
+    pure_days = _extract_days_pure_code(full_text)
+    current_days = parsed.get("days", []) or []
+    if len(pure_days) > len(current_days):
+        if len(current_days) == 0:
+            parsed["days"] = pure_days
+        else:
+            existing_nums = {d.get("day_number") for d in current_days if isinstance(d, dict) and d.get("day_number") is not None}
+            for pd in pure_days:
+                if pd.get("day_number") not in existing_nums:
+                    current_days.append(pd)
+                    existing_nums.add(pd.get("day_number"))
+            current_days.sort(key=lambda x: x.get("day_number", 0) if isinstance(x, dict) else 0)
+            parsed["days"] = current_days
+    if parsed.get("days") and len(parsed["days"]) > 0:
+        parsed["duration_days"] = max(parsed.get("duration_days", 1), len(parsed["days"]))
 
     logger.info(
         f"[VaultExtract] Extraction complete — destination={parsed.get('destination')}, "
@@ -304,6 +326,107 @@ async def extract_vault_package_from_text(
     )
 
     return parsed
+
+
+def _extract_sections_pure_code(text: str) -> Dict[str, str]:
+    """
+    Deterministic pure-code section extraction.
+    Scans text for common extra section headings and captures paragraphs verbatim.
+    Ensures zero-miss capture when AI drops optional sections.
+    """
+    if not text:
+        return {}
+
+    headings = [
+        (r"(?i)\b(?:payment\s+terms|terms\s+of\s+payment|advance\s+deposit|bank\s+details|account\s+details|payment\s+policy)\b", "payment"),
+        (r"(?i)\b(?:cancellation\s+policy|cancellation\s+charges|cancellation\s+terms)\b", "cancellation_policy"),
+        (r"(?i)\b(?:what\s+to\s+pack|things\s+to\s+carry|packing\s+list|packing\s+essentials)\b", "what_to_pack"),
+        (r"(?i)\b(?:visa\s+guidelines|visa\s+information|visa\s+requirements|visa\s+info)\b", "visa_guidelines"),
+        (r"(?i)\b(?:important\s+notes|important\s+remarks|please\s+note|general\s+notes)\b", "important_notes"),
+        (r"(?i)\b(?:terms\s+and\s+conditions|terms\s+&\s+conditions|general\s+terms)\b", "terms_and_conditions"),
+        (r"(?i)\b(?:dos\s+and\s+donts|do's\s+and\s+don'ts|do's\s+&\s+don'ts|guidelines)\b", "dos_and_donts"),
+        (r"(?i)\b(?:office\s+address|contact\s+us|our\s+address|branch\s+office)\b", "office_address"),
+        (r"(?i)\b(?:about\s+transport|transport\s+rules|vehicle\s+notes|local\s+taxi)\b", "about_transport"),
+        (r"(?i)\b(?:arrival\s+requirements|id\s+proof|documents\s+required)\b", "arrival_requirements"),
+        (r"(?i)\b(?:damages|liability\s+policy)\b", "damages"),
+        (r"(?i)\b(?:amendment\s+policy|rescheduling\s+policy)\b", "amendment"),
+        (r"(?i)\b(?:refund\s+policy)\b", "refund")
+    ]
+
+    lines = text.split("\n")
+    sections: Dict[str, List[str]] = {}
+    current_key = None
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if current_key and sections[current_key] and sections[current_key][-1] != "\n":
+                sections[current_key].append("\n")
+            continue
+
+        found_heading = False
+        if len(stripped) < 80:
+            for pattern, key in headings:
+                if re.search(pattern, stripped):
+                    current_key = key
+                    if current_key not in sections:
+                        sections[current_key] = [stripped]
+                    found_heading = True
+                    break
+
+        if not found_heading and current_key:
+            if len("\n".join(sections[current_key])) < 3000:
+                sections[current_key].append(stripped)
+
+    result = {}
+    for k, lines_list in sections.items():
+        content = "\n".join(lines_list).strip()
+        if len(content) > 10:
+            result[k] = content
+    return result
+
+
+def _extract_days_pure_code(text: str) -> List[Dict[str, Any]]:
+    """
+    Deterministic pure-code day extraction.
+    Ensures itinerary days are extracted when AI truncates or misses days.
+    """
+    if not text:
+        return []
+
+    pattern = re.compile(r"(?i)(?:^|\n)\s*(?:Day|DAY)\s*([0-9]+)\s*[:\-–.]?\s*([^\n]+)?")
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return []
+
+    days = []
+    for i, m in enumerate(matches):
+        try:
+            day_num = int(m.group(1))
+        except ValueError:
+            continue
+        title_part = (m.group(2) or f"Day {day_num}").strip()
+        start_idx = m.end()
+        end_idx = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        desc_chunk = text[start_idx:end_idx].strip()
+
+        # Clean up description text if it gets too large
+        if len(desc_chunk) > 2000:
+            desc_chunk = desc_chunk[:2000] + "..."
+
+        days.append({
+            "day_number": day_num,
+            "title": title_part or f"Day {day_num}",
+            "description": desc_chunk or "Itinerary details as outlined in document.",
+            "sub_destination": "",
+            "schedule": "",
+            "hotels": [],
+            "activities": [],
+            "transfers": [],
+            "meals": []
+        })
+
+    return days
 
 
 # ─────────────────────────────────────────────────────────────────────────────

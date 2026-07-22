@@ -59,7 +59,7 @@ def test_get_presigned_url_mock_fallback(monkeypatch):
     monkeypatch.setenv("CF_R2_PRIVATE_ACCESS_KEY_ID", "")
     key = "supplier-pdfs/test-agency/some-unique-file.pdf"
     url = get_presigned_url(key)
-    assert url == "http://127.0.0.1:8000/api/storage/mock-files/supplier-pdfs/test-agency/some-unique-file.pdf"
+    assert url == "/api/storage/mock-files/supplier-pdfs/test-agency/some-unique-file.pdf"
 
 def test_upload_and_get_text_r2(monkeypatch):
     monkeypatch.setenv("CF_R2_PRIVATE_ACCESS_KEY_ID", "")

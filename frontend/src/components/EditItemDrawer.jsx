@@ -252,7 +252,7 @@ function HotelImagesManager({ images, onChange }) {
             setShowStockPicker(false);
           }}
           onClose={() => setShowStockPicker(false)}
-          defaultQuery="luxury hotel"
+          defaultQuery={form.title || form.name || form.destination || ""}
         />
       )}
       <span className="font-label-md font-bold text-primary">Photo Gallery (Hotels, Activities & Cruises)</span>

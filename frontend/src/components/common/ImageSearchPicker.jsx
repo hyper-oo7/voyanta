@@ -5,7 +5,7 @@ import { uploadOrEmbed } from '../LogoUploader.jsx';
 import { api, getBackendUrl } from '../../services/api.js';
 
 const CURATED_CATEGORIES = [
-  { id: 'all', label: 'All Luxury Travel', icon: 'travel_explore' },
+  { id: 'all', label: 'All Travel Images', icon: 'travel_explore' },
   { id: 'hotel', label: 'Hotels & Resorts', icon: 'hotel' },
   { id: 'cruise', label: 'Cruises & Yachts', icon: 'sailing' },
   { id: 'activity', label: 'Activities & Tours', icon: 'hiking' },
@@ -402,7 +402,7 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
                   <label className="text-xs font-bold text-on-surface uppercase tracking-wider">Image Web Address / Link</label>
                   <input
                     type="url"
-                    placeholder="https://example.com/luxury-resort-image.jpg"
+                    placeholder="https://example.com/travel-resort-image.jpg"
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleUrlSubmit(e); } }}

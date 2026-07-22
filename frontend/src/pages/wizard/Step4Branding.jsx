@@ -347,9 +347,9 @@ export function Step4Branding({ proposalId, branding, setBranding, client, custo
           </span>
         )}
       </div>
-      <TextareaWithAI label="What's Included" value={branding?.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" onAI={aiDraft('inclusions', 'inclusions')} />
-      <TextareaWithAI label="What's Excluded" value={branding?.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" onAI={aiDraft('exclusions', 'exclusions')} />
-      <TextareaWithAI label="Terms of Payment" value={branding?.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" onAI={aiDraft('terms_of_payment', 'terms')} />
+      <TextareaWithAI label="What's Included (Bullet points, one per line)" value={branding?.inclusions} onChange={upd('inclusions')} testid="brand-inclusions" onAI={aiDraft('inclusions', 'inclusions')} />
+      <TextareaWithAI label="What's Excluded (Bullet points, one per line)" value={branding?.exclusions} onChange={upd('exclusions')} testid="brand-exclusions" onAI={aiDraft('exclusions', 'exclusions')} />
+      <TextareaWithAI label="Terms of Payment (Bullet points, one per line)" value={branding?.terms_of_payment} onChange={upd('terms_of_payment')} testid="brand-terms" onAI={aiDraft('terms_of_payment', 'terms')} />
       
       {/* Custom Branding Fields */}
       <div className="pt-md border-t border-outline-variant space-y-3">

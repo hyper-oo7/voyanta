@@ -147,7 +147,7 @@ def upload_file_to_r2(
         f.write(file_bytes)
         
     # Return mock URL
-    mock_url = f"http://127.0.0.1:8000/api/storage/mock-files/{folder}/{agency_id_str}/{local_filename}"
+    mock_url = f"/api/storage/mock-files/{folder}/{agency_id_str}/{local_filename}"
     return {
         "url": mock_url,
         "path": key,
@@ -175,7 +175,7 @@ def get_presigned_url(key: str, expires_in: int = 86400) -> Optional[str]:
     parts = key.split("/")
     if len(parts) >= 3:
         folder, agency_id, filename = parts[0], parts[1], parts[2]
-        return f"http://127.0.0.1:8000/api/storage/mock-files/{folder}/{agency_id}/{filename}"
+        return f"/api/storage/mock-files/{folder}/{agency_id}/{filename}"
         
     return None
 

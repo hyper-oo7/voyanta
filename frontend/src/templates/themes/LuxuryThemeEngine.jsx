@@ -284,9 +284,17 @@ export default function LuxuryThemeEngine(props) {
                   <span className="material-symbols-outlined text-[20px]" style={{ color: primaryColor }}>check_circle</span>
                   What Is Included
                 </h3>
-                <div className="text-sm text-slate-600 whitespace-pre-line leading-relaxed pl-2">
-                  {safeText(p.inclusions || p.included_items)}
-                </div>
+                <ul className="space-y-2.5 text-sm text-slate-600">
+                  {safeText(p.inclusions || p.included_items).split('\n').map((item, i) => {
+                    const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                    return clean ? (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="material-symbols-outlined text-emerald-500 text-base mt-0.5 shrink-0">check_circle</span>
+                        <span className="leading-relaxed">{clean}</span>
+                      </li>
+                    ) : null;
+                  })}
+                </ul>
               </div>
             )}
             {(include.exclusions ?? true) && (p.exclusions || p.excluded_items) && (
@@ -295,9 +303,17 @@ export default function LuxuryThemeEngine(props) {
                   <span className="material-symbols-outlined text-[20px] text-rose-500">cancel</span>
                   What Is Not Included
                 </h3>
-                <div className="text-sm text-slate-600 whitespace-pre-line leading-relaxed pl-2">
-                  {safeText(p.exclusions || p.excluded_items)}
-                </div>
+                <ul className="space-y-2.5 text-sm text-slate-600">
+                  {safeText(p.exclusions || p.excluded_items).split('\n').map((item, i) => {
+                    const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                    return clean ? (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="material-symbols-outlined text-rose-500 text-base mt-0.5 shrink-0">cancel</span>
+                        <span className="leading-relaxed">{clean}</span>
+                      </li>
+                    ) : null;
+                  })}
+                </ul>
               </div>
             )}
           </div>
@@ -319,14 +335,45 @@ export default function LuxuryThemeEngine(props) {
         </section>
       )}
 
+      {/* ─── Terms of Payment ───────────────────────────────────────────────── */}
+      {(p.terms_of_payment || b.terms_of_payment) && (
+        <section className="theme-section">
+          <div className="max-w-4xl mx-auto theme-card border-l-4 border-blue-500">
+            <h3 className="text-lg font-bold mb-3 uppercase tracking-widest text-slate-700 flex items-center gap-2">
+              <span className="material-symbols-outlined text-blue-600">payments</span>
+              Terms of Payment
+            </h3>
+            <ul className="space-y-2.5 text-xs text-slate-600">
+              {safeText(p.terms_of_payment || b.terms_of_payment).split('\n').map((item, i) => {
+                const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                return clean ? (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="material-symbols-outlined text-blue-500 text-base mt-0.5 shrink-0">check_circle</span>
+                    <span className="leading-relaxed">{clean}</span>
+                  </li>
+                ) : null;
+              })}
+            </ul>
+          </div>
+        </section>
+      )}
+
       {/* ─── Terms & Conditions ─────────────────────────────────────────────── */}
       {(include.terms ?? true) && (p.terms || b.terms_conditions) && (
         <section className="theme-section">
           <div className="max-w-4xl mx-auto theme-card">
             <h3 className="text-lg font-bold mb-3 uppercase tracking-widest text-slate-400">Terms & Policy</h3>
-            <p className="text-xs text-slate-500 whitespace-pre-line leading-relaxed m-0 font-light">
-              {safeText(p.terms || b.terms_conditions)}
-            </p>
+            <ul className="space-y-2 text-xs text-slate-500">
+              {safeText(p.terms || b.terms_conditions).split('\n').map((item, i) => {
+                const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                return clean ? (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="material-symbols-outlined text-slate-400 text-base mt-0.5 shrink-0">arrow_right</span>
+                    <span className="leading-relaxed">{clean}</span>
+                  </li>
+                ) : null;
+              })}
+            </ul>
           </div>
         </section>
       )}

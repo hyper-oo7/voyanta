@@ -47,12 +47,12 @@ const clientSchema = z.object({
   path: ['start_date']
 });
 
-const Field = memo(function Field({ label, register, name, type = 'text', testid, extraClass = '', error }) {
+const Field = memo(function Field({ label, register, name, type = 'text', testid, extraClass = '', error, disabled = false }) {
   return (
     <label className={'flex flex-col gap-xs ' + extraClass}>
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
-      <input type={type} {...register(name, { valueAsNumber: type === 'number' })} data-testid={testid}
-        className={`px-md py-md bg-surface-container-lowest border rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 ${error ? 'border-error' : 'border-outline-variant'}`} />
+      <input type={type} disabled={disabled} {...register(name, { valueAsNumber: type === 'number' })} data-testid={testid}
+        className={`px-md py-md bg-surface-container-lowest border rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 ${disabled ? 'opacity-70 cursor-not-allowed bg-surface-container/40' : ''} ${error ? 'border-error' : 'border-outline-variant'}`} />
       {error && <span className="text-xs text-error">{error.message}</span>}
     </label>
   );
@@ -299,6 +299,21 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
   const start_date = watch('start_date');
   const end_date = watch('end_date');
   const destination = watch('destination');
+  const group_type = watch('group_type');
+  const tour_category = watch('tour_category');
+  const duration_days = watch('duration_days');
+
+  // Requirement 1: Conditional Tour Category ("Honeymoon" removal for Solo/Corporate/Family/Friends)
+  const nonHoneymoonGroups = ['Solo', 'Corporate Group', 'Family', 'Friends'];
+  const availableTourCategories = nonHoneymoonGroups.includes(group_type)
+    ? TOUR_CATEGORIES.filter(t => t !== 'Honeymoon')
+    : TOUR_CATEGORIES;
+
+  useEffect(() => {
+    if (nonHoneymoonGroups.includes(group_type) && tour_category === 'Honeymoon') {
+      setValue('tour_category', '', { shouldValidate: true });
+    }
+  }, [group_type, tour_category, setValue]);
 
   const [seasonalWarnings, setSeasonalWarnings] = useState([]);
 
@@ -353,11 +368,14 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
   useEffect(() => {
     if (date_mode === 'dates' && start_date && end_date) {
       const ms = new Date(end_date).getTime() - new Date(start_date).getTime();
-      const nights = Math.max(1, Math.round(ms / 86400000));
+      const nights = Math.max(0, Math.round(ms / 86400000));
       setValue('duration_nights', nights, { shouldValidate: true });
       setValue('duration_days', nights + 1, { shouldValidate: true });
+    } else if (date_mode === 'days' && duration_days > 0) {
+      const nights = Math.max(0, parseInt(duration_days, 10) - 1);
+      setValue('duration_nights', nights, { shouldValidate: true });
     }
-  }, [start_date, end_date, date_mode, setValue]);
+  }, [start_date, end_date, date_mode, duration_days, setValue]);
 
   return (
     <div className="glass-card rounded-xl p-lg space-y-md text-on-surface" data-testid="step-1">
@@ -414,7 +432,7 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
           <select {...register('tour_category')} data-testid="tour-category"
             className="w-full px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20">
             <option value="">(Select category)</option>
-            {TOUR_CATEGORIES.map(t => <option key={t} value={t}>{t}</option>)}
+            {availableTourCategories.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         
@@ -443,7 +461,7 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
           ) : (
             <div className="flex gap-md">
               <Field label="Number of Days" name="duration_days" type="number" register={register} error={errors.duration_days} testid="duration-days" extraClass="flex-1" />
-              <Field label="Number of Nights" name="duration_nights" type="number" register={register} error={errors.duration_nights} testid="duration-nights" extraClass="flex-1" />
+              <Field label="Number of Nights (Auto: Days - 1)" name="duration_nights" type="number" register={register} error={errors.duration_nights} testid="duration-nights" extraClass="flex-1" disabled={true} />
             </div>
           )}
         </div>

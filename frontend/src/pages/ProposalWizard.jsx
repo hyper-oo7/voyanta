@@ -273,14 +273,11 @@ export default function ProposalWizard() {
 
   const sanitizeCurrency = (v) => /^[A-Z]{3}$/.test(String(v || '').toUpperCase()) ? String(v).toUpperCase() : (proposal?.currency || 'INR');
   const nights = useMemo(() => {
-    const a = proposal?.start_date || client.start_date;
-    const b = proposal?.end_date   || client.end_date;
-    if (!a || !b) return 1;
-    if (client.date_mode === 'days') return parseInt(client.duration_nights, 10) || 1;
-    const ms = new Date(b).getTime() - new Date(a).getTime();
-    const n = Math.round(ms / (1000 * 60 * 60 * 24));
-    return n > 0 ? n : 1;
-  }, [proposal?.start_date, proposal?.end_date, client.start_date, client.end_date, client.date_mode, client.duration_nights]);
+    const daysCount = (proposal?.itinerary?.days && proposal.itinerary.days.length > 0)
+      ? proposal.itinerary.days.length
+      : (parseInt(client.duration_days, 10) || 1);
+    return Math.max(0, daysCount - 1);
+  }, [proposal?.itinerary?.days?.length, client.duration_days]);
   const travelers = useMemo(() => {
     const t = (parseInt(client.num_adults, 10) || 0) + (parseInt(client.num_children, 10) || 0);
     return t > 0 ? t : (proposal?.travelers || 1);

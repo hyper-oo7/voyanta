@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
 import ImageSearchPicker from './ImageSearchPicker.jsx';
+import { normalizeStorageUrl } from '../../services/api.js';
 
-export default function ImageUploadInput({ value = '', onChange, placeholder = 'https://example.com/image.jpg', label, className = '', hideStockSearch = false }) {
+export default function ImageUploadInput({ value = '', onChange, placeholder = 'https://example.com/image.jpg', label, className = '', hideStockSearch = false, defaultQuery = '' }) {
   const fileInputRef = useRef(null);
   const [showPicker, setShowPicker] = useState(false);
 
@@ -40,7 +41,7 @@ export default function ImageUploadInput({ value = '', onChange, placeholder = '
             if (typeof onChange === 'function') onChange(url);
             setShowPicker(false);
           }} 
-          defaultQuery="luxury travel" 
+          defaultQuery={defaultQuery || ''} 
         />
       )}
       
@@ -48,7 +49,7 @@ export default function ImageUploadInput({ value = '', onChange, placeholder = '
         <div className="relative w-full">
           <input
             type="text"
-            value={value}
+            value={normalizeStorageUrl(value) || ''}
             onChange={(e) => onChange && onChange(e.target.value)}
             placeholder={placeholder}
             className="w-full pl-9 pr-3 py-2 rounded-lg text-sm bg-surface-container-lowest border border-outline-variant text-on-surface focus:border-primary focus:outline-none transition-colors"

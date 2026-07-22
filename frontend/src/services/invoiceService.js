@@ -177,6 +177,24 @@ export async function getNextInvoiceNumber() {
   const format = settings.invoice_number_format || 'INV-000001';
   let nextSeq = Number(settings.invoice_next_sequence || 1);
   
+  try {
+    const existingInvoices = await fetchInvoices();
+    let maxFound = 0;
+    for (const inv of existingInvoices) {
+      if (inv && inv.invoice_number) {
+        const parts = String(inv.invoice_number).split('-');
+        const lastPart = parts[parts.length - 1];
+        const parsed = parseInt(lastPart, 10);
+        if (!isNaN(parsed) && parsed > maxFound) {
+          maxFound = parsed;
+        }
+      }
+    }
+    if (maxFound >= nextSeq) {
+      nextSeq = maxFound + 1;
+    }
+  } catch {}
+
   if (lastUsedSequence !== null && lastUsedSequence >= nextSeq) {
     nextSeq = lastUsedSequence + 1;
   }
@@ -420,14 +438,35 @@ export async function saveInvoiceRecord(invoice, isNew = false) {
     if (isNew) {
       const { error } = await supabase.from('invoices').insert([dbPayload]);
       if (error) {
-        // If custom_columns/taxes column doesn't exist yet, retry without them in top-level payload
-        if (error.message?.includes('schema cache') || error.message?.includes('column')) {
+        if (error.code === '23505' || error.message?.includes('invoices_invoice_number_key') || error.message?.includes('duplicate key')) {
+          const suffix = Math.floor(100 + Math.random() * 900);
+          const nextNum = `${dbPayload.invoice_number}-${suffix}`;
+          dbPayload.invoice_number = nextNum;
+          updated.invoice_number = nextNum;
+          const { error: dupErr } = await supabase.from('invoices').insert([dbPayload]);
+          if (dupErr) {
+            notifyDbError('invoices', dupErr);
+            throw dupErr;
+          }
+        } else if (error.message?.includes('schema cache') || error.message?.includes('column')) {
           delete dbPayload.custom_columns;
           delete dbPayload.taxes;
           const { error: retryErr } = await supabase.from('invoices').insert([dbPayload]);
           if (retryErr) {
-            notifyDbError('invoices', retryErr);
-            throw retryErr;
+            if (retryErr.code === '23505' || retryErr.message?.includes('invoices_invoice_number_key') || retryErr.message?.includes('duplicate key')) {
+              const suffix = Math.floor(100 + Math.random() * 900);
+              const nextNum = `${dbPayload.invoice_number}-${suffix}`;
+              dbPayload.invoice_number = nextNum;
+              updated.invoice_number = nextNum;
+              const { error: dupErr2 } = await supabase.from('invoices').insert([dbPayload]);
+              if (dupErr2) {
+                notifyDbError('invoices', dupErr2);
+                throw dupErr2;
+              }
+            } else {
+              notifyDbError('invoices', retryErr);
+              throw retryErr;
+            }
           }
         } else {
           notifyDbError('invoices', error);

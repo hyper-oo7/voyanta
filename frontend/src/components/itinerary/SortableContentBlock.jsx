@@ -324,7 +324,7 @@ export default function SortableContentBlock({ id, item, onChange, onRemove }) {
             setShowStockPicker(false);
           }}
           onClose={() => setShowStockPicker(false)}
-          defaultQuery={item.data.name || item.data.text || 'luxury resort'}
+          defaultQuery={item.data.name || item.data.text || ''}
         />
       )}
     </div>

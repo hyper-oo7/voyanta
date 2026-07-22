@@ -18,6 +18,7 @@ import TemplateRenderer, { ALL as ALL_SECTIONS, SECTIONS } from '../components/T
 import InlineStudioPopover from '../components/common/InlineStudioPopover.jsx';
 import ImageSearchPicker from '../components/common/ImageSearchPicker.jsx';
 import GoogleTranslateWidget from '../components/GoogleTranslateWidget.jsx';
+import { createInvoiceFromProposal } from '../services/invoiceService.js';
 
 const INDIAN_LANGUAGES = [
   { code: 'en', label: 'English', native: 'English' },
@@ -35,6 +36,8 @@ const INDIAN_LANGUAGES = [
 export default function WebViewPage() {
   const { token } = useParams();
   const { user } = useAuthStore();
+  const isClientMode = typeof window !== 'undefined' && (window.location.search.includes('mode=client') || window.location.search.includes('view=client'));
+  const isAgentView = Boolean(user && !isClientMode);
   const [lang, setLang] = useState('en');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -81,6 +84,26 @@ export default function WebViewPage() {
   const [selectedActivityBlock, setSelectedActivityBlock] = useState(null);
   const [selectedActivityDayIdx, setSelectedActivityDayIdx] = useState(null);
   const [showStockPicker, setShowStockPicker] = useState(false);
+
+  const markProposalSent = () => {
+    try {
+      if (!p?.id) return;
+      const cacheKey = 'voyanta_proposals_list_cache';
+      const cachedList = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+      let updated = false;
+      const newList = cachedList.map((item) => {
+        if (String(item.id) === String(p.id) && (item.status === 'Draft' || !item.status || item.status === 'pending')) {
+          updated = true;
+          return { ...item, status: 'Proposal Sent' };
+        }
+        return item;
+      });
+      if (updated) {
+        localStorage.setItem(cacheKey, JSON.stringify(newList));
+        window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
+      }
+    } catch {}
+  };
 
   const handleActivityClick = (block, dayIdx) => {
     setSelectedActivityBlock(block);
@@ -356,6 +379,16 @@ export default function WebViewPage() {
       // Sync status to local storage so CRM and Dashboard StatCards reflect approval
       syncProposalStatusToCRM(p.id, 'approved', clientFullName.trim());
 
+      try {
+        const inv = await createInvoiceFromProposal(p, branding);
+        if (inv) {
+          toast.success(`🎉 Client invoice #${inv.invoice_number || 'INV'} auto-created!`);
+          window.dispatchEvent(new CustomEvent('voyanta:invoices-updated'));
+        }
+      } catch (invErr) {
+        console.warn('Failed to auto-create invoice from proposal approval:', invErr);
+      }
+
       setShowApproveModal(false);
       setShowConfetti(true);
       toast.success('Proposal approved successfully! Recorded under DPDP Act 2023.');
@@ -405,6 +438,55 @@ export default function WebViewPage() {
       if (updated) {
         localStorage.setItem(cacheKey, JSON.stringify(newList));
       }
+
+      // Sync Client Deal status in CRM cache
+      const clientCacheKey = 'voyanta_clients_list_cache';
+      const clientsList = JSON.parse(localStorage.getItem(clientCacheKey) || '[]');
+      let clientUpdated = false;
+      const crmStatus = newStatus === 'approved' ? 'Won' : (newStatus === 'changes_requested' ? 'Modification Requested' : newStatus);
+      const updatedClients = clientsList.map((client) => {
+        if (String(client.id) === String(p?.client_id) || (client.name && p?.client_name && client.name.toLowerCase().trim() === p.client_name.toLowerCase().trim())) {
+          clientUpdated = true;
+          const activity = client.activity || [];
+          return {
+            ...client,
+            deal_status: crmStatus,
+            status: crmStatus,
+            activity: [
+              {
+                id: crypto.randomUUID(),
+                type: newStatus === 'approved' ? 'deal_won' : 'modification_requested',
+                description: newStatus === 'approved' ? `Proposal "${p?.name || 'Trip'}" approved by ${signerName || p?.client_name || 'Client'}` : `Modifications requested for "${p?.name || 'Trip'}"`,
+                timestamp: new Date().toISOString()
+              },
+              ...activity
+            ]
+          };
+        }
+        return client;
+      });
+      if (clientUpdated) {
+        localStorage.setItem(clientCacheKey, JSON.stringify(updatedClients));
+      }
+
+      // Trigger In-App Notification
+      try {
+        const notifKey = 'voyanta_notifications_list';
+        const notifs = JSON.parse(localStorage.getItem(notifKey) || '[]');
+        const newNotif = {
+          id: crypto.randomUUID(),
+          title: newStatus === 'approved' ? '🎉 Proposal Approved!' : '📝 Modification Requested',
+          message: newStatus === 'approved' ? `${signerName || p?.client_name || 'Client'} approved proposal "${p?.name || 'Trip'}" and an invoice was auto-created.` : `${p?.client_name || 'Client'} requested modifications for "${p?.name || 'Trip'}".`,
+          time: 'Just now',
+          read: false,
+          type: newStatus === 'approved' ? 'success' : 'warning'
+        };
+        localStorage.setItem(notifKey, JSON.stringify([newNotif, ...notifs]));
+      } catch {}
+
+      window.dispatchEvent(new CustomEvent('voyanta:crm-updated'));
+      window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
+      window.dispatchEvent(new CustomEvent('voyanta:notifications-updated'));
     } catch (e) {
       console.warn('Failed to sync CRM local cache:', e);
     }
@@ -424,7 +506,7 @@ export default function WebViewPage() {
   return (
     <div className="min-h-screen bg-surface font-body-md text-on-surface pb-36 transition-colors duration-300">
       {/* Agent Live Editor Control Bar */}
-      {user && (
+      {isAgentView && (
         <div className="bg-primary text-on-primary py-3 px-4 flex items-center justify-between text-xs font-bold shadow-md no-print z-50 sticky top-0">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[18px]">admin_panel_settings</span>
@@ -466,7 +548,8 @@ export default function WebViewPage() {
                     type="button"
                     onClick={async () => {
                       setShowShareDropdown(false);
-                      const url = `${window.location.origin}/view/${p.share_token || 'demo'}`;
+                      markProposalSent();
+                      const url = `${window.location.origin}/view/${p.share_token || 'demo'}?mode=client`;
                       await navigator.clipboard.writeText(url);
                       toast.success('🌐 Client proposal link copied!');
                     }}
@@ -479,7 +562,8 @@ export default function WebViewPage() {
                     type="button"
                     onClick={() => {
                       setShowShareDropdown(false);
-                      const url = `${window.location.origin}/view/${p.share_token || 'demo'}`;
+                      markProposalSent();
+                      const url = `${window.location.origin}/view/${p.share_token || 'demo'}?mode=client`;
                       const msg = `Hi! Here is the travel proposal for ${p.name || 'your trip'}. View and approve it here: ${url}`;
                       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
                     }}
@@ -492,7 +576,8 @@ export default function WebViewPage() {
                     type="button"
                     onClick={() => {
                       setShowShareDropdown(false);
-                      const url = `${window.location.origin}/view/${p.share_token || 'demo'}`;
+                      markProposalSent();
+                      const url = `${window.location.origin}/view/${p.share_token || 'demo'}?mode=client`;
                       const subject = `Travel Proposal: ${p.name || 'Your Trip'}`;
                       const body = `Hi! Here is the travel proposal for ${p.name || 'your trip'}. View and approve it here: ${url}`;
                       window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
@@ -731,8 +816,16 @@ export default function WebViewPage() {
                     <span className="material-symbols-outlined">check_circle</span>
                     Inclusions
                   </h3>
-                  <ul className="space-y-2 text-sm text-on-surface-variant pl-4 list-disc">
-                    {p.inclusions.split('\n').map((item, i) => item.trim() && <li key={i}>{item}</li>)}
+                  <ul className="space-y-2.5 text-sm text-on-surface-variant">
+                    {p.inclusions.split('\n').map((item, i) => {
+                      const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                      return clean ? (
+                        <li key={i} className="flex items-start gap-2.5">
+                          <span className="material-symbols-outlined text-emerald-500 text-base mt-0.5 shrink-0">check_circle</span>
+                          <span className="leading-relaxed">{clean}</span>
+                        </li>
+                      ) : null;
+                    })}
                   </ul>
                 </div>
               )}
@@ -742,8 +835,16 @@ export default function WebViewPage() {
                     <span className="material-symbols-outlined">cancel</span>
                     Exclusions
                   </h3>
-                  <ul className="space-y-2 text-sm text-on-surface-variant pl-4 list-disc">
-                    {p.exclusions.split('\n').map((item, i) => item.trim() && <li key={i}>{item}</li>)}
+                  <ul className="space-y-2.5 text-sm text-on-surface-variant">
+                    {p.exclusions.split('\n').map((item, i) => {
+                      const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                      return clean ? (
+                        <li key={i} className="flex items-start gap-2.5">
+                          <span className="material-symbols-outlined text-rose-500 text-base mt-0.5 shrink-0">cancel</span>
+                          <span className="leading-relaxed">{clean}</span>
+                        </li>
+                      ) : null;
+                    })}
                   </ul>
                 </div>
               )}
@@ -836,14 +937,86 @@ export default function WebViewPage() {
             </div>
           )}
 
+          {/* Terms of Payment */}
+          {(p.terms_of_payment || p.preferences?.branding?.terms_of_payment || branding?.terms_of_payment) && (
+            <div id="payment-terms-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4 pt-4">
+              <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">payments</span>
+                Terms of Payment
+              </h3>
+              <ul className="space-y-2.5 text-sm text-on-surface-variant">
+                {(p.terms_of_payment || p.preferences?.branding?.terms_of_payment || branding?.terms_of_payment).split('\n').map((item, i) => {
+                  const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                  return clean ? (
+                    <li key={i} className="flex items-start gap-2.5">
+                      <span className="material-symbols-outlined text-primary text-base mt-0.5 shrink-0">check_circle</span>
+                      <span className="leading-relaxed">{clean}</span>
+                    </li>
+                  ) : null;
+                })}
+              </ul>
+            </div>
+          )}
+
           {/* Terms & Conditions */}
           {include.terms && p.terms && (
-            <div id="terms-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-3 pt-4">
+            <div id="terms-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4 pt-4">
               <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">gavel</span>
                 Terms & Conditions
               </h3>
-              <div className="text-xs text-on-surface-variant leading-relaxed whitespace-pre-wrap">{p.terms}</div>
+              <ul className="space-y-2.5 text-sm text-on-surface-variant">
+                {p.terms.split('\n').map((item, i) => {
+                  const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                  return clean ? (
+                    <li key={i} className="flex items-start gap-2.5">
+                      <span className="material-symbols-outlined text-primary/70 text-base mt-0.5 shrink-0">arrow_right</span>
+                      <span className="leading-relaxed">{clean}</span>
+                    </li>
+                  ) : null;
+                })}
+              </ul>
+            </div>
+          )}
+
+          {/* Dynamically Extracted / Custom Extra Sections (What to Pack, Visa Info, Important Notes, etc.) */}
+          {p.extra_sections && Object.entries(p.extra_sections).length > 0 && (
+            <div className="space-y-6 pt-4">
+              {Object.entries(p.extra_sections).map(([secKey, secContent]) => {
+                if (!secContent) return null;
+                const formattedTitle = secKey
+                  .replace(/_/g, ' ')
+                  .replace(/\b\w/g, l => l.toUpperCase());
+                return (
+                  <div key={secKey} className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
+                    <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary">menu_book</span>
+                      {formattedTitle}
+                    </h3>
+                    <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
+                      {typeof secContent === 'string' ? secContent : JSON.stringify(secContent, null, 2)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Custom Agency Branding Fields */}
+          {Array.isArray(branding.custom_fields) && branding.custom_fields.length > 0 && (
+            <div className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4 pt-4">
+              <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">feed</span>
+                Additional Information & Agency Terms
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                {branding.custom_fields.map((cf, idx) => (
+                  <div key={idx} className="space-y-1">
+                    <span className="text-xs font-bold uppercase tracking-wider text-primary block">{cf.label}</span>
+                    <span className="text-on-surface-variant leading-relaxed whitespace-pre-wrap">{cf.value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -932,6 +1105,26 @@ export default function WebViewPage() {
                   {formatPrice(data?.totals?.subtotal || 0, data?.totals?.currency || 'INR')}
                 </span>
               </div>
+
+              {!isAgentView && proposalStatus === 'pending' && (
+                <div className="pt-4 border-t border-outline-variant/60 flex flex-col gap-2.5">
+                  <button
+                    onClick={() => setShowApproveModal(true)}
+                    disabled={actionLoading}
+                    className="w-full py-2.5 rounded-xl bg-primary text-on-primary font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-base">verified</span>
+                    {getUIText(lang, 'approveProposal')}
+                  </button>
+                  <button
+                    onClick={() => setShowModifyModal(true)}
+                    disabled={actionLoading}
+                    className="w-full py-2.5 rounded-xl border border-outline font-semibold text-sm text-on-surface hover:bg-surface-container transition-all"
+                  >
+                    {getUIText(lang, 'requestChanges')}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -986,7 +1179,7 @@ export default function WebViewPage() {
               </select>
             </div>
 
-            {user ? (
+            {isAgentView ? (
               <div className="bg-primary/10 border border-primary/20 text-primary px-5 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 no-print">
                 <span className="material-symbols-outlined text-base">info</span>
                 Viewing as Agent
@@ -1539,7 +1732,7 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
           </motion.div>
         )}
       </AnimatePresence>
-      <GoogleTranslateWidget />
+      {!isAgentView && <GoogleTranslateWidget />}
     </div>
   );
 }

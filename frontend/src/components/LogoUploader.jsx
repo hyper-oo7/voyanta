@@ -45,7 +45,7 @@ export default function LogoUploader({ value, onChange, label = 'Logo', testid =
             setShowStockPicker(false);
           }}
           onClose={() => setShowStockPicker(false)}
-          defaultQuery="luxury travel"
+          defaultQuery={label || ""}
         />
       )}
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
