@@ -536,15 +536,15 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
           onChange={(e) => {
             const newLang = e.target.value;
             setProposal({ ...proposal, language: newLang, lang: newLang });
-            toast.info(`Translating page to ${newLang.toUpperCase()} via Google Translate...`);
             
-            // Programmatically trigger Google Translate
+            // Programmatically trigger Google Translate if widget is present on page
             const googleSelect = document.querySelector('.goog-te-combo');
             if (googleSelect) {
+              toast.info(`Translating page to ${newLang.toUpperCase()} via Google Translate...`);
               googleSelect.value = newLang;
               googleSelect.dispatchEvent(new Event('change'));
             } else {
-              toast.error('Google Translate script is still loading. Please try again in a moment.');
+              toast.info(`Proposal language set to ${newLang.toUpperCase()} for client Web View.`);
             }
           }} 
           data-testid="preview-language"

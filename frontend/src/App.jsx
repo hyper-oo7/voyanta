@@ -6,7 +6,6 @@ import { BackendHealthProvider } from './context/BackendHealthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import AppLayout from './components/AppLayout.jsx';
 import DiagnosticsPanel from './components/DiagnosticsPanel.jsx';
-import GoogleTranslateWidget from './components/GoogleTranslateWidget.jsx';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const queryClient = new QueryClient({
@@ -131,7 +130,6 @@ export default function App() {
               </Routes>
             </Suspense>
             <DiagnosticsPanel />
-            <GoogleTranslateWidget />
         </BackendHealthProvider>
       </ToastProvider>
     </QueryClientProvider>

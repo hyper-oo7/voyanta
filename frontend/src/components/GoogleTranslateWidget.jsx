@@ -2,10 +2,9 @@ import React, { useEffect } from 'react';
 
 export default function GoogleTranslateWidget() {
   useEffect(() => {
-    if (document.getElementById('google-translate-script')) return;
-
-    window.googleTranslateElementInit = () => {
-      if (window.google?.translate) {
+    const initTranslate = () => {
+      const container = document.getElementById('google_translate_element');
+      if (window.google?.translate?.TranslateElement && container && container.innerHTML.trim() === '') {
         new window.google.translate.TranslateElement(
           {
             pageLanguage: 'en',
@@ -16,6 +15,25 @@ export default function GoogleTranslateWidget() {
           'google_translate_element'
         );
       }
+    };
+
+    if (document.getElementById('google-translate-script')) {
+      if (window.google?.translate?.TranslateElement) {
+        initTranslate();
+      } else {
+        const interval = setInterval(() => {
+          if (window.google?.translate?.TranslateElement) {
+            clearInterval(interval);
+            initTranslate();
+          }
+        }, 100);
+        setTimeout(() => clearInterval(interval), 5000);
+      }
+      return;
+    }
+
+    window.googleTranslateElementInit = () => {
+      initTranslate();
     };
 
     const addScript = () => {

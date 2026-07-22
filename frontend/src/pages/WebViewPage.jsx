@@ -17,6 +17,7 @@ import MapWidget from '../components/MapWidget.jsx';
 import TemplateRenderer, { ALL as ALL_SECTIONS, SECTIONS } from '../components/TemplateRenderer.jsx';
 import InlineStudioPopover from '../components/common/InlineStudioPopover.jsx';
 import ImageSearchPicker from '../components/common/ImageSearchPicker.jsx';
+import GoogleTranslateWidget from '../components/GoogleTranslateWidget.jsx';
 
 const INDIAN_LANGUAGES = [
   { code: 'en', label: 'English', native: 'English' },
@@ -1538,6 +1539,7 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
           </motion.div>
         )}
       </AnimatePresence>
+      <GoogleTranslateWidget />
     </div>
   );
 }
