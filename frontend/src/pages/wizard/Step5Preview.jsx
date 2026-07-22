@@ -539,7 +539,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
 
   return (
     <div className="h-full flex flex-col space-y-md" data-testid="step-preview">
-      <div className="glass-card px-md py-sm rounded-xl flex items-center justify-between gap-md flex-wrap no-print border border-outline-variant/80 shadow-sm bg-surface-container-lowest/90 backdrop-blur-md">
+      <div className="glass-card relative z-30 px-md py-sm rounded-xl flex items-center justify-between gap-md flex-wrap no-print border border-outline-variant/80 shadow-sm bg-surface-container-lowest/90 backdrop-blur-md">
         <div className="flex items-center gap-2 flex-wrap">
           {/* Sleek Theme Pill Selector */}
           <div className="flex items-center gap-1.5 bg-surface-container px-2.5 py-1 rounded-lg border border-outline-variant/60">

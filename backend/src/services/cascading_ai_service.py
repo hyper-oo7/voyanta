@@ -319,10 +319,52 @@ async def extract_vault_package_from_text(
     if parsed.get("days") and len(parsed["days"]) > 0:
         parsed["duration_days"] = max(parsed.get("duration_days", 1), len(parsed["days"]))
 
+    # Expand slash-separated hotels and merge pure-code hotel extractions
+    expanded_hotels = []
+    for h in (parsed.get("hotels") or []):
+        if not isinstance(h, dict):
+            continue
+        h_name = str(h.get("name") or "").strip()
+        if "/" in h_name and len(h_name.split("/")) >= 2:
+            parts = [p.strip() for p in h_name.split("/") if len(p.strip()) >= 3]
+            for p in parts:
+                new_h = dict(h)
+                new_h["name"] = p
+                expanded_hotels.append(new_h)
+        else:
+            expanded_hotels.append(h)
+
+    for d in (parsed.get("days") or []):
+        if not isinstance(d, dict):
+            continue
+        day_hotels = []
+        for h in (d.get("hotels") or []):
+            if not isinstance(h, dict):
+                continue
+            h_name = str(h.get("name") or "").strip()
+            if "/" in h_name and len(h_name.split("/")) >= 2:
+                parts = [p.strip() for p in h_name.split("/") if len(p.strip()) >= 3]
+                for p in parts:
+                    new_h = dict(h)
+                    new_h["name"] = p
+                    day_hotels.append(new_h)
+            else:
+                day_hotels.append(h)
+        d["hotels"] = day_hotels
+
+    pure_hotels = _extract_hotels_pure_code(full_text)
+    existing_h_names = {str(x.get("name") or "").strip().lower() for x in expanded_hotels if isinstance(x, dict)}
+    for ph in pure_hotels:
+        ph_name = str(ph.get("name") or "").strip().lower()
+        if ph_name and ph_name not in existing_h_names:
+            expanded_hotels.append(ph)
+            existing_h_names.add(ph_name)
+    parsed["hotels"] = expanded_hotels
+
     logger.info(
         f"[VaultExtract] Extraction complete — destination={parsed.get('destination')}, "
         f"days={len(parsed.get('days', []))}, currency={parsed.get('currency')}, "
-        f"total_price={parsed.get('total_price')}, extra_sections={list(parsed.get('extra_sections', {}).keys())}"
+        f"hotels={len(parsed.get('hotels', []))}, extra_sections={list(parsed.get('extra_sections', {}).keys())}"
     )
 
     return parsed
