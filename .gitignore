@@ -86,3 +86,9 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+
+# Local runtime storage & mock artifacts
+backend/public_r2_mock/
+backend/temp_supplier_pdfs/*
+!backend/temp_supplier_pdfs/*Mr._Shivam_Bhardwaj.pdf
+
