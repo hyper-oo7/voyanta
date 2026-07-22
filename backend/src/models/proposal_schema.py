@@ -98,7 +98,7 @@ class FinalProposalSchema(BaseModel):
     Final strict proposal schema enforced across extraction and AI orchestration.
     Guaranteeing zero schema drift and strict JSON compliance.
     """
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     destination: str = Field(..., description="Primary destination name")
     sub_destinations: List[str] = Field(default_factory=list, description="All sub-destinations mentioned")
@@ -112,3 +112,4 @@ class FinalProposalSchema(BaseModel):
     inclusions: List[str] = Field(default_factory=list, description="Exact list of package inclusions")
     exclusions: List[str] = Field(default_factory=list, description="Exact list of package exclusions")
     extra_sections: ProposalExtraSections = Field(default_factory=ProposalExtraSections)
+    model_used: Optional[str] = Field(None, description="AI Model used for extraction")

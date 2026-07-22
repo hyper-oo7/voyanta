@@ -218,6 +218,8 @@ async def extract_vault_package_from_text(
         parsed = proposal_model.model_dump(by_alias=True)
         parsed["model_used"] = getattr(proposal_model, "model_used", "gemini-2.5-flash")
     except Exception as orch_err:
+        if isinstance(orch_err, RuntimeError) or "Neither GEMINI_API_KEY" in str(orch_err):
+            raise orch_err
         logger.warning(f"[VaultExtract] Instructor orchestration encountered issue ({orch_err}); falling back to standard call_llm flow.")
         # Build prompt with full document text (Gemini 2.5 Flash has 1M token context)
         prompt = EXTRACTION_PROMPT_TEMPLATE.format(document_text=full_text)

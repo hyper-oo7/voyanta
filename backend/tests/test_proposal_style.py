@@ -86,6 +86,7 @@ async def test_auto_phrase_with_profile():
     mock_res = MagicMock()
     mock_res.data = mock_agency_data
     mock_table.maybeSingle.return_value = mock_table
+    mock_table.maybe_single.return_value = mock_table
     mock_table.execute.return_value = mock_res
     
     mock_llm_response = {
@@ -199,6 +200,8 @@ async def test_validate_itinerary_sequence_mock():
     
     with patch.dict("os.environ", {}, clear=True):
         flags = await validate_itinerary_sequence(mock_days)
-        assert len(flags) == 1
+        assert len(flags) == 2
         assert flags[0]["id"] == "hotel-switching"
         assert "fatigue" in flags[0]["message"]
+        assert flags[1]["id"] == "visa-check"
+        assert "Visa" in flags[1]["message"]

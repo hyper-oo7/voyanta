@@ -45,6 +45,7 @@ async def test_get_and_save_cache():
         "output_json": {"destination": "Agra", "total_price": 300}
     }
     mock_query.maybeSingle.return_value = mock_query
+    mock_query.maybe_single.return_value = mock_query
     mock_query.execute.return_value = MagicMock(data=mock_cache_record)
     
     with patch("src.services.ai_cache_service.get_supabase_client", return_value=mock_sb), \
@@ -65,6 +66,7 @@ async def test_cache_miss_and_stats():
     mock_table.select.return_value = mock_query
     mock_query.eq.return_value = mock_query
     mock_query.maybeSingle.return_value = mock_query
+    mock_query.maybe_single.return_value = mock_query
     mock_query.execute.return_value = MagicMock(data=None)
     
     with patch("src.services.ai_cache_service.get_supabase_client", return_value=mock_sb), \

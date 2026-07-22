@@ -29,6 +29,8 @@ jobs:
 
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
+        with:
+          version: 2.39.2
 
       - name: Check Supabase CLI Version
         run: |
@@ -67,8 +69,6 @@ jobs:
             --debug
 
           # Force major_version = 17 to match remote Postgres 17.6 server and prevent pg_dump version mismatch errors
-          sed -i 's/major_version = 15/major_version = 17/g' supabase/config.toml || true
-          cat supabase/config.toml | grep major_version || true
 
           echo "Dumping database schema and data..."
           supabase db dump \

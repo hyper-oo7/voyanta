@@ -223,8 +223,8 @@ async def auto_phrase_with_profile(
         
     try:
         # Fetch style_profile from the agency
-        agency_res = sb.table("agencies").select("style_profile").eq("id", agency_id).maybeSingle().execute()
-        agency_data = agency_res.data or {}
+        agency_res = sb.table("agencies").select("style_profile").eq("id", agency_id).maybe_single().execute()
+        agency_data = getattr(agency_res, "data", None) or {}
         style_profile = agency_data.get("style_profile") or {}
         
         profile_json = json.dumps(style_profile, ensure_ascii=False) if style_profile else "None (default luxury)"

@@ -9,7 +9,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 OPENAI_MODEL = "gpt-4o-mini"
 
 class AIServiceError(Exception):
@@ -92,7 +92,7 @@ async def call_llm(
     # Helper function to perform the actual call based on the resolved provider
     async def execute_call(active_provider: str) -> str:
         if active_provider == "gemini":
-            models_to_try = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-1.5-pro"]
+            models_to_try = [GEMINI_MODEL, "gemini-flash-latest", "gemini-pro-latest", "gemini-3.5-flash"]
             last_err = None
             for g_model in models_to_try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{g_model}:generateContent?key={api_key_gemini}"
@@ -132,7 +132,11 @@ async def call_llm(
                     return res["candidates"][0]["content"]["parts"][0]["text"]
                 except Exception as e:
                     last_err = e
-                    logger.warning(f"Gemini model {g_model} failed: {e}. Trying next Gemini model immediately.")
+                    err_str = str(e)
+                    is_model_specific = any(code in err_str for code in ["404", "400", "429", "503", "NOT_FOUND", "not found", "not supported"]) or isinstance(e, RetriableAIServiceError)
+                    if not is_model_specific or g_model == models_to_try[-1]:
+                        raise e
+                    logger.warning(f"Gemini model {g_model} failed with model-specific error ({err_str}). Trying next Gemini model.")
             raise last_err or AIServiceError("All Gemini model endpoints failed.")
             
         else:  # openai

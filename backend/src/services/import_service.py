@@ -98,27 +98,29 @@ def compile_normalized_package(extracted: Dict[str, Any], source_type: str, dest
     hotels = []
     # 1. Initialize with top-level hotels from summary tables
     for h in extracted.get("hotels", []):
-        if h and h.get("name") and h.get("name").strip():
-            if h.get("name").strip().lower() not in [x.get("name").strip().lower() for x in hotels]:
+        if h and h.get("name") and str(h.get("name")).strip():
+            h_name = str(h.get("name")).strip().lower()
+            if h_name not in [str(x.get("name") or "").strip().lower() for x in hotels]:
                 hotels.append(h)
                 
     # 2. Add hotels from daily itineraries
     for d in days:
         for h in d.get("hotels", []):
-            if h and h.get("name") and h.get("name").strip():
-                if h.get("name").strip().lower() not in [x.get("name").strip().lower() for x in hotels]:
+            if h and h.get("name") and str(h.get("name")).strip():
+                h_name = str(h.get("name")).strip().lower()
+                if h_name not in [str(x.get("name") or "").strip().lower() for x in hotels]:
                     hotels.append(h)
 
     # 3. Auto-distribute summary hotels to individual days if the day has no hotels listed
     # but has a matching sub-destination.
     for d in days:
         if not d.get("hotels") or len(d.get("hotels")) == 0:
-            day_sub = (d.get("sub_destination") or "").strip().lower()
-            day_title = (d.get("title") or "").strip().lower()
+            day_sub = str(d.get("sub_destination") or "").strip().lower()
+            day_title = str(d.get("title") or "").strip().lower()
             if day_sub or day_title:
                 matching_hotels = []
                 for h in hotels:
-                    h_loc = (h.get("location") or "").strip().lower()
+                    h_loc = str(h.get("location") or "").strip().lower()
                     if h_loc and (h_loc in day_sub or h_loc in day_title or day_sub in h_loc):
                         matching_hotels.append(h)
                 if matching_hotels:
@@ -133,7 +135,9 @@ def compile_normalized_package(extracted: Dict[str, Any], source_type: str, dest
             if act and act.get("name") and act.get("name") not in [x.get("name") for x in activities]:
                 activities.append(act)
         for t in d.get("transfers", []):
-            if t and ("flight" in t.get("type", "").lower() or "flight" in t.get("notes", "").lower()):
+            t_type = str(t.get("type") or "").lower() if t else ""
+            t_notes = str(t.get("notes") or "").lower() if t else ""
+            if t and ("flight" in t_type or "flight" in t_notes):
                 flights.append({
                     "airline": t.get("notes") or t.get("type") or "Imported Airline",
                     "flight_no": t.get("vehicle") or "TBD",

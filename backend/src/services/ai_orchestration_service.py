@@ -71,6 +71,9 @@ async def orchestrate_proposal_extraction(
     if not provider:
         provider = "gemini" if api_key_gemini else "openai"
 
+    if not api_key_gemini and not api_key_openai:
+        raise RuntimeError("Neither GEMINI_API_KEY nor OPENAI_API_KEY is configured.")
+
     # Check semantic AI cache before running LLM
     cache_meta = {
         "agency_id": agency_id,

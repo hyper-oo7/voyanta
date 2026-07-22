@@ -51,8 +51,8 @@ async def get_cached_extraction(
         logger.debug(f"[AICache] Redis check error: {e}")
 
     try:
-        res = sb.table("ai_cache").select("output_r2_key, output_json").eq("cache_key", cache_key).maybeSingle().execute()
-        if res.data:
+        res = sb.table("ai_cache").select("output_r2_key, output_json").eq("cache_key", cache_key).maybe_single().execute()
+        if res and getattr(res, "data", None):
             output = None
             if res.data.get("output_r2_key"):
                 from src.services.r2_storage_service import get_json_from_r2
@@ -156,8 +156,8 @@ async def increment_hits(saved_tokens: int):
         return
     try:
         # Fetch current stats
-        res = sb.table("ai_cache_stats").select("*").eq("id", "global").maybeSingle().execute()
-        if res.data:
+        res = sb.table("ai_cache_stats").select("*").eq("id", "global").maybe_single().execute()
+        if res and getattr(res, "data", None):
             current_hits = res.data.get("cache_hits") or 0
             current_tokens = res.data.get("saved_tokens_estimate") or 0
             sb.table("ai_cache_stats").update({
@@ -175,8 +175,8 @@ async def increment_misses():
     if not sb:
         return
     try:
-        res = sb.table("ai_cache_stats").select("cache_misses").eq("id", "global").maybeSingle().execute()
-        if res.data:
+        res = sb.table("ai_cache_stats").select("cache_misses").eq("id", "global").maybe_single().execute()
+        if res and getattr(res, "data", None):
             current_misses = res.data.get("cache_misses") or 0
             sb.table("ai_cache_stats").update({
                 "cache_misses": current_misses + 1
@@ -192,8 +192,8 @@ async def get_cache_stats() -> dict:
     if not sb:
         return {"cache_hits": 0, "cache_misses": 0, "saved_tokens_estimate": 0}
     try:
-        res = sb.table("ai_cache_stats").select("*").eq("id", "global").maybeSingle().execute()
-        if res.data:
+        res = sb.table("ai_cache_stats").select("*").eq("id", "global").maybe_single().execute()
+        if res and getattr(res, "data", None):
             return {
                 "cache_hits": res.data.get("cache_hits") or 0,
                 "cache_misses": res.data.get("cache_misses") or 0,
