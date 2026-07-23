@@ -361,6 +361,7 @@ function TeamSettings() {
 
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
+  const [invitePassword, setInvitePassword] = useState('');
   const [inviteRole, setInviteRole] = useState('Editor');
 
   useEffect(() => {
@@ -373,20 +374,30 @@ function TeamSettings() {
     mutationFn: (newMember) => inviteMember(newMember),
     onSuccess: (res) => {
       queryClient.invalidateQueries(['team']);
-      logActivity('team', `Invited team member ${res.email} with role ${res.role}`);
-      toast.success(`Invitation sent to ${res.email} as ${res.role}!`);
+      logActivity('team', `Added agent ${res.email} with ${res.role} permissions`);
+      toast.success(`Agent ${res.email} added successfully (${res.role} Access)!`);
       setInviteEmail('');
       setInviteName('');
+      setInvitePassword('');
     },
     onError: (err) => {
-      toast.error(err.message || 'Failed to send invitation');
+      toast.error(err.message || 'Failed to add agent');
     }
   });
 
   const handleInvite = (e) => {
     e.preventDefault();
-    if (!inviteEmail) return;
-    inviteMutation.mutate({ email: inviteEmail, name: inviteName, role: inviteRole });
+    if (!inviteEmail || !invitePassword) {
+      toast.error('Please enter Agent Gmail ID and Password');
+      return;
+    }
+    inviteMutation.mutate({ 
+      email: inviteEmail, 
+      name: inviteName || 'Travel Agent', 
+      password: invitePassword,
+      role: inviteRole,
+      can_delete: inviteRole === 'Admin'
+    });
   };
 
   const removeMutation = useMutation({
@@ -504,21 +515,39 @@ function TeamSettings() {
         </span>
       </div>
       
-      <div className="p-6 bg-surface-container rounded-xl border border-outline-variant">
-        <h4 className="text-base font-bold mb-3">Invite New Travel Designer</h4>
-        <form onSubmit={handleInvite} className="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div className="p-6 bg-surface-container rounded-xl border border-outline-variant space-y-3">
+        <div className="flex justify-between items-center">
+          <h4 className="text-base font-bold flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">person_add</span>
+            Add Enterprise Agent Credentials
+          </h4>
+          <span className="text-[11px] text-on-surface-variant bg-surface-container-highest px-2.5 py-1 rounded-full font-medium">
+            Set Gmail ID & Password for Enterprise Agents
+          </span>
+        </div>
+        
+        <form onSubmit={handleInvite} className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <input 
             type="text" 
-            placeholder="Agent Name" 
+            placeholder="Agent Full Name" 
             value={inviteName}
             onChange={e => setInviteName(e.target.value)}
             className="px-3 py-2 border border-outline rounded-lg bg-white text-sm focus:border-primary outline-none"
+            required
           />
           <input 
             type="email" 
-            placeholder="agent@voyanta.com" 
+            placeholder="agent.gmail@gmail.com" 
             value={inviteEmail}
             onChange={e => setInviteEmail(e.target.value)}
+            className="px-3 py-2 border border-outline rounded-lg bg-white text-sm focus:border-primary outline-none"
+            required
+          />
+          <input 
+            type="password" 
+            placeholder="Agent Password" 
+            value={invitePassword}
+            onChange={e => setInvitePassword(e.target.value)}
             className="px-3 py-2 border border-outline rounded-lg bg-white text-sm focus:border-primary outline-none"
             required
           />
@@ -527,11 +556,12 @@ function TeamSettings() {
             onChange={e => setInviteRole(e.target.value)}
             className="px-3 py-2 border border-outline rounded-lg bg-white text-sm focus:border-primary outline-none font-medium"
           >
-            <option value="Editor">Editor (Create & Edit)</option>
-            <option value="Admin">Admin (Full Access & Delete)</option>
+            <option value="Admin">Full Access (Includes Delete)</option>
+            <option value="Editor">Partial Access (No Delete)</option>
           </select>
-          <button type="submit" className="px-4 py-2 bg-primary text-on-primary rounded-lg font-bold text-sm hover:bg-primary/90 transition-colors shadow-sm">
-            Send Invite
+          <button type="submit" className="px-4 py-2 bg-primary text-on-primary rounded-lg font-bold text-sm hover:bg-primary/90 transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-1">
+            <span className="material-symbols-outlined text-[16px]">add_task</span>
+            Add Agent
           </button>
         </form>
       </div>

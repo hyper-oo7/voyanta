@@ -27,6 +27,7 @@ export default function AdminAnalyticsPage() {
   const [addingAdmin, setAddingAdmin] = useState(false);
 
   const [roleUpdating, setRoleUpdating] = useState({});
+  const [showSubBreakdownModal, setShowSubBreakdownModal] = useState(false);
 
   const loadData = async (tokenToUse = adminToken) => {
     if (!tokenToUse) return;
@@ -317,22 +318,34 @@ export default function AdminAnalyticsPage() {
             </div>
 
             {/* Active Free Trials */}
-            <div className="glass-card p-lg rounded-2xl border border-outline-variant/60 space-y-xs">
-              <span className="text-xs font-bold text-amber-700 uppercase tracking-wider block">Free Trial Users</span>
+            <div 
+              onClick={() => setShowSubBreakdownModal(true)}
+              className="glass-card p-lg rounded-2xl border border-outline-variant/60 space-y-xs cursor-pointer hover:border-amber-500/60 hover:shadow-md transition-all group"
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-amber-700 uppercase tracking-wider block">Free Trial Users</span>
+                <span className="material-symbols-outlined text-xs text-amber-600 group-hover:translate-x-0.5 transition-transform">open_in_new</span>
+              </div>
               <div className="text-3xl font-extrabold text-amber-600">
                 {subs.free_trial || 0}
               </div>
-              <p className="text-[11px] text-on-surface-variant">14-day trial active subscriptions</p>
+              <p className="text-[11px] text-on-surface-variant">14-day trial active subscriptions →</p>
             </div>
 
             {/* Active Paid Users & MRR */}
-            <div className="glass-card p-lg rounded-2xl border border-outline-variant/60 space-y-xs">
-              <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider block">Active Paid Subscribers</span>
+            <div 
+              onClick={() => setShowSubBreakdownModal(true)}
+              className="glass-card p-lg rounded-2xl border border-outline-variant/60 space-y-xs cursor-pointer hover:border-emerald-500/60 hover:shadow-md transition-all group"
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider block">Active Paid Subscribers</span>
+                <span className="material-symbols-outlined text-xs text-emerald-600 group-hover:translate-x-0.5 transition-transform">open_in_new</span>
+              </div>
               <div className="text-3xl font-extrabold text-emerald-600 flex items-baseline gap-xs">
                 {subs.paid_subscribers || 0}
                 <span className="text-xs font-bold text-emerald-700">₹{(subs.estimated_mrr_inr || 0).toLocaleString()}/mo MRR</span>
               </div>
-              <p className="text-[11px] text-on-surface-variant">Pro: {subs.professional || 0} · Pro+: {subs.professional_plus || 0} · Ent: {subs.enterprise || 0}</p>
+              <p className="text-[11px] text-on-surface-variant">Pro: {subs.professional || 0} · Pro+: {subs.professional_plus || 0} · Ent: {subs.enterprise || 0} →</p>
             </div>
 
             {/* Proposal Exports & Shares */}
@@ -558,6 +571,76 @@ export default function AdminAnalyticsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      {/* Subscription Tier Breakdown Modal */}
+      {showSubBreakdownModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-md animate-fade-in">
+          <div className="bg-surface-container-lowest w-full max-w-lg rounded-2xl p-xl shadow-2xl border border-outline-variant space-y-md">
+            <div className="flex justify-between items-center border-b border-outline-variant/60 pb-sm">
+              <h3 className="font-headline-sm text-base font-bold text-primary flex items-center gap-xs">
+                <span className="material-symbols-outlined text-emerald-600 text-xl">payments</span>
+                Subscription Tier Breakdown
+              </h3>
+              <button 
+                onClick={() => setShowSubBreakdownModal(false)}
+                className="w-8 h-8 rounded-full hover:bg-surface-container flex items-center justify-center text-on-surface-variant cursor-pointer transition-colors"
+              >
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-sm">
+              {/* Free Trial */}
+              <div className="p-md rounded-xl bg-amber-500/10 border border-amber-500/20 flex justify-between items-center">
+                <div>
+                  <div className="font-bold text-sm text-amber-900">14-Day Free Trial</div>
+                  <div className="text-xs text-amber-700/80">Full features active for new travel advisors</div>
+                </div>
+                <div className="text-xl font-extrabold text-amber-700">{subs.free_trial || 0} <span className="text-xs font-normal">users</span></div>
+              </div>
+
+              {/* Starter Plan */}
+              <div className="p-md rounded-xl bg-surface-container border border-outline-variant/60 flex justify-between items-center">
+                <div>
+                  <div className="font-bold text-sm text-on-surface">Starter Plan</div>
+                  <div className="text-xs text-on-surface-variant">₹0 / month — Pay per proposal export</div>
+                </div>
+                <div className="text-xl font-bold text-on-surface">{subs.starter || 0} <span className="text-xs font-normal">users</span></div>
+              </div>
+
+              {/* Professional Plan */}
+              <div className="p-md rounded-xl bg-blue-500/10 border border-blue-500/20 flex justify-between items-center">
+                <div>
+                  <div className="font-bold text-sm text-blue-900">Professional Plan</div>
+                  <div className="text-xs text-blue-700">₹2,999 / month — Unlimited PDF & WhatsApp proposals</div>
+                </div>
+                <div className="text-xl font-bold text-blue-700">{subs.professional || 0} <span className="text-xs font-normal">users</span></div>
+              </div>
+
+              {/* Professional Plus Plan */}
+              <div className="p-md rounded-xl bg-purple-500/10 border border-purple-500/20 flex justify-between items-center">
+                <div>
+                  <div className="font-bold text-sm text-purple-900">Professional Plus Plan</div>
+                  <div className="text-xs text-purple-700">₹4,999 / month — Advanced VI AI, Multi-agent & Vault RAG</div>
+                </div>
+                <div className="text-xl font-bold text-purple-700">{subs.professional_plus || 0} <span className="text-xs font-normal">users</span></div>
+              </div>
+
+              {/* Enterprise Plan */}
+              <div className="p-md rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex justify-between items-center">
+                <div>
+                  <div className="font-bold text-sm text-emerald-900">Enterprise Plan</div>
+                  <div className="text-xs text-emerald-700">₹7,999 / month — Multi-agent teams, custom branding & RBAC</div>
+                </div>
+                <div className="text-xl font-bold text-emerald-700">{subs.enterprise || 0} <span className="text-xs font-normal">users</span></div>
+              </div>
+            </div>
+
+            <div className="pt-sm border-t border-outline-variant flex justify-between items-center">
+              <span className="text-xs text-on-surface-variant font-bold uppercase tracking-wider">Total Estimated MRR</span>
+              <span className="text-lg font-black text-emerald-600">₹{(subs.estimated_mrr_inr || 0).toLocaleString()} / mo</span>
+            </div>
           </div>
         </div>
       )}
