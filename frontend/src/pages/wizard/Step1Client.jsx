@@ -420,18 +420,23 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
       return;
     }
 
-    try {
-      const { getClimateClassification } = await import('../../lib/viClimateIntelligence.js');
-      const climate = getClimateClassification(destination, start_date);
-      const warnings = [];
-      if (climate.isHot || climate.isMonsoon || climate.isSnow) {
-        warnings.push({ text: climate.profileNotes || `Expected Season: ${climate.seasonName}` });
+    const checkClimate = async () => {
+      try {
+        const { getClimateClassification } = await import('../../lib/viClimateIntelligence.js');
+        if (!isMounted) return;
+        const climate = getClimateClassification(destination, start_date);
+        const warnings = [];
+        if (climate.isHot || climate.isMonsoon || climate.isSnow) {
+          warnings.push({ text: climate.profileNotes || `Expected Season: ${climate.seasonName}` });
+        }
+        setSeasonalWarnings(warnings);
+      } catch (err) {
+        console.error("Failed to fetch seasonal rules:", err);
+        if (isMounted) setSeasonalWarnings([]);
       }
-      setSeasonalWarnings(warnings);
-    } catch (err) {
-      console.error("Failed to fetch seasonal rules:", err);
-      setSeasonalWarnings([]);
-    }
+    };
+
+    checkClimate();
 
     return () => { isMounted = false; };
   }, [destination, start_date]);

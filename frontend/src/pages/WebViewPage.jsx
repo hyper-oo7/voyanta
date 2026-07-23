@@ -1592,6 +1592,7 @@ export default function WebViewPage() {
           onClose={() => setShowStockPicker(false)}
         />
       )}
+      {!isAgentView && <GoogleTranslateWidget />}
     </div>
   );
 }
@@ -1732,7 +1733,6 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
           </motion.div>
         )}
       </AnimatePresence>
-      {!isAgentView && <GoogleTranslateWidget />}
     </div>
   );
 }
