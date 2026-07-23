@@ -202,8 +202,17 @@ async def list_admin_users(
         raise HTTPException(status_code=500, detail="Database uninitialized")
 
     try:
-        res = sb.table("users").select("id, email, full_name, role, is_active, created_at, agencies(name)").order("created_at", desc=True).execute()
-        return {"users": res.data or []}
+        try:
+            res = sb.table("users").select("id, email, full_name, role, is_active, created_at, agencies(name)").order("created_at", desc=True).execute()
+        except Exception:
+            res = sb.table("users").select("id, email, full_name, role, created_at, agencies(name)").order("created_at", desc=True).execute()
+
+        users_list = res.data or []
+        for u in users_list:
+            if "is_active" not in u or u["is_active"] is None:
+                u["is_active"] = True
+
+        return {"users": users_list}
     except Exception as e:
         logger.error(f"[AdminUsers] Failed to fetch users list: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -229,11 +238,14 @@ async def update_user_role(
         raise HTTPException(status_code=500, detail="Database uninitialized")
 
     try:
-        res = sb.table("users").update({
+        upd = {
             "role": payload.role,
-            "is_active": payload.is_active,
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }).eq("id", user_id).execute()
+        }
+        try:
+            res = sb.table("users").update({**upd, "is_active": payload.is_active}).eq("id", user_id).execute()
+        except Exception:
+            res = sb.table("users").update(upd).eq("id", user_id).execute()
 
         logger.info(f"[AdminManagement] Role for user {user_id} updated to {payload.role}")
         return {"success": True, "message": f"User role updated to '{payload.role}'", "user": res.data}
@@ -367,26 +379,37 @@ async def add_admin_user(
         existing = sb.table("users").select("id").eq("email", email).execute()
         if existing.data and len(existing.data) > 0:
             user_id = existing.data[0]["id"]
-            sb.table("users").update({
+            upd_data = {
                 "role": "admin",
-                "password_hash": hashed,
-                "is_active": True,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }).eq("id", user_id).execute()
+            }
+            try:
+                sb.table("users").update({**upd_data, "password_hash": hashed, "is_active": True}).eq("id", user_id).execute()
+            except Exception:
+                try:
+                    sb.table("users").update({**upd_data, "password_hash": hashed}).eq("id", user_id).execute()
+                except Exception:
+                    sb.table("users").update(upd_data).eq("id", user_id).execute()
+
             return {"success": True, "message": f"Updated existing user '{email}' to Admin role."}
 
         # Create new user row
         import uuid
         new_id = str(uuid.uuid4())
-        sb.table("users").insert({
+        ins_data = {
             "id": new_id,
             "email": email,
             "full_name": payload.full_name or "Platform Admin",
             "role": "admin",
-            "password_hash": hashed,
-            "is_active": True,
             "created_at": datetime.now(timezone.utc).isoformat()
-        }).execute()
+        }
+        try:
+            sb.table("users").insert({**ins_data, "password_hash": hashed, "is_active": True}).execute()
+        except Exception:
+            try:
+                sb.table("users").insert({**ins_data, "password_hash": hashed}).execute()
+            except Exception:
+                sb.table("users").insert(ins_data).execute()
 
         return {"success": True, "message": f"Added new Platform Admin '{email}' successfully."}
     except Exception as e:

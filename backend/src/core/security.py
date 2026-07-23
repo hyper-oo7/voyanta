@@ -1,15 +1,12 @@
 import os
 import httpx
 import logging
-from typing import Optional
+import jwt
+from typing import Optional, Dict, Any
 from fastapi import HTTPException, Security, Header, status
-
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 logger = logging.getLogger(__name__)
-
-import jwt
-from typing import Optional
 
 SUPABASE_URL = os.environ.get('VITE_SUPABASE_URL') or os.environ.get('SUPABASE_URL')
 SUPABASE_KEY = os.environ.get('VITE_SUPABASE_ANON_KEY') or os.environ.get('SUPABASE_KEY')
@@ -18,7 +15,23 @@ SUPABASE_JWT_SECRET = os.environ.get('SUPABASE_JWT_SECRET') or os.environ.get('J
 security = HTTPBearer()
 security_optional = HTTPBearer(auto_error=False)
 
+_jwks_clients: Dict[str, Any] = {}
+
+def get_jwks_client(supabase_url: str):
+    """
+    Returns a cached PyJWKClient instance for fetching and caching Supabase ES256/RS256 public keys
+    from {SUPABASE_URL}/auth/v1/.well-known/jwks.json.
+    """
+    base_url = supabase_url.rstrip('/')
+    if base_url not in _jwks_clients:
+        jwks_url = f"{base_url}/auth/v1/.well-known/jwks.json"
+        _jwks_clients[base_url] = jwt.PyJWKClient(jwks_url, cache_keys=True, max_cached_keys=10)
+    return _jwks_clients[base_url]
+
 async def _verify_token_network(token: str) -> dict:
+    """
+    Official Supabase network verification fallback via GET /auth/v1/user.
+    """
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise HTTPException(status_code=500, detail="Supabase not configured")
     headers = {
@@ -28,7 +41,7 @@ async def _verify_token_network(token: str) -> dict:
     async with httpx.AsyncClient(timeout=5.0) as client:
         res = await client.get(f"{SUPABASE_URL}/auth/v1/user", headers=headers)
         if res.status_code != 200:
-            logger.error(f"Token verification failed: {res.text}")
+            logger.error(f"[Security] Network token verification failed: {res.text}")
             raise HTTPException(status_code=401, detail="Invalid auth token")
         return res.json()
 
@@ -45,7 +58,7 @@ async def _verify_token_optional_network(token: str) -> Optional[dict]:
             if res.status_code == 200:
                 return res.json()
     except Exception as e:
-        logger.warning(f"Optional token verification network error: {e}")
+        logger.warning(f"[Security] Optional network token verification error: {e}")
     return None
 
 async def _resolve_user_agency(payload: Optional[dict], token: str) -> Optional[dict]:
@@ -83,13 +96,40 @@ async def _resolve_user_agency(payload: Optional[dict], token: str) -> Optional[
     return payload
 
 async def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
+    """
+    Verifies incoming Authorization Bearer JWT using:
+    1. Supabase ES256/JWKS public key verification via PyJWKClient (O(1) cached local cryptographic verification)
+    2. Shared symmetric secret (HS256) if SUPABASE_JWT_SECRET is explicitly configured
+    3. Official Supabase network verification fallback (GET /auth/v1/user)
+    
+    Strictly NO unverified signature bypass permitted.
+    """
     token = credentials.credentials
     secret = os.environ.get('SUPABASE_JWT_SECRET') or os.environ.get('JWT_SECRET')
-    
+    supabase_url = os.environ.get('VITE_SUPABASE_URL') or os.environ.get('SUPABASE_URL')
+
     payload = None
-    if secret:
+
+    # 1. Primary: ES256 / JWKS public key verification
+    if supabase_url:
         try:
-            # Local high-performance verification (O(1) CPU, no network call)
+            jwks_client = get_jwks_client(supabase_url)
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["ES256", "RS256", "HS256"],
+                options={"verify_aud": False}
+            )
+        except jwt.ExpiredSignatureError:
+            logger.error("[Security] Token has expired")
+            raise HTTPException(status_code=401, detail="Token has expired")
+        except Exception as e:
+            logger.debug(f"[Security] JWKS verification attempt error: {e}")
+
+    # 2. Secondary: Shared symmetric secret (HS256) if configured
+    if not payload and secret:
+        try:
             payload = jwt.decode(
                 token,
                 secret,
@@ -97,31 +137,25 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Security(secu
                 options={"verify_aud": False}
             )
         except jwt.ExpiredSignatureError:
-            logger.error("Token has expired")
+            logger.error("[Security] Token has expired")
             raise HTTPException(status_code=401, detail="Token has expired")
         except jwt.PyJWTError as e:
-            logger.error(f"Local JWT verification failed: {e}")
+            logger.error(f"[Security] Local JWT secret verification failed: {e}")
             raise HTTPException(status_code=401, detail="Invalid auth token")
-    else:
-        # Fall back to decoding without verification if token is in valid JWT structure (dev convenience)
+
+    # 3. Fallback: Official Supabase network verification (/auth/v1/user)
+    if not payload:
         try:
-            if len(token.split(".")) == 3:
-                payload = jwt.decode(token, options={"verify_signature": False})
-        except Exception:
-            pass
-            
-        if not payload:
-            # Hard fallback to Supabase verification endpoint
-            try:
-                payload = await _verify_token_network(token)
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.error(f"Failed to verify token: {e}")
-                raise HTTPException(status_code=401, detail="Invalid auth token")
-                
+            payload = await _verify_token_network(token)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[Security] Failed to verify token via network: {e}")
+            raise HTTPException(status_code=401, detail="Invalid auth token")
+
     if payload:
         payload = await _resolve_user_agency(payload, token)
+
     return payload
 
 async def verify_token_optional(credentials: HTTPAuthorizationCredentials = Security(security_optional)):
@@ -129,9 +163,26 @@ async def verify_token_optional(credentials: HTTPAuthorizationCredentials = Secu
         return None
     token = credentials.credentials
     secret = os.environ.get('SUPABASE_JWT_SECRET') or os.environ.get('JWT_SECRET')
-    
+    supabase_url = os.environ.get('VITE_SUPABASE_URL') or os.environ.get('SUPABASE_URL')
+
     payload = None
-    if secret:
+
+    # 1. Primary: ES256 / JWKS public key verification
+    if supabase_url:
+        try:
+            jwks_client = get_jwks_client(supabase_url)
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["ES256", "RS256", "HS256"],
+                options={"verify_aud": False}
+            )
+        except Exception:
+            pass
+
+    # 2. Secondary: Shared secret if configured
+    if not payload and secret:
         try:
             payload = jwt.decode(
                 token,
@@ -140,23 +191,18 @@ async def verify_token_optional(credentials: HTTPAuthorizationCredentials = Secu
                 options={"verify_aud": False}
             )
         except jwt.PyJWTError:
-            return None
-    else:
-        try:
-            if len(token.split(".")) == 3:
-                payload = jwt.decode(token, options={"verify_signature": False})
-        except Exception:
             pass
-            
-        if not payload:
-            payload = await _verify_token_optional_network(token)
-            
+
+    # 3. Fallback: Official Supabase network verification
+    if not payload:
+        payload = await _verify_token_optional_network(token)
+
     if payload:
         payload = await _resolve_user_agency(payload, token)
+
     return payload
 
-
-async def get_request_token(credentials: HTTPAuthorizationCredentials = Security(security_optional)) -> HTTPAuthorizationCredentials:
+async def get_request_token(credentials: HTTPAuthorizationCredentials = Security(security_optional)) -> Optional[str]:
     """
     FastAPI dependency to extract the raw Bearer JWT token from the authorization header.
     Returns the token string if present, or None if unauthenticated.
@@ -165,10 +211,9 @@ async def get_request_token(credentials: HTTPAuthorizationCredentials = Security
         return credentials.credentials
     return None
 
-
 async def verify_internal_api_key(x_internal_api_key: str = Header(..., alias="x-internal-api-key")):
     """
-    FastAPI dependency that enforces requests to supply a valid x-internal-api-key header.
+    FastAPI dependency enforcing requests to supply a valid x-internal-api-key header.
     Gates internal maintenance and PDF generation endpoints.
     """
     expected_key = os.environ.get("INTERNAL_API_KEY")
@@ -179,8 +224,6 @@ async def verify_internal_api_key(x_internal_api_key: str = Header(..., alias="x
         )
     if x_internal_api_key != expected_key:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid internal API key"
         )
-
-

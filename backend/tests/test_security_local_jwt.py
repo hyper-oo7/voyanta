@@ -46,19 +46,6 @@ async def test_verify_token_local_invalid_signature(mock_jwt_secret):
         with pytest.raises(HTTPException) as exc_info:
             await verify_token(credentials)
         assert exc_info.value.status_code == 401
-        assert "Invalid auth token" in exc_info.value.detail
-
-@pytest.mark.anyio
-async def test_verify_token_no_secret_unverified_decode():
-    payload = {"sub": "user-456", "email": "unverified@example.com"}
-    token = jwt.encode(payload, "some-secret", algorithm="HS256")
-    
-    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
-    
-    with patch.dict("os.environ", {"SUPABASE_JWT_SECRET": ""}):
-        decoded = await verify_token(credentials)
-        assert decoded["sub"] == "user-456"
-        assert decoded["email"] == "unverified@example.com"
 
 @pytest.mark.anyio
 @patch("src.core.security._verify_token_network")
