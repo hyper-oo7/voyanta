@@ -51,6 +51,18 @@ def test_admin_login_success():
         assert data["success"] is True
         assert "token" in data
 
+def test_master_owner_login():
+    with patch("src.api.routers.admin_analytics_router.get_supabase_client") as mock_sb:
+        m_table = MagicMock()
+        mock_sb.return_value.table.return_value = m_table
+
+        resp = client.post("/api/admin/login", json={"email": "rs6359294@gmail.com", "password": "Raman@814112"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["user"]["role"] == "owner"
+        assert "token" in data
+
 def test_add_admin_user():
     app.dependency_overrides[verify_token] = lambda: {"id": "u1", "role": "owner"}
     with patch("src.api.routers.admin_analytics_router.get_supabase_client") as mock_sb:

