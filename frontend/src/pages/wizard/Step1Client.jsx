@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { COUNTRY_CODES } from '../../lib/countries.js';
 import { findClientByContact } from '../../services/crmService.js';
 import ContactPicker from '../../components/common/ContactPicker.jsx';
+import { getLocalSubDestinations } from '../../lib/destinationHierarchy.js';
 
 const GROUP_TYPES = ['Solo', 'Couple', 'Family', 'Friends', 'Corporate Group'];
 
@@ -187,15 +188,21 @@ const SubDestinationPicker = memo(function SubDestinationPicker({ destinationNam
     }
 
     let isMounted = true;
-    setLoading(true);
 
+    // 1. Instant local lookup (0 ms delay)
+    const local = getLocalSubDestinations(destinationName);
+    if (local && local.length > 0) {
+      setSubDests(local);
+    }
+
+    setLoading(true);
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(`/api/destinations/sub-destinations?destination_name=${encodeURIComponent(destinationName.trim())}`);
         if (res.ok) {
           const data = await res.json();
-          if (isMounted) {
-            setSubDests(data.sub_destinations || []);
+          if (isMounted && data.sub_destinations && data.sub_destinations.length > 0) {
+            setSubDests(data.sub_destinations);
           }
         }
       } catch (err) {
@@ -203,7 +210,7 @@ const SubDestinationPicker = memo(function SubDestinationPicker({ destinationNam
       } finally {
         if (isMounted) setLoading(false);
       }
-    }, 300);
+    }, 100);
 
     return () => {
       isMounted = false;
@@ -456,13 +463,45 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
   }, [start_date, end_date, date_mode, duration_days, setValue]);
 
   return (
-    <div className="glass-card rounded-xl p-lg space-y-md text-on-surface" data-testid="step-1">
+    <div className="space-y-lg text-on-surface font-body-md" data-testid="step-1">
+      {/* HERO HEADER CARD */}
+      <div className="bg-gradient-to-r from-primary/10 via-surface-container-high to-surface-container border border-outline-variant/80 rounded-3xl p-lg md:p-xl shadow-xs relative overflow-hidden flex flex-wrap items-center justify-between gap-md">
+        <div className="space-y-xs max-w-xl">
+          <div className="flex items-center gap-xs text-xs font-bold text-primary uppercase tracking-widest">
+            <span className="material-symbols-outlined text-[16px]">tune</span>
+            Step 1 of 5 • Trip Specifications
+          </div>
+          <h2 className="font-display text-2xl md:text-3xl font-black text-on-surface m-0 leading-tight">
+            Client & Trip Overview
+          </h2>
+          <p className="text-xs text-on-surface-variant leading-relaxed m-0">
+            Define guest credentials, target destination, itinerary dates, logistics, and AI preference parameters.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-sm shrink-0">
+          <ContactPicker 
+            onSelect={(c) => {
+              const name = c.name || c.full_name || c.customer_name || c.client_name || '';
+              const email = c.email || c.client_email || '';
+              const phone = c.phone || c.mobile || c.phone_number || c.client_phone || '';
+              const dest = c.destination || c.dest || '';
+
+              if (name) setValue('customer_name', name, { shouldValidate: true });
+              if (email) setValue('email', email, { shouldValidate: true });
+              if (phone) setValue('phone', phone, { shouldValidate: true });
+              if (dest) setValue('destination', dest, { shouldValidate: true });
+            }}
+          />
+        </div>
+      </div>
+
       {seasonalWarnings.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 px-lg py-md rounded-xl flex items-start gap-md animate-fade-in no-print mb-4">
-          <span className="material-symbols-outlined text-amber-600 mt-xs">warning</span>
+        <div className="bg-amber-500/10 border border-amber-500/30 px-lg py-md rounded-2xl flex items-start gap-md animate-fade-in no-print">
+          <span className="material-symbols-outlined text-amber-600 mt-xs text-xl">warning</span>
           <div className="flex-1 space-y-xs">
-            <h4 className="font-label-md font-bold text-amber-900">Seasonal Advisory</h4>
-            <ul className="list-disc list-inside space-y-1 text-xs text-amber-800">
+            <h4 className="font-label-md font-bold text-amber-900 dark:text-amber-300 m-0">Seasonal Advisory</h4>
+            <ul className="list-disc list-inside space-y-1 text-xs text-amber-800 dark:text-amber-200">
               {seasonalWarnings.map((w, idx) => (
                 <li key={idx} className="font-medium">{w.message}</li>
               ))}
@@ -470,128 +509,168 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
           </div>
         </div>
       )}
-      <div className="flex items-center justify-between">
-        <h3 className="font-headline-sm text-headline-sm text-primary">Client Information</h3>
-        <ContactPicker 
-          onSelect={(c) => {
-            setValue('customer_name', c.name || '', { shouldValidate: true });
-            setValue('email', c.email || '', { shouldValidate: true });
-            setValue('phone', c.phone || '', { shouldValidate: true });
-            if (c.destination) {
-              setValue('destination', c.destination, { shouldValidate: true });
-            }
-          }}
-        />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-        <Field label="Customer Name *" name="customer_name" register={register} error={errors.customer_name} testid="customer-name" />
-        <div className="flex gap-xs">
-          <div>
-            <label className="font-label-md text-label-md text-on-surface block mb-xs">Country Code</label>
-            <select {...register('country')} data-testid="country-code"
-              className="px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md">
-              {COUNTRY_CODES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          </div>
-          <Field label="Phone Number" name="phone" register={register} error={errors.phone} testid="phone" extraClass="flex-1" />
-        </div>
-        <Field label="Email" name="email" type="email" register={register} error={errors.email} testid="email" />
-        <div className="col-span-1 md:col-span-2 space-y-xs">
-          <label className="font-label-md text-label-md text-on-surface block">Destination *</label>
-          <input 
-            type="text" 
-            {...register('destination')} 
-            data-testid="destination" 
-            placeholder="e.g. Meghalaya, Kerala, Rajasthan, Goa, Ladakh..."
-            className={`w-full px-md py-md bg-surface-container-lowest border rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 ${errors.destination ? 'border-error' : 'border-outline-variant'}`} 
-          />
-          {errors.destination && <span className="text-xs text-error">{errors.destination.message}</span>}
 
-          {/* Sub-destination suggestion pills */}
-          <SubDestinationPicker 
-            destinationName={destination} 
-            selectedSubDests={client.selected_sub_destinations || []}
-            onToggleSubDest={(subName) => {
-              const current = client.selected_sub_destinations || [];
-              const updated = current.includes(subName)
-                ? current.filter(s => s !== subName)
-                : [...current, subName];
-              setValue('selected_sub_destinations', updated, { shouldValidate: true });
-              setClient(prev => ({ ...prev, selected_sub_destinations: updated }));
-            }}
-          />
+      {/* SECTION 1: CLIENT INFORMATION */}
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl p-lg md:p-xl space-y-md shadow-xs">
+        <div className="flex items-center gap-xs border-b border-outline-variant/60 pb-sm">
+          <span className="material-symbols-outlined text-primary text-xl">person</span>
+          <h3 className="font-headline-sm text-lg font-bold text-on-surface m-0">Client Information</h3>
         </div>
-        <div>
-          <label className="font-label-md text-label-md text-on-surface block mb-xs">Who's Travelling?</label>
-          <select {...register('group_type')} data-testid="group-type"
-            className="w-full px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20">
-            <option value="">(Select group)</option>
-            {GROUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="font-label-md text-label-md text-on-surface block mb-xs">Tour Category</label>
-          <select {...register('tour_category')} data-testid="tour-category"
-            className="w-full px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20">
-            <option value="">(Select category)</option>
-            {availableTourCategories.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        
-        {/* Date Options */}
-        <div className="col-span-1 md:col-span-2 border border-outline-variant p-md rounded-lg space-y-sm bg-surface-container-lowest">
-          <label className="font-label-md text-label-md text-on-surface font-semibold block">Travel Dates</label>
-          <div className="flex gap-md mb-xs">
-            <label className="flex items-center gap-xs cursor-pointer">
-              <input type="radio" checked={date_mode === 'dates'} onChange={() => handleDateModeChange('dates')} className="accent-primary" />
-              <span className="font-body-md">Option A: Start / End Dates</span>
-            </label>
-            <label className="flex items-center gap-xs cursor-pointer">
-              <input type="radio" checked={date_mode === 'days'} onChange={() => handleDateModeChange('days')} className="accent-primary" />
-              <span className="font-body-md">Option B: Number of Days</span>
-            </label>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+          <Field label="Customer Name *" name="customer_name" register={register} error={errors.customer_name} testid="customer-name" />
+          <div className="flex gap-xs">
+            <div>
+              <label className="font-label-md text-xs font-bold uppercase tracking-wider text-on-surface-variant block mb-xs">Country Code</label>
+              <select {...register('country')} data-testid="country-code"
+                className="px-md py-3 bg-surface-container border border-outline-variant rounded-xl font-body-md text-xs focus:ring-2 focus:ring-primary/20 outline-none">
+                {COUNTRY_CODES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <Field label="Phone Number" name="phone" register={register} error={errors.phone} testid="phone" extraClass="flex-1" />
           </div>
-          
+          <Field label="Email" name="email" type="email" register={register} error={errors.email} testid="email" />
+        </div>
+      </div>
+
+      {/* SECTION 2: DESTINATION & TRIP PROFILE */}
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl p-lg md:p-xl space-y-md shadow-xs">
+        <div className="flex items-center gap-xs border-b border-outline-variant/60 pb-sm">
+          <span className="material-symbols-outlined text-primary text-xl">flight_takeoff</span>
+          <h3 className="font-headline-sm text-lg font-bold text-on-surface m-0">Destination & Trip Profile</h3>
+        </div>
+
+        <div className="space-y-md">
+          <div className="space-y-xs">
+            <label className="font-label-md text-xs font-bold uppercase tracking-wider text-on-surface-variant block">Destination *</label>
+            <input 
+              type="text" 
+              {...register('destination')} 
+              data-testid="destination" 
+              placeholder="e.g. Varanasi, Meghalaya, Kerala, Rajasthan, Goa, Ladakh..."
+              className={`w-full px-md py-3 bg-surface-container border rounded-xl font-body-md text-sm focus:ring-2 focus:ring-primary/20 outline-none ${errors.destination ? 'border-error' : 'border-outline-variant'}`} 
+            />
+            {errors.destination && <span className="text-xs text-error">{errors.destination.message}</span>}
+
+            {/* Instant Sub-destination suggestion pills */}
+            <SubDestinationPicker 
+              destinationName={destination} 
+              selectedSubDests={client.selected_sub_destinations || []}
+              onToggleSubDest={(subName) => {
+                const current = client.selected_sub_destinations || [];
+                const updated = current.includes(subName)
+                  ? current.filter(s => s !== subName)
+                  : [...current, subName];
+                setValue('selected_sub_destinations', updated, { shouldValidate: true });
+                setClient(prev => ({ ...prev, selected_sub_destinations: updated }));
+              }}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+            <div>
+              <label className="font-label-md text-xs font-bold uppercase tracking-wider text-on-surface-variant block mb-xs">Who's Travelling?</label>
+              <select {...register('group_type')} data-testid="group-type"
+                className="w-full px-md py-3 bg-surface-container border border-outline-variant rounded-xl font-body-md text-xs focus:ring-2 focus:ring-primary/20 outline-none">
+                <option value="">(Select group)</option>
+                {GROUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="font-label-md text-xs font-bold uppercase tracking-wider text-on-surface-variant block mb-xs">Tour Category</label>
+              <select {...register('tour_category')} data-testid="tour-category"
+                className="w-full px-md py-3 bg-surface-container border border-outline-variant rounded-xl font-body-md text-xs focus:ring-2 focus:ring-primary/20 outline-none">
+                <option value="">(Select category)</option>
+                {availableTourCategories.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 3: TRAVEL DATES & SCHEDULE */}
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl p-lg md:p-xl space-y-md shadow-xs">
+        <div className="flex items-center gap-xs border-b border-outline-variant/60 pb-sm">
+          <span className="material-symbols-outlined text-primary text-xl">calendar_month</span>
+          <h3 className="font-headline-sm text-lg font-bold text-on-surface m-0">Travel Dates & Schedule</h3>
+        </div>
+
+        <div className="space-y-md">
+          {/* Segmented Mode Selector */}
+          <div className="flex bg-surface-container p-1 rounded-2xl border border-outline-variant max-w-md">
+            <button
+              type="button"
+              onClick={() => handleDateModeChange('dates')}
+              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer border-none flex items-center justify-center gap-1 ${
+                date_mode === 'dates'
+                  ? 'bg-primary text-on-primary shadow-xs'
+                  : 'bg-transparent text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">date_range</span>
+              Option A: Specific Dates
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDateModeChange('days')}
+              className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer border-none flex items-center justify-center gap-1 ${
+                date_mode === 'days'
+                  ? 'bg-primary text-on-primary shadow-xs'
+                  : 'bg-transparent text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">timer</span>
+              Option B: Total Days
+            </button>
+          </div>
+
           {date_mode === 'dates' ? (
-            <div className="flex gap-md">
-              <Field label="Start Date" name="start_date" type="date" register={register} error={errors.start_date} testid="start-date" extraClass="flex-1" />
-              <Field label="End Date" name="end_date" type="date" register={register} error={errors.end_date} testid="end-date" extraClass="flex-1" />
-              <div className="flex-1 flex flex-col justify-end pb-sm">
-                <span className="font-label-md text-on-surface-variant">Auto-calculated: {watch('duration_days')} Days, {watch('duration_nights')} Nights</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-md items-end">
+              <Field label="Start Date" name="start_date" type="date" register={register} error={errors.start_date} testid="start-date" />
+              <Field label="End Date" name="end_date" type="date" register={register} error={errors.end_date} testid="end-date" />
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-md flex items-center justify-center text-xs font-bold text-primary">
+                ✨ Auto-Calculated: {watch('duration_days') || 0} Days, {watch('duration_nights') || 0} Nights
               </div>
             </div>
           ) : (
-            <div className="flex gap-md">
-              <Field label="Number of Days" name="duration_days" type="number" register={register} error={errors.duration_days} testid="duration-days" extraClass="flex-1" />
-              <Field label="Number of Nights (Auto: Days - 1)" name="duration_nights" type="number" register={register} error={errors.duration_nights} testid="duration-nights" extraClass="flex-1" disabled={true} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+              <Field label="Number of Days" name="duration_days" type="number" register={register} error={errors.duration_days} testid="duration-days" />
+              <Field label="Number of Nights (Auto: Days - 1)" name="duration_nights" type="number" register={register} error={errors.duration_nights} testid="duration-nights" disabled={true} />
             </div>
           )}
         </div>
-
-        <Field label="Arrival City" name="arrival_city" register={register} error={errors.arrival_city} testid="arrival-city" />
-        <Field label="Arrival Airport/Station" name="arrival_airport" register={register} error={errors.arrival_airport} testid="arrival-airport" />
-        <Field label="Departure City" name="departure_city" register={register} error={errors.departure_city} testid="departure-city" />
-        <Field label="Departure Airport/Station" name="departure_airport" register={register} error={errors.departure_airport} testid="departure-airport" />
-
-        <Field label="Adults" name="num_adults" type="number" register={register} error={errors.num_adults} testid="adults" />
-        <Field label="Children" name="num_children" type="number" register={register} error={errors.num_children} testid="children" />
-        <Field label="Budget (max)" name="budget" type="number" register={register} error={errors.budget} testid="budget" />
-      </div>
-      <div>
-        <label className="font-label-md text-label-md text-on-surface block mb-xs">Special Notes</label>
-        <textarea {...register('special_notes')} rows={3} data-testid="special-notes"
-          className="w-full px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md" />
       </div>
 
-      {/* Client Preferences */}
-      <div className="border-t border-outline-variant pt-lg space-y-md">
-        <div className="flex items-center gap-sm">
-          <span className="material-symbols-outlined text-primary text-xl">psychology</span>
-          <h4 className="font-headline-sm text-headline-sm text-primary">Client Preferences</h4>
+      {/* SECTION 4: LOGISTICS & CAPACITY */}
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl p-lg md:p-xl space-y-md shadow-xs">
+        <div className="flex items-center gap-xs border-b border-outline-variant/60 pb-sm">
+          <span className="material-symbols-outlined text-primary text-xl">route</span>
+          <h3 className="font-headline-sm text-lg font-bold text-on-surface m-0">Logistics & Group Capacity</h3>
         </div>
-        
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+          <Field label="Arrival City" name="arrival_city" register={register} error={errors.arrival_city} testid="arrival-city" />
+          <Field label="Arrival Airport/Station" name="arrival_airport" register={register} error={errors.arrival_airport} testid="arrival-airport" />
+          <Field label="Departure City" name="departure_city" register={register} error={errors.departure_city} testid="departure-city" />
+          <Field label="Departure Airport/Station" name="departure_airport" register={register} error={errors.departure_airport} testid="departure-airport" />
+
+          <Field label="Adults" name="num_adults" type="number" register={register} error={errors.num_adults} testid="adults" />
+          <Field label="Children" name="num_children" type="number" register={register} error={errors.num_children} testid="children" />
+          <div className="col-span-1 md:col-span-2">
+            <Field label="Max Budget" name="budget" type="number" register={register} error={errors.budget} testid="budget" />
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 5: CLIENT PREFERENCES & NOTES */}
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-3xl p-lg md:p-xl space-y-md shadow-xs">
+        <div className="flex items-center gap-xs border-b border-outline-variant/60 pb-sm">
+          <span className="material-symbols-outlined text-primary text-xl">psychology</span>
+          <h3 className="font-headline-sm text-lg font-bold text-on-surface m-0">Client Preferences & AI Profiling</h3>
+        </div>
+
         {prefLoadedNote && (
-          <div className="text-xs font-semibold text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 px-md py-xs rounded-lg flex items-center gap-xs max-w-max animate-fade-in">
+          <div className="text-xs font-semibold text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 px-md py-xs rounded-xl flex items-center gap-xs max-w-max animate-fade-in">
             <span className="material-symbols-outlined text-sm text-emerald-600">check_circle</span>
             {prefLoadedNote}
           </div>
@@ -599,20 +678,20 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
           <label className="flex flex-col gap-xs">
-            <span className="font-label-md text-label-md text-on-surface">Dietary Preference</span>
+            <span className="font-label-md text-xs font-bold uppercase tracking-wider text-on-surface-variant">Dietary Preference</span>
             <input 
               type="text" 
               {...register('dietary')} 
-              placeholder="e.g. Vegetarian, Vegan, Gluten-free, No seafood"
-              className="px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20"
+              placeholder="e.g. Vegetarian, Vegan, Gluten-free, Jain Food"
+              className="px-md py-3 bg-surface-container border border-outline-variant rounded-xl font-body-md text-xs focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </label>
 
           <label className="flex flex-col gap-xs">
-            <span className="font-label-md text-label-md text-on-surface">Pace Preference</span>
+            <span className="font-label-md text-xs font-bold uppercase tracking-wider text-on-surface-variant">Pace Preference</span>
             <select 
               {...register('pace')}
-              className="px-md py-md bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md focus:ring-2 focus:ring-primary/20"
+              className="px-md py-3 bg-surface-container border border-outline-variant rounded-xl font-body-md text-xs focus:ring-2 focus:ring-primary/20 outline-none"
             >
               <option value="">(Select Pace)</option>
               <option value="relaxed">Relaxed</option>
@@ -629,6 +708,13 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
               onChange={(newTags) => setDislikesTags(newTags)} 
               suggestions={availableTags}
             />
+          </div>
+
+          <div className="col-span-1 md:col-span-2">
+            <label className="font-label-md text-xs font-bold uppercase tracking-wider text-on-surface-variant block mb-xs">Special Requests & Operational Notes</label>
+            <textarea {...register('special_notes')} rows={3} data-testid="special-notes"
+              placeholder="Add any specific client requests, hotel preferences, or driver instructions..."
+              className="w-full px-md py-3 bg-surface-container border border-outline-variant rounded-xl font-body-md text-xs focus:ring-2 focus:ring-primary/20 outline-none" />
           </div>
         </div>
       </div>

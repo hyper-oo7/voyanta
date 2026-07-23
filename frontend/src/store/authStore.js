@@ -76,7 +76,16 @@ export const useAuthStore = create((set, get) => ({
 
   checkTermsAcceptance: async () => {
     const { user, isDemo } = get();
-    if (!user || isDemo || !supabase) {
+    if (!user || isDemo) {
+      set({ hasAcceptedTerms: true });
+      return;
+    }
+    const localKey = `voyanta_dpdp_consent_${user.id}`;
+    if (localStorage.getItem(localKey) === 'true') {
+      set({ hasAcceptedTerms: true });
+      return;
+    }
+    if (!supabase) {
       set({ hasAcceptedTerms: true });
       return;
     }
@@ -88,32 +97,38 @@ export const useAuthStore = create((set, get) => ({
         .eq('terms_version', 'v1.0')
         .maybeSingle();
 
-      if (error) throw error;
-      set({ hasAcceptedTerms: !!data });
+      if (!error && data) {
+        localStorage.setItem(localKey, 'true');
+        set({ hasAcceptedTerms: true });
+      } else {
+        const hasLocal = localStorage.getItem(localKey) === 'true';
+        set({ hasAcceptedTerms: hasLocal });
+      }
     } catch (e) {
       console.warn('Failed to check terms acceptance:', e);
-      // In case of error (e.g. database loading), default to false to trigger modal for safety
-      set({ hasAcceptedTerms: false });
+      const hasLocal = localStorage.getItem(localKey) === 'true';
+      set({ hasAcceptedTerms: hasLocal });
     }
   },
 
   acceptTerms: async (userAgent) => {
     const { user, isDemo } = get();
+    const userId = user?.id || 'guest';
+    const localKey = `voyanta_dpdp_consent_${userId}`;
+    localStorage.setItem(localKey, 'true');
+    set({ hasAcceptedTerms: true });
+
     if (!user || isDemo || !supabase) return;
     try {
-      const { error } = await supabase
+      await supabase
         .from('user_terms_acceptances')
         .insert({
           user_id: user.id,
           terms_version: 'v1.0',
           user_agent: userAgent || navigator.userAgent,
         });
-
-      if (error) throw error;
-      set({ hasAcceptedTerms: true });
     } catch (e) {
-      console.error('Failed to log terms acceptance:', e);
-      throw e;
+      console.warn('DB terms logging notice (local consent recorded):', e);
     }
   },
 

@@ -50,7 +50,8 @@ export default function SettingsPage() {
   }, []);
 
   const { data: subscription } = useQuery({ queryKey: ['subscription'], queryFn: fetchSubscription });
-  const isEnterprise = localPlan === 'Enterprise' || subscription?.plan === 'Enterprise';
+  const activePlan = localPlan || subscription?.plan || user?.plan || 'Starter';
+  const isEnterprise = activePlan === 'Enterprise';
 
   return (
     <div className="space-y-6">

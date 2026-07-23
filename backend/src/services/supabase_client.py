@@ -21,7 +21,11 @@ def get_supabase_client():
         return _sb_client
 
     url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY")
+    key = (
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        or os.environ.get("SUPABASE_SERVICE_KEY")
+        or os.environ.get("SUPABASE_KEY")
+    )
 
     if not url or not key:
         logger.warning("[Supabase] SUPABASE_URL or SUPABASE_KEY not set — Supabase features disabled.")

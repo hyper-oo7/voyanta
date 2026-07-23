@@ -116,10 +116,15 @@ export default function AppLayout() {
   useEffect(() => {
     const loadRealNotifications = () => {
       let items = [];
+      // Check stored notification logs
       try {
         const storedLogs = JSON.parse(localStorage.getItem('voyanta_notifications') || '[]');
         if (Array.isArray(storedLogs)) {
           items.push(...storedLogs);
+        }
+        const storedLogsList = JSON.parse(localStorage.getItem('voyanta_notifications_list') || '[]');
+        if (Array.isArray(storedLogsList)) {
+          items.push(...storedLogsList);
         }
       } catch { }
 
@@ -258,12 +263,14 @@ export default function AppLayout() {
 
     loadRealNotifications();
     window.addEventListener('voyanta:notifications-updated', loadRealNotifications);
+    window.addEventListener('voyanta:activity-log-updated', loadRealNotifications);
     window.addEventListener('voyanta:proposals-updated', loadRealNotifications);
     window.addEventListener('voyanta:invoices-updated', loadRealNotifications);
     window.addEventListener('voyanta:clients-updated', loadRealNotifications);
     window.addEventListener('storage', loadRealNotifications);
     return () => {
       window.removeEventListener('voyanta:notifications-updated', loadRealNotifications);
+      window.removeEventListener('voyanta:activity-log-updated', loadRealNotifications);
       window.removeEventListener('voyanta:proposals-updated', loadRealNotifications);
       window.removeEventListener('voyanta:invoices-updated', loadRealNotifications);
       window.removeEventListener('voyanta:clients-updated', loadRealNotifications);

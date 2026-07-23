@@ -19,6 +19,7 @@ import InlineStudioPopover from '../components/common/InlineStudioPopover.jsx';
 import ImageSearchPicker from '../components/common/ImageSearchPicker.jsx';
 import GoogleTranslateWidget from '../components/GoogleTranslateWidget.jsx';
 import { createInvoiceFromProposal } from '../services/invoiceService.js';
+import { logActivity } from '../services/activityLogService.js';
 
 const INDIAN_LANGUAGES = [
   { code: 'en', label: 'English', native: 'English' },
@@ -469,24 +470,43 @@ export default function WebViewPage() {
         localStorage.setItem(clientCacheKey, JSON.stringify(updatedClients));
       }
 
-      // Trigger In-App Notification
+      // Log to Activity Logs service (Supabase DB + Local Storage)
+      logActivity(
+        newStatus === 'approved' ? 'approval' : 'modification',
+        newStatus === 'approved'
+          ? `Proposal "${p?.name || 'Trip'}" approved by ${signerName || p?.client_name || 'Client'}`
+          : `Client requested modifications for "${p?.name || 'Trip'}"`,
+        signerName || p?.client_name || 'Client',
+        'proposal',
+        p?.id || proposalId
+      );
+
+      // Trigger In-App Notification (saved to both notification keys for full compatibility)
       try {
-        const notifKey = 'voyanta_notifications_list';
-        const notifs = JSON.parse(localStorage.getItem(notifKey) || '[]');
         const newNotif = {
           id: crypto.randomUUID(),
           title: newStatus === 'approved' ? '🎉 Proposal Approved!' : '📝 Modification Requested',
-          message: newStatus === 'approved' ? `${signerName || p?.client_name || 'Client'} approved proposal "${p?.name || 'Trip'}" and an invoice was auto-created.` : `${p?.client_name || 'Client'} requested modifications for "${p?.name || 'Trip'}".`,
+          message: newStatus === 'approved'
+            ? `${signerName || p?.client_name || 'Client'} approved proposal "${p?.name || 'Trip'}" and an invoice was auto-created.`
+            : `${p?.client_name || 'Client'} requested modifications for "${p?.name || 'Trip'}".`,
           time: 'Just now',
           read: false,
-          type: newStatus === 'approved' ? 'success' : 'warning'
+          type: newStatus === 'approved' ? 'success' : 'warning',
+          timestamp: new Date().toISOString()
         };
-        localStorage.setItem(notifKey, JSON.stringify([newNotif, ...notifs]));
+
+        const list1 = JSON.parse(localStorage.getItem('voyanta_notifications') || '[]');
+        localStorage.setItem('voyanta_notifications', JSON.stringify([newNotif, ...list1]));
+
+        const list2 = JSON.parse(localStorage.getItem('voyanta_notifications_list') || '[]');
+        localStorage.setItem('voyanta_notifications_list', JSON.stringify([newNotif, ...list2]));
       } catch {}
 
       window.dispatchEvent(new CustomEvent('voyanta:crm-updated'));
       window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
       window.dispatchEvent(new CustomEvent('voyanta:notifications-updated'));
+      window.dispatchEvent(new CustomEvent('voyanta:activity-log-updated'));
+      window.dispatchEvent(new CustomEvent('voyanta:analytics-updated'));
     } catch (e) {
       console.warn('Failed to sync CRM local cache:', e);
     }
@@ -621,7 +641,7 @@ export default function WebViewPage() {
               </div>
             )}
             <div>
-              <div className="font-bold text-base md:text-lg tracking-tight">
+              <div className="font-bold text-base md:text-lg tracking-tight text-on-surface">
                 {branding.company_name || 'Voyanta Luxury Travel'}
               </div>
               <div className="text-xs text-on-surface-variant">
@@ -1143,11 +1163,11 @@ export default function WebViewPage() {
       </main>
 
       {/* STICKY CLIENT ACTIONS BAR WITH INDIAN LANGUAGE TRANSLATION */}
-      <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur-xl border-t border-outline-variant p-4 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-surface/95 dark:bg-zinc-900/95 backdrop-blur-xl border-t border-outline-variant p-4 shadow-[0_-8px_30px_rgba(0,0,0,0.18)] z-50 transition-colors">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-primary">shield_lock</span>
-            <span className="text-xs text-on-surface-variant hidden sm:inline">
+            <span className="text-xs font-medium text-on-surface-variant hidden sm:inline">
               Secured under DPDP Act 2023 Compliance
             </span>
           </div>
@@ -1592,7 +1612,6 @@ export default function WebViewPage() {
           onClose={() => setShowStockPicker(false)}
         />
       )}
-      {!isAgentView && <GoogleTranslateWidget />}
     </div>
   );
 }

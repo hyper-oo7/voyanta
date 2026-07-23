@@ -9,6 +9,76 @@ const INITIAL_HIERARCHY = {
   uttarakhand: ['rishikesh', 'mussoorie', 'nainital', 'jim corbett', 'auli', 'uttarakhand']
 };
 
+export const INDIA_SUB_DESTINATIONS = {
+  varanasi: [
+    { id: 'v1', name: 'Dashashwamedh Ghat', type: 'attraction', short_description: 'Sacred ghat famous for daily evening Ganga Aarti' },
+    { id: 'v2', name: 'Kashi Vishwanath Corridor', type: 'temple', short_description: 'Golden spire temple complex dedicated to Lord Shiva' },
+    { id: 'v3', name: 'Assi Ghat', type: 'attraction', short_description: 'Subah-e-Banaras morning yoga and ghat sunrise boat rides' },
+    { id: 'v4', name: 'Sarnath', type: 'spiritual', short_description: 'Sacred Buddhist site where Lord Buddha delivered first sermon' },
+    { id: 'v5', name: 'Manikarnika Ghat', type: 'attraction', short_description: 'Historic ancient burning ghat along holy Ganges' }
+  ],
+  meghalaya: [
+    { id: 'm1', name: 'Shillong', type: 'town', short_description: 'Scotland of the East, Ward’s Lake, Elephant Falls & cafes' },
+    { id: 'm2', name: 'Cherrapunji', type: 'hill_station', short_description: 'Nohkalikai Waterfalls, Mawsmai Cave & Seven Sisters Falls' },
+    { id: 'm3', name: 'Dawki', type: 'town', short_description: 'Crystal-clear Umngot River floating boat rides' },
+    { id: 'm4', name: 'Mawlynnong', type: 'attraction', short_description: 'Cleanest village in Asia with living root bridges' },
+    { id: 'm5', name: 'Nongriat', type: 'attraction', short_description: 'Famous 250-year-old Double Decker Living Root Bridge' },
+    { id: 'm6', name: 'Mawsynram', type: 'village', short_description: 'Wettest place on earth with pristine caves' },
+    { id: 'm7', name: 'Jowai', type: 'town', short_description: 'Krang Suri Waterfalls & Nartiang Monoliths' },
+    { id: 'm8', name: 'Garo Hills', type: 'wildlife_park', short_description: 'Nokrek & Balpakram National Parks' }
+  ],
+  delhi: [
+    { id: 'd1', name: 'Old Delhi', type: 'town', short_description: 'Chandni Chowk, Jama Masjid & heritage street food' },
+    { id: 'd2', name: 'Meena Bazaar', type: 'shopping', short_description: 'Traditional attire, embroidery & handicrafts bazaar' },
+    { id: 'd3', name: 'New Delhi', type: 'town', short_description: 'India Gate, Rashtrapati Bhavan & Central Vista' },
+    { id: 'd4', name: 'South Delhi', type: 'town', short_description: 'Qutub Minar, Lotus Temple & Hauz Khas Village' }
+  ],
+  kerala: [
+    { id: 'k1', name: 'Munnar', type: 'hill_station', short_description: 'Rolling tea estates and Eravikulam National Park' },
+    { id: 'k2', name: 'Alleppey', type: 'town', short_description: 'Vembanad Lake luxury private houseboat backwater cruises' },
+    { id: 'k3', name: 'Wayanad', type: 'hill_station', short_description: 'Edakkal Caves, Chembra Peak & spice plantations' },
+    { id: 'k4', name: 'Thekkady', type: 'wildlife_park', short_description: 'Periyar Tiger Reserve boat safari' },
+    { id: 'k5', name: 'Kovalam', type: 'beach', short_description: 'Lighthouse Beach & crescent coastal shores' }
+  ],
+  rajasthan: [
+    { id: 'r1', name: 'Jaipur', type: 'town', short_description: 'Pink City featuring Amber Fort, Hawa Mahal & City Palace' },
+    { id: 'r2', name: 'Udaipur', type: 'town', short_description: 'City of Lakes with Lake Pichola boat cruises' },
+    { id: 'r3', name: 'Jaisalmer', type: 'town', short_description: 'Golden City desert fort & Thar sand dunes camel safari' },
+    { id: 'r4', name: 'Jodhpur', type: 'town', short_description: 'Blue City featuring Mehrangarh Fort & Jaswant Thada' },
+    { id: 'r5', name: 'Pushkar', type: 'spiritual', short_description: 'Sacred Brahma Temple & holy lake ghats' }
+  ],
+  ladakh: [
+    { id: 'l1', name: 'Leh', type: 'town', short_description: 'Shanti Stupa, Leh Palace & Thiksey Monastery' },
+    { id: 'l2', name: 'Nubra Valley', type: 'valley', short_description: 'Khardung La Pass & Hunder double-humped camel safari' },
+    { id: 'l3', name: 'Pangong Tso', type: 'attraction', short_description: 'High-altitude turquoise salt lake' }
+  ],
+  kashmir: [
+    { id: 'ks1', name: 'Srinagar', type: 'town', short_description: 'Dal Lake Shikara rides & Mughal Gardens' },
+    { id: 'ks2', name: 'Gulmarg', type: 'hill_station', short_description: 'World’s highest gondola cable car & ski slopes' },
+    { id: 'ks3', name: 'Pahalgam', type: 'valley', short_description: 'Betaab Valley, Aru Valley & Lidder River' },
+    { id: 'ks4', name: 'Sonamarg', type: 'valley', short_description: 'Meadow of Gold & Thajiwas Glacier' }
+  ],
+  himachal: [
+    { id: 'h1', name: 'Shimla', type: 'hill_station', short_description: 'Mall Road, Jakhu Temple & Ridge promenade' },
+    { id: 'h2', name: 'Manali', type: 'hill_station', short_description: 'Solang Valley adventure sports & Rohtang Pass' },
+    { id: 'h3', name: 'Dharamshala', type: 'hill_station', short_description: 'McLeod Ganj, Dalai Lama Temple & Triund Trek' }
+  ],
+  uttarakhand: [
+    { id: 'u1', name: 'Rishikesh', type: 'spiritual', short_description: 'Yoga capital, Ganga river rafting & Triveni Ghat Aarti' },
+    { id: 'u2', name: 'Mussoorie', type: 'hill_station', short_description: 'Kempty Falls, Gun Hill & Mall Road' },
+    { id: 'u3', name: 'Nainital', type: 'hill_station', short_description: 'Naini Lake boating & Tiffin Top' }
+  ]
+};
+
+export function getLocalSubDestinations(destName) {
+  if (!destName) return [];
+  const key = String(destName).toLowerCase().trim();
+  for (const [k, list] of Object.entries(INDIA_SUB_DESTINATIONS)) {
+    if (key.includes(k) || k.includes(key)) return list;
+  }
+  return [];
+}
+
 /**
  * Get all learned and initial hierarchy mappings
  */

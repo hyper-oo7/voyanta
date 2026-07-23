@@ -6,7 +6,7 @@ import { useToast } from '../../context/ToastContext.jsx';
 import { useProposalStore } from '../../store/proposalStore.js';
 import { logActivity } from '../../services/activityLogService.js';
 import { buildVIItinerary, getClimateClassification } from '../../lib/viClimateIntelligence.js';
-import { isLocationMatch, registerDestinationHierarchy } from '../../lib/destinationHierarchy.js';
+import { isLocationMatch, registerDestinationHierarchy, getLocalSubDestinations } from '../../lib/destinationHierarchy.js';
 
 const cleanPrice = (val) => {
   if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
@@ -233,7 +233,12 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         if (isMounted) {
           const merged = [...hotels, ...activities];
           setSuggestions(merged);
-          setSubDestinations(tempSubDestinations);
+          if (tempSubDestinations && tempSubDestinations.length > 0) {
+            setSubDestinations(tempSubDestinations);
+          } else {
+            const local = getLocalSubDestinations(client?.destination || proposal?.destination || '');
+            if (local.length > 0) setSubDestinations(local);
+          }
 
           // Merge related suggestions and de-duplicate by ID
           const mergedRelated = [...relHotels, ...relActivities];
