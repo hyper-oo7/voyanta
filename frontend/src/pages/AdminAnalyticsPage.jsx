@@ -332,7 +332,7 @@ export default function AdminAnalyticsPage() {
                 {subs.paid_subscribers || 0}
                 <span className="text-xs font-bold text-emerald-700">₹{(subs.estimated_mrr_inr || 0).toLocaleString()}/mo MRR</span>
               </div>
-              <p className="text-[11px] text-on-surface-variant">Pro: {subs.professional || 0} · Enterprise: {subs.enterprise || 0}</p>
+              <p className="text-[11px] text-on-surface-variant">Pro: {subs.professional || 0} · Pro+: {subs.professional_plus || 0} · Ent: {subs.enterprise || 0}</p>
             </div>
 
             {/* Proposal Exports & Shares */}

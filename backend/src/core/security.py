@@ -110,6 +110,18 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Security(secu
 
     payload = None
 
+    # 0. Check for Platform Admin Token issued by /api/admin/login
+    admin_secret = os.environ.get('SUPABASE_JWT_SECRET') or "voyanta_admin_super_secret_key_2026"
+    try:
+        admin_payload = jwt.decode(token, admin_secret, algorithms=["HS256"], options={"verify_aud": False})
+        if admin_payload and admin_payload.get("role") in ("owner", "admin"):
+            return admin_payload
+    except jwt.ExpiredSignatureError:
+        logger.error("[Security] Admin token has expired")
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except Exception:
+        pass
+
     # 1. Primary: ES256 / JWKS public key verification
     if supabase_url:
         try:
@@ -166,6 +178,15 @@ async def verify_token_optional(credentials: HTTPAuthorizationCredentials = Secu
     supabase_url = os.environ.get('VITE_SUPABASE_URL') or os.environ.get('SUPABASE_URL')
 
     payload = None
+
+    # 0. Check for Platform Admin Token
+    admin_secret = os.environ.get('SUPABASE_JWT_SECRET') or "voyanta_admin_super_secret_key_2026"
+    try:
+        admin_payload = jwt.decode(token, admin_secret, algorithms=["HS256"], options={"verify_aud": False})
+        if admin_payload and admin_payload.get("role") in ("owner", "admin"):
+            return admin_payload
+    except Exception:
+        pass
 
     # 1. Primary: ES256 / JWKS public key verification
     if supabase_url:
