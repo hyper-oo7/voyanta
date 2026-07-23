@@ -423,11 +423,32 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
     </article>
   );
 });
+const SAFE_COLOR_REGEX = /^#(?:[0-9a-fA-F]{3,4}){1,2}$|^rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)$|^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*[\d.]+\s*\)$|^hsl\(\s*\d+\s*,\s*[\d.]%+?\s*,\s*[\d.]%+?\s*\)$|^[a-zA-Z]{3,20}$/;
+const SAFE_FONT_REGEX = /^[a-zA-Z0-9\s,\-"']+$/;
+
+export function sanitizeCssColor(color) {
+  if (!color || typeof color !== 'string') return null;
+  const trimmed = color.trim();
+  if (SAFE_COLOR_REGEX.test(trimmed)) {
+    return trimmed;
+  }
+  return null;
+}
+
+export function sanitizeFontFamily(font) {
+  if (!font || typeof font !== 'string') return null;
+  const trimmed = font.trim();
+  if (SAFE_FONT_REGEX.test(trimmed) && !trimmed.includes('<') && !trimmed.includes('>')) {
+    return trimmed;
+  }
+  return null;
+}
+
 const TemplateRenderer = memo(function TemplateRenderer(props) {
   const { style = 'classic', branding } = props;
-  const primaryColor = branding?.primary_color;
-  const secondaryColor = branding?.secondary_color;
-  const fontFamily = branding?.font_family;
+  const primaryColor = sanitizeCssColor(branding?.primary_color);
+  const secondaryColor = sanitizeCssColor(branding?.secondary_color);
+  const fontFamily = sanitizeFontFamily(branding?.font_family);
 
   const registryEntry = TEMPLATE_REGISTRY[style];
 

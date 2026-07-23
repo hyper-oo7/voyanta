@@ -281,4 +281,56 @@ async def invalidate_cache_key(input: InvalidateCacheInput, user: Any = Depends(
     success = await invalidate_cache(input.cache_key)
     return {"status": "success", "invalidated": success}
 
+@router.get("/ai/health")
+async def ai_health_check():
+    """
+    Single authoritative health check endpoint for verifying AI providers & LLM cascading.
+    Verifies active models: gemini-2.5-flash and gpt-4o-mini.
+    """
+    import os
+    import time
+    from fastapi.responses import JSONResponse
+    from src.services.ai_client import call_llm, GEMINI_MODEL, OPENAI_MODEL
+
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    openai_key = os.environ.get("OPENAI_API_KEY")
+
+    res = {
+        "status": "unhealthy",
+        "active_models": {
+            "gemini": GEMINI_MODEL,
+            "openai": OPENAI_MODEL
+        },
+        "providers": {
+            "gemini": {"configured": bool(gemini_key), "status": "untested"},
+            "openai": {"configured": bool(openai_key), "status": "untested"}
+        }
+    }
+
+    if not gemini_key and not openai_key:
+        res["message"] = "Neither GEMINI_API_KEY nor OPENAI_API_KEY is configured in environment."
+        return JSONResponse(status_code=503, content=res)
+
+    # Test active provider
+    start_time = time.time()
+    try:
+        ping_res = await call_llm(
+            prompt="Respond with exact word 'OK'",
+            system_prompt="You are a healthcheck bot.",
+            temperature=0.0
+        )
+        latency = round((time.time() - start_time) * 1000, 2)
+        res["status"] = "healthy"
+        res["active_provider_ping"] = {"status": "ok", "latency_ms": latency, "response": ping_res[:50].strip()}
+        if gemini_key:
+            res["providers"]["gemini"]["status"] = "ok"
+        elif openai_key:
+            res["providers"]["openai"]["status"] = "ok"
+    except Exception as e:
+        logger.error(f"[AI Health] Healthcheck ping failed: {e}")
+        res["status"] = "degraded"
+        res["active_provider_ping"] = {"status": "error", "error": str(e)}
+
+    return res
+
 

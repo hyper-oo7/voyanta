@@ -82,41 +82,42 @@ async def search_images(query: str):
     import os
     import httpx
     
-    unsplash_key = os.environ.get("UNSPLASH_ACCESS_KEY", "siZY4H_ZJXFAfmG6oUbzazfIkZZ-aV0S6LgkWB3Z9GE")
-    pexels_key = os.environ.get("PEXELS_API_KEY", "MSmdcbIpmIVVcIrS4Hrg0fBPxZxGb8Q7P3Y9Iq0c9EAIEZTbHuSehv5T")
+    unsplash_key = os.environ.get("UNSPLASH_ACCESS_KEY")
+    pexels_key = os.environ.get("PEXELS_API_KEY")
 
     results = []
 
-    # 1. Try Unsplash API
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(
-                "https://api.unsplash.com/search/photos",
-                params={"query": query, "per_page": 12, "orientation": "landscape"},
-                headers={"Authorization": f"Client-ID {unsplash_key}"}
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                for item in data.get("results", []):
-                    user_info = item.get("user", {})
-                    user_link = user_info.get("links", {}).get("html", "https://unsplash.com")
-                    item_link = item.get("links", {}).get("html", "https://unsplash.com")
-                    results.append({
-                        "id": str(item.get("id")),
-                        "url": item.get("urls", {}).get("regular") or item.get("urls", {}).get("full"),
-                        "thumb": item.get("urls", {}).get("small"),
-                        "author": user_info.get("name", "Unsplash Photographer"),
-                        "author_url": f"{user_link}?utm_source=voyanta&utm_medium=referral",
-                        "photo_url": f"{item_link}?utm_source=voyanta&utm_medium=referral",
-                        "unsplash_url": "https://unsplash.com/?utm_source=voyanta&utm_medium=referral",
-                        "download_location": item.get("links", {}).get("download_location"),
-                        "source": "unsplash"
-                    })
-    except Exception as e:
-        logger.warning(f"Unsplash API search error: {e}")
+    # 1. Try Unsplash API if key is configured
+    if unsplash_key:
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(
+                    "https://api.unsplash.com/search/photos",
+                    params={"query": query, "per_page": 12, "orientation": "landscape"},
+                    headers={"Authorization": f"Client-ID {unsplash_key}"}
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for item in data.get("results", []):
+                        user_info = item.get("user", {})
+                        user_link = user_info.get("links", {}).get("html", "https://unsplash.com")
+                        item_link = item.get("links", {}).get("html", "https://unsplash.com")
+                        results.append({
+                            "id": str(item.get("id")),
+                            "url": item.get("urls", {}).get("regular") or item.get("urls", {}).get("full"),
+                            "thumb": item.get("urls", {}).get("small"),
+                            "author": user_info.get("name", "Unsplash Photographer"),
+                            "author_url": f"{user_link}?utm_source=voyanta&utm_medium=referral",
+                            "photo_url": f"{item_link}?utm_source=voyanta&utm_medium=referral",
+                            "unsplash_url": "https://unsplash.com/?utm_source=voyanta&utm_medium=referral",
+                            "download_location": item.get("links", {}).get("download_location"),
+                            "source": "unsplash"
+                        })
+        except Exception as e:
+            logger.warning(f"Unsplash API search error: {e}")
 
-    # 2. Try Pexels API fallback if Unsplash returned empty
-    if not results:
+    # 2. Try Pexels API fallback if Unsplash returned empty and Pexels key is configured
+    if not results and pexels_key:
         try:
             async with httpx.AsyncClient(timeout=8.0) as client:
                 resp = await client.get(

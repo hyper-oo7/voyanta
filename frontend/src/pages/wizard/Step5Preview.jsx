@@ -235,6 +235,40 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
     };
   }, [proposal, items]);
 
+  const [viSeasonalAdvisories, setViSeasonalAdvisories] = useState([]);
+
+  useEffect(() => {
+    const dest = proposal?.destination || proposal?.brief?.destination || '';
+    const startDate = proposal?.start_date || proposal?.brief?.start_date || '';
+    if (!dest || !startDate) {
+      setViSeasonalAdvisories([]);
+      return;
+    }
+
+    let isMounted = true;
+    let month = null;
+    try {
+      const dt = new Date(startDate);
+      if (!isNaN(dt.getTime())) month = dt.getMonth() + 1;
+    } catch {}
+
+    if (!month) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/seasonal-rules?destination=${encodeURIComponent(dest)}&month=${month}`);
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          setViSeasonalAdvisories(data.rules || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch VI seasonal rules:", err);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, [proposal?.destination, proposal?.start_date]);
+
   // Auto-sync template settings (style, selections, custom sections, order) to Supabase database
   useEffect(() => {
     if (!proposalId) return;
@@ -608,7 +642,26 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
           </button>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+      {viSeasonalAdvisories.length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-md shadow-sm space-y-xs no-print my-sm">
+          <div className="flex items-center gap-xs text-amber-900 font-bold font-label-md">
+            <span className="material-symbols-outlined text-amber-600">verified_user</span>
+            VI Review: Seasonal Climate Advisory for {proposal?.destination || proposal?.brief?.destination || 'Destination'}
+          </div>
+          <ul className="divide-y divide-amber-200/60">
+            {viSeasonalAdvisories.map((rule, idx) => (
+              <li key={idx} className="py-xs flex items-start gap-xs text-xs text-amber-800">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase mt-0.5 ${rule.rule_type === 'avoid' ? 'bg-red-100 text-red-700' : rule.rule_type === 'prefer' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-800'}`}>
+                  {rule.rule_type}
+                </span>
+                <span className="flex-1 font-medium">{rule.message}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 flex-wrap">
           {/* Editor Mode */}
           <button type="button" onClick={() => setIsInteractiveStudio(!isInteractiveStudio)} data-testid="toggle-wysiwyg"
             className={`px-3 py-1.5 border rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${isInteractiveStudio ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'bg-surface-container-lowest text-on-surface border-outline-variant hover:border-primary/50'}`}>

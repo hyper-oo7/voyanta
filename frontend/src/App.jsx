@@ -51,6 +51,8 @@ const HowToUsePage = lazy(() => import('./pages/HowToUsePage.jsx'));
 const ContactPage = lazy(() => import('./pages/ContactPage.jsx'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage.jsx'));
 
+const AdminAnalyticsPage = lazy(() => import('./pages/AdminAnalyticsPage.jsx'));
+
 const Protected = ({ children }) => <ProtectedRoute>{children}</ProtectedRoute>;
 
 // Minimal loading indicator shown while a lazy chunk downloads
@@ -88,10 +90,11 @@ export default function App() {
               <Route path="/how-to-use" element={<HowToUsePage />} />
               <Route path="/contact" element={<ContactPage />} />
               
-              {/* Public routes for PDF printing & client action tracking */}
+              {/* Public routes for PDF printing & client action tracking & Standalone Admin portal */}
               <Route path="/proposals/:id/print" element={<ProposalPrintRoute />} />
               <Route path="/proposal-action" element={<ProposalActionRoute />} />
               <Route path="/view/:token" element={<WebViewPage />} />
+              <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
 
               {/* Wrapped all authenticated routes in AppLayout */}
               <Route element={<Protected><AppLayout /></Protected>}>

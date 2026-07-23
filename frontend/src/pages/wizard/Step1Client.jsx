@@ -176,6 +176,77 @@ const TagInput = memo(function TagInput({ label, value = [], onChange, suggestio
   );
 });
 
+const SubDestinationPicker = memo(function SubDestinationPicker({ destinationName, selectedSubDests = [], onToggleSubDest }) {
+  const [subDests, setSubDests] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!destinationName || destinationName.trim().length < 2) {
+      setSubDests([]);
+      return;
+    }
+
+    let isMounted = true;
+    setLoading(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/destinations/sub-destinations?destination_name=${encodeURIComponent(destinationName.trim())}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) {
+            setSubDests(data.sub_destinations || []);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch sub-destinations:", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [destinationName]);
+
+  if (!destinationName || (subDests.length === 0 && !loading)) return null;
+
+  return (
+    <div className="mt-xs p-sm bg-surface-container-low border border-outline-variant/40 rounded-lg space-y-xs">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-primary flex items-center gap-xs">
+          <span className="material-symbols-outlined text-[14px]">map</span>
+          Select Sub-destinations in {destinationName}:
+        </span>
+        {loading && <span className="text-[11px] text-on-surface-variant animate-pulse">Loading places...</span>}
+      </div>
+
+      <div className="flex flex-wrap gap-xs">
+        {subDests.map((sub) => {
+          const isSelected = selectedSubDests.includes(sub.name);
+          return (
+            <button
+              key={sub.id || sub.name}
+              type="button"
+              onClick={() => onToggleSubDest(sub.name)}
+              className={`px-sm py-xs text-xs rounded-full border transition-all flex items-center gap-xs ${
+                isSelected 
+                  ? 'bg-primary text-on-primary border-primary shadow-sm font-medium' 
+                  : 'bg-surface-container-lowest text-on-surface border-outline-variant hover:border-primary/50'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[12px]">{isSelected ? 'check_circle' : 'add_circle'}</span>
+              {sub.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
 export const Step1Client = forwardRef(function Step1Client({ client, setClient, isNew, proposal }, ref) {
   const { register, watch, handleSubmit, trigger, setValue, reset, formState: { errors } } = useForm({
     resolver: zodResolver(clientSchema),
@@ -430,7 +501,31 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
           <Field label="Phone Number" name="phone" register={register} error={errors.phone} testid="phone" extraClass="flex-1" />
         </div>
         <Field label="Email" name="email" type="email" register={register} error={errors.email} testid="email" />
-        <Field label="Destination *" name="destination" register={register} error={errors.destination} testid="destination" extraClass="col-span-1 md:col-span-2" />
+        <div className="col-span-1 md:col-span-2 space-y-xs">
+          <label className="font-label-md text-label-md text-on-surface block">Destination *</label>
+          <input 
+            type="text" 
+            {...register('destination')} 
+            data-testid="destination" 
+            placeholder="e.g. Meghalaya, Kerala, Rajasthan, Goa, Ladakh..."
+            className={`w-full px-md py-md bg-surface-container-lowest border rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 ${errors.destination ? 'border-error' : 'border-outline-variant'}`} 
+          />
+          {errors.destination && <span className="text-xs text-error">{errors.destination.message}</span>}
+
+          {/* Sub-destination suggestion pills */}
+          <SubDestinationPicker 
+            destinationName={destination} 
+            selectedSubDests={client.selected_sub_destinations || []}
+            onToggleSubDest={(subName) => {
+              const current = client.selected_sub_destinations || [];
+              const updated = current.includes(subName)
+                ? current.filter(s => s !== subName)
+                : [...current, subName];
+              setValue('selected_sub_destinations', updated, { shouldValidate: true });
+              setClient(prev => ({ ...prev, selected_sub_destinations: updated }));
+            }}
+          />
+        </div>
         <div>
           <label className="font-label-md text-label-md text-on-surface block mb-xs">Who's Travelling?</label>
           <select {...register('group_type')} data-testid="group-type"

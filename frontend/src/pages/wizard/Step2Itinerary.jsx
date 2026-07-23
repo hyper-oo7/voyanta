@@ -426,6 +426,11 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     const set = new Set();
     const currentDest = (client?.destination || proposal?.destination || '').toLowerCase().trim();
 
+    // Include sub-destinations selected in Step 1 (e.g. Shillong, Cherrapunji, Dawki, Mawlynnong, etc.)
+    (client?.selected_sub_destinations || []).forEach(sd => {
+      if (typeof sd === 'string' && sd.trim()) set.add(sd.trim());
+    });
+
     // Collect actual sub-destinations from vault packages for this destination
     (vaultItems || []).forEach(vt => {
       const vtDest = (vt.destination || vt.parsed_data?.destination || '').toLowerCase().trim();
@@ -446,29 +451,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     // Add subDestinations retrieved from backend suggestions dynamically
     (subDestinations || []).forEach(sd => {
       const name = typeof sd === 'object' ? sd.name : sd;
-      const sdDest = typeof sd === 'object' ? (sd.destination || '').toLowerCase().trim() : '';
-      if (name) {
-        if (sdDest && currentDest) {
-          if (currentDest.includes(sdDest) || sdDest.includes(currentDest)) {
-            set.add(name);
-          }
-        } else if (currentDest) {
-          const isKnownForDest = (vaultItems || []).some(vt => {
-            const vtDest = (vt.destination || vt.parsed_data?.destination || '').toLowerCase().trim();
-            if (vtDest && (currentDest.includes(vtDest) || vtDest.includes(currentDest))) {
-              const data = vt.parsed_data || vt;
-              return (data.sub_destinations || []).some(s => s.toLowerCase() === name.toLowerCase()) ||
-                     (data.days || []).some(d => (d.sub_destination || '').toLowerCase() === name.toLowerCase());
-            }
-            return false;
-          });
-          if (isKnownForDest || currentDest.includes(name.toLowerCase()) || name.toLowerCase().includes(currentDest)) {
-            set.add(name);
-          }
-        } else {
-          set.add(name);
-        }
-      }
+      if (name) set.add(name);
     });
 
     return Array.from(set).map((name, idx) => ({
