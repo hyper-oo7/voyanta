@@ -112,6 +112,63 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     let isMounted = true;
     const cacheKey = `voyanta_suggestions_cache_${proposal.id}`;
     let hasCache = false;
+    if (!hasCache) {
+      setSuggestionsLoading(true);
+    }
+
+    // Connect search input to autocomplete API
+    let isSearchMounted = true;
+    let searchTimeout = null;
+    
+    const handleSearchAutocomplete = async () => {
+      if (!search || search.length < 2) return;
+      
+      try {
+        let token = null;
+        try {
+          const supa = (await import('../../lib/supabaseClient.js')).supabase;
+          const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
+          if (session?.access_token) token = session.access_token;
+        } catch { }
+
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/destinations/autocomplete?q=${encodeURIComponent(search)}`, { headers });
+        if (res.ok && isSearchMounted) {
+          const data = await res.json();
+          if (data.sub_destinations && data.sub_destinations.length > 0) {
+            // Update sub-destinations with the autocomplete results (but don't override the primary ones)
+            setSubDestinations(prev => {
+              const prevMap = new Map(prev.map(s => [s.id, s]));
+              data.sub_destinations.forEach(s => {
+                if (!prevMap.has(s.id)) prevMap.set(s.id, s);
+              });
+              return Array.from(prevMap.values());
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Autocomplete error:", err);
+      }
+    };
+
+    if (search && search.length >= 2) {
+      searchTimeout = setTimeout(handleSearchAutocomplete, 300);
+    }
+
+    return () => {
+      isSearchMounted = false;
+      if (searchTimeout) clearTimeout(searchTimeout);
+    };
+  }, [search]); // Adding a new useEffect block for search autocomplete
+
+  useEffect(() => {
+    if (!proposal?.id) return;
+
+    let isMounted = true;
+    const cacheKey = `voyanta_suggestions_cache_${proposal.id}`;
+    let hasCache = false;
     try {
       const cached = localStorage.getItem(cacheKey);
       if (cached) {

@@ -420,28 +420,18 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
       return;
     }
 
-    (async () => {
-      try {
-        let token = null;
-        try {
-          const supa = (await import('../../lib/supabaseClient.js')).supabase;
-          const { data: { session } } = await supa?.auth?.getSession?.() || { data: { session: null } };
-          if (session?.access_token) token = session.access_token;
-        } catch {}
-
-        const headers = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const res = await fetch(`/api/seasonal-rules?destination=${encodeURIComponent(destination)}&month=${month}`, { headers });
-        if (res.ok && isMounted) {
-          const data = await res.json();
-          const warnRules = (data.rules || []).filter(r => r.rule_type === 'warn');
-          setSeasonalWarnings(warnRules);
-        }
-      } catch (err) {
-        console.error("Failed to fetch seasonal rules:", err);
+    try {
+      const { getClimateClassification } = await import('../../lib/viClimateIntelligence.js');
+      const climate = getClimateClassification(destination, start_date);
+      const warnings = [];
+      if (climate.isHot || climate.isMonsoon || climate.isSnow) {
+        warnings.push({ text: climate.profileNotes || `Expected Season: ${climate.seasonName}` });
       }
-    })();
+      setSeasonalWarnings(warnings);
+    } catch (err) {
+      console.error("Failed to fetch seasonal rules:", err);
+      setSeasonalWarnings([]);
+    }
 
     return () => { isMounted = false; };
   }, [destination, start_date]);

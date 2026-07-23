@@ -14,6 +14,7 @@ import { upsertClientFromProposal } from '../../services/crmService.js';
 import { createProposal, updateProposal } from '../../services/proposalService.js';
 import SmartContactCaptureModal from '../../components/common/SmartContactCaptureModal.jsx';
 import { OFFLINE_GLOSSARY } from '../../lib/i18n.js';
+import { getClimateClassification } from '../../lib/viClimateIntelligence.js';
 
 function A4Preview({ children, style = 'classic', isInteractiveStudio, onStudioClick }) {
   const themeBg = THEMES[style]?.bg || '#ffffff';
@@ -198,11 +199,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
   const [exportOpen, setExportOpen] = useState(false);
   const [showTemplatePrompt, setShowTemplatePrompt] = useState(false);
   const [style, setStyle] = useState(() => {
-    try {
-      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
-      if (prefs && prefs.template_style) return prefs.template_style;
-    } catch {}
-    return branding?.template_style || 'classic';
+    return proposal?.preferences?.template_style || branding?.template_style || 'classic';
   });
   const [generating, setGenerating] = useState(false);
 
@@ -245,28 +242,16 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
       return;
     }
 
-    let isMounted = true;
-    let month = null;
     try {
-      const dt = new Date(startDate);
-      if (!isNaN(dt.getTime())) month = dt.getMonth() + 1;
-    } catch {}
-
-    if (!month) return;
-
-    (async () => {
-      try {
-        const res = await fetch(`/api/seasonal-rules?destination=${encodeURIComponent(dest)}&month=${month}`);
-        if (res.ok && isMounted) {
-          const data = await res.json();
-          setViSeasonalAdvisories(data.rules || []);
-        }
-      } catch (err) {
-        console.error("Failed to fetch VI seasonal rules:", err);
-      }
-    })();
-
-    return () => { isMounted = false; };
+      const climate = getClimateClassification(dest, startDate);
+      const advisories = [];
+      if (climate.profileNotes) advisories.push(climate.profileNotes);
+      if (climate.seasonName) advisories.push(`Expected Season: ${climate.seasonName}`);
+      setViSeasonalAdvisories(advisories);
+    } catch (err) {
+      console.error("Failed to set VI seasonal rules:", err);
+      setViSeasonalAdvisories([]);
+    }
   }, [proposal?.destination, proposal?.start_date]);
 
   // Auto-sync template settings (style, selections, custom sections, order) to Supabase database
@@ -337,17 +322,11 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
   }, [proposal, setProposal, saveDraftBackground]);
 
   useEffect(() => {
-    try {
-      const prefs = JSON.parse(localStorage.getItem('voyanta_default_template_prefs') || 'null');
-      if (prefs && prefs.template_style) {
-        if (style !== prefs.template_style) setStyle(prefs.template_style);
-        return;
-      }
-    } catch {}
-    if (branding?.template_style && style !== branding.template_style) {
-      setStyle(branding.template_style);
+    const targetStyle = proposal?.preferences?.template_style || branding?.template_style;
+    if (targetStyle && style !== targetStyle) {
+      setStyle(targetStyle);
     }
-  }, [branding?.template_style]);
+  }, [proposal?.preferences?.template_style, branding?.template_style]);
 
   useEffect(() => {
     const handleSaveClicked = () => {
@@ -575,24 +554,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
     <div className="h-full flex flex-col space-y-md" data-testid="step-preview">
       <div className="glass-card relative z-30 px-md py-sm rounded-xl flex items-center justify-between gap-md flex-wrap no-print border border-outline-variant/80 shadow-sm bg-surface-container-lowest/90 backdrop-blur-md">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Sleek Theme Pill Selector */}
-          <div className="flex items-center gap-1.5 bg-surface-container px-2.5 py-1 rounded-lg border border-outline-variant/60">
-            <span className="material-symbols-outlined text-primary text-[16px]">palette</span>
-            <span className="font-label-md text-xs font-bold text-on-surface-variant uppercase tracking-wider mr-1">Theme</span>
-            <select 
-              value={style} 
-              onChange={(e) => setStyle(e.target.value)} 
-              data-testid="preview-style"
-              className="bg-transparent text-xs font-bold text-primary border-none outline-none cursor-pointer pr-4 focus:ring-0"
-            >
-              <option value="modern">Modern Luxury</option>
-              <option value="minimal">Minimal Editorial</option>
-              <option value="dark">Dark Luxury</option>
-              <option value="classic">Classic European</option>
-              <option value="tropical">Tropical Escape</option>
-              <option value="corporate">Corporate Executive</option>
-            </select>
-          </div>
+
 
           {/* VI Auto Title */}
           <button type="button" onClick={async () => {

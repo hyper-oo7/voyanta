@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useToast } from '../../context/ToastContext.jsx';
-import { updateInvoice, INVOICE_STATUSES, generateRemainingBalanceInvoice } from '../../services/invoiceService.js';
+import { updateInvoice, createInvoice, INVOICE_STATUSES, generateRemainingBalanceInvoice } from '../../services/invoiceService.js';
 import { settingsService } from '../../services/resourceService.js';
 import { UpiQrGenerator, formatCurrency } from './UpiQrGenerator.jsx';
 import { ReceiptPreviewModal } from './ReceiptPreviewModal.jsx';
@@ -152,8 +152,16 @@ export function InvoicePreviewModal({ invoice, onClose, onUpdate }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updated = await updateInvoice(current.id, { ...current, theme_style: theme, custom_columns: columns });
+      let updated;
+      if (current.is_draft) {
+        // Strip out the dummy ID
+        const { id, is_draft, ...rest } = current;
+        updated = await createInvoice({ ...rest, theme_style: theme, custom_columns: columns });
+      } else {
+        updated = await updateInvoice(current.id, { ...current, theme_style: theme, custom_columns: columns });
+      }
       toast.success('Invoice saved successfully');
+      setCurrent(updated);
       if (onUpdate) onUpdate(updated);
     } catch (err) {
       toast.error('Failed to save invoice');

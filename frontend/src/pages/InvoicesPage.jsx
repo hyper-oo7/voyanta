@@ -176,7 +176,9 @@ export default function InvoicesPage() {
 
   const handleCreateNew = async () => {
     try {
-      const newInv = await createInvoice({
+      const newInv = {
+        id: `draft_${Date.now()}`,
+        invoice_number: `INV-${Math.floor(1000 + Math.random() * 9000)}`,
         client_name: 'New Client / Organization',
         client_email: '',
         client_phone: '',
@@ -196,6 +198,7 @@ export default function InvoicesPage() {
         total_amount: Math.round(50000 * (1 + (settings?.default_tax_rate ?? 5) / 100)),
         remaining_balance: Math.round(50000 * (1 + (settings?.default_tax_rate ?? 5) / 100)),
         currency: settings?.default_currency || 'INR',
+        status: 'Draft',
         upi_id: settings?.upi_id || 'voyantatravel@okaxis',
         upi_payee_name: settings?.upi_payee_name || settings?.agency_name || 'Voyanta Travel',
         branding: {
@@ -205,13 +208,13 @@ export default function InvoicesPage() {
           contact_phone: settings?.contact_phone || '',
           address: settings?.address || '',
           upi_id: settings?.upi_id || 'voyantatravel@okaxis'
-        }
-      });
-      setInvoices(prev => [newInv, ...prev]);
+        },
+        is_draft: true
+      };
       setActiveInvoice(newInv);
-      toast.success(`Created standalone invoice #${newInv.invoice_number}`);
+      toast.success(`Draft invoice created. Please edit and click save.`);
     } catch (err) {
-      toast.error('Failed to create new invoice');
+      toast.error('Failed to create draft invoice');
     }
   };
 
@@ -530,7 +533,11 @@ export default function InvoicesPage() {
           invoice={activeInvoice}
           onClose={() => setActiveInvoice(null)}
           onUpdate={(updated) => {
-            setInvoices(prev => prev.map(i => i.id === updated.id ? updated : i));
+            setInvoices(prev => {
+              const exists = prev.some(i => i.id === updated.id);
+              if (exists) return prev.map(i => i.id === updated.id ? updated : i);
+              return [updated, ...prev];
+            });
           }}
         />
       )}

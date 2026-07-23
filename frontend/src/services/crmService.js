@@ -131,34 +131,35 @@ export async function createClient(clientData) {
     agency_id: agencyId
   };
 
-  if (isProd) {
-    console.log("clientData", clientData);
-    console.log("newClient", newClient);
-    let { data, error } = await supabase.from(TABLE).insert([newClient]).select().single();
-    if (error && (error.message?.includes('clients_status_check') || error.code === '23514')) {
-      console.warn('clients_status_check error encountered; retrying insert with default Inquiry status');
-      const fallbackClient = { ...newClient, status: 'Inquiry' };
-      const retryRes = await supabase.from(TABLE).insert([fallbackClient]).select().single();
-      data = retryRes.data;
-      error = retryRes.error;
-    }
-    if (error) {
-      notifyDbError('createClient', error);
-      throw error;
-    }
-    // Update cache with server-verified data
-    const updatedList = [data, ...getLocalClients().filter(c => c.id !== data.id)];
-    saveLocalClients(updatedList);
-    if (data.status) syncStatusToInvoices(data, data.status);
-    try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
-    return data;
-  }
-
-  // Demo mode
-  const updated = [newClient, ...getLocalClients()];
-  saveLocalClients(updated);
+  const updatedList = [newClient, ...getLocalClients().filter(c => c.id !== newClient.id)];
+  saveLocalClients(updatedList);
   if (newClient.status) syncStatusToInvoices(newClient, newClient.status);
   try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
+
+  if (isProd) {
+    supabase.from(TABLE).insert([newClient]).select().single().then((res) => {
+      let { data, error } = res;
+      if (error && (error.message?.includes('clients_status_check') || error.code === '23514')) {
+        console.warn('clients_status_check error encountered; retrying insert with default Inquiry status');
+        const fallbackClient = { ...newClient, status: 'Inquiry' };
+        supabase.from(TABLE).insert([fallbackClient]).select().single().then(retryRes => {
+          if (retryRes.error) {
+            notifyDbError('createClient', retryRes.error);
+          } else if (retryRes.data) {
+            const list = getLocalClients().map(c => c.id === newClient.id ? retryRes.data : c);
+            saveLocalClients(list);
+            try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
+          }
+        });
+      } else if (error) {
+        notifyDbError('createClient', error);
+      } else if (data) {
+        const list = getLocalClients().map(c => c.id === newClient.id ? data : c);
+        saveLocalClients(list);
+      }
+    }).catch(err => console.warn('Background createClient failed:', err));
+  }
+
   return newClient;
 }
 
@@ -221,27 +222,6 @@ export async function updateClient(id, patch) {
   }
   const updatePayload = { ...cleanPatch, agency_id: agencyId, updated_at: now };
 
-  if (isProd && !String(id).startsWith('inv_client_')) {
-    let { data, error } = await supabase.from(TABLE).update(updatePayload).eq('id', id).select().single();
-    if (error && (error.message?.includes('clients_status_check') || error.code === '23514')) {
-      console.warn('clients_status_check error encountered in updateClient; retrying update with default Inquiry status');
-      const retryPayload = { ...updatePayload, status: 'Inquiry' };
-      const retryRes = await supabase.from(TABLE).update(retryPayload).eq('id', id).select().single();
-      data = retryRes.data;
-      error = retryRes.error;
-    }
-    if (error) {
-      notifyDbError('updateClient', error);
-      throw error;
-    }
-    const list = getLocalClients().map(c => String(c.id) === String(id) ? { ...c, ...data } : c);
-    saveLocalClients(list);
-    if (data.status) syncStatusToInvoices(data, data.status);
-    try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
-    return data;
-  }
-
-  // Local / Demo Mode or auto-linked inv_client_ records
   let list = getLocalClients();
   let existingIndex = list.findIndex(c => String(c.id) === String(id));
   if (existingIndex === -1 && patch.name) {
@@ -253,15 +233,38 @@ export async function updateClient(id, patch) {
 
   if (existingIndex === -1) {
     list = [{ id, updated_at: now, ...patch }, ...list];
-    saveLocalClients(list);
   } else {
     const targetId = list[existingIndex].id;
     list = list.map(c => String(c.id) === String(targetId) ? { ...c, ...updatePayload } : c);
-    saveLocalClients(list);
   }
+  saveLocalClients(list);
   const updated = list.find(c => String(c.id) === String(id));
   if (patch.status && updated) syncStatusToInvoices(updated, patch.status);
   try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
+
+  if (isProd && !String(id).startsWith('inv_client_')) {
+    supabase.from(TABLE).update(updatePayload).eq('id', id).select().single().then((res) => {
+      let { data, error } = res;
+      if (error && (error.message?.includes('clients_status_check') || error.code === '23514')) {
+        console.warn('clients_status_check error encountered in updateClient; retrying update with default Inquiry status');
+        const retryPayload = { ...updatePayload, status: 'Inquiry' };
+        supabase.from(TABLE).update(retryPayload).eq('id', id).select().single().then(retryRes => {
+          if (retryRes.error) notifyDbError('updateClient', retryRes.error);
+          else if (retryRes.data) {
+            const upList = getLocalClients().map(c => String(c.id) === String(id) ? { ...c, ...retryRes.data } : c);
+            saveLocalClients(upList);
+            try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
+          }
+        });
+      } else if (error) {
+        notifyDbError('updateClient', error);
+      } else if (data) {
+        const upList = getLocalClients().map(c => String(c.id) === String(id) ? { ...c, ...data } : c);
+        saveLocalClients(upList);
+      }
+    }).catch(err => console.warn('Background updateClient failed:', err));
+  }
+
   return updated || { id, ...updatePayload };
 }
 
@@ -269,17 +272,16 @@ export async function deleteClient(id) {
   const agencyId = getAgencyId();
   const isProd = supabase && agencyId !== DEMO_AGENCY_ID;
 
-  if (isProd && !String(id).startsWith('inv_client_')) {
-    const { error } = await supabase.from(TABLE).delete().eq('id', id);
-    if (error) {
-      notifyDbError('deleteClient', error);
-      throw error;
-    }
-  }
-
   const list = getLocalClients().filter(c => String(c.id) !== String(id));
   saveLocalClients(list);
   try { window.dispatchEvent(new CustomEvent('voyanta:crm-updated')); } catch { }
+
+  if (isProd && !String(id).startsWith('inv_client_')) {
+    supabase.from(TABLE).delete().eq('id', id).then(({ error }) => {
+      if (error) notifyDbError('deleteClient', error);
+    }).catch(err => console.warn('Background deleteClient failed:', err));
+  }
+
   return true;
 }
 

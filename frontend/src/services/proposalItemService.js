@@ -41,16 +41,6 @@ export async function addItem(proposalId, item) {
     sanitizedItem.ref_id = validRefId;
   }
 
-  if (supabase && !isDemoSession()) {
-    const { data, error } = await supabase.from('proposal_items').insert({
-      proposal_id: proposalId, ...sanitizedItem,
-    }).select().maybeSingle();
-    if (error) {
-      notifyDbError('proposal_items', error);
-      throw error;
-    }
-    if (data) return data;
-  }
   const newItem = {
     proposal_id: proposalId,
     created_at: new Date().toISOString(),
@@ -64,18 +54,19 @@ export async function addItem(proposalId, item) {
       localStorage.setItem(key, JSON.stringify({ ...prop, items }));
     }
   } catch {}
+
+  if (supabase && !isDemoSession()) {
+    supabase.from('proposal_items').insert({
+      proposal_id: proposalId, ...sanitizedItem,
+    }).select().maybeSingle().then(({ error }) => {
+      if (error) notifyDbError('proposal_items', error);
+    }).catch(err => console.warn('Background addItem failed:', err));
+  }
+  
   return newItem;
 }
 
 export async function updateItem(id, patch) {
-  if (supabase && !isDemoSession()) {
-    const { data, error } = await supabase.from('proposal_items').update(patch).eq('id', id).select().maybeSingle();
-    if (error) {
-      notifyDbError('proposal_items', error);
-      throw error;
-    }
-    if (data) return data;
-  }
   let updatedItem = { id, ...patch };
   try {
     for (let i = 0; i < localStorage.length; i++) {
@@ -94,17 +85,17 @@ export async function updateItem(id, patch) {
       }
     }
   } catch {}
+
+  if (supabase && !isDemoSession()) {
+    supabase.from('proposal_items').update(patch).eq('id', id).select().maybeSingle().then(({ error }) => {
+      if (error) notifyDbError('proposal_items', error);
+    }).catch(err => console.warn('Background updateItem failed:', err));
+  }
+  
   return updatedItem;
 }
 
 export async function removeItem(id) {
-  if (supabase && !isDemoSession()) {
-    const { error } = await supabase.from('proposal_items').delete().eq('id', id);
-    if (error) {
-      notifyDbError('proposal_items', error);
-      throw error;
-    }
-  }
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
@@ -121,6 +112,12 @@ export async function removeItem(id) {
       }
     }
   } catch {}
+
+  if (supabase && !isDemoSession()) {
+    supabase.from('proposal_items').delete().eq('id', id).then(({ error }) => {
+      if (error) notifyDbError('proposal_items', error);
+    }).catch(err => console.warn('Background removeItem failed:', err));
+  }
 }
 
 // Build the structured JSON ready for PDF/PPT/email generators downstream.

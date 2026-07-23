@@ -132,17 +132,7 @@ export function makeResourceService(resource) {
       const agencyId = getAgencyId();
       const newId = row.id || crypto.randomUUID();
       const fullRow = { id: newId, agency_id: agencyId, created_at: new Date().toISOString(), ...row };
-      if (supabase) {
-        const { data, error } = await supabase.from(resource).insert(fullRow).select().single();
-        if (error) {
-          notifyDbError(resource, error);
-          throw error;
-        }
-        if (data) {
-          try { localStorage.setItem(`voyanta_res_${resource}_${data.id}`, JSON.stringify(data)); } catch {}
-          return data;
-        }
-      }
+      
       try {
         localStorage.setItem(`voyanta_res_${resource}_${newId}`, JSON.stringify(fullRow));
         for (let i = 0; i < localStorage.length; i++) {
@@ -156,23 +146,24 @@ export function makeResourceService(resource) {
           }
         }
       } catch {}
+
+      if (supabase) {
+        supabase.from(resource).insert(fullRow).select().single().then(({ data, error }) => {
+          if (error) {
+            notifyDbError(resource, error);
+          } else if (data) {
+            try { localStorage.setItem(`voyanta_res_${resource}_${data.id}`, JSON.stringify(data)); } catch {}
+          }
+        }).catch(err => console.warn('Background create failed:', err));
+      }
+      
       return fullRow;
     },
     update: async (id, patch) => {
-      if (supabase) {
-        const { data, error } = await supabase.from(resource).update(patch).eq('id', id).select().single();
-        if (error) {
-          notifyDbError(resource, error);
-          throw error;
-        }
-        if (data) {
-          try { localStorage.setItem(`voyanta_res_${resource}_${id}`, JSON.stringify(data)); } catch {}
-          return data;
-        }
-      }
+      let updated = { id, ...patch };
       try {
         const existing = JSON.parse(localStorage.getItem(`voyanta_res_${resource}_${id}`) || 'null') || { id };
-        const updated = { ...existing, ...patch, id };
+        updated = { ...existing, ...patch, id };
         localStorage.setItem(`voyanta_res_${resource}_${id}`, JSON.stringify(updated));
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
@@ -187,17 +178,20 @@ export function makeResourceService(resource) {
             }
           }
         }
-        return updated;
-      } catch { return { id, ...patch }; }
+      } catch {}
+
+      if (supabase) {
+        supabase.from(resource).update(patch).eq('id', id).select().single().then(({ data, error }) => {
+          if (error) notifyDbError(resource, error);
+          else if (data) {
+            try { localStorage.setItem(`voyanta_res_${resource}_${id}`, JSON.stringify(data)); } catch {}
+          }
+        }).catch(err => console.warn('Background update failed:', err));
+      }
+      
+      return updated;
     },
     remove: async (id) => {
-      if (supabase) {
-        const { error } = await supabase.from(resource).delete().eq('id', id);
-        if (error) {
-          notifyDbError(resource, error);
-          throw error;
-        }
-      }
       try {
         localStorage.removeItem(`voyanta_res_${resource}_${id}`);
         for (let i = 0; i < localStorage.length; i++) {
@@ -210,16 +204,16 @@ export function makeResourceService(resource) {
           }
         }
       } catch {}
+
+      if (supabase) {
+        supabase.from(resource).delete().eq('id', id).then(({ error }) => {
+          if (error) notifyDbError(resource, error);
+        }).catch(err => console.warn('Background remove failed:', err));
+      }
     },
     removeMany: async (ids) => {
       if (!ids?.length) return;
-      if (supabase) {
-        const { error } = await supabase.from(resource).delete().in('id', ids);
-        if (error) {
-          notifyDbError(resource, error);
-          throw error;
-        }
-      }
+      
       try {
         const idSet = new Set(ids.map(String));
         ids.forEach(id => localStorage.removeItem(`voyanta_res_${resource}_${id}`));
@@ -233,6 +227,12 @@ export function makeResourceService(resource) {
           }
         }
       } catch {}
+
+      if (supabase) {
+        supabase.from(resource).delete().in('id', ids).then(({ error }) => {
+          if (error) notifyDbError(resource, error);
+        }).catch(err => console.warn('Background removeMany failed:', err));
+      }
     },
   };
 }

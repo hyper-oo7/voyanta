@@ -314,20 +314,13 @@ function ProfileSettings({ user, signOut, isDemo, isEnterprise }) {
               </div>
               <div className="font-mono text-xs text-on-surface select-all break-all">{voyantaId}</div>
             </div>
-            {isEnterprise ? (
+            {isEnterprise && (
               <div className="p-3 bg-surface rounded-lg border border-outline-variant">
                 <div className="text-xs font-medium text-on-surface-variant mb-1 flex items-center justify-between">
                   <span>Agency ID (Tenant ID)</span>
                   <span className="text-[10px] px-1.5 py-0.5 bg-secondary/10 text-secondary rounded font-mono">Agency</span>
                 </div>
                 <div className="font-mono text-xs text-on-surface select-all break-all">{agencyId}</div>
-              </div>
-            ) : (
-              <div className="p-3 bg-surface rounded-lg border border-outline-variant flex flex-col justify-between h-full opacity-60">
-                <div className="text-xs font-medium text-on-surface-variant mb-1">
-                  <span>Agency ID (Tenant ID)</span>
-                </div>
-                <div className="text-[10px] text-primary font-bold">🔒 Only visible to Enterprise users</div>
               </div>
             )}
           </div>
