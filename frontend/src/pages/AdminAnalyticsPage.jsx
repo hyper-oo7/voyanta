@@ -573,6 +573,7 @@ export default function AdminAnalyticsPage() {
             </form>
           </div>
         </div>
+      )}
       {/* Subscription Tier Breakdown Modal */}
       {showSubBreakdownModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-md animate-fade-in">
