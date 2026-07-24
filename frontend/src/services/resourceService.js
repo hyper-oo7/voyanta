@@ -422,24 +422,37 @@ export const settingsService = {
         name: cleanSettings.agency_name,
         logo_url: cleanSettings.logo_url || null,
       };
-      supabase.from('agencies').update(agencyPatch).eq('id', agencyId).catch(() => {});
+      await supabase.from('agencies').update(agencyPatch).eq('id', agencyId);
 
-      supabase.from('templates').select('id').eq('category', 'AgencySettings').eq('agency_id', agencyId).limit(1)
-        .then(({ data: existingRows }) => {
-          const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
-          if (existing) {
-            supabase.from('templates').update({ data: cleanSettings }).eq('id', existing.id).catch(() => {});
-          } else {
-            supabase.from('templates').insert({
-              agency_id: agencyId,
-              name: 'Agency Settings',
-              category: 'AgencySettings',
-              data: cleanSettings
-            }).catch(() => {});
-          }
-        }).catch(() => {});
+      const { data: existingRows, error: selErr } = await supabase.from('templates').select('id').eq('category', 'AgencySettings').eq('agency_id', agencyId).limit(1);
+      
+      if (selErr) {
+        console.error('Error selecting AgencySettings template:', selErr);
+        throw selErr;
+      }
+
+      const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
+      if (existing) {
+        const { error: updErr } = await supabase.from('templates').update({ data: cleanSettings }).eq('id', existing.id);
+        if (updErr) {
+          console.error('Error updating AgencySettings template:', updErr);
+          throw updErr;
+        }
+      } else {
+        const { error: insErr } = await supabase.from('templates').insert({
+          agency_id: agencyId,
+          name: 'Agency Settings',
+          category: 'AgencySettings',
+          data: cleanSettings
+        });
+        if (insErr) {
+          console.error('Error inserting AgencySettings template:', insErr);
+          throw insErr;
+        }
+      }
     } catch (e) {
       console.warn('Background settings update error:', e);
+      throw e;
     }
     return cleanSettings;
   }

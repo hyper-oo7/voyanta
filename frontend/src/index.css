@@ -229,15 +229,15 @@ input, textarea, select {
   color: var(--on-surface, #1e293b);
   border-color: var(--outline-variant, #cbd5e1);
 }
-html.dark input,
-html.dark textarea,
-html.dark select {
+html.dark input:not(.bg-transparent),
+html.dark textarea:not(.bg-transparent),
+html.dark select:not(.bg-transparent) {
   background-color: #141b28 !important;
   color: #f0f6fc !important;
   border-color: #2a3447 !important;
 }
-html.dark input::placeholder,
-html.dark textarea::placeholder {
+html.dark input:not(.bg-transparent)::placeholder,
+html.dark textarea:not(.bg-transparent)::placeholder {
   color: #64748b !important;
 }
 /* Ensure bg-surface-container-lowest token resolves to dark in dark mode */

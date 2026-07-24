@@ -132,8 +132,17 @@ export async function createProposal(payload) {
     }
     if (data) {
       const norm = normalize(data);
-      try { localStorage.setItem(`voyanta_proposal_${norm.id}`, JSON.stringify(norm)); } catch {}
+      try { 
+        localStorage.setItem(`voyanta_proposal_${norm.id}`, JSON.stringify(norm)); 
+        const listStr = localStorage.getItem(CACHE_KEY) || '[]';
+        const list = JSON.parse(listStr);
+        // Ensure no duplicates by filtering out same ID before unshift
+        const filteredList = list.filter(p => p.id !== norm.id);
+        filteredList.unshift(norm);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(filteredList));
+      } catch {}
       try { upsertClientFromProposal(norm).catch(() => {}); } catch {}
+      window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
       return norm;
     }
   }
@@ -178,7 +187,18 @@ export async function updateProposal(id, patch) {
     }
     if (data) {
       const norm = normalize(data);
-      try { localStorage.setItem(`voyanta_proposal_${id}`, JSON.stringify(norm)); } catch {}
+      try { 
+        localStorage.setItem(`voyanta_proposal_${id}`, JSON.stringify(norm)); 
+        const listStr = localStorage.getItem(CACHE_KEY) || '[]';
+        let list = JSON.parse(listStr);
+        const idx = list.findIndex(item => item.id === id);
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], ...norm, updated_at: norm.updated_at };
+        } else {
+          list.unshift(norm);
+        }
+        localStorage.setItem(CACHE_KEY, JSON.stringify(list));
+      } catch {}
       try { upsertClientFromProposal(norm).catch(() => {}); } catch {}
       window.dispatchEvent(new CustomEvent('voyanta:proposals-updated'));
       return norm;
