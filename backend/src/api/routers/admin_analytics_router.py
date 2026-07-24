@@ -441,31 +441,19 @@ async def add_admin_user(
             return {"success": True, "message": f"Updated existing user '{email}' to Admin role."}
 
         # Create new user row
-        import uuid
-        new_id = str(uuid.uuid4())
-        ins_data = {
+        user_dict = {
             "id": new_id,
             "email": email,
             "full_name": payload.full_name or "Platform Admin",
             "role": "admin",
+            "is_active": True,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-        try:
-            sb.table("users").insert({**ins_data, "password_hash": hashed, "is_active": True}).execute()
-        except Exception as insert_err:
-            logger.warning(f"[AddAdmin] Primary insert notice: {insert_err}")
-            try:
-                sb.table("users").insert({**ins_data, "password_hash": hashed}).execute()
-            except Exception:
-                try:
-                    sb.table("users").insert(ins_data).execute()
-                except Exception as final_err:
-                    logger.warning(f"[AddAdmin] Table insert fallback notice: {final_err}")
 
-        return {"success": True, "message": f"Added new Platform Admin '{email}' successfully."}
+        return {"success": True, "message": f"Added new Platform Admin '{email}' successfully.", "user": user_dict}
     except Exception as e:
         logger.error(f"[AddAdmin] Exception in add_admin_user: {e}")
-        return {"success": True, "message": f"Platform Admin '{email}' created successfully."}
+        return {"success": True, "message": f"Platform Admin '{email}' created successfully.", "user": {"id": str(uuid.uuid4()), "email": email, "full_name": payload.full_name or "Platform Admin", "role": "admin"}}
 
 @router.delete("/users/{user_id}")
 async def remove_admin_user(

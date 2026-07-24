@@ -885,31 +885,43 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
       {/* Left Column: Timeline Builder */}
       <div className="lg:col-span-8 min-w-0 space-y-xl">
-        <div className="glass-card rounded-2xl p-lg space-y-md border border-outline-variant/50">
-          <div className="flex items-center justify-between gap-md flex-wrap">
-            <h3 className="font-headline-sm text-primary">Proposal Itinerary</h3>
+        <div className="glass-card rounded-2xl p-lg space-y-md border border-outline-variant/60 shadow-lg bg-surface-container-lowest/80 dark:bg-surface-container-low/80 backdrop-blur-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-md border-b border-outline-variant/40 pb-md">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-primary text-2xl">route</span>
+                <h3 className="font-headline-sm text-2xl font-black text-on-surface tracking-tight m-0">Proposal Itinerary</h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-extrabold uppercase tracking-wider shadow-xs">
+                  3★–4★ Comfort Travel
+                </span>
+              </div>
+              <p className="text-xs font-medium text-on-surface-variant m-0">
+                Curate day-by-day itineraries, AC cab transfers, commercial flights, and authentic local experiences.
+              </p>
+            </div>
             <button
               type="button"
               onClick={handleGenerateWithVI}
               disabled={generatingVI}
               data-testid="generate-with-vi-btn"
-              className="px-md py-sm bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-xl font-label-md flex items-center gap-2 font-bold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+              className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-md hover:shadow-emerald-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer flex-shrink-0"
             >
               <span className={`material-symbols-outlined text-[18px] ${generatingVI ? 'animate-spin' : ''}`}>
-                {generatingVI ? 'progress_activity' : 'auto_awesome'}
+                {generatingVI ? 'sync' : 'auto_awesome'}
               </span>
-              {generatingVI ? 'Generating…' : 'Generate Day-by-Day with VI'}
+              <span>{generatingVI ? 'Curating with VI…' : 'Generate Day-by-Day with VI'}</span>
             </button>
           </div>
-
         </div>
 
         <div className="space-y-sm pt-md">
           {days.length === 0 && (
-            <div className="text-center py-xl border-2 border-dashed border-outline-variant rounded-2xl text-on-surface-variant bg-white/50">
-              <span className="material-symbols-outlined text-[48px] mb-md opacity-50">timeline</span>
-              <p className="font-label-md">No days added yet.</p>
-              <p className="font-body-sm text-sm mb-md">Import a reference itinerary or add your first day below.</p>
+            <div className="text-center py-xl border-2 border-dashed border-outline-variant/60 rounded-2xl text-on-surface-variant bg-surface-container-lowest/50 dark:bg-surface-container-low/30 backdrop-blur-sm p-lg space-y-2">
+              <span className="material-symbols-outlined text-[48px] text-primary/40 mb-1">timeline</span>
+              <p className="font-headline-sm text-base font-bold text-on-surface">No days added yet</p>
+              <p className="font-body-sm text-xs text-on-surface-variant max-w-sm mx-auto">
+                Use the VI auto-generator above or add your first day to start curating hotels, activities, and transfers.
+              </p>
             </div>
           )}
 

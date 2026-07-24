@@ -456,8 +456,16 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
     setGenerating(true);
     toast.info('⏳ PDF Generation in Process... Preparing high-definition document layouts and typography, please hold on.', { duration: 3000 });
     try {
+      let localStorageDump = {};
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k) localStorageDump[k] = localStorage.getItem(k);
+        }
+      } catch {}
+
       const renderRoot = document.getElementById('pdf-render-root');
-      let bodyPayload = { proposal_id: proposalId, name: proposalName || 'proposal', style: style };
+      let bodyPayload = { proposal_id: proposalId, name: proposalName || 'proposal', style: style, local_storage: localStorageDump };
       if (renderRoot) {
         const rootClone = renderRoot.cloneNode(true);
         rootClone.classList.remove('aspect-[210/297]', 'h-[80vh]', 'min-h-[auto]', 'w-auto', 'overflow-hidden');

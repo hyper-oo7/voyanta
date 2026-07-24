@@ -98,6 +98,7 @@ async def extract_itinerary(text: str) -> dict:
         "You are an expert travel assistant. Parse the following travel itinerary text and extract: "
         "Days (with title, day number, and description), Hotels (name, location, price if any), "
         "Activities, Transfers, Meals, and Notes. "
+        "IMPORTANT TRAVEL CLASS RULE: Target Medium Class / Value-Comfort Travel (3-star to 4-star boutique hotels, quality commercial flights, comfortable cab/train transfers, authentic local experiences). STRICTLY EXCLUDE ultra-luxury extravagances like private jets, chartered yachts, helicopter transfers, or 7-star VIP estates unless explicitly written in the input text.\n"
         "Return a JSON object matching this schema without markdown code blocks:\n"
         "{\n"
         "  \"name\": \"Name of the tour/itinerary\",\n"

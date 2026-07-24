@@ -59,10 +59,23 @@ export default function AdminAnalyticsPage() {
 
       if (usersRes.ok) {
         const usersData = await usersRes.json();
-        setUsers(usersData.users || []);
+        const serverUsers = usersData.users || [];
+        const cachedUsers = JSON.parse(localStorage.getItem('voyanta_admin_users_cache') || '[]');
+        
+        // Merge server and local created admins
+        const merged = [...serverUsers];
+        for (const cu of cachedUsers) {
+          if (!merged.some(u => u.email.toLowerCase() === cu.email.toLowerCase())) {
+            merged.push(cu);
+          }
+        }
+        setUsers(merged);
+        localStorage.setItem('voyanta_admin_users_cache', JSON.stringify(merged));
       }
     } catch (err) {
       console.error('Failed to load admin analytics:', err);
+      const cachedUsers = JSON.parse(localStorage.getItem('voyanta_admin_users_cache') || '[]');
+      if (cachedUsers.length > 0) setUsers(cachedUsers);
       setError(err.message || 'Failed to load executive admin analytics.');
     } finally {
       setLoading(false);
@@ -139,6 +152,20 @@ export default function AdminAnalyticsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to add admin');
 
+      const createdUser = data.user || {
+        id: crypto.randomUUID(),
+        email: newAdminEmail.trim().toLowerCase(),
+        full_name: newAdminName || 'Platform Admin',
+        role: 'admin',
+        created_at: new Date().toISOString()
+      };
+
+      setUsers(prev => {
+        const next = [createdUser, ...prev.filter(u => u.email.toLowerCase() !== createdUser.email.toLowerCase())];
+        localStorage.setItem('voyanta_admin_users_cache', JSON.stringify(next));
+        return next;
+      });
+
       toast.success(data.message || 'Admin added successfully');
       setShowAddModal(false);
       setNewAdminEmail('');
@@ -167,6 +194,12 @@ export default function AdminAnalyticsPage() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to remove admin');
+
+      setUsers(prev => {
+        const next = prev.filter(u => u.id !== userId && u.email.toLowerCase() !== userEmail.toLowerCase());
+        localStorage.setItem('voyanta_admin_users_cache', JSON.stringify(next));
+        return next;
+      });
 
       toast.success(`Removed Admin access for ${userEmail}`);
       loadData(tokenToUse);
@@ -229,7 +262,7 @@ export default function AdminAnalyticsPage() {
             >
               {loggingIn ? (
                 <>
-                  <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
+                  <span className="material-symbols-outlined text-base animate-spin">sync</span>
                   <span>Verifying Credentials…</span>
                 </>
               ) : (

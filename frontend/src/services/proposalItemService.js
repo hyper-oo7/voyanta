@@ -30,13 +30,24 @@ export async function listItems(proposalId) {
   return [];
 }
 
-const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+const VALID_KINDS = ['hotel', 'flight', 'activity', 'transfer', 'meal', 'meals', 'cruise', 'experience', 'custom', 'other'];
+
+function normalizeKind(rawKind) {
+  if (!rawKind) return 'custom';
+  const k = String(rawKind).toLowerCase().trim();
+  if (VALID_KINDS.includes(k)) return k;
+  if (k === 'food' || k === 'dining' || k === 'restaurant') return 'meal';
+  if (k === 'cab' || k === 'drive' || k === 'car' || k === 'bus' || k === 'train') return 'transfer';
+  if (k === 'tour' || k === 'excursion' || k === 'sightseeing') return 'activity';
+  return 'custom';
+}
 
 export async function addItem(proposalId, item) {
   const checkId = item.id;
   const validId = isUuid(checkId) ? checkId : crypto.randomUUID();
   const validRefId = item.ref_id || (!isUuid(checkId) && checkId ? checkId : undefined);
-  const sanitizedItem = { ...item, id: validId };
+  const safeKind = normalizeKind(item.kind);
+  const sanitizedItem = { ...item, id: validId, kind: safeKind };
   if (validRefId) {
     sanitizedItem.ref_id = validRefId;
   }
@@ -59,7 +70,7 @@ export async function addItem(proposalId, item) {
     supabase.from('proposal_items').insert({
       proposal_id: proposalId, ...sanitizedItem,
     }).select().maybeSingle().then(({ error }) => {
-      if (error) notifyDbError('proposal_items', error);
+      if (error) console.warn('Supabase DB notice (proposal_items):', error.message);
     }).catch(err => console.warn('Background addItem failed:', err));
   }
   
@@ -67,7 +78,11 @@ export async function addItem(proposalId, item) {
 }
 
 export async function updateItem(id, patch) {
-  let updatedItem = { id, ...patch };
+  const sanitizedPatch = { ...patch };
+  if (sanitizedPatch.kind) {
+    sanitizedPatch.kind = normalizeKind(sanitizedPatch.kind);
+  }
+  let updatedItem = { id, ...sanitizedPatch };
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
@@ -76,7 +91,7 @@ export async function updateItem(id, patch) {
         if (prop && Array.isArray(prop.items)) {
           const idx = prop.items.findIndex(it => String(it.id) === String(id));
           if (idx !== -1) {
-            updatedItem = { ...prop.items[idx], ...patch };
+            updatedItem = { ...prop.items[idx], ...sanitizedPatch };
             prop.items[idx] = updatedItem;
             localStorage.setItem(k, JSON.stringify(prop));
             break;
@@ -87,8 +102,8 @@ export async function updateItem(id, patch) {
   } catch {}
 
   if (supabase && !isDemoSession()) {
-    supabase.from('proposal_items').update(patch).eq('id', id).select().maybeSingle().then(({ error }) => {
-      if (error) notifyDbError('proposal_items', error);
+    supabase.from('proposal_items').update(sanitizedPatch).eq('id', id).select().maybeSingle().then(({ error }) => {
+      if (error) console.warn('Supabase DB notice (proposal_items):', error.message);
     }).catch(err => console.warn('Background updateItem failed:', err));
   }
   

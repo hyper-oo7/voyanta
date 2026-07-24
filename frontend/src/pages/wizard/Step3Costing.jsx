@@ -290,7 +290,7 @@ export function Step3Costing({ proposal, setProposal, proposalId, items, setItem
               className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-md hover:shadow-emerald-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
               <span className={`material-symbols-outlined text-[18px] ${optimizing ? 'animate-spin' : ''}`}>
-                {optimizing ? 'progress_activity' : 'auto_awesome'}
+                {optimizing ? 'sync' : 'auto_awesome'}
               </span>
               <span>{optimizing ? 'Optimizing…' : 'VI Cost Optimizer'}</span>
             </button>

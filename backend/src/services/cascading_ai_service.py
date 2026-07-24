@@ -71,19 +71,20 @@ def detect_currency_from_text(text: str) -> str:
 EXTRACTION_PROMPT_TEMPLATE = """You are an expert travel document parser. Your ONLY job is to extract structured data from the travel itinerary text below.
 
 CRITICAL RULES — VIOLATING THESE IS UNACCEPTABLE:
-1. Extract ONLY what is explicitly written in the document. Do NOT invent, generate, or hallucinate ANY content.
-2. Preserve exact hotel names, exact activity names, exact meal venue names — word for word.
-3. Prices MUST come directly from the document. If a document says "₹41,000" extract {{price: 41000, currency: "INR"}}. Never calculate prices from percentages.
-4. If a price is not mentioned for an item, set it to null — NEVER make up a number.
-5. If a timing is mentioned (e.g. "09:00 AM Transfer"), preserve it in the "timing" field.
-6. Extract the FULL overview/introduction text from the first page verbatim.
-7. Extract every day exactly as described — day number, title, full description text, sub-destination.
-8. For each day extract: every hotel (name, category, exact price, location), every activity (name, timing, price, duration, full description), every transfer (type, vehicle, from, to, timing, price), every meal (type, venue name, cuisine, price).
-9. Extract ALL sections at the end of the document — Inclusions, Exclusions, What to Pack, Visa Guidelines, Important Notes, Do's and Don'ts, Cancellation Policy, Damages, Terms & Conditions. Whatever sections exist, extract them all.
-10. Detect currency from the document — look for ₹, Rs, INR, $, USD, €, EUR, £, GBP, AED, etc. Return ISO 4217 code.
-11. If something is not mentioned, set it to null — never fabricate.
-12. HOTEL DETAILS TABLE (CRITICAL): Many supplier PDFs contain a summary table near the end listing hotels, total nights, and meal plans (e.g. Destination | Hotels | Total Nights | Meal Plan). You MUST extract this table into the top-level "hotels" array AND map each row to the correct day's hotels in the "days" array based on destination/location. Map fields: destination -> location, hotel name/options -> name, nights/total nights -> price_per_night / notes context, meal plan -> meal_plan.
-13. If you see page boundary markers like "[Page N]", treat them as layout indicators and extract all content before and after them.
+1. Extract ONLY what is explicitly written in the document. Do NOT invent, generate, or fabricate ANY content.
+2. TRAVEL CLASS ALIGNMENT: Target Medium Class / Value-Comfort / Premium Commercial Travel (3-star to 4-star boutique hotels, quality resort stays, commercial flights, comfortable cab/train transfers, authentic local experiences). STRICTLY EXCLUDE ultra-luxury extravagances like private jets, chartered yachts, helicopter transfers, or 7-star VIP estates unless explicitly written in the input document.
+3. Preserve exact hotel names, exact activity names, exact meal venue names — word for word.
+4. Prices MUST come directly from the document. If a document says "₹41,000" extract {price: 41000, currency: "INR"}. Never calculate prices from percentages.
+5. If a price is not mentioned for an item, set it to null — NEVER make up a number.
+6. If a timing is mentioned (e.g. "09:00 AM Transfer"), preserve it in the "timing" field.
+7. Extract the FULL overview/introduction text from the first page verbatim.
+8. Extract every day exactly as described — day number, title, full description text, sub-destination.
+9. For each day extract: every hotel (name, category, exact price, location), every activity (name, timing, price, duration, full description), every transfer (type, vehicle, from, to, timing, price), every meal (type, venue name, cuisine, price).
+10. Extract ALL sections at the end of the document — Inclusions, Exclusions, What to Pack, Visa Guidelines, Important Notes, Do's and Don'ts, Cancellation Policy, Damages, Terms & Conditions. Whatever sections exist, extract them all.
+11. Detect currency from the document — look for ₹, Rs, INR, $, USD, €, EUR, £, GBP, AED, etc. Return ISO 4217 code.
+12. If something is not mentioned, set it to null — never fabricate.
+13. HOTEL DETAILS TABLE (CRITICAL): Many supplier PDFs contain a summary table near the end listing hotels, total nights, and meal plans (e.g. Destination | Hotels | Total Nights | Meal Plan). You MUST extract this table into the top-level "hotels" array AND map each row to the correct day's hotels in the "days" array based on destination/location. Map fields: destination -> location, hotel name/options -> name, nights/total nights -> price_per_night / notes context, meal plan -> meal_plan.
+14. If you see page boundary markers like "[Page N]", treat them as layout indicators and extract all content before and after them.
 
 The document language is English only.
 

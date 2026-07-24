@@ -204,28 +204,49 @@ export function Step4Branding({ proposalId, branding, setBranding, client, custo
   const categories = ['All', 'Basic Tier', 'Luxury Magazine', 'Minimalist', 'Corporate', 'Honeymoon', 'Family & Adventure'];
 
   return (
-    <div className="glass-card rounded-xl p-lg space-y-md" data-testid="step-branding">
-      <h3 className="font-headline-sm text-headline-sm text-primary">Agency Branding & Template</h3>
-      <div className="space-y-sm">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
-          <div>
-            <label className="font-label-md text-sm font-bold text-on-surface block">Template Architecture Gallery</label>
-            <p className="text-xs text-on-surface-variant m-0">Select the design layout and typography system for this proposal's PDF export and live preview.</p>
+    <div className="glass-card rounded-2xl p-lg space-y-xl border border-outline-variant/60 shadow-xl bg-surface-container-lowest/90 dark:bg-surface-container-low/90 backdrop-blur-xl transition-all" data-testid="step-branding">
+      {/* Hero Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-md border-b border-outline-variant/40 pb-md">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="material-symbols-outlined text-primary text-2xl">palette</span>
+            <h3 className="font-headline-sm text-2xl font-black text-on-surface tracking-tight m-0">Agency Branding & Template Architecture</h3>
           </div>
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-full text-amber-700 font-bold text-[11px]">
-            <span className="material-symbols-outlined text-[14px]">workspace_premium</span>
-            <span>Current Plan: {currentPlan}</span>
-          </div>
+          <p className="text-xs font-medium text-on-surface-variant m-0">
+            Customize proposal layout templates, brand typography, logo assets, and custom agency seals.
+          </p>
         </div>
 
-        {/* Category Pills */}
-        <div className="flex flex-wrap gap-1.5 pt-2 pb-1">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-amber-500/10 to-amber-600/10 border border-amber-500/30 rounded-full text-amber-700 dark:text-amber-300 font-extrabold text-xs shadow-xs">
+          <span className="material-symbols-outlined text-[16px] text-amber-600 dark:text-amber-400">workspace_premium</span>
+          <span>Plan: {currentPlan}</span>
+        </div>
+      </div>
+
+      {/* Template Architecture Gallery */}
+      <div className="space-y-md">
+        <div>
+          <label className="font-headline-sm text-base font-bold text-on-surface flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary text-lg">style</span>
+            Template Design Gallery
+          </label>
+          <p className="text-xs text-on-surface-variant m-0">
+            Select the design system and layout aesthetic for client web views and PDF exports.
+          </p>
+        </div>
+
+        {/* Category Filter Pills */}
+        <div className="flex flex-wrap gap-1.5 pt-1 pb-1">
           {categories.map(cat => (
             <button
               key={cat}
               type="button"
               onClick={() => setActiveCategory(cat)}
-              className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${activeCategory === cat ? 'bg-primary text-white shadow-sm scale-105' : 'bg-surface-container-low hover:bg-surface-container text-on-surface-variant'}`}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold tracking-wider transition-all cursor-pointer ${
+                activeCategory === cat
+                  ? 'bg-primary text-on-primary shadow-md scale-105'
+                  : 'bg-surface-container-low dark:bg-surface-container-high hover:bg-surface-container text-on-surface-variant border border-outline-variant/40'
+              }`}
             >
               {cat}
             </button>
