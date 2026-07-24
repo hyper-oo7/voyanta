@@ -497,7 +497,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
         </style>`;
         const baseTag = `<base href="${window.location.origin}/">`;
         const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">${baseTag}${headStyles}${customPrintStyles}</head><body style="background-color: ${themeBg}; color: ${themeText}; margin: 0; padding: 0;">${rootClone.outerHTML}</body></html>`;
-        bodyPayload = { html: fullHtml, name: proposalName || 'proposal', style: style };
+        bodyPayload = { html: fullHtml, proposal_id: proposalId, name: proposalName || 'proposal', style: style, local_storage: localStorageDump };
       }
 
       const blob = await api.post('/api/pdf/generate', bodyPayload, { responseType: 'blob', timeout: 60000 });
@@ -688,7 +688,7 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
                     setShareDropdownOpen(false);
                     onGeneratePdf();
                   }}
-                  disabled={generating || !isHealthy}
+                  disabled={generating}
                   className="w-full flex items-center gap-md px-md py-sm hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer disabled:opacity-50"
                 >
                   <span className="material-symbols-outlined text-rose-600 text-[20px]">picture_as_pdf</span>

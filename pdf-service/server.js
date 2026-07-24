@@ -207,7 +207,7 @@ app.post('/generate', async (req, res) => {
     if (html) {
       const cleanHtml = sanitizeHtmlForPdf(html);
       try {
-        await page.setContent(cleanHtml, { waitUntil: ['domcontentloaded', 'networkidle2'], timeout: 25000 });
+        await page.setContent(cleanHtml, { waitUntil: ['domcontentloaded', 'load'], timeout: 15000 });
       } catch (err) {
         console.warn('[pdf-service] setContent timeout warning (proceeding with rendered DOM):', err.message);
       }
@@ -217,7 +217,7 @@ app.post('/generate', async (req, res) => {
       const targetUrl = `${FRONTEND_URL}/proposals/${proposal_id}/print${styleParam}`;
       console.log(`[pdf-service] Navigating to ${targetUrl}`);
       try {
-        await page.goto(targetUrl, { waitUntil: ['domcontentloaded', 'networkidle2'], timeout: 25000 });
+        await page.goto(targetUrl, { waitUntil: ['domcontentloaded', 'load'], timeout: 15000 });
       } catch (err) {
         console.warn('[pdf-service] goto timeout warning (proceeding with rendered DOM):', err.message);
       }

@@ -169,8 +169,8 @@ html.dark body, html.dark .bg-surface, html.dark .bg-background {
   color: #f0f6fc !important;
 }
 html.dark .bg-white, html.dark .bg-surface-container-lowest, html.dark .bg-surface-container-low, html.dark .bg-surface-container,
-html.dark [class*="bg-white/"] {
-  background-color: rgba(20, 27, 40, 0.88) !important;
+html.dark [class*="bg-white/"], html.dark [class*="bg-surface/"], html.dark [class*="bg-surface-"] {
+  background-color: rgba(20, 27, 40, 0.92) !important;
   color: #f0f6fc !important;
   border-color: #2a3447 !important;
 }

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { formatPrice, formatINR, CURRENCIES } from '../../lib/currency.js';
+import { formatPrice, CURRENCIES } from '../../lib/currency.js';
 import { addItem } from '../../services/proposalItemService.js';
 import { useProposalStore } from '../../store/proposalStore.js';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -24,6 +24,20 @@ const handleNumericInput = (e) => {
 
 const KINDS = ['Hotel', 'Flight', 'Activity', 'Transfer', 'Meals', 'Custom', 'Visa', 'Tax', 'Margin', 'Fee', 'Discount'];
 
+const KIND_CONFIG = {
+  Hotel: { icon: 'hotel', bg: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' },
+  Flight: { icon: 'flight', bg: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20' },
+  Activity: { icon: 'local_activity', bg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' },
+  Transfer: { icon: 'directions_car', bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' },
+  Meals: { icon: 'restaurant', bg: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20' },
+  Visa: { icon: 'badge', bg: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20' },
+  Tax: { icon: 'receipt_long', bg: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' },
+  Margin: { icon: 'trending_up', bg: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20' },
+  Fee: { icon: 'payments', bg: 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20' },
+  Discount: { icon: 'sell', bg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' },
+  Custom: { icon: 'edit_note', bg: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20' },
+};
+
 const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveItem, currency = 'INR' }) {
   const [label, setLabel] = useState(item.label || '');
   const [qty, setQty] = useState(item.qty ?? 1);
@@ -35,20 +49,36 @@ const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveI
     setUnitPrice(item.unit_price ?? 0);
   }, [item.label, item.qty, item.unit_price]);
 
+  const kindKey = String(item.kind || 'Custom').trim();
+  const normalizedKind = kindKey.charAt(0).toUpperCase() + kindKey.slice(1).toLowerCase();
+  const cfg = KIND_CONFIG[normalizedKind] || KIND_CONFIG.Custom;
+
   return (
-    <tr data-testid={`cost-row-${item.id}`}>
-      <td className="px-lg py-md font-label-md uppercase text-label-sm tracking-widest">{item.kind}</td>
-      <td className="px-lg py-md">
-        <input value={label}
+    <tr data-testid={`cost-row-${item.id}`} className="hover:bg-surface-container-high/40 dark:hover:bg-surface-container-high/20 transition-colors group">
+      <td className="px-md py-sm">
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${cfg.bg}`}>
+          <span className="material-symbols-outlined text-[14px]">{cfg.icon}</span>
+          <span className="uppercase tracking-wider">{normalizedKind}</span>
+        </span>
+      </td>
+      <td className="px-md py-sm">
+        <input 
+          value={label}
           onChange={(e) => {
             setLabel(e.target.value);
             onPatchItem(item.id, { label: e.target.value });
           }}
           onBlur={(e) => onPatchItem(item.id, { label: e.target.value })}
-          className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
+          placeholder="Line item description..."
+          className="w-full bg-surface-container-lowest dark:bg-surface-container-low/60 border border-outline-variant/40 hover:border-primary/50 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl px-3 py-1.5 text-sm font-medium text-on-surface outline-none transition-all" 
+        />
       </td>
-      <td className="px-lg py-md w-[110px]">
-        <input type="number" min="0" step="0.5" value={qty}
+      <td className="px-md py-sm w-[110px]">
+        <input 
+          type="number" 
+          min="0" 
+          step="0.5" 
+          value={qty}
           onInput={handleNumericInput}
           onChange={(e) => {
             setQty(e.target.value);
@@ -61,10 +91,15 @@ const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveI
             setQty(safeQty);
             onPatchItem(item.id, { qty: safeQty });
           }}
-          className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
+          className="w-full bg-surface-container-lowest dark:bg-surface-container-low/60 border border-outline-variant/40 hover:border-primary/50 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl px-3 py-1.5 text-sm font-semibold text-center text-on-surface outline-none transition-all" 
+        />
       </td>
-      <td className="px-lg py-md w-[140px]">
-        <input type="number" min="0" step="0.01" value={unitPrice}
+      <td className="px-md py-sm w-[140px]">
+        <input 
+          type="number" 
+          min="0" 
+          step="0.01" 
+          value={unitPrice}
           onInput={handleNumericInput}
           onChange={(e) => {
             setUnitPrice(e.target.value);
@@ -77,13 +112,18 @@ const CostingRow = React.memo(function CostingRow({ item, onPatchItem, onRemoveI
             setUnitPrice(safePrice);
             onPatchItem(item.id, { unit_price: safePrice });
           }}
-          className="w-full bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary outline-none py-xs" />
+          className="w-full bg-surface-container-lowest dark:bg-surface-container-low/60 border border-outline-variant/40 hover:border-primary/50 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl px-3 py-1.5 text-sm font-semibold text-right text-on-surface outline-none transition-all" 
+        />
       </td>
-      <td className="px-lg py-md font-label-md text-primary">
+      <td className="px-md py-sm font-bold text-sm text-primary font-mono whitespace-nowrap">
         {formatPrice((Number(qty)||0) * (Number(unitPrice)||0), currency)}
       </td>
-      <td className="px-lg py-md text-right">
-        <button onClick={() => onRemoveItem(item.id)} className="w-8 h-8 inline-flex items-center justify-center rounded-full hover:bg-error-container">
+      <td className="px-md py-sm text-right w-[50px]">
+        <button 
+          onClick={() => onRemoveItem(item.id)} 
+          title="Delete line item"
+          className="w-8 h-8 inline-flex items-center justify-center rounded-xl text-on-surface-variant hover:text-error hover:bg-error-container/40 opacity-70 group-hover:opacity-100 transition-all cursor-pointer"
+        >
           <span className="material-symbols-outlined text-[18px]">delete</span>
         </button>
       </td>
@@ -133,8 +173,6 @@ export function Step3Costing({ proposal, setProposal, proposalId, items, setItem
     setOptimizerResult(null);
   };
 
-
-
   const rawTotal = useMemo(() => items.reduce((s, it) => s + (Number(it.qty)||0)*(Number(it.unit_price)||0), 0), [items]);
   
   const grandTotal = useMemo(() => {
@@ -155,6 +193,7 @@ export function Step3Costing({ proposal, setProposal, proposalId, items, setItem
     });
     return m;
   }, [items]);
+
   const mixedCurrency = useMemo(() => {
     const set = new Set(items.map((it) => (it.currency || proposalCurrency).toUpperCase()).filter(Boolean));
     set.add(proposalCurrency);
@@ -186,21 +225,31 @@ export function Step3Costing({ proposal, setProposal, proposalId, items, setItem
   });
 
   return (
-    <div className="space-y-md" data-testid="step-costing">
+    <div className="space-y-lg" data-testid="step-costing">
       {mixedCurrency && (
-        <div className="glass-card p-md rounded-xl flex items-start gap-md border-l-4 border-amber-500" data-testid="costing-currency-warning">
-          <span className="material-symbols-outlined text-amber-600">warning</span>
-          <div className="flex-1 font-label-md text-on-surface">
-            Items are in mixed currencies ({mixedCurrency.join(', ')}). The total below is a numeric sum — set every line to <strong>{proposalCurrency}</strong> for an accurate proposal total.
+        <div className="glass-card p-md rounded-2xl flex items-center gap-md border-l-4 border-amber-500 bg-amber-500/10 text-on-surface shadow-sm" data-testid="costing-currency-warning">
+          <span className="material-symbols-outlined text-amber-500 text-2xl">warning</span>
+          <div className="flex-1 text-sm font-medium">
+            Line items are in mixed currencies ({mixedCurrency.join(', ')}). Set lines to <strong>{proposalCurrency}</strong> for an accurate grand total.
           </div>
         </div>
       )}
-      <div className="glass-card rounded-xl overflow-hidden">
-        <div className="px-lg py-md border-b border-outline-variant flex items-center justify-between gap-md flex-wrap bg-surface-container-low">
-          <div className="flex items-center gap-md">
-            <h3 className="font-headline-sm text-headline-sm text-primary">Cost Breakdown</h3>
-            <div className="flex items-center gap-2 bg-surface-container-lowest px-3 py-1 rounded-lg border border-outline-variant">
-              <span className="material-symbols-outlined text-sm text-on-surface-variant">payments</span>
+
+      {/* Hero Control Bar & Actions */}
+      <div className="glass-card p-lg rounded-2xl border border-outline-variant/60 shadow-lg bg-surface-container-lowest/80 dark:bg-surface-container-low/80 backdrop-blur-xl">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-md mb-md pb-md border-b border-outline-variant/40">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="material-symbols-outlined text-primary text-2xl">receipt_long</span>
+              <h2 className="text-2xl font-black text-on-surface tracking-tight">Cost Breakdown & Pricing Strategy</h2>
+            </div>
+            <p className="text-xs font-medium text-on-surface-variant">Configure line items, currency defaults, and automated markup calculations.</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-sm">
+            {/* Currency Selector */}
+            <div className="flex items-center gap-2 bg-surface-container-low dark:bg-surface-container-high px-3 py-1.5 rounded-xl border border-outline-variant/60 shadow-xs">
+              <span className="material-symbols-outlined text-base text-primary">payments</span>
               <select
                 value={proposalCurrency || 'INR'}
                 onChange={(e) => {
@@ -208,13 +257,15 @@ export function Step3Costing({ proposal, setProposal, proposalId, items, setItem
                   if (setProposal) setProposal(s => ({ ...s, currency: newCur }));
                   useProposalStore.getState().updateProposal({ currency: newCur });
                 }}
-                className="bg-transparent font-label-md text-primary font-bold outline-none cursor-pointer"
+                className="bg-transparent text-xs font-extrabold text-primary outline-none cursor-pointer"
               >
                 {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
               </select>
             </div>
-            <div className="flex items-center gap-2 bg-surface-container-lowest px-3 py-1 rounded-lg border border-outline-variant">
-              <span className="material-symbols-outlined text-sm text-on-surface-variant">visibility</span>
+
+            {/* Visibility Mode Selector */}
+            <div className="flex items-center gap-2 bg-surface-container-low dark:bg-surface-container-high px-3 py-1.5 rounded-xl border border-outline-variant/60 shadow-xs">
+              <span className="material-symbols-outlined text-base text-primary">visibility</span>
               <select
                 value={proposal?.visibility_mode || 'ITEMIZED'}
                 onChange={(e) => {
@@ -222,126 +273,303 @@ export function Step3Costing({ proposal, setProposal, proposalId, items, setItem
                   if (setProposal) setProposal(s => ({ ...s, visibility_mode: mode }));
                   useProposalStore.getState().updateProposal({ visibility_mode: mode });
                 }}
-                className="bg-transparent font-label-md text-primary font-bold outline-none cursor-pointer"
+                className="bg-transparent text-xs font-extrabold text-primary outline-none cursor-pointer"
               >
                 <option value="ITEMIZED">Itemized Pricing</option>
                 <option value="TOTAL_ONLY">Total Only</option>
                 <option value="HIDDEN">Hidden Pricing</option>
               </select>
             </div>
-          </div>
-          <div className="flex items-center gap-sm">
+
+            {/* VI Cost Optimizer Button */}
             <button
               type="button"
               onClick={handleRunOptimizer}
               disabled={optimizing}
               data-testid="vi-cost-optimizer-btn"
-              className="px-md py-sm bg-emerald-500/10 text-emerald-700 border border-emerald-500/30 hover:bg-emerald-500/20 rounded-lg font-label-md flex items-center gap-1.5 font-bold transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-md hover:shadow-emerald-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
-              <span className={`material-symbols-outlined text-[16px] ${optimizing ? 'animate-spin' : ''}`}>
+              <span className={`material-symbols-outlined text-[18px] ${optimizing ? 'animate-spin' : ''}`}>
                 {optimizing ? 'progress_activity' : 'auto_awesome'}
               </span>
-              {optimizing ? 'Optimizing…' : 'VI Cost Optimizer'}
+              <span>{optimizing ? 'Optimizing…' : 'VI Cost Optimizer'}</span>
             </button>
-            <select onChange={(e) => { if (e.target.value) { onAdd(e.target.value); e.target.value=''; } }}
-              data-testid="add-line-select"
-              className="px-md py-sm border border-outline-variant rounded-lg font-label-md bg-surface-container-lowest">
-              <option value="">+ Add line…</option>
-              {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-            </select>
           </div>
         </div>
-        {optimizerResult && (
-          <div className="p-md bg-emerald-50 border-b border-emerald-200 flex items-center justify-between gap-md flex-wrap animate-fade-in" data-testid="optimizer-result-banner">
-            <div className="flex items-center gap-sm text-emerald-900 font-label-md">
-              <span className="material-symbols-outlined text-emerald-600 text-xl">auto_awesome</span>
-              <div>
-                <strong>VI Cost Optimizer (Margin Booster)</strong> — Checked {optimizerResult.checkedCount} items against {optimizerResult.supplierCount} Vault supplier rate cards.
-                <div className="text-xs text-emerald-800">
-                  Identified potential net price savings of <strong>{formatPrice(optimizerResult.savings, proposalCurrency)}</strong> by using direct negotiated contract rates!
+
+        {/* Quick Add Toolbar */}
+        <div className="flex items-center justify-between gap-md flex-wrap">
+          <div className="flex items-center gap-xs flex-wrap">
+            <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mr-1">Quick Add:</span>
+            {['Hotel', 'Flight', 'Activity', 'Transfer', 'Meals'].map((kind) => {
+              const cfg = KIND_CONFIG[kind];
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => onAdd(kind)}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold border transition-all flex items-center gap-1 hover:scale-105 cursor-pointer ${cfg.bg}`}
+                >
+                  <span className="material-symbols-outlined text-[14px]">{cfg.icon}</span>
+                  <span>+ {kind}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <select 
+            onChange={(e) => { if (e.target.value) { onAdd(e.target.value); e.target.value=''; } }}
+            data-testid="add-line-select"
+            className="px-3 py-1.5 border border-outline-variant/60 rounded-xl text-xs font-bold bg-surface-container-low dark:bg-surface-container-high text-on-surface cursor-pointer shadow-xs"
+          >
+            <option value="">+ All Line Categories…</option>
+            {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Optimizer Result Banner */}
+      {optimizerResult && (
+        <div className="p-md bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between gap-md flex-wrap animate-fade-in text-emerald-900 dark:text-emerald-200" data-testid="optimizer-result-banner">
+          <div className="flex items-center gap-md text-sm font-medium">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-xl">auto_awesome</span>
+            </div>
+            <div>
+              <strong className="font-bold">VI Cost Optimizer (Contract Savings)</strong> — Scanned {optimizerResult.checkedCount} items against {optimizerResult.supplierCount} Vault supplier contract rate cards.
+              <div className="text-xs text-emerald-800 dark:text-emerald-300">
+                Identified net price savings of <strong>{formatPrice(optimizerResult.savings, proposalCurrency)}</strong>!
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-xs">
+            <button
+              type="button"
+              onClick={() => setOptimizerResult(null)}
+              className="px-3 py-1.5 text-xs text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 rounded-xl font-bold transition-colors cursor-pointer"
+            >
+              Dismiss
+            </button>
+            <button
+              type="button"
+              onClick={applyOptimizerSavings}
+              className="px-4 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-extrabold shadow-sm transition-all cursor-pointer"
+            >
+              Apply Savings
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Items Table */}
+      <div className="glass-card rounded-2xl overflow-hidden border border-outline-variant/60 shadow-lg bg-surface-container-lowest/90 dark:bg-surface-container-low/90 backdrop-blur-xl">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-surface-container-low dark:bg-surface-container-high border-b border-outline-variant/60">
+              <tr>
+                {['Kind','Label / Description','Qty','Unit Price','Subtotal',''].map((h) => (
+                  <th key={h} className="px-md py-md text-[11px] font-extrabold uppercase tracking-wider text-on-surface-variant">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/30">
+              {items.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-lg py-2xl text-center" data-testid="costing-empty">
+                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                      <div className="w-16 h-16 rounded-2xl bg-surface-container-high flex items-center justify-center mb-md text-primary">
+                        <span className="material-symbols-outlined text-[36px]">receipt_long</span>
+                      </div>
+                      <h4 className="text-base font-bold text-on-surface mb-xs">No costing items added yet</h4>
+                      <p className="text-xs text-on-surface-variant mb-md">Add flights, hotels, activities, or transfers to build your proposal estimate.</p>
+                      <button
+                        type="button"
+                        onClick={() => onAdd('Hotel')}
+                        className="px-4 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold shadow-sm hover:opacity-90 transition-all flex items-center gap-1"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">add</span>
+                        Add First Line Item
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {items.map((it) => (
+                <CostingRow key={it.id} item={it} onPatchItem={onPatchItem} onRemoveItem={onRemoveItem} currency={proposalCurrency} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Financial Strategy & Grand Summary Hub */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-lg">
+        {/* Left: Markup & Taxes controls */}
+        <div className="lg:col-span-7 glass-card p-lg rounded-2xl border border-outline-variant/60 shadow-lg bg-surface-container-lowest/80 dark:bg-surface-container-low/80 backdrop-blur-xl flex flex-col justify-between space-y-md">
+          <div>
+            <h3 className="text-base font-extrabold text-on-surface mb-xs flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-xl">tune</span>
+              <span>Markup & Tax Adjustments</span>
+            </h3>
+            <p className="text-xs text-on-surface-variant">Customize margins, apply flat discounts, or specify regional GST/Tax percentage.</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
+            {/* Fixed Markup */}
+            <div className="p-md rounded-xl bg-surface-container-low/60 dark:bg-surface-container-high/40 border border-outline-variant/40 space-y-xs">
+              <span className="text-[11px] font-extrabold text-on-surface-variant uppercase tracking-wider block">Fixed Markup</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-primary font-mono">{proposalCurrency}</span>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  value={costingPrefs?.fixed_markup || 0} 
+                  onChange={updPref('fixed_markup')} 
+                  onInput={handleNumericInput} 
+                  className="w-full px-3 py-1.5 border border-outline-variant/50 focus:border-primary rounded-xl bg-surface-container-lowest text-sm font-bold text-on-surface outline-none" 
+                />
+              </div>
+            </div>
+
+            {/* Percentage Markup */}
+            <div className="p-md rounded-xl bg-surface-container-low/60 dark:bg-surface-container-high/40 border border-outline-variant/40 space-y-xs">
+              <span className="text-[11px] font-extrabold text-on-surface-variant uppercase tracking-wider block">% Markup</span>
+              <div className="flex items-center gap-2">
+                <input 
+                  type="number" 
+                  step="0.1" 
+                  value={costingPrefs?.pct_markup || 0} 
+                  onChange={updPref('pct_markup')} 
+                  onInput={handleNumericInput} 
+                  className="w-full px-3 py-1.5 border border-outline-variant/50 focus:border-primary rounded-xl bg-surface-container-lowest text-sm font-bold text-on-surface outline-none" 
+                />
+                <span className="text-xs font-bold text-primary font-mono">%</span>
+              </div>
+            </div>
+
+            {/* Discount */}
+            <div className="p-md rounded-xl bg-surface-container-low/60 dark:bg-surface-container-high/40 border border-outline-variant/40 space-y-xs">
+              <span className="text-[11px] font-extrabold text-on-surface-variant uppercase tracking-wider block">Discount (Flat)</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-rose-500 font-mono">- {proposalCurrency}</span>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  value={costingPrefs?.discount || 0} 
+                  onChange={updPref('discount')} 
+                  onInput={handleNumericInput} 
+                  className="w-full px-3 py-1.5 border border-outline-variant/50 focus:border-primary rounded-xl bg-surface-container-lowest text-sm font-bold text-on-surface outline-none" 
+                />
+              </div>
+            </div>
+
+            {/* Tax / GST */}
+            <div className="p-md rounded-xl bg-surface-container-low/60 dark:bg-surface-container-high/40 border border-outline-variant/40 space-y-xs">
+              <span className="text-[11px] font-extrabold text-on-surface-variant uppercase tracking-wider block">Tax / GST (%)</span>
+              <div className="flex items-center gap-2">
+                <input 
+                  type="number" 
+                  step="0.1" 
+                  value={costingPrefs?.tax || 0} 
+                  onChange={updPref('tax')} 
+                  onInput={handleNumericInput} 
+                  className="w-20 px-3 py-1.5 border border-outline-variant/50 focus:border-primary rounded-xl bg-surface-container-lowest text-sm font-bold text-on-surface outline-none" 
+                />
+                <div className="flex items-center gap-1">
+                  {[0, 5, 18].map(rate => (
+                    <button
+                      key={rate}
+                      type="button"
+                      onClick={() => setCostingPrefs(s => ({ ...s, tax: rate }))}
+                      className={`px-2 py-1 text-[11px] rounded-lg border font-bold transition-all cursor-pointer ${costingPrefs?.tax === rate ? 'bg-primary text-on-primary border-primary shadow-xs' : 'bg-surface-container-lowest hover:border-primary text-on-surface-variant'}`}
+                    >
+                      {rate}%
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-xs">
-              <button
-                type="button"
-                onClick={() => setOptimizerResult(null)}
-                className="px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-100 rounded-lg font-semibold transition-colors cursor-pointer"
-              >
-                Dismiss
-              </button>
-              <button
-                type="button"
-                onClick={applyOptimizerSavings}
-                className="px-3 py-1.5 text-xs bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg font-bold shadow-sm transition-colors cursor-pointer"
-              >
-                Apply Net Price Savings
-              </button>
+          </div>
+        </div>
+
+        {/* Right: Grand Total Financial Summary Card */}
+        <div className="lg:col-span-5 glass-card p-lg rounded-2xl border border-primary/30 shadow-xl bg-gradient-to-br from-surface-container-lowest to-primary/5 dark:from-surface-container-low dark:to-primary/10 flex flex-col justify-between">
+          <div className="space-y-md">
+            <div className="flex items-center justify-between border-b border-outline-variant/40 pb-sm">
+              <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Financial Overview</span>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-primary/10 text-primary uppercase tracking-widest border border-primary/20">
+                {proposalCurrency}
+              </span>
+            </div>
+
+            <div className="space-y-sm text-xs font-medium text-on-surface-variant">
+              <div className="flex justify-between items-center">
+                <span>Items Subtotal</span>
+                <span className="font-mono font-bold text-on-surface">{formatPrice(rawTotal, proposalCurrency)}</span>
+              </div>
+              {Boolean(costingPrefs?.fixed_markup) && (
+                <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400">
+                  <span>Fixed Markup</span>
+                  <span className="font-mono font-bold">+ {formatPrice(costingPrefs.fixed_markup, proposalCurrency)}</span>
+                </div>
+              )}
+              {Boolean(costingPrefs?.pct_markup) && (
+                <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400">
+                  <span>Markup ({costingPrefs.pct_markup}%)</span>
+                  <span className="font-mono font-bold">+ {formatPrice(rawTotal * (costingPrefs.pct_markup / 100), proposalCurrency)}</span>
+                </div>
+              )}
+              {Boolean(costingPrefs?.discount) && (
+                <div className="flex justify-between items-center text-rose-500">
+                  <span>Discount</span>
+                  <span className="font-mono font-bold">- {formatPrice(costingPrefs.discount, proposalCurrency)}</span>
+                </div>
+              )}
+              {Boolean(costingPrefs?.tax) && (
+                <div className="flex justify-between items-center text-indigo-500">
+                  <span>Tax ({costingPrefs.tax}%)</span>
+                  <span className="font-mono font-bold">+ {formatPrice(grandTotal - (rawTotal + (costingPrefs.fixed_markup||0) + (rawTotal * ((costingPrefs.pct_markup||0)/100)) - (costingPrefs.discount||0)), proposalCurrency)}</span>
+                </div>
+              )}
             </div>
           </div>
-        )}
-        <table className="w-full text-left">
-          <thead className="bg-surface-container-low">
-            <tr>{['Kind','Label','Qty','Unit Price','Subtotal',''].map((h) => (
-              <th key={h} className="px-lg py-md font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">{h}</th>
-            ))}</tr>
-          </thead>
-          <tbody className="divide-y divide-surface-container">
-            {items.length === 0 && <tr><td colSpan={6} className="px-lg py-xl text-center text-on-surface-variant" data-testid="costing-empty">No items yet — add hotels / flights / itinerary or use &ldquo;+ Add line&rdquo;.</td></tr>}
-            {items.map((it) => (
-              <CostingRow key={it.id} item={it} onPatchItem={onPatchItem} onRemoveItem={onRemoveItem} currency={proposalCurrency} />
-            ))}
-          </tbody>
-        </table>
-        <div className="bg-surface-container p-md border-t border-outline-variant flex flex-col md:flex-row gap-lg justify-between items-start md:items-end">
-           <div className="grid grid-cols-2 md:grid-cols-4 gap-md flex-1">
-             <label className="flex flex-col gap-xs">
-               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Fixed Markup</span>
-               <input type="number" step="0.01" value={costingPrefs?.fixed_markup || 0} onChange={updPref('fixed_markup')} onInput={handleNumericInput} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
-             </label>
-             <label className="flex flex-col gap-xs">
-               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">% Markup</span>
-               <input type="number" step="0.1" value={costingPrefs?.pct_markup || 0} onChange={updPref('pct_markup')} onInput={handleNumericInput} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
-             </label>
-             <label className="flex flex-col gap-xs">
-               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Discount (Flat)</span>
-               <input type="number" step="0.01" value={costingPrefs?.discount || 0} onChange={updPref('discount')} onInput={handleNumericInput} className="w-24 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm" />
-             </label>
-             <div className="flex flex-col gap-xs">
-               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Tax / GST (%)</span>
-               <div className="flex items-center gap-1">
-                 <input type="number" step="0.1" value={costingPrefs?.tax || 0} onChange={updPref('tax')} onInput={handleNumericInput} className="w-16 px-sm py-xs border border-outline-variant rounded bg-surface-container-lowest text-sm font-bold" />
-                 <div className="flex gap-1">
-                   {[0, 5, 18].map(rate => (
-                     <button
-                       key={rate}
-                       type="button"
-                       onClick={() => setCostingPrefs(s => ({ ...s, tax: rate }))}
-                       className={`px-1.5 py-0.5 text-[10px] rounded border ${costingPrefs?.tax === rate ? 'bg-primary text-on-primary font-bold border-primary' : 'bg-surface-container-lowest text-on-surface-variant hover:border-primary'}`}
-                     >
-                       {rate}%
-                     </button>
-                   ))}
-                 </div>
-               </div>
-             </div>
-           </div>
-           <div className="text-right pl-lg">
-             <span className="text-sm font-bold text-on-surface-variant uppercase tracking-widest block mb-1">Grand Total ({proposalCurrency})</span>
-             <span className="font-display text-headline-lg text-primary" data-testid="costing-total">{formatPrice(grandTotal, proposalCurrency)}</span>
-           </div>
+
+          <div className="pt-md border-t border-outline-variant/60 mt-md text-right">
+            <span className="text-xs font-black uppercase tracking-widest text-on-surface-variant block mb-1">
+              Grand Total ({proposalCurrency})
+            </span>
+            <div className="font-mono text-3xl sm:text-4xl font-black text-primary tracking-tight" data-testid="costing-total">
+              {formatPrice(grandTotal, proposalCurrency)}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Category Breakdown Bento Grid */}
       {Object.keys(byKind).length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
-          {Object.entries(byKind).map(([k, v]) => (
-            <div key={k} className="glass-card p-md rounded-xl">
-              <p className="font-label-sm tracking-widest text-on-surface-variant">{k}</p>
-              <p className="font-headline-sm text-headline-sm text-primary">{formatPrice(v, proposalCurrency)}</p>
-            </div>
-          ))}
+        <div className="space-y-sm">
+          <h4 className="text-xs font-extrabold uppercase tracking-widest text-on-surface-variant">Category Allocations</h4>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-md">
+            {Object.entries(byKind).map(([k, v]) => {
+              const cfg = KIND_CONFIG[k] || KIND_CONFIG.Custom;
+              const pct = rawTotal > 0 ? Math.round((v / rawTotal) * 100) : 0;
+              return (
+                <div key={k} className="glass-card p-md rounded-2xl border border-outline-variant/40 bg-surface-container-lowest/80 dark:bg-surface-container-low/80 hover:shadow-md transition-all">
+                  <div className="flex items-center justify-between mb-xs">
+                    <span className={`p-1.5 rounded-lg border ${cfg.bg}`}>
+                      <span className="material-symbols-outlined text-[16px]">{cfg.icon}</span>
+                    </span>
+                    <span className="text-[10px] font-extrabold text-on-surface-variant">{pct}%</span>
+                  </div>
+                  <p className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider truncate mb-1">{k}</p>
+                  <p className="font-mono text-sm font-black text-primary truncate">{formatPrice(v, proposalCurrency)}</p>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
   );
 }
+

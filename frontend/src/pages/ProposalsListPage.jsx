@@ -343,53 +343,72 @@ function ProposalCard({ proposal: p, highlightId, onView, onEdit, onDuplicate, o
   if (p.destination?.toLowerCase().match(/mountain|hike|trek|safari|camp/)) tags.push('ADVENTURE');
   if (tags.length === 0) tags.push('LEISURE');
 
-  const avatars = [
-    `https://i.pravatar.cc/150?u=${p.id}-1`,
-    `https://i.pravatar.cc/150?u=${p.id}-2`
-  ];
+  const subDestText = (() => {
+    const raw = p.sub_destinations 
+      || p.subDestinations 
+      || p.client_details?.selected_sub_destinations 
+      || p.preferences?.client?.selected_sub_destinations 
+      || p.preferences?.sub_destinations 
+      || p.brief?.selected_sub_destinations 
+      || p.trip_details?.sub_destinations 
+      || [];
+    if (Array.isArray(raw) && raw.length > 0) return raw.join(' • ');
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+    return null;
+  })();
+
+  const createdDateStr = (() => {
+    if (p.created_at) {
+      try {
+        return new Date(p.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch {}
+    }
+    if (p.date) return p.date;
+    return 'Just now';
+  })();
 
   return (
     <div 
-      className={`group relative flex flex-col bg-surface rounded-[24px] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_16px_40px_rgba(0,0,0,0.08)] transition-all duration-400 border-2 ${isHighlight ? 'border-primary ring-4 ring-primary/20' : 'border-outline-variant hover:border-primary/40'} cursor-pointer hover:-translate-y-2`}
+      className={`group relative flex flex-col bg-surface-container-lowest dark:bg-surface-container-low rounded-[24px] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.06)] hover:shadow-[0_20px_48px_rgba(0,0,0,0.12)] transition-all duration-300 border-2 ${isHighlight ? 'border-primary ring-4 ring-primary/20' : 'border-outline-variant/70 dark:border-outline-variant/30 hover:border-primary/50'} cursor-pointer hover:-translate-y-1.5`}
       onClick={() => onView(p)}
     >
-      <div className="relative h-56 w-full overflow-hidden bg-surface-container-low">
-        <img src={finalCover} alt={p.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/10" />
+      <div className="relative h-52 w-full overflow-hidden bg-surface-container-low">
+        <img src={finalCover} alt={p.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
         
         <div className="absolute top-4 right-4">
-           <span className={chipClass(p.status) + ' px-3 py-1.5 text-[11px] font-bold rounded-full uppercase tracking-widest backdrop-blur-md shadow-sm border border-white/20'}>
+           <span className={chipClass(p.status) + ' px-3 py-1 text-[11px] font-extrabold rounded-full uppercase tracking-widest backdrop-blur-md shadow-sm border border-white/20'}>
              {p.status || 'Draft'}
            </span>
         </div>
 
         <div className="absolute top-4 left-4 flex gap-xs flex-wrap max-w-[70%]">
           {tags.map(t => (
-            <span key={t} className="px-2.5 py-1 bg-black/40 backdrop-blur-md text-white text-[10px] font-bold rounded-md uppercase tracking-widest border border-white/20">
+            <span key={t} className="px-2.5 py-0.5 bg-black/50 backdrop-blur-md text-white text-[10px] font-bold rounded-md uppercase tracking-widest border border-white/20">
               {t}
             </span>
           ))}
         </div>
       </div>
 
-      <div className="p-xl flex flex-col flex-1 bg-white relative z-10 -mt-4 rounded-t-[24px]">
-        <div className="mb-lg">
-          <h3 className="font-headline-sm text-on-surface line-clamp-2 mb-2 group-hover:text-primary transition-colors leading-tight">{p.name}</h3>
-          <p className="text-body-md text-on-surface-variant flex flex-col gap-1">
-            <span className="flex items-center gap-xs">
-              <span className="material-symbols-outlined text-[18px]">person</span> {p.client_name || 'No Client'}
+      <div className="p-lg flex flex-col flex-1 bg-surface-container-lowest dark:bg-surface-container-high relative z-10 -mt-4 rounded-t-[24px] border-t border-white/20">
+        <div className="mb-md">
+          <h3 className="text-lg font-bold text-on-surface line-clamp-2 mb-2 group-hover:text-primary transition-colors leading-snug">{p.name}</h3>
+          <div className="text-xs text-on-surface-variant flex flex-col gap-1.5 font-medium">
+            <span className="flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[16px] text-primary">person</span> {p.client_name || 'No Client Specified'}
             </span>
             {p.destination && (
-              <span className="flex items-center gap-xs">
-                <span className="material-symbols-outlined text-[18px]">location_on</span> {p.destination}
+              <span className="flex items-center gap-1.5 font-semibold text-on-surface">
+                <span className="material-symbols-outlined text-[16px] text-rose-500">location_on</span> {p.destination}
               </span>
             )}
-          </p>
+          </div>
         </div>
 
         {/* One-click outcome actions if status is not Won/Lost */}
         {(!p.status || !['approved', 'cancelled'].includes(p.status.toLowerCase())) && (
-          <div className="flex gap-xs my-sm" onClick={(e) => e.stopPropagation()}>
+          <div className="flex gap-2 my-xs" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={async (e) => {
                 e.preventDefault();
@@ -403,7 +422,7 @@ function ProposalCard({ proposal: p, highlightId, onView, onEdit, onDuplicate, o
                   toast.error('Failed to update status');
                 }
               }}
-              className="flex-1 py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl font-label-xs font-bold uppercase tracking-wider border border-emerald-200 flex items-center justify-center gap-xs transition-all shadow-sm cursor-pointer"
+              className="flex-1 py-1.5 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl font-bold text-[11px] uppercase tracking-wider border border-emerald-500/30 flex items-center justify-center gap-1 transition-all shadow-xs cursor-pointer"
             >
               <span className="material-symbols-outlined text-[14px]">check_circle</span>
               Won
@@ -421,7 +440,7 @@ function ProposalCard({ proposal: p, highlightId, onView, onEdit, onDuplicate, o
                   toast.error('Failed to update status');
                 }
               }}
-              className="flex-1 py-1.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-label-xs font-bold uppercase tracking-wider border border-rose-200 flex items-center justify-center gap-xs transition-all shadow-sm cursor-pointer"
+              className="flex-1 py-1.5 px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl font-bold text-[11px] uppercase tracking-wider border border-rose-500/30 flex items-center justify-center gap-1 transition-all shadow-xs cursor-pointer"
             >
               <span className="material-symbols-outlined text-[14px]">cancel</span>
               Lost
@@ -429,33 +448,32 @@ function ProposalCard({ proposal: p, highlightId, onView, onEdit, onDuplicate, o
           </div>
         )}
 
-        <div className="flex-1" />
+        <div className="flex-1 min-h-[8px]" />
 
-        <div className="flex items-center justify-between pt-md border-t border-outline-variant mt-sm">
-          <div className="flex -space-x-2">
-            {avatars.map((url, i) => (
-              <img key={i} src={url} alt="collaborator" className="w-8 h-8 rounded-full border-2 border-white object-cover shadow-sm relative z-10 hover:z-20 transition-transform hover:scale-110" />
-            ))}
-            <div className="w-8 h-8 rounded-full border-2 border-white bg-surface-container-highest flex items-center justify-center shadow-sm relative z-0">
-              <span className="material-symbols-outlined text-[16px] text-on-surface-variant">add</span>
+        {/* Footer: Date of creation + Sub destination (avatars removed) */}
+        <div className="flex items-center justify-between pt-md border-t border-outline-variant/40 mt-xs text-xs text-on-surface-variant">
+          <div className="flex items-center gap-1.5 bg-surface-container-low dark:bg-surface-container-highest px-2.5 py-1 rounded-lg font-medium">
+            <span className="material-symbols-outlined text-[14px] text-primary">calendar_today</span>
+            <span>{createdDateStr}</span>
+          </div>
+
+          {subDestText && (
+            <div className="flex items-center gap-1 bg-primary/10 text-primary dark:bg-primary/20 px-2.5 py-1 rounded-lg max-w-[55%] truncate font-bold" title={`Sub-destination: ${subDestText}`}>
+              <span className="material-symbols-outlined text-[14px] shrink-0">near_me</span>
+              <span className="truncate">{subDestText}</span>
             </div>
-          </div>
-          
-          <div className="text-label-sm text-on-surface-variant flex items-center gap-xs bg-surface-container-lowest px-2 py-1 rounded-md">
-            <span className="material-symbols-outlined text-[14px]">calendar_today</span>
-            {p.date ? new Date(p.date).toLocaleDateString() : 'Just now'}
-          </div>
+          )}
         </div>
       </div>
 
-      <div className="absolute top-4 right-4 z-30 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform translate-x-4 group-hover:translate-x-0">
-         <div className="flex flex-col gap-1 bg-white/95 backdrop-blur-xl rounded-2xl p-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-outline-variant">
-           <IconBtn icon="edit"       testid="edit-icon"      onClick={(e) => { e.stopPropagation(); onEdit(p); }} title="Edit in wizard" />
+      <div className="absolute top-4 right-4 z-30 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform translate-x-2 group-hover:translate-x-0">
+         <div className="flex flex-col gap-1 bg-surface-container-lowest/95 dark:bg-surface-container-high/95 backdrop-blur-xl rounded-2xl p-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.2)] border border-outline-variant/60">
+           <IconBtn icon="edit"         testid="edit-icon"      onClick={(e) => { e.stopPropagation(); onEdit(p); }} title="Edit in wizard" />
            <IconBtn icon="content_copy" testid="duplicate-icon" onClick={(e) => { e.stopPropagation(); onDuplicate(p); }} title="Duplicate" />
-           <IconBtn icon="share"      testid="share-icon"     onClick={(e) => { e.stopPropagation(); onShare(p); }} title="Share" />
-           <IconBtn icon="download"   testid="export-icon"    onClick={(e) => { e.stopPropagation(); onExport(p); }} title="Download PDF" />
-           <div className="w-full h-px bg-outline-variant my-1" />
-           <IconBtn icon="delete"     testid="delete-icon"    onClick={(e) => { e.stopPropagation(); onDelete(p); }} title="Delete" className="text-error hover:bg-error-container hover:text-error" />
+           <IconBtn icon="share"        testid="share-icon"     onClick={(e) => { e.stopPropagation(); onShare(p); }} title="Share" />
+           <IconBtn icon="download"     testid="export-icon"    onClick={(e) => { e.stopPropagation(); onExport(p); }} title="Download PDF" />
+           <div className="w-full h-px bg-outline-variant/50 my-0.5" />
+           <IconBtn icon="delete"       testid="delete-icon"    onClick={(e) => { e.stopPropagation(); onDelete(p); }} title="Delete" className="text-error hover:bg-error/10 hover:text-error" />
          </div>
       </div>
     </div>

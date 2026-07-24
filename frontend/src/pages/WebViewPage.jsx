@@ -625,7 +625,7 @@ export default function WebViewPage() {
       )}
 
       {/* TOP HEADER NAVIGATION BAR */}
-      <header className="sticky top-0 z-40 bg-surface/90 backdrop-blur-md border-b border-outline-variant px-4 py-3 shadow-xs">
+      <header className="sticky top-0 z-40 bg-surface/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-outline-variant/60 dark:border-slate-800 px-4 py-3 shadow-xs transition-colors duration-300">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
           {/* Agency Branding */}
           <div className="flex items-center gap-3">
@@ -641,11 +641,11 @@ export default function WebViewPage() {
               </div>
             )}
             <div>
-              <div className="font-bold text-base md:text-lg tracking-tight text-on-surface">
+              <div className="font-bold text-base md:text-lg tracking-tight text-slate-900 dark:text-slate-100">
                 {branding.company_name || 'Voyanta Luxury Travel'}
               </div>
-              <div className="text-xs text-on-surface-variant">
-                {getUIText(lang, 'preparedFor')} <span className="font-semibold text-on-surface">{p.client_name || 'Valued Guest'}</span>
+              <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                {getUIText(lang, 'preparedFor')} <span className="font-semibold text-slate-800 dark:text-slate-200">{p.client_name || 'Valued Guest'}</span>
               </div>
             </div>
           </div>
@@ -654,7 +654,7 @@ export default function WebViewPage() {
           <div className="flex items-center gap-3 animate-fade-in">
             {/* Pricing Toggle - only shown when visibility mode is ITEMIZED */}
             {visibilityMode === 'ITEMIZED' && (
-              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none bg-surface-container px-3 py-1.5 rounded-full border border-outline-variant">
+              <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none bg-surface-container-low dark:bg-slate-800/80 px-3.5 py-1.5 rounded-full border border-outline-variant/60 dark:border-slate-700 text-slate-800 dark:text-slate-200 shadow-xs">
                 <input
                   type="checkbox"
                   checked={showPricing}
@@ -668,7 +668,7 @@ export default function WebViewPage() {
             {/* Dark Mode Toggle */}
             <button
               onClick={toggleTheme}
-              className="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center text-on-surface hover:bg-surface-container-high border border-outline-variant transition-colors"
+              className="w-9.5 h-9.5 rounded-full bg-surface-container-low dark:bg-slate-800/80 flex items-center justify-center text-slate-800 dark:text-slate-200 hover:bg-surface-container-high border border-outline-variant/60 dark:border-slate-700 transition-colors shadow-xs cursor-pointer"
               title="Toggle Dark/Light Theme"
             >
               <span className="material-symbols-outlined text-lg">
