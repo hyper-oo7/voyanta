@@ -48,7 +48,7 @@ const clientSchema = z.object({
   path: ['start_date']
 });
 
-const Field = memo(function Field({ label, register, name, type = 'text', testid, extraClass = '', error, disabled = false }) {
+const Field = memo(function Field({ label, register, name, type = 'text', testid, extraClass = '', error, disabled = false, readOnly = false }) {
   // Fix Issue 4: Strip leading zeros for numeric inputs on focus/change
   const handleNumericInput = (e) => {
     if (type === 'number') {
@@ -63,9 +63,9 @@ const Field = memo(function Field({ label, register, name, type = 'text', testid
   return (
     <label className={'flex flex-col gap-xs ' + extraClass}>
       <span className="font-label-md text-label-md text-on-surface">{label}</span>
-      <input type={type} disabled={disabled} {...register(name, { valueAsNumber: type === 'number' })} data-testid={testid}
+      <input type={type} disabled={disabled} readOnly={readOnly} {...register(name, { valueAsNumber: type === 'number' })} data-testid={testid}
         onInput={handleNumericInput}
-        className={`px-md py-md bg-surface-container-lowest border rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 ${disabled ? 'opacity-70 cursor-not-allowed bg-surface-container/40' : ''} ${error ? 'border-error' : 'border-outline-variant'}`} />
+        className={`px-md py-md bg-surface-container-lowest border rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 ${disabled || readOnly ? 'opacity-70 cursor-not-allowed bg-surface-container/40' : ''} ${error ? 'border-error' : 'border-outline-variant'}`} />
       {error && <span className="text-xs text-error">{error.message}</span>}
     </label>
   );
@@ -301,21 +301,25 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
 
   useEffect(() => {
     const currentPid = proposal?.id || null;
-    if (currentPid !== lastProposalIdRef.current) {
+    if (currentPid && currentPid !== lastProposalIdRef.current) {
+      const prevId = lastProposalIdRef.current;
       lastProposalIdRef.current = currentPid;
-      reset({
-        ...client,
-        num_adults: parseInt(client.num_adults) || 1,
-        num_children: parseInt(client.num_children) || 0,
-        duration_days: parseInt(client.duration_days) || 1,
-        duration_nights: parseInt(client.duration_nights) || 1,
-        dietary: client.dietary || '',
-        pace: client.pace || '',
-        dislikes: client.dislikes || [],
-      });
-      setDislikesTags(client.dislikes || []);
+      // Only reset if loading a completely different existing proposal (prevId !== null)
+      if (prevId !== null) {
+        reset({
+          ...client,
+          num_adults: parseInt(client.num_adults) || 1,
+          num_children: parseInt(client.num_children) || 0,
+          duration_days: parseInt(client.duration_days) || 1,
+          duration_nights: parseInt(client.duration_nights) || 1,
+          dietary: client.dietary || '',
+          pace: client.pace || '',
+          dislikes: client.dislikes || [],
+        });
+        setDislikesTags(client.dislikes || []);
+      }
     }
-  }, [proposal?.id, client, reset]);
+  }, [proposal?.id]);
 
   // Sync the form value whenever dislikesTags changes
   useEffect(() => {
@@ -456,16 +460,19 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
       const nights = Math.max(0, Math.round(ms / 86400000));
       setValue('duration_nights', nights, { shouldValidate: true });
       setValue('duration_days', nights + 1, { shouldValidate: true });
-    } else if (date_mode === 'days' && duration_days > 0) {
-      const nights = Math.max(0, parseInt(duration_days, 10) - 1);
-      setValue('duration_nights', nights, { shouldValidate: true });
+    } else if (date_mode === 'days') {
+      const parsedDays = parseInt(duration_days, 10);
+      if (!isNaN(parsedDays) && parsedDays >= 0) {
+        const nights = Math.max(0, parsedDays - 1);
+        setValue('duration_nights', nights, { shouldValidate: true });
+      }
     }
   }, [start_date, end_date, date_mode, duration_days, setValue]);
 
   return (
     <div className="space-y-lg text-on-surface font-body-md" data-testid="step-1">
       {/* HERO HEADER CARD */}
-      <div className="bg-gradient-to-r from-primary/10 via-surface-container-high to-surface-container border border-outline-variant/80 rounded-3xl p-lg md:p-xl shadow-xs relative overflow-hidden flex flex-wrap items-center justify-between gap-md">
+      <div className="bg-gradient-to-r from-primary/10 via-surface-container-high to-surface-container border border-outline-variant/80 rounded-3xl p-lg md:p-xl shadow-xs relative z-20 flex flex-wrap items-center justify-between gap-md">
         <div className="space-y-xs max-w-xl">
           <div className="flex items-center gap-xs text-xs font-bold text-primary uppercase tracking-widest">
             <span className="material-symbols-outlined text-[16px]">tune</span>
@@ -635,7 +642,7 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
               <Field label="Number of Days" name="duration_days" type="number" register={register} error={errors.duration_days} testid="duration-days" />
-              <Field label="Number of Nights (Auto: Days - 1)" name="duration_nights" type="number" register={register} error={errors.duration_nights} testid="duration-nights" disabled={true} />
+              <Field label="Number of Nights (Auto: Days - 1)" name="duration_nights" type="number" register={register} error={errors.duration_nights} testid="duration-nights" readOnly={true} />
             </div>
           )}
         </div>
@@ -649,9 +656,7 @@ export const Step1Client = forwardRef(function Step1Client({ client, setClient, 
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-          <Field label="Arrival City" name="arrival_city" register={register} error={errors.arrival_city} testid="arrival-city" />
           <Field label="Arrival Airport/Station" name="arrival_airport" register={register} error={errors.arrival_airport} testid="arrival-airport" />
-          <Field label="Departure City" name="departure_city" register={register} error={errors.departure_city} testid="departure-city" />
           <Field label="Departure Airport/Station" name="departure_airport" register={register} error={errors.departure_airport} testid="departure-airport" />
 
           <Field label="Adults" name="num_adults" type="number" register={register} error={errors.num_adults} testid="adults" />

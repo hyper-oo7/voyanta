@@ -748,69 +748,130 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         return;
       }
       const currentDay = days[dayIndex] || {};
+      const targetLower = subDestName.toLowerCase().trim();
 
       // Find real vault data for this sub-destination
-      const subDest = subDestinationsList.find(s => s.name === subDestName);
+      const subDest = subDestinationsList.find(s => s.name.toLowerCase().trim() === targetLower);
       let vaultDayData = subDest?.vaultData?.days?.[0];
       const vaultCurrency = subDest?.vaultData?.currency || proposalCurrency || 'INR';
 
       const contentBlocks = [];
       const newItems = [];
+      const addedNames = new Set();
 
+      const addHotel = (h) => {
+        const name = h.name || h.label || 'Hotel';
+        if (!name || addedNames.has(name.toLowerCase())) return;
+        addedNames.add(name.toLowerCase());
+        const price = cleanPrice(h.price_per_night || h.price || h.cost || 0);
+        const img = h.image_url || h.cover_image || h.photos?.[0] || '';
+        contentBlocks.push({ id: crypto.randomUUID(), type: 'hotel', data: { name, category: h.category || h.star_rating || '', price_per_night: price, location: h.location || h.area || subDestName, image_url: img } });
+        newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'hotel', label: name, details: h.location || h.area || subDestName, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+      };
+
+      const addActivity = (a) => {
+        const name = a.name || a.label || 'Activity';
+        if (!name || addedNames.has(name.toLowerCase())) return;
+        addedNames.add(name.toLowerCase());
+        const price = cleanPrice(a.price || a.cost || 0);
+        const img = a.image_url || a.photos?.[0] || '';
+        contentBlocks.push({ id: crypto.randomUUID(), type: 'activity', data: { name, duration: a.duration || a.duration_hours || '', timing: a.timing || '', price, location: a.location || a.area || subDestName, image_url: img, description: a.description || '' } });
+        newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'activity', label: name, details: a.location || a.area || subDestName, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+      };
+
+      const addTransfer = (tr) => {
+        const name = tr.name || tr.label || tr.type || 'Transfer';
+        if (!name || addedNames.has(name.toLowerCase())) return;
+        addedNames.add(name.toLowerCase());
+        const price = cleanPrice(tr.price || tr.cost || 0);
+        contentBlocks.push({ id: crypto.randomUUID(), type: 'transfer', data: { name, vehicle_type: tr.vehicle || tr.vehicle_type || '', price, from: tr.from || subDestName, to: tr.to || '', timing: tr.timing || '' } });
+        newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'transfer', label: name, details: `${tr.from || subDestName} → ${tr.to || ''}`, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+      };
+
+      const addMeal = (m) => {
+        const name = m.venue || m.name || m.type || 'Meal';
+        if (!name || addedNames.has(name.toLowerCase())) return;
+        addedNames.add(name.toLowerCase());
+        const price = cleanPrice(m.price || m.cost || 0);
+        contentBlocks.push({ id: crypto.randomUUID(), type: 'meal', data: { venue: name, type: m.type || 'Meal', price, image_url: m.image_url || '' } });
+        newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'meal', label: name, details: m.cuisine || '', qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+      };
+
+      // 1. If PDF Vault day data exists, import its blocks
       if (vaultDayData) {
-        // ── Real vault data path — import ACTUAL hotel/activity/meal/transfer from PDF ──
-        (vaultDayData.hotels || []).forEach(h => {
-          const price = h.price_per_night || h.price || 0;
-          contentBlocks.push({ id: crypto.randomUUID(), type: 'hotel', data: { name: h.name, category: h.category, price_per_night: price, location: h.location || subDestName, image_url: h.image_url || '' } });
-          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'hotel', label: h.name, details: h.location || subDestName, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+        (vaultDayData.hotels || []).forEach(addHotel);
+        (vaultDayData.activities || []).forEach(addActivity);
+        (vaultDayData.transfers || []).forEach(addTransfer);
+        (vaultDayData.meals || []).forEach(addMeal);
+      }
+
+      // 2. Search local libraryData (My Vault / Resource Library manual items)
+      if (libraryData) {
+        (libraryData.hotels || []).forEach(h => {
+          const loc = (h.location || h.destination || h.area || '').toLowerCase();
+          const name = (h.name || '').toLowerCase();
+          if (loc.includes(targetLower) || targetLower.includes(loc) || name.includes(targetLower)) {
+            addHotel(h);
+          }
         });
-        (vaultDayData.activities || []).forEach(a => {
-          const price = a.price || 0;
-          contentBlocks.push({ id: crypto.randomUUID(), type: 'activity', data: { name: a.name, duration: a.duration, timing: a.timing, price, location: a.location || subDestName, image_url: a.image_url || '', description: a.description } });
-          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'activity', label: a.name, details: a.location || subDestName, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
+        (libraryData.itinerary || []).forEach(act => {
+          const loc = (act.location || act.destination || act.area || '').toLowerCase();
+          const name = (act.name || '').toLowerCase();
+          if (loc.includes(targetLower) || targetLower.includes(loc) || name.includes(targetLower)) {
+            addActivity(act);
+          }
         });
-        (vaultDayData.transfers || []).forEach(tr => {
-          const price = tr.price || 0;
-          contentBlocks.push({ id: crypto.randomUUID(), type: 'transfer', data: { name: tr.type || 'Transfer', vehicle_type: tr.vehicle, price, from: tr.from || subDestName, to: tr.to, timing: tr.timing } });
-          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'transfer', label: tr.type || 'Transfer', details: `${tr.from || subDestName} → ${tr.to || ''}`, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
-        });
-        (vaultDayData.meals || []).forEach(m => {
-          const price = m.price || 0;
-          contentBlocks.push({ id: crypto.randomUUID(), type: 'meal', data: { venue: m.venue || m.type, type: m.type, price, image_url: m.image_url || '' } });
-          newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'meal', label: m.venue || m.type, details: m.cuisine || '', qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
-        });
-      } else {
-        // Fallback: Query knowledge objects matching this subDestName (area) dynamically from database
-        try {
-          const supa = (await import('../../lib/supabaseClient.js')).supabase;
+      }
+
+      // 3. Query Supabase knowledge_objects case-insensitively with ilike
+      try {
+        const supa = (await import('../../lib/supabaseClient.js')).supabase;
+        if (supa) {
           const { data: objects } = await supa
             .from('knowledge_objects')
             .select('*')
             .eq('is_active', true)
-            .ilike('destination', `%${proposal?.destination}%`)
-            .eq('area', subDestName);
+            .or(`area.ilike.%${subDestName}%,destination.ilike.%${subDestName}%,name.ilike.%${subDestName}%`);
 
           if (objects && objects.length > 0) {
             objects.forEach(obj => {
               const attrs = obj.attributes || {};
-              const price = cleanPrice(attrs.price_per_night || attrs.price || attrs.cost || 0);
-              const img = attrs.photos?.[0] || attrs.image_url || '';
-              if (obj.object_type === 'hotel') {
-                contentBlocks.push({ id: crypto.randomUUID(), type: 'hotel', data: { name: obj.name, category: attrs.star_rating || '', price_per_night: price, location: obj.area || subDestName, image_url: img } });
-                newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'hotel', label: obj.name, details: obj.area || subDestName, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
-              } else if (obj.object_type === 'activity') {
-                contentBlocks.push({ id: crypto.randomUUID(), type: 'activity', data: { name: obj.name, duration: attrs.duration || '', timing: attrs.timing || '', price, location: obj.area || subDestName, image_url: img, description: attrs.description || '' } });
-                newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'activity', label: obj.name, details: obj.area || subDestName, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
-              } else if (obj.object_type === 'transfer') {
-                contentBlocks.push({ id: crypto.randomUUID(), type: 'transfer', data: { name: obj.name, vehicle_type: attrs.vehicle || '', price, from: attrs.from || subDestName, to: attrs.to || '' } });
-                newItems.push({ id: crypto.randomUUID(), proposal_id: pid, kind: 'transfer', label: obj.name, details: `${attrs.from || subDestName} → ${attrs.to || ''}`, qty: 1, unit_price: price, total_price: price, currency: vaultCurrency, meta: { day: dayIndex + 1 } });
-              }
+              const itemData = {
+                name: obj.name,
+                category: attrs.star_rating || '',
+                price: cleanPrice(attrs.price_per_night || attrs.price || attrs.cost || 0),
+                location: obj.area || subDestName,
+                image_url: attrs.photos?.[0] || attrs.image_url || '',
+                duration: attrs.duration || '',
+                timing: attrs.timing || '',
+                description: attrs.description || '',
+                vehicle: attrs.vehicle || '',
+                from: attrs.from || subDestName,
+                to: attrs.to || ''
+              };
+              if (obj.object_type === 'hotel') addHotel(itemData);
+              else if (obj.object_type === 'activity') addActivity(itemData);
+              else if (obj.object_type === 'transfer') addTransfer(itemData);
             });
           }
-        } catch (dbErr) {
-          console.error("Failed to fetch matching atomic objects from DB:", dbErr);
         }
+      } catch (dbErr) {
+        console.warn("Failed to fetch matching atomic objects from DB:", dbErr);
       }
+
+      // 4. Scan all vaultItems (uploaded PDF packages) for matching items
+      (vaultItems || []).forEach(vt => {
+        const data = vt.parsed_data || vt;
+        (data.days || []).forEach(d => {
+          const subD = (d.sub_destination || d.title || d.description || '').toLowerCase();
+          if (subD.includes(targetLower)) {
+            (d.hotels || []).forEach(addHotel);
+            (d.activities || []).forEach(addActivity);
+            (d.transfers || []).forEach(addTransfer);
+            (d.meals || []).forEach(addMeal);
+          }
+        });
+      });
 
       if (contentBlocks.length > 0) {
         const currentContent = Array.isArray(currentDay.content) ? [...currentDay.content] : [];

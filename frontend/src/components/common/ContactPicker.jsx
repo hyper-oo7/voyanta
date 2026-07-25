@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getAgencyId } from '../../lib/supabaseClient.js';
 
-export default function ContactPicker({ onSelect, className = '' }) {
+export default function ContactPicker({ onSelect, className = '', align = 'right' }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [contacts, setContacts] = useState([]);
@@ -136,7 +136,7 @@ export default function ContactPicker({ onSelect, className = '' }) {
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 mt-1 w-72 bg-surface border border-outline-variant rounded-xl shadow-xl z-[9999] p-2 flex flex-col max-h-60 overflow-hidden font-sans no-print text-on-surface">
+        <div className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} mt-1 w-72 bg-surface border border-outline-variant rounded-xl shadow-xl z-[9999] p-2 flex flex-col max-h-60 overflow-hidden font-sans no-print text-on-surface`}>
           <div className="flex items-center gap-2 bg-surface-container-low px-2 py-1 rounded-lg border border-outline-variant mb-2">
             <span className="material-symbols-outlined text-[16px] text-on-surface-variant">search</span>
             <input

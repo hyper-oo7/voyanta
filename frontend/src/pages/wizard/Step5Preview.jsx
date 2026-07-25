@@ -72,6 +72,19 @@ function A4Preview({ children, style = 'classic', isInteractiveStudio, onStudioC
   );
 }
 
+const formatDestinationName = (dest) => {
+  if (!dest) return 'Destination';
+  const d = dest.toLowerCase().trim();
+  if (d === 'megh' || d === 'meghalaya' || d === 'shillong') return 'Meghalaya & Shillong';
+  if (d === 'kashmir' || d === 'srinagar') return 'Kashmir';
+  if (d === 'rajasthan' || d === 'jaipur') return 'Rajasthan';
+  if (d === 'kerala' || d === 'munnar') return 'Kerala';
+  if (d === 'himachal' || d === 'manali' || d === 'shimla') return 'Himachal Pradesh';
+  if (d === 'uttarakhand' || d === 'rishikesh') return 'Uttarakhand';
+  if (d === 'dubai' || d === 'uae') return 'Dubai (UAE)';
+  return dest.charAt(0).toUpperCase() + dest.slice(1);
+};
+
 export function Step5Preview({ proposalId, branding, customBlocks, proposalName, onAddCustomBlock }) {
   const toast = useToast();
   const { isHealthy } = useBackendHealth();
@@ -237,17 +250,14 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
   useEffect(() => {
     const dest = proposal?.destination || proposal?.brief?.destination || '';
     const startDate = proposal?.start_date || proposal?.brief?.start_date || '';
-    if (!dest || !startDate) {
+    if (!dest) {
       setViSeasonalAdvisories([]);
       return;
     }
 
     try {
       const climate = getClimateClassification(dest, startDate);
-      const advisories = [];
-      if (climate.profileNotes) advisories.push(climate.profileNotes);
-      if (climate.seasonName) advisories.push(`Expected Season: ${climate.seasonName}`);
-      setViSeasonalAdvisories(advisories);
+      setViSeasonalAdvisories(climate.advisories || []);
     } catch (err) {
       console.error("Failed to set VI seasonal rules:", err);
       setViSeasonalAdvisories([]);
@@ -616,15 +626,15 @@ export function Step5Preview({ proposalId, branding, customBlocks, proposalName,
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-md shadow-sm space-y-xs no-print my-sm">
           <div className="flex items-center gap-xs text-amber-900 font-bold font-label-md">
             <span className="material-symbols-outlined text-amber-600">verified_user</span>
-            VI Review: Seasonal Climate Advisory for {proposal?.destination || proposal?.brief?.destination || 'Destination'}
+            VI Review: Seasonal Climate Advisory for {formatDestinationName(proposal?.destination || proposal?.brief?.destination || '')}
           </div>
           <ul className="divide-y divide-amber-200/60">
             {viSeasonalAdvisories.map((rule, idx) => (
               <li key={idx} className="py-xs flex items-start gap-xs text-xs text-amber-800">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase mt-0.5 ${rule.rule_type === 'avoid' ? 'bg-red-100 text-red-700' : rule.rule_type === 'prefer' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-800'}`}>
-                  {rule.rule_type}
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 mt-0.5 ${rule.rule_type === 'avoid' ? 'bg-red-100 text-red-700 border border-red-200' : rule.rule_type === 'prefer' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}>
+                  {rule.rule_type || 'info'}
                 </span>
-                <span className="flex-1 font-medium">{rule.message}</span>
+                <span className="flex-1 font-medium leading-relaxed">{rule.message || rule}</span>
               </li>
             ))}
           </ul>

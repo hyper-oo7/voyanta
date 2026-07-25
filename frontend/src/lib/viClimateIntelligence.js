@@ -4,6 +4,18 @@
  */
 
 export const DESTINATION_CLIMATE = {
+  meghalaya: {
+    hot_months: [3, 4],
+    monsoon_months: [4, 5, 6, 7, 8, 9], // May to October
+    cool_months: [10, 11, 0, 1, 2], // November to March
+    notes: 'Meghalaya & Shillong feature misty green hills, living root bridges, and cascading waterfalls. Monsoons (May–Oct) offer world-record waterfalls; carry light rain jackets/umbrellas. Winters (Nov–March) bring crisp, clear skies (10°C–20°C).'
+  },
+  shillong: {
+    hot_months: [3, 4],
+    monsoon_months: [4, 5, 6, 7, 8, 9],
+    cool_months: [10, 11, 0, 1, 2],
+    notes: 'Shillong is pleasant year-round (~15°C–24°C). Monsoons (May–Oct) bring dramatic rain and waterfall views. Winters (Nov–March) are cool and sunny, ideal for boat rides on Umium Lake.'
+  },
   kashmir: {
     hot_months: [],
     cool_months: [9, 10, 11, 0, 1, 2],
@@ -44,19 +56,29 @@ export const DESTINATION_CLIMATE = {
     cool_months: [9, 10, 11, 0, 1, 2, 3, 4],
     blocked_months: [10, 11, 0, 1, 2, 3, 4],
     notes: 'Ladakh is highly pleasant in summer (June–September) for walking. Roads/passes are blocked or frozen in winter.'
+  },
+  uttarakhand: {
+    hot_months: [4, 5],
+    monsoon_months: [6, 7, 8],
+    cool_months: [10, 11, 0, 1, 2],
+    snow_months: [11, 0, 1],
+    notes: 'Uttarakhand has refreshing mountain summers. Monsoons (July–Sept) require landslide caution. Winters (Nov–Feb) offer serene snow vistas.'
   }
 };
 
 export function getClimateClassification(dest, startDateStr) {
-  const normDest = (dest || '').toLowerCase();
-  const date = startDateStr ? new Date(startDateStr) : new Date();
+  const normDest = (dest || '').toLowerCase().trim();
+  let date = new Date(startDateStr);
+  if (isNaN(date.getTime())) date = new Date();
   const month = date.getMonth(); // 0 = Jan, 11 = Dec
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const currentMonthName = monthNames[month];
 
   // Find matching destination profile
   let profile = null;
   let keyMatch = 'other';
   for (const [key, p] of Object.entries(DESTINATION_CLIMATE)) {
-    if (normDest.includes(key)) {
+    if (normDest.includes(key) || key.includes(normDest)) {
       profile = p;
       keyMatch = key;
       break;
@@ -64,14 +86,43 @@ export function getClimateClassification(dest, startDateStr) {
   }
 
   if (!profile) {
-    // Default fallback profile (general pleasant/tropical)
-    profile = { hot_months: [4, 5, 6], cool_months: [10, 11, 0, 1], notes: 'General climate fallback.' };
+    if (normDest.includes('megh') || normDest.includes('shillong') || normDest.includes('cherra') || normDest.includes('assam')) {
+      profile = DESTINATION_CLIMATE.meghalaya;
+      keyMatch = 'meghalaya';
+    } else {
+      profile = { hot_months: [4, 5, 6], cool_months: [10, 11, 0, 1], notes: `General pleasant travel climate.` };
+    }
   }
 
-  const isHot = profile.hot_months.includes(month);
+  const isHot = profile.hot_months?.includes(month) || false;
   const isCool = profile.cool_months?.includes(month) || false;
   const isSnow = profile.snow_months?.includes(month) || false;
   const isMonsoon = profile.monsoon_months?.includes(month) || false;
+
+  const seasonName = isSnow ? 'Winter / Snow Season' : (isMonsoon ? 'Monsoon Season' : (isHot ? 'Summer Season' : 'Pleasant Peak Season'));
+
+  const advisories = [];
+  advisories.push({
+    rule_type: 'info',
+    message: `Travel Window (${currentMonthName}): ${seasonName}. ${profile.notes}`
+  });
+
+  if (isMonsoon) {
+    advisories.push({
+      rule_type: 'prefer',
+      message: `Monsoon Advisory for ${currentMonthName}: Carry light rain jackets and waterproof gear. Excellent season for cascading waterfalls, living root bridges, and lush river valleys.`
+    });
+  } else if (isHot) {
+    advisories.push({
+      rule_type: 'avoid',
+      message: `Summer Heat Advisory for ${currentMonthName}: Midday temperatures can be warm. Schedule outdoor excursions for early morning/sunset and reserve afternoons for indoor rest or AC comfort.`
+    });
+  } else if (isSnow || isCool) {
+    advisories.push({
+      rule_type: 'prefer',
+      message: `Winter / Cool Advisory for ${currentMonthName}: Crisp, clear skies. Pack warm layers/woolens for cool morning and evening strolls.`
+    });
+  }
 
   return {
     keyMatch,
@@ -80,7 +131,8 @@ export function getClimateClassification(dest, startDateStr) {
     isCool,
     isSnow,
     isMonsoon,
-    seasonName: isSnow ? 'Winter/Snow' : (isHot ? 'Summer' : (isMonsoon ? 'Monsoon' : 'Pleasant Season'))
+    seasonName,
+    advisories
   };
 }
 
