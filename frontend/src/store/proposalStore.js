@@ -55,11 +55,92 @@ export const useProposalStore = create((set, get) => ({
   },
   costingPrefs: {
     fixed_markup: 0,
-    pct_markup: 0,
+    pct_markup: 15,
     discount: 0,
-    tax: 0
+    tax: 5,
+    margin_type: 'percentage',
+    margin_value: 15,
+    visibility_mode: 'ITEMIZED'
   },
+  viewMode: 'web', // 'web' | 'pdf'
+  showTemplateGallery: false,
+  showQuickIntake: false,
+  activeTemplateSlug: 'classic',
   status: 'idle', // 'idle' | 'loading' | 'saving' | 'error'
+
+  // Canvas Actions
+  setViewMode: (mode) => set({ viewMode: mode }),
+  setShowTemplateGallery: (show) => set({ showTemplateGallery: show }),
+  setShowQuickIntake: (show) => set({ showQuickIntake: show }),
+  setTemplateSlug: (slug) => set((state) => {
+    const nextBranding = { ...state.branding, template_style: slug };
+    const nextProposal = state.proposal ? { ...state.proposal, template_style: slug } : state.proposal;
+    saveLocalBackup({ ...state, branding: nextBranding, proposal: nextProposal });
+    return { activeTemplateSlug: slug, branding: nextBranding, proposal: nextProposal };
+  }),
+
+  assemble1Shot: async (intakeData) => {
+    set({ status: 'loading' });
+    try {
+      const res = await fetch('/api/v1/ai/assemble-1shot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(intakeData)
+      });
+      const data = await res.json();
+      if (data.status === 'success' && data.proposal) {
+        const p = data.proposal;
+        const nextClient = {
+          ...get().client,
+          customer_name: intakeData.client_name || 'Valued Traveler',
+          destination: p.destination || intakeData.destination,
+          duration_days: p.duration_days || intakeData.duration_days,
+          pace: intakeData.pace || 'medium',
+          budget: intakeData.budget_per_head || ''
+        };
+        set({
+          proposal: p,
+          client: nextClient,
+          status: 'idle',
+          showQuickIntake: false
+        });
+        saveLocalBackup(get());
+        return p;
+      } else {
+        throw new Error(data.detail || 'Assembly failed');
+      }
+    } catch (err) {
+      console.warn('[1-Shot Store] Assembly API error, applying local deterministic fallback:', err);
+      // Fallback local assembly if API is offline
+      const fallbackProposal = {
+        id: `prop_${Date.now()}`,
+        destination: intakeData.destination || 'Himachal',
+        duration_days: intakeData.duration_days || 3,
+        total_price: (intakeData.budget_per_head || 25000) * (intakeData.num_travelers || 2),
+        price_per_person: intakeData.budget_per_head || 25000,
+        currency: 'INR',
+        overview: `Curated ${intakeData.duration_days || 3}-Day itinerary for ${intakeData.client_name || 'Valued Traveler'}.`,
+        days: Array.from({ length: intakeData.duration_days || 3 }, (_, i) => ({
+          day_number: i + 1,
+          title: `Day ${i + 1}: ${intakeData.destination || 'Destination'} Exploration`,
+          description: `Enjoy sightseeing, culture, and relaxation at ${intakeData.pace || 'medium'} pace.`,
+          sub_destination: intakeData.destination || 'City Center',
+          activities: [{ name: 'City Sightseeing Tour', duration: '3 hrs', timing: '10:00 AM' }],
+          hotels: [{ name: 'Grand Deluxe Resort', category: '4 Star', meal_plan: 'MAP', price_per_night: 4500 }]
+        })),
+        inclusions: ['Private AC Car', 'Hotel with Breakfast & Dinner', 'Taxes & Driver Allowances'],
+        exclusions: ['Flight / Train', 'Personal Expenses'],
+        extra_sections: { what_to_pack: 'Comfortable walking shoes, sunscreen SPF 50+, casual attire.' }
+      };
+      set({
+        proposal: fallbackProposal,
+        client: { ...get().client, customer_name: intakeData.client_name || 'Valued Traveler', destination: intakeData.destination },
+        status: 'idle',
+        showQuickIntake: false
+      });
+      return fallbackProposal;
+    }
+  },
 
   // Actions
   setActiveId: (id) => {

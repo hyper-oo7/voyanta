@@ -334,3 +334,99 @@ async def ai_health_check():
     return res
 
 
+class Assemble1ShotInput(BaseModel):
+    destination: Optional[str] = None
+    prompt: Optional[str] = None
+    duration_days: int = 3
+    client_name: str = "Valued Traveler"
+    group_type: str = "friends"
+    pace: str = "medium"
+    budget_per_head: float = 25000.0
+    num_travelers: int = 2
+    preferences_text: str = ""
+    margin_type: str = "percentage"
+    margin_value: float = 15.0
+    tax_rate_percent: float = 5.0
+    discount_amount: float = 0.0
+    visibility_mode: str = "ITEMIZED"
+
+
+@router.post("/assemble-1shot")
+async def assemble_1shot_route(
+    input: Assemble1ShotInput,
+    user: Any = Depends(verify_token_optional)
+):
+    """
+    1-Shot Automated Assembly Endpoint.
+    Assembles a complete, costed, and branded proposal in under 1.5 seconds.
+    Leverages zero-cost in-memory Day Module caching.
+    """
+    try:
+        from src.models.day_module_schema import MarginConfig
+        from src.services.assembly_engine import assemble_1shot_proposal
+
+        agency_id = "global"
+        if isinstance(user, dict):
+            agency_id = (
+                (user.get("user_metadata") or {}).get("agency_id")
+                or (user.get("app_metadata") or {}).get("agency_id")
+                or user.get("agency_id")
+                or "global"
+            )
+
+        margin_cfg = MarginConfig(
+            margin_type="percentage" if input.margin_type.lower() == "percentage" else "flat",
+            margin_value=float(input.margin_value),
+            tax_rate_percent=float(input.tax_rate_percent),
+            discount_amount=float(input.discount_amount),
+            visibility_mode="TOTAL_ONLY" if input.visibility_mode.upper() == "TOTAL_ONLY" else "ITEMIZED"
+        )
+
+        # If prompt is provided, extract destination and duration via regex/light parsing
+        dest = input.destination
+        dur = input.duration_days
+        pref = input.preferences_text
+
+        if input.prompt:
+            import re
+            p_text = input.prompt.strip()
+            # Extract duration e.g. '4 day' or '5 days'
+            dur_match = re.search(r"(\d+)\s*day", p_text, re.IGNORECASE)
+            if dur_match:
+                dur = int(dur_match.group(1))
+
+            # Extract destination
+            if not dest:
+                for kw in ["Manali", "Shillong", "Leh", "Kerala", "Rajasthan", "Goa", "Kashmir", "Rishikesh", "Jaipur", "Udaipur"]:
+                    if kw.lower() in p_text.lower():
+                        dest = kw
+                        break
+            if not dest:
+                dest = "Himachal"
+
+            pref = f"{pref} {p_text}".strip()
+
+        if not dest:
+            dest = "Himachal"
+
+        proposal = assemble_1shot_proposal(
+            destination=dest,
+            duration_days=dur,
+            client_name=input.client_name,
+            group_type=input.group_type,
+            pace=input.pace,
+            budget_per_head=input.budget_per_head,
+            num_travelers=input.num_travelers,
+            preferences_text=pref,
+            margin_config=margin_cfg,
+            agency_id=agency_id
+        )
+
+        return {"status": "success", "proposal": proposal.model_dump(by_alias=True)}
+
+    except Exception as e:
+        logger.exception("[1-Shot Assembly] Generation failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+

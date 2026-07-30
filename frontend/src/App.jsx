@@ -31,6 +31,7 @@ const ContactsPage = lazy(() => import('./pages/ContactsPage.jsx'));
 const InvoicesPage = lazy(() => import('./pages/InvoicesPage.jsx'));
 const MyVaultPage = lazy(() => import('./pages/MyVaultPage.jsx'));
 const UnifiedLibraryPage = lazy(() => import('./pages/UnifiedLibraryPage.jsx'));
+const UnifiedItineraryCanvas = lazy(() => import('./pages/UnifiedItineraryCanvas.jsx'));
 const ProposalWizard = lazy(() => import('./pages/ProposalWizard.jsx'));
 const CostCalculatorPage = lazy(() => import('./pages/CostCalculatorPage.jsx'));
 const HotelLibraryPage = lazy(() => import('./pages/HotelLibraryPage.jsx'));
@@ -106,8 +107,9 @@ export default function App() {
                 <Route path="/invoices"            element={<InvoicesPage />} />
                 <Route path="/vault"               element={<MyVaultPage />} />
 
-                {/* Wizard is the primary proposal workflow */}
-                <Route path="/proposals/wizard"    element={<ProposalWizard />} />
+                {/* Single-Screen Unified Canvas is the primary proposal workflow */}
+                <Route path="/proposals/wizard"    element={<UnifiedItineraryCanvas />} />
+                <Route path="/proposals/canvas"    element={<UnifiedItineraryCanvas />} />
                 <Route path="/proposals/preview"   element={<Navigate to="/proposals/wizard" replace />} />
 
                 {/* Inventory modules — still accessible standalone for browsing/imports */}
