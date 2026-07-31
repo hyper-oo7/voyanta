@@ -281,7 +281,8 @@ export const useProposalStore = create((set, get) => ({
 
   // Build the DB payload from current state
   buildPayload: () => {
-    const { client: c, branding, costingPrefs, proposal } = get();
+    const { client: rawClient, branding, costingPrefs, proposal } = get();
+    const c = rawClient || {};
     const travelers = (parseInt(c.num_adults, 10) || 0) + (parseInt(c.num_children, 10) || 0);
 
     let overrides = {};

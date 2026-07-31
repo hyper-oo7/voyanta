@@ -78,8 +78,9 @@ export default function AppLayout() {
     const daysElapsed = Math.floor((Date.now() - startTime) / (1000 * 60 * 60 * 24));
     const remaining = Math.max(0, 14 - daysElapsed);
     setTrialDaysRemaining(remaining);
-    setTrialExpired(daysElapsed >= 14);
-    setTrialLocked(daysElapsed >= 30);
+    // 14-day gate temporarily disabled for testing and full access
+    setTrialExpired(false);
+    setTrialLocked(false);
   }, [user, isDemo, userEmail]);
 
   useEffect(() => {
@@ -338,15 +339,13 @@ export default function AppLayout() {
           </div>
         )}
         {!upiReminder && (
-          <div className={`flex-shrink-0 ${trialExpired ? 'bg-error text-white' : 'bg-gradient-to-r from-primary/90 via-emerald-600 to-primary text-white'} px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-50 text-xs`}>
+          <div className={`flex-shrink-0 bg-gradient-to-r from-primary/90 via-emerald-600 to-primary text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-50 text-xs`}>
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded-full bg-white/20 text-white font-extrabold uppercase text-[10px] tracking-wider">
-                {trialExpired ? 'Trial Ended' : 'Free Trial'}
+                Full Access
               </span>
               <span className="font-semibold">
-                {trialExpired
-                  ? '⚠️ Your 14-Day Free Trial has ended. Subscribe to continue creating and exporting proposals.'
-                  : `🎁 14-Day Full Access Free Trial Active • ${trialDaysRemaining} Days Remaining (No credit card required)`}
+                🎁 Voyanta Full Access Active • 14-Day Expiry Gate Disabled
               </span>
             </div>
             <button

@@ -141,15 +141,35 @@ async def search_images(query: str):
     if not results:
         q_lower = (query or "").lower()
         destination_fallbacks = {
+            "manali": [
+                {"id": "fb_manali_1", "url": "https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"},
+                {"id": "fb_manali_2", "url": "https://images.unsplash.com/photo-1605649487212-47bdab064df7?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1605649487212-47bdab064df7?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"},
+                {"id": "fb_manali_3", "url": "https://images.unsplash.com/photo-1597074866923-dc0589150358?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1597074866923-dc0589150358?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"}
+            ],
+            "shimla": [
+                {"id": "fb_shimla_1", "url": "https://images.unsplash.com/photo-1597074866923-dc0589150358?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1597074866923-dc0589150358?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"}
+            ],
+            "kashmir": [
+                {"id": "fb_kashmir_1", "url": "https://images.unsplash.com/photo-1595815771614-ade9d652a65d?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1595815771614-ade9d652a65d?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"}
+            ],
+            "kerala": [
+                {"id": "fb_kerala_1", "url": "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"}
+            ],
+            "goa": [
+                {"id": "fb_goa_1", "url": "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"}
+            ],
+            "jaipur": [
+                {"id": "fb_jaipur_1", "url": "https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"}
+            ],
+            "udaipur": [
+                {"id": "fb_udaipur_1", "url": "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"}
+            ],
             "paris": [
                 {"id": "fb_paris_1", "url": "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"},
                 {"id": "fb_paris_2", "url": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"}
             ],
             "maldives": [
                 {"id": "fb_maldives_1", "url": "https://images.unsplash.com/photo-1514282401047-d79a71a590e8?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1514282401047-d79a71a590e8?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"}
-            ],
-            "kashmir": [
-                {"id": "fb_kashmir_1", "url": "https://images.unsplash.com/photo-1595815771614-ade9d652a65d?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1595815771614-ade9d652a65d?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"}
             ],
             "tokyo": [
                 {"id": "fb_tokyo_1", "url": "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80", "thumb": "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=400&q=80", "author": "Unsplash"}

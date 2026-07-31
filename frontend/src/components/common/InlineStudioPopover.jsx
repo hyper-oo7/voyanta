@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import ImageUploadInput from './ImageUploadInput.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
+import { fetchSimilarImages } from '../../services/imageService.js';
 
 const UNSPLASH_PRESETS = [
+  { label: 'Manali Snow & Valleys', url: 'https://images.unsplash.com/photo-1605649487212-47bdab064df7?auto=format&fit=crop&w=1200&q=80' },
+  { label: 'Hadimba Pine Forest', url: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?auto=format&fit=crop&w=1200&q=80' },
   { label: 'Luxury Resort', url: 'https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=80' },
   { label: 'Safari Sunset', url: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?auto=format&fit=crop&w=1200&q=80' },
   { label: 'Tropical Beach', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80' },
@@ -31,6 +34,7 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
   const [imageSrc, setImageSrc] = useState('');
   const [objectFit, setObjectFit] = useState('cover');
   const [borderRadius, setBorderRadius] = useState('8px');
+  const [similarPhotos, setSimilarPhotos] = useState([]);
   
   const [bgColor, setBgColor] = useState('#ffffff');
   const [padding, setPadding] = useState('24px');
@@ -127,6 +131,8 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
 
     if (isImage) {
       setEditorType('image');
+      const q = branding?.destination || target.innerText || 'travel resort';
+      fetchSimilarImages(q, 8).then(setSimilarPhotos);
     } else if (isSection && target.children.length > 1) {
       setEditorType('section');
     } else {
@@ -385,6 +391,23 @@ export default function InlineStudioPopover({ target, onClose, branding, setBran
             onChange={(val) => setImageSrc(val)} 
             label="Image Source / URL" 
           />
+
+          <div>
+            <label className="block text-[11px] font-bold text-on-surface-variant uppercase mb-1.5">📷 Similar Unsplash Photos (1-Click Swap)</label>
+            <div className="flex gap-1.5 overflow-x-auto pb-1 max-w-full">
+              {(similarPhotos.length > 0 ? similarPhotos : UNSPLASH_PRESETS.map((p, i) => ({ id: i, url: p.url, thumb: p.url }))).map((item, idx) => (
+                <button
+                  key={item.id || idx}
+                  type="button"
+                  onClick={() => { setImageSrc(item.url); handleApplyImage(item.url); }}
+                  className="flex-shrink-0 w-14 h-11 rounded-lg border border-outline-variant hover:border-primary overflow-hidden transition-transform hover:scale-105 shadow-sm relative group cursor-pointer"
+                  title={item.author ? `Photo by ${item.author}` : 'Click to select image'}
+                >
+                  <img src={item.thumb || item.url} alt="Similar photo" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div>
             <label className="block text-[11px] font-bold text-on-surface-variant uppercase mb-1.5">✨ Quick Luxury Presets</label>

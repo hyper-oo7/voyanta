@@ -176,26 +176,75 @@ export default function WebViewPage() {
     fetchSharedProposalByToken(effectiveToken)
       .then((res) => {
         if (mounted && res && res.proposal) {
-          setData(res);
+          let mergedProposal = res.proposal;
+
+          // Merge local preview edits from wizard (localStorage)
+          try {
+            const localKey = `voyanta_proposal_${res.proposal.id}`;
+            const cached = localStorage.getItem(localKey);
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (parsed) {
+                mergedProposal = {
+                  ...mergedProposal,
+                  ...parsed,
+                  itinerary: parsed.itinerary || mergedProposal.itinerary,
+                  preferences: {
+                    ...(mergedProposal.preferences || {}),
+                    ...(parsed.preferences || {})
+                  }
+                };
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to merge local proposal edits:', e);
+          }
+
+          setData({
+            ...res,
+            proposal: mergedProposal
+          });
           setLoading(false);
           setIsDemo(false);
-          if (res.proposal.status === 'approved') setProposalStatus('approved');
-          else if (res.proposal.status === 'changes_requested') setProposalStatus('changes_requested');
+          if (mergedProposal.status === 'approved') setProposalStatus('approved');
+          else if (mergedProposal.status === 'changes_requested') setProposalStatus('changes_requested');
 
-          const mode = (res.proposal?.visibility_mode || 'ITEMIZED').toUpperCase();
+          const mode = (mergedProposal?.visibility_mode || 'ITEMIZED').toUpperCase();
           if (mode === 'HIDDEN') setShowPricing(false);
           else setShowPricing(true);
 
-          const branding = res.proposal?.preferences?.branding;
+          const branding = mergedProposal?.preferences?.branding;
           if (branding?.theme_color) {
             document.documentElement.style.setProperty('--color-primary', branding.theme_color);
           }
         } else {
-          throw new Error('Fallback to demo');
+          throw new Error('Fallback to local cache or demo');
         }
       })
       .catch(() => {
         if (mounted) {
+          // Check local proposal cache (by id or token)
+          let cachedLocalProp = null;
+          try {
+            const listCache = JSON.parse(localStorage.getItem('voyanta_proposals_list_cache') || '[]');
+            cachedLocalProp = listCache.find(p => String(p.id) === String(token) || String(p.share_token) === String(token));
+            if (!cachedLocalProp && token) {
+              const singleCache = localStorage.getItem(`voyanta_proposal_${token}`);
+              if (singleCache) cachedLocalProp = JSON.parse(singleCache);
+            }
+          } catch {}
+
+          if (cachedLocalProp) {
+            setData({
+              proposal: cachedLocalProp,
+              items: cachedLocalProp.items || [],
+              totals: { subtotal: cachedLocalProp.total_amount || 0, currency: cachedLocalProp.currency || 'INR' },
+            });
+            setIsDemo(false);
+            setLoading(false);
+            return;
+          }
+
           // Fallback to high-fidelity multilingual demo proposal
           const demoProposal = MULTILINGUAL_DEMO_PROPOSALS[lang] || MULTILINGUAL_DEMO_PROPOSALS.en;
           const total = demoProposal.items.reduce(

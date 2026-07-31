@@ -1,5 +1,41 @@
 const CURATED_IMAGES = {
   destinations: {
+    'manali': [
+      'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?auto=format&fit=crop&q=80&w=2000', // Hadimba Pine Forest
+      'https://images.unsplash.com/photo-1605649487212-47bdab064df7?auto=format&fit=crop&q=80&w=2000', // Solang Valley Snow
+      'https://images.unsplash.com/photo-1597074866923-dc0589150358?auto=format&fit=crop&q=80&w=2000', // Himachal Mountains
+      'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?auto=format&fit=crop&q=80&w=2000', // Beas River Valley
+    ],
+    'shimla': [
+      'https://images.unsplash.com/photo-1597074866923-dc0589150358?auto=format&fit=crop&q=80&w=2000',
+      'https://images.unsplash.com/photo-1605649487212-47bdab064df7?auto=format&fit=crop&q=80&w=2000',
+    ],
+    'kashmir': [
+      'https://images.unsplash.com/photo-1595815771614-ade9d652a65d?auto=format&fit=crop&q=80&w=2000', // Dal Lake Shikara
+      'https://images.unsplash.com/photo-1566837945700-30057527ade0?auto=format&fit=crop&q=80&w=2000', // Gulmarg Snow
+    ],
+    'srinagar': [
+      'https://images.unsplash.com/photo-1595815771614-ade9d652a65d?auto=format&fit=crop&q=80&w=2000',
+    ],
+    'ladakh': [
+      'https://images.unsplash.com/photo-1581793745862-99fde7fa73d2?auto=format&fit=crop&q=80&w=2000', // Pangong Lake
+    ],
+    'kerala': [
+      'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&q=80&w=2000', // Houseboat Backwaters
+    ],
+    'goa': [
+      'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&q=80&w=2000', // Palolem Beach Sunset
+    ],
+    'rajasthan': [
+      'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&q=80&w=2000', // Hawa Mahal
+    ],
+    'jaipur': [
+      'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&q=80&w=2000',
+      'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?auto=format&fit=crop&q=80&w=2000', // Amer Fort
+    ],
+    'udaipur': [
+      'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=2000', // Lake Pichola
+    ],
     'paris': [
       'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=2000',
       'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&q=80&w=2000',
@@ -67,7 +103,7 @@ export async function fetchContextualImage(destination, tourType) {
 
   if (destination) {
     const destKey = destination.toLowerCase().trim();
-    const match = Object.keys(CURATED_IMAGES.destinations).find(k => destKey.includes(k));
+    const match = Object.keys(CURATED_IMAGES.destinations).find(k => destKey.includes(k) || k.includes(destKey));
     if (match) {
       const images = CURATED_IMAGES.destinations[match];
       selectedUrl = images[Math.floor(Math.random() * images.length)];
@@ -89,3 +125,29 @@ export async function fetchContextualImage(destination, tourType) {
   imageCache.set(cacheKey, selectedUrl);
   return selectedUrl;
 }
+
+export async function fetchSimilarImages(query = '', limit = 6) {
+  if (!query) return CURATED_IMAGES.fallbacks.map((url, i) => ({ id: `sim_${i}`, url, thumb: url }));
+
+  const qLower = query.toLowerCase().trim();
+  const destMatch = Object.keys(CURATED_IMAGES.destinations).find(k => qLower.includes(k) || k.includes(qLower));
+
+  if (destMatch) {
+    return CURATED_IMAGES.destinations[destMatch].slice(0, limit).map((url, i) => ({ id: `${destMatch}_${i}`, url, thumb: url }));
+  }
+
+  try {
+    const res = await fetch(`/api/public/images/search?query=${encodeURIComponent(query)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.results) && data.results.length > 0) {
+        return data.results.slice(0, limit);
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to fetch similar images from API:', e);
+  }
+
+  return CURATED_IMAGES.fallbacks.slice(0, limit).map((url, i) => ({ id: `fb_sim_${i}`, url, thumb: url }));
+}
+

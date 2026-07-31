@@ -556,9 +556,9 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
   useEffect(() => {
     let numDays = 0;
-    if (client.date_mode === 'days' && client.duration_days) {
+    if (client?.date_mode === 'days' && client?.duration_days) {
       numDays = parseInt(client.duration_days, 10) || 1;
-    } else if (client.date_mode === 'dates' && client.start_date && client.end_date) {
+    } else if (client?.date_mode === 'dates' && client?.start_date && client?.end_date) {
       const ms = new Date(client.end_date).getTime() - new Date(client.start_date).getTime();
       const diffDays = Math.round(ms / (1000 * 60 * 60 * 24)) + 1;
       numDays = diffDays > 0 ? diffDays : 1;
@@ -594,7 +594,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
       setProposal(prev => ({ ...(prev || {}), itinerary: { ...(prev?.itinerary || {}), days: nextDays } }));
     }
-  }, [days.length, proposal?.id, client.date_mode, client.duration_days, client.start_date, client.end_date, setProposal]);
+  }, [days.length, proposal?.id, client?.date_mode, client?.duration_days, client?.start_date, client?.end_date, setProposal]);
 
   const updateDay = useCallback((index, patch) => {
     setProposal(prev => {

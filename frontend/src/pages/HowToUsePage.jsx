@@ -372,7 +372,7 @@ export default function HowToUsePage() {
                         Step-by-Step Actions
                       </div>
                       <ol className="list-decimal pl-10 space-y-1 text-on-surface-variant">
-                        <li>Navigate to <strong>Step 5 (Preview)</strong> in the Proposal Wizard.</li>
+                        <li>Navigate to the <strong>Preview Step</strong> in the Proposal Wizard.</li>
                         <li>In the top toolbar next to style controls, click the purple <strong>VI Proposal Review</strong> button (or <strong>VI Auto-Title</strong> to generate a premium title).</li>
                         <li>VI scans your entire itinerary and checks: (a) Are hotel check-ins/check-outs paced comfortably or is the client switching hotels too frequently without reason? (b) Are sightseeing days rushed or repetitive? (c) Did you include important destination-specific reminders such as <strong>Visa requirements</strong>, <strong>passport validity</strong>, or essential <strong>packing guidelines</strong>?</li>
                         <li>If any recommendations or missing items are identified, VI highlights them under the <strong>VI Itinerary Pacing & Sequence Analysis</strong> panel so you can resolve them before generating your client PDF.</li>
@@ -403,7 +403,7 @@ export default function HowToUsePage() {
                         Required Inputs
                       </div>
                       <p className="text-on-surface-variant pl-5">
-                        Any text block, bullet point list, or rough notes in Step 4 Branding or inside the Step 5 WYSIWYG Live Editor.
+                        Any text block, bullet point list, or rough notes in the Proposal Wizard or inside the Live Preview WYSIWYG Editor.
                       </p>
                     </div>
 
@@ -413,8 +413,8 @@ export default function HowToUsePage() {
                         Step-by-Step Actions
                       </div>
                       <ol className="list-decimal pl-10 space-y-1 text-on-surface-variant">
-                        <li>In <strong>Step 4 (Branding)</strong>, click the <strong>VI Icon button</strong> (featuring the logo) right above Inclusions, Exclusions, or Terms to check grammar and expand bullet points.</li>
-                        <li>In <strong>Step 5 (Preview)</strong>, click <strong>✨ WYSIWYG Live Editor</strong> and click directly on any text paragraph.</li>
+                        <li>In the <strong>Proposal Wizard</strong>, click the <strong>VI Icon button</strong> (featuring the logo) right above Inclusions, Exclusions, or Terms to check grammar and expand bullet points.</li>
+                        <li>In the <strong>Preview Step</strong>, click <strong>✨ WYSIWYG Live Editor</strong> and click directly on any text paragraph.</li>
                         <li>An inline popover appears where you can edit your text directly and adjust styling.</li>
                         <li>Click <strong>Apply</strong> to commit the refined text to your proposal.</li>
                       </ol>
