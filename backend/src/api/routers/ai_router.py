@@ -338,17 +338,28 @@ class Assemble1ShotInput(BaseModel):
     destination: Optional[str] = None
     prompt: Optional[str] = None
     duration_days: int = 3
+    days_per_destination: Optional[Dict[str, int]] = None
     client_name: str = "Valued Traveler"
+    contact_info: Optional[str] = None
     group_type: str = "friends"
     pace: str = "medium"
     budget_per_head: float = 25000.0
+    budget_band: str = "mid"  # low, mid, high
     num_travelers: int = 2
+    num_adults: int = 2
+    num_children: int = 0
+    theme_tags: Optional[list] = None  # family, honeymoon, adventure, budget, luxury
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    start_city: Optional[str] = None  # arrival point for transfer logic
+    end_city: Optional[str] = None
     preferences_text: str = ""
     margin_type: str = "percentage"
     margin_value: float = 15.0
     tax_rate_percent: float = 5.0
     discount_amount: float = 0.0
     visibility_mode: str = "ITEMIZED"
+
 
 
 @router.post("/assemble-1shot")

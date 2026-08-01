@@ -169,3 +169,32 @@ async def upsert_knowledge(
 async def list_section_types():
     """Returns available section type keys and their human-readable titles."""
     return JSONResponse(content={"section_types": SECTION_TITLES})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 1 PDF EXTRACTION PIPELINE
+# ─────────────────────────────────────────────────────────────────────────────
+
+from fastapi import UploadFile, File
+
+@router.post("/pipeline/extract")
+async def extract_pdf_to_blocks(
+    file: UploadFile = File(...),
+    user: Any = Depends(verify_token_optional),
+):
+    """
+    Phase 1 Pipeline: Process raw PDF into Itinerary Blocks, Attraction Master Records,
+    embeddings, and manual review queue items.
+    """
+    agency_id, _ = _extract_user_context(user)
+    pdf_bytes = await file.read()
+    
+    from src.services.pdf_extraction_pipeline_service import process_pdf_vault_document
+    result = await process_pdf_vault_document(
+        pdf_bytes=pdf_bytes,
+        filename=file.filename or "uploaded_vault_document.pdf",
+        agency_id=agency_id or "global"
+    )
+
+    return JSONResponse(content=result)
+
