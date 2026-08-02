@@ -96,7 +96,9 @@ export const useProposalStore = create((set, get) => ({
           destination: p.destination || intakeData.destination,
           duration_days: p.duration_days || intakeData.duration_days,
           pace: intakeData.pace || 'medium',
-          budget: intakeData.budget_per_head || ''
+          budget: intakeData.budget_per_head || '',
+          start_date: intakeData.start_date || '',
+          end_date: intakeData.end_date || ''
         };
         set({
           proposal: p,
@@ -112,6 +114,33 @@ export const useProposalStore = create((set, get) => ({
     } catch (err) {
       console.warn('[1-Shot Store] Assembly API error, applying local deterministic fallback:', err);
       // Fallback local assembly if API is offline
+      let fallbackDays = [];
+      if (intakeData.days_per_destination && Object.keys(intakeData.days_per_destination).length > 0) {
+        let dNum = 1;
+        for (const [subDest, count] of Object.entries(intakeData.days_per_destination)) {
+          for (let i = 0; i < count; i++) {
+            fallbackDays.push({
+              day_number: dNum,
+              title: `Day ${dNum}: Explore ${subDest}`,
+              description: `Enjoy sightseeing, culture, and relaxation in ${subDest} at ${intakeData.pace || 'medium'} pace.`,
+              sub_destination: subDest,
+              activities: [{ name: `${subDest} Sightseeing Tour`, duration: '3 hrs', timing: '10:00 AM' }],
+              hotels: [{ name: 'Grand Deluxe Resort', category: '4 Star', meal_plan: 'MAP', price_per_night: 4500 }]
+            });
+            dNum++;
+          }
+        }
+      } else {
+        fallbackDays = Array.from({ length: intakeData.duration_days || 3 }, (_, i) => ({
+          day_number: i + 1,
+          title: `Day ${i + 1}: ${intakeData.destination || 'Destination'} Exploration`,
+          description: `Enjoy sightseeing, culture, and relaxation at ${intakeData.pace || 'medium'} pace.`,
+          sub_destination: intakeData.destination || 'City Center',
+          activities: [{ name: 'City Sightseeing Tour', duration: '3 hrs', timing: '10:00 AM' }],
+          hotels: [{ name: 'Grand Deluxe Resort', category: '4 Star', meal_plan: 'MAP', price_per_night: 4500 }]
+        }));
+      }
+
       const fallbackProposal = {
         id: `prop_${Date.now()}`,
         destination: intakeData.destination || 'Himachal',
@@ -119,22 +148,15 @@ export const useProposalStore = create((set, get) => ({
         total_price: (intakeData.budget_per_head || 25000) * (intakeData.num_travelers || 2),
         price_per_person: intakeData.budget_per_head || 25000,
         currency: 'INR',
-        overview: `Curated ${intakeData.duration_days || 3}-Day itinerary for ${intakeData.client_name || 'Valued Traveler'}.`,
-        days: Array.from({ length: intakeData.duration_days || 3 }, (_, i) => ({
-          day_number: i + 1,
-          title: `Day ${i + 1}: ${intakeData.destination || 'Destination'} Exploration`,
-          description: `Enjoy sightseeing, culture, and relaxation at ${intakeData.pace || 'medium'} pace.`,
-          sub_destination: intakeData.destination || 'City Center',
-          activities: [{ name: 'City Sightseeing Tour', duration: '3 hrs', timing: '10:00 AM' }],
-          hotels: [{ name: 'Grand Deluxe Resort', category: '4 Star', meal_plan: 'MAP', price_per_night: 4500 }]
-        })),
+        overview: `Curated ${intakeData.duration_days || 3}-Day itinerary for ${intakeData.client_name || 'Valued Traveler'} from ${intakeData.start_date || 'TBD'} to ${intakeData.end_date || 'TBD'}.`,
+        days: fallbackDays,
         inclusions: ['Private AC Car', 'Hotel with Breakfast & Dinner', 'Taxes & Driver Allowances'],
         exclusions: ['Flight / Train', 'Personal Expenses'],
         extra_sections: { what_to_pack: 'Comfortable walking shoes, sunscreen SPF 50+, casual attire.' }
       };
       set({
         proposal: fallbackProposal,
-        client: { ...get().client, customer_name: intakeData.client_name || 'Valued Traveler', destination: intakeData.destination },
+        client: { ...get().client, customer_name: intakeData.client_name || 'Valued Traveler', destination: intakeData.destination, start_date: intakeData.start_date, end_date: intakeData.end_date },
         status: 'idle',
         showQuickIntake: false
       });

@@ -120,54 +120,55 @@ export default function TemplateGalleryModal({ isOpen, onClose }) {
         </div>
 
         {/* Template Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-2 overflow-y-auto flex-1 mt-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 p-4 overflow-y-auto flex-1 mt-4 bg-surface-container-lowest min-h-[50vh]">
           {filteredTemplates.map((t) => {
             const isActive = activeTemplateSlug === t.slug;
             return (
-              <motion.div
+              <div
                 key={t.slug}
-                whileHover={{ scale: 1.02 }}
-                onClick={() => {
-                  setTemplateSlug(t.slug);
-                  if (onClose) onClose();
-                }}
-                className={`group relative flex flex-col bg-surface border rounded-xl overflow-hidden cursor-pointer transition-all ${
-                  isActive
-                    ? 'border-primary ring-2 ring-primary/40 shadow-lg'
-                    : 'border-outline-variant hover:border-primary/50'
+                className={`group relative flex flex-col bg-surface border rounded-xl overflow-hidden transition-all hover:shadow-lg min-h-[240px] ${
+                  isActive ? 'border-primary ring-2 ring-primary/40' : 'border-outline-variant hover:border-primary/50'
                 }`}
               >
-                {/* Thumbnail */}
-                <div className="relative aspect-[16/10] overflow-hidden bg-surface-container">
+                {/* Hero Image */}
+                <div className="relative aspect-video overflow-hidden bg-surface-container">
                   <img src={t.thumbnail} alt={t.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                  <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold uppercase rounded">
+                  <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/70 backdrop-blur-sm text-white text-[9px] font-bold uppercase rounded">
                     {t.category}
                   </div>
-                  {isActive && (
-                    <div className="absolute top-2 right-2 px-2 py-0.5 bg-primary text-on-primary text-[10px] font-bold uppercase rounded-full flex items-center gap-1 shadow">
-                      <span className="material-symbols-outlined text-[12px]">check</span> Active
+                </div>
+
+                {/* Content & Add Button */}
+                <div className="p-3 flex flex-col flex-1 gap-2">
+                  <div className="flex flex-col gap-0.5">
+                    <h4 className="font-bold text-sm text-on-surface line-clamp-1">{t.name}</h4>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {t.bestFor.slice(0, 2).map(tag => (
+                        <span key={tag} className="text-[9px] font-medium text-on-surface-variant bg-surface-container px-1 py-0.5 rounded uppercase">
+                          #{tag}
+                        </span>
+                      ))}
                     </div>
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="p-3 flex flex-col flex-1">
-                  <h4 className="font-bold text-sm text-on-surface line-clamp-1 group-hover:text-primary transition-colors">
-                    {t.name}
-                  </h4>
-                  <p className="text-[11px] text-on-surface-variant line-clamp-2 mt-1 flex-1 leading-relaxed">
-                    {t.description}
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-1 mt-2.5 pt-2 border-t border-outline-variant/40">
-                    {t.bestFor.map(tag => (
-                      <span key={tag} className="px-1.5 py-0.5 bg-surface-container text-on-surface-variant text-[9px] font-medium rounded uppercase">
-                        #{tag}
-                      </span>
-                    ))}
                   </div>
+
+                  <button
+                    onClick={() => {
+                      setTemplateSlug(t.slug);
+                      if (onClose) onClose();
+                    }}
+                    className={`mt-auto flex items-center justify-center w-full py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      isActive 
+                        ? 'bg-primary text-on-primary' 
+                        : 'bg-surface-container hover:bg-primary/10 hover:text-primary text-on-surface'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px] mr-1">
+                      {isActive ? 'check' : 'add'}
+                    </span>
+                    {isActive ? 'Active' : 'Apply'}
+                  </button>
                 </div>
-              </motion.div>
+              </div>
             );
           })}
         </div>

@@ -10,6 +10,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { extractFromPDF } from './src/ocr.js';
+import { extractTravelEntities } from './src/extractor.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const envPath = path.join(__dirname, '.env');
@@ -254,6 +257,26 @@ app.post('/generate', async (req, res) => {
       await page.close().catch(() => {});
       releasePage(page);
     }
+  }
+});
+
+app.post('/extract', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+  try {
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body);
+    const mimeType = req.headers['content-type'] || 'application/pdf';
+    
+    const extractionResult = await extractFromPDF(buffer, mimeType);
+    const entities = extractTravelEntities(extractionResult.text);
+
+    res.json({
+      text: extractionResult.text,
+      page_count: extractionResult.pageCount,
+      isScanned: extractionResult.isScanned,
+      entities: entities,
+    });
+  } catch (err) {
+    console.error('[pdf-service] Extraction endpoint error:', err);
+    res.status(500).json({ error: String(err?.message || err) });
   }
 });
 

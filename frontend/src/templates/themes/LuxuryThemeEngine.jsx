@@ -36,7 +36,8 @@ export default function LuxuryThemeEngine(props) {
 
     if (days.length > 0) {
       days.forEach((day, idx) => {
-        const query = `${day.title || dest} ${config.imageKeyword || 'travel landscape'}`;
+        const activityStr = Array.isArray(day.activities) ? (day.activities[0]?.name || day.activities[0] || '') : '';
+        const query = `${day.sub_destination || day.title || dest} ${activityStr} ${config.imageKeyword || 'travel landscape'}`.trim();
         fetchContextualImage(query, 'scenic').then(url => {
           setDayImages(prev => ({ ...prev, [idx]: url }));
         });

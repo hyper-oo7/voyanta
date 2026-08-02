@@ -178,3 +178,52 @@ export const api = {
   patch: (url, body, options) => fetchWithRetry(url, { ...options, method: 'PATCH', body }),
   delete: (url, options) => fetchWithRetry(url, { ...options, method: 'DELETE' }),
 };
+
+export async function uploadDocument(file, agencyId = 'global') {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('agency_id', agencyId);
+  const targetUrl = getBackendUrl('/api/documents/upload');
+  const resp = await fetch(targetUrl, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(errText || `Upload failed: ${resp.status}`);
+  }
+  const data = await resp.json();
+  return { data };
+}
+
+export async function listDocuments(agencyId = 'global') {
+  const targetUrl = getBackendUrl(`/api/documents/?agency_id=${encodeURIComponent(agencyId)}`);
+  const resp = await fetch(targetUrl);
+  if (!resp.ok) throw new Error('Failed to list documents');
+  const data = await resp.json();
+  return { data };
+}
+
+export async function deleteDocument(docId, agencyId = 'global') {
+  const targetUrl = getBackendUrl(`/api/documents/${docId}?agency_id=${encodeURIComponent(agencyId)}`);
+  const resp = await fetch(targetUrl, { method: 'DELETE' });
+  if (!resp.ok) throw new Error('Delete failed');
+  const data = await resp.json();
+  return { data };
+}
+
+export async function generateProposalWithTemplate(payload) {
+  const data = await api.post('/api/proposals/generate-with-template', payload);
+  return { data };
+}
+
+export async function saveProposal(payload) {
+  const data = await api.post('/api/proposals/save', payload);
+  return { data };
+}
+
+export async function executeRAGQuery(payload) {
+  const data = await api.post('/api/rag/query', payload);
+  return { data };
+}
+

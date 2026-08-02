@@ -121,6 +121,47 @@ async def delete_package(pkg_id: str, user: Any = Depends(verify_token_optional)
     return JSONResponse(content={"status": "success", "message": "Package deleted"})
 
 
+@router.get("/sub-destinations")
+async def get_agency_sub_destinations(user: Any = Depends(verify_token_optional)):
+    """
+    Get all unique sub-destinations extracted from the agency's vault packages.
+    """
+    agency_id, _ = _extract_user_context(user)
+    from src.services.supabase_client import get_supabase_client
+    sb = get_supabase_client()
+    if not sb:
+        return JSONResponse(content={"status": "success", "sub_destinations": []})
+
+    try:
+        # Fetch all active packages for this agency
+        query = sb.table("vault_packages").select("sub_destinations").eq("status", "active")
+        if agency_id:
+            query = query.eq("agency_id", agency_id)
+        
+        res = query.execute()
+        packages = res.data or []
+        
+        # Aggregate and deduplicate sub-destinations
+        unique_subs = set()
+        for pkg in packages:
+            subs = pkg.get("sub_destinations") or []
+            if isinstance(subs, str):
+                import json
+                try:
+                    subs = json.loads(subs)
+                except:
+                    subs = []
+            if isinstance(subs, list):
+                for s in subs:
+                    if isinstance(s, str) and s.strip():
+                        unique_subs.add(s.strip().title())
+                        
+        return JSONResponse(content={"status": "success", "sub_destinations": sorted(list(unique_subs))})
+    except Exception as e:
+        logger.error(f"[VaultRouter] Error fetching sub-destinations: {e}")
+        return JSONResponse(content={"status": "error", "sub_destinations": []}, status_code=500)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DESTINATION KNOWLEDGE
 # ─────────────────────────────────────────────────────────────────────────────

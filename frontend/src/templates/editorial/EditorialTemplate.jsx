@@ -29,7 +29,8 @@ export default function EditorialTemplate(props) {
     // Pre-fetch images for days
     if (days.length > 0) {
       days.forEach((day, idx) => {
-        const query = `${day.title || dest} travel landscape`;
+        const activityStr = Array.isArray(day.activities) ? (day.activities[0]?.name || day.activities[0] || '') : '';
+        const query = `${day.sub_destination || day.title || dest} ${activityStr} travel landscape`.trim();
         fetchContextualImage(query, 'scenic').then(url => {
           setDayImages(prev => ({ ...prev, [idx]: url }));
         });
@@ -241,15 +242,6 @@ export default function EditorialTemplate(props) {
             </tfoot>
           </table>
 
-          <div className="cta-box">
-            <h3 className="text-2xl font-bold m-0 mb-2 font-display">Ready to Embark?</h3>
-            <p className="text-slate-300 text-sm max-w-md mx-auto m-0 mb-6">
-              Approve your curated itinerary with one click and let your dedicated curator finalize reservations immediately.
-            </p>
-            <div className="inline-block bg-rose-600 hover:bg-rose-700 text-white font-bold px-8 py-3 rounded-xl shadow-lg transition-transform hover:scale-105 cursor-pointer">
-              Approve & Confirm Reservations &rarr;
-            </div>
-          </div>
         </section>
       )}
 

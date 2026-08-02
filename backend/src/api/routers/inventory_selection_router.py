@@ -6,7 +6,7 @@ city location and budget band for instant agent 1-click selection.
 """
 
 import logging
-from typing import Optional, List
+from typing import Optional, List, Any
 from fastapi import APIRouter, Query, Depends
 from fastapi.responses import JSONResponse
 

@@ -6,6 +6,9 @@ import QuickIntakeModal from '../components/canvas/QuickIntakeModal.jsx';
 import TemplateGalleryModal from '../components/canvas/TemplateGalleryModal.jsx';
 import TemplateRenderer from '../components/TemplateRenderer.jsx';
 import { Step2Itinerary } from './wizard/Step2Itinerary.jsx';
+import PDFUploader from '../components/PDFUploader.jsx';
+import RAGQueryPanel from '../components/RAGQueryPanel.jsx';
+import { executeRAGQuery } from '../services/api.js';
 
 export default function UnifiedItineraryCanvas() {
   const navigate = useNavigate();
@@ -20,6 +23,9 @@ export default function UnifiedItineraryCanvas() {
   } = useProposalStore();
 
   const [activeTab, setActiveTab] = useState('proposal');
+  const [showRAGDrawer, setShowRAGDrawer] = useState(false);
+  const [ragActiveTab, setRagActiveTab] = useState('query');
+  const [selectedSubDestinations, setSelectedSubDestinations] = useState([]);
 
   const p = proposal || {
     destination: 'Himachal Pradesh',
@@ -42,9 +48,97 @@ export default function UnifiedItineraryCanvas() {
   const finalTotal = Number(p.total_price) || (Number(p.price_per_person) ? Number(p.price_per_person) * (Number(p.num_travelers) || 2) : 0) || (Number(currentClient?.budget) ? Number(currentClient.budget) * (Number(p.num_travelers) || 2) : 50000);
   const pricePerPerson = Number(p.price_per_person) || Math.round(finalTotal / (Number(p.num_travelers) || 2)) || 25000;
 
+  const [subDestCandidates, setSubDestCandidates] = useState([]);
+  const [isGeneratingDay, setIsGeneratingDay] = useState(false);
+
+  useEffect(() => {
+    const fetchVaultSubDestinations = async () => {
+      try {
+        const res = await fetch('/api/v1/vault/sub-destinations', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('voyanta_token')}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'success' && data.sub_destinations) {
+            setSubDestCandidates(data.sub_destinations);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch vault sub-destinations:', err);
+      }
+    };
+    fetchVaultSubDestinations();
+  }, []);
+
+  const handleAddSubDestination = async (subDest) => {
+    const name = typeof subDest === 'string' ? subDest : subDest.name;
+    if (selectedSubDestinations.includes(name)) return;
+    
+    const nextSubs = [...selectedSubDestinations, name];
+    setSelectedSubDestinations(nextSubs);
+    setIsGeneratingDay(true);
+
+    try {
+      const res = await fetch('/api/v1/ai/generate-day-module', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('voyanta_token')}`
+        },
+        body: JSON.stringify({ sub_destination: name })
+      });
+      
+      const newDayNum = (p.days || []).length + 1;
+      let newDay = null;
+      
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'success' && data.day_module) {
+          newDay = { ...data.day_module, day_number: newDayNum };
+        }
+      }
+      
+      if (!newDay) {
+        throw new Error('Failed to generate day');
+      }
+
+      updateProposal({
+        ...p,
+        days: [...(p.days || []), newDay]
+      });
+    } catch (err) {
+      console.error('Failed to generate AI day block:', err);
+      // Fallback
+      const newDayNum = (p.days || []).length + 1;
+      const newDay = {
+        day_number: newDayNum,
+        title: `Day ${newDayNum}: Excursion to ${name}`,
+        description: `Explore key attractions, scenic spots, and local experiences in ${name}.`,
+        sub_destination: name,
+        activities: [{ name: `${name} Sightseeing & Local Walk`, timing: '10:00 AM' }]
+      };
+      updateProposal({
+        ...p,
+        days: [...(p.days || []), newDay]
+      });
+    } finally {
+      setIsGeneratingDay(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-background text-on-background flex flex-col font-body">
-      {/* ─── Top Canvas Toolbar Bar (Non-sticky: scrolls up naturally) ───────────── */}
+    <div className="min-h-screen bg-background text-on-background flex flex-col font-body relative">
+      {/* ─── Fixed Left Vertical RAG Tab Button ───────────────────────────── */}
+      <button
+        onClick={() => setShowRAGDrawer(!showRAGDrawer)}
+        className="fixed left-0 top-1/3 z-40 px-2 py-4 bg-primary text-on-primary font-bold text-xs rounded-r-2xl shadow-xl flex flex-col items-center gap-2 hover:bg-primary/90 transition-all border-y border-r border-outline-variant"
+        title="Open AI RAG Knowledge Base & Supplier PDF Vault"
+      >
+        <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
+        <span className="[writing-mode:vertical-lr] tracking-widest uppercase text-[11px]">RAG Vault</span>
+      </button>
+
+      {/* ─── Top Canvas Toolbar Bar ───────────────────────────────────────── */}
       <header className="bg-surface-container-high/90 backdrop-blur-md border-b border-outline-variant px-4 py-3 flex flex-wrap items-center justify-between gap-4">
         {/* Left: Trip Title & Client Meta */}
         <div className="flex items-center gap-3">
@@ -60,7 +154,7 @@ export default function UnifiedItineraryCanvas() {
                 {p.destination || 'Custom Proposal'} — {currentClient.customer_name || 'Valued Traveler'}
               </h1>
               <span className="px-2 py-0.5 bg-primary/10 text-primary text-[11px] font-bold rounded-md uppercase">
-                {p.duration_days || 3} Days
+                {p.duration_days || (p.days || []).length || 3} Days
               </span>
             </div>
             <p className="text-xs text-on-surface-variant">
@@ -69,9 +163,8 @@ export default function UnifiedItineraryCanvas() {
           </div>
         </div>
 
-        {/* Center: Proposal/Preview Mode Toggle, Quick Intake, 96-Template Selector & Visibility Mode */}
+        {/* Center: Proposal vs Preview View Switcher, 1-Shot Intake, Template Gallery */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Proposal vs Preview View Switcher Button */}
           <div className="flex items-center p-0.5 bg-surface-container border border-outline-variant rounded-xl text-xs font-medium">
             <button
               onClick={() => setActiveTab('proposal')}
@@ -97,7 +190,6 @@ export default function UnifiedItineraryCanvas() {
             </button>
           </div>
 
-          {/* Itemized vs Total Only Toggle */}
           <div className="flex items-center p-0.5 bg-surface-container border border-outline-variant rounded-xl text-xs font-medium">
             <button
               onClick={() => setCostingPrefs({ ...costingPrefs, visibility_mode: 'ITEMIZED' })}
@@ -121,7 +213,6 @@ export default function UnifiedItineraryCanvas() {
             </button>
           </div>
 
-          {/* Quick 1-Shot Intake Button */}
           <button
             onClick={() => setShowQuickIntake(true)}
             className="px-3 py-1.5 bg-primary text-on-primary font-bold text-xs rounded-xl shadow hover:bg-primary/90 transition-all flex items-center gap-1.5"
@@ -130,33 +221,29 @@ export default function UnifiedItineraryCanvas() {
             1-Shot Quick Intake
           </button>
 
-          {/* 96-Template Architecture Switcher */}
           <button
             onClick={() => setShowTemplateGallery(true)}
             className="px-3 py-1.5 bg-surface-container hover:bg-surface-container-highest text-on-surface text-xs font-semibold rounded-xl border border-outline-variant transition-all flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-primary text-[16px]">palette</span>
-            <span>Theme: <strong>{activeTemplateSlug.toUpperCase()}</strong></span>
+            <span>Theme: <strong>{(activeTemplateSlug || 'classic').toUpperCase()}</strong></span>
             <span className="px-1.5 py-0.5 bg-primary/20 text-primary text-[10px] font-bold rounded">96</span>
           </button>
         </div>
 
-        {/* Right: Web View New Window, Copy Client Link & PDF Print */}
+        {/* Right: Web View Studio & Print PDF */}
         <div className="flex items-center gap-2">
-          {/* Open Web View Microsite in New Window */}
           <button
             onClick={() => {
               const token = p.share_token || p.id || 'demo';
               window.open(`/view/${token}`, '_blank');
             }}
             className="px-3 py-1.5 bg-secondary-container text-on-secondary-container hover:bg-secondary-container/80 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
-            title="Open Interactive Web View Studio in New Window to edit & preview"
           >
             <span className="material-symbols-outlined text-[16px]">open_in_new</span>
             Open Web View Studio
           </button>
 
-          {/* Copy Client Mode Link */}
           <button
             onClick={() => {
               const token = p.share_token || p.id || 'demo';
@@ -165,13 +252,11 @@ export default function UnifiedItineraryCanvas() {
               alert('Copied Client Web Link to clipboard!\nSend this link to your client: ' + clientUrl);
             }}
             className="px-3 py-1.5 bg-surface-container hover:bg-surface-container-highest text-on-surface border border-outline-variant text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5"
-            title="Copy client-ready link to share via WhatsApp/Email"
           >
             <span className="material-symbols-outlined text-primary text-[16px]">link</span>
             Copy Client Link
           </button>
 
-          {/* Download / Print PDF */}
           <button
             onClick={() => window.print()}
             className="p-2 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-xl border border-outline-variant transition-colors"
@@ -182,7 +267,7 @@ export default function UnifiedItineraryCanvas() {
         </div>
       </header>
 
-      {/* ─── Full Width Canvas Container View ────────────────────────────────────────── */}
+      {/* ─── Main Canvas Editor Container ────────────────────────────────────────── */}
       <main className="flex-1 bg-background p-4 sm:p-6 lg:p-8">
         <AnimatePresence mode="wait">
           {activeTab === 'proposal' ? (
@@ -194,7 +279,7 @@ export default function UnifiedItineraryCanvas() {
               transition={{ duration: 0.2 }}
               className="max-w-5xl mx-auto space-y-6"
             >
-              {/* Section 1: Client & Trip Details Card */}
+              {/* Section 1: Client & Trip Parameters Card with Sub-Destination Auto-Fill */}
               <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold font-headline text-lg text-on-surface flex items-center gap-2">
@@ -203,7 +288,7 @@ export default function UnifiedItineraryCanvas() {
                   <span className="text-xs text-primary font-semibold">1-Shot Editable</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold uppercase text-on-surface-variant mb-1">Client Name</label>
                     <input
@@ -218,9 +303,70 @@ export default function UnifiedItineraryCanvas() {
                     <input
                       type="text"
                       value={currentClient.destination}
-                      onChange={(e) => setClient({ destination: e.target.value })}
+                      onChange={(e) => {
+                        setClient({ destination: e.target.value });
+                        updateProposal({ ...p, destination: e.target.value });
+                      }}
+                      placeholder="e.g. Himachal Pradesh, Manali, Kerala"
                       className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-xl text-xs text-on-surface font-semibold"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase text-on-surface-variant mb-1">Target Budget (₹)</label>
+                    <input
+                      type="number"
+                      value={currentClient.budget}
+                      onChange={(e) => {
+                        const newBudget = e.target.value;
+                        setClient({ budget: newBudget });
+                        // Update the proposal total if the budget changes directly to keep them in sync for estimates
+                        updateProposal({ ...p, total_price: Number(newBudget) || p.total_price });
+                      }}
+                      placeholder="e.g. 50000"
+                      className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-xl text-xs text-on-surface font-semibold"
+                    />
+                  </div>
+                </div>
+
+                {/* Sub-Destinations Auto-Fill Options Extracted from Vault PDFs */}
+                <div className="p-3.5 bg-surface border border-outline-variant/60 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-on-surface flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-primary text-[16px]">location_city</span>
+                      ✨ Sub-destinations Extracted from Vault PDFs:
+                    </span>
+                    <span className="text-[11px] text-on-surface-variant">
+                      {isGeneratingDay ? 'Generating day module with AI...' : 'Click pill to add to itinerary'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {subDestCandidates.length > 0 ? (
+                      subDestCandidates.map((sd) => {
+                        const sdName = typeof sd === 'string' ? sd : sd.name;
+                        const isAdded = selectedSubDestinations.includes(sdName);
+                        return (
+                          <button
+                            key={sdName}
+                            type="button"
+                            disabled={isAdded || isGeneratingDay}
+                            onClick={() => handleAddSubDestination(sd)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 border ${
+                              isAdded
+                                ? 'bg-primary-container text-on-primary-container border-primary opacity-50'
+                                : 'bg-surface border-outline-variant text-on-surface hover:border-primary hover:text-primary'
+                            }`}
+                          >
+                            {isAdded ? <span className="material-symbols-outlined text-[14px]">check</span> : <span className="material-symbols-outlined text-[14px]">add</span>}
+                            <span>{sdName}</span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <span className="text-xs text-on-surface-variant italic">
+                        Type a destination above (e.g. Manali, Himachal, Kerala) to extract sub-destinations from Vault PDFs.
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -247,7 +393,7 @@ export default function UnifiedItineraryCanvas() {
                 />
               </div>
 
-              {/* Section 3: Full-Budget Costing & Margin Table */}
+              {/* Section 3: Costing & Margins */}
               <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold font-headline text-lg text-on-surface flex items-center gap-2">
@@ -286,13 +432,11 @@ export default function UnifiedItineraryCanvas() {
               className="max-w-6xl mx-auto w-full"
             >
               <div className="bg-surface border border-outline-variant rounded-2xl shadow-xl overflow-hidden flex flex-col min-h-[calc(100vh-140px)]">
-                {/* Live View Bar Header */}
                 <div className="px-5 py-3 bg-surface-container-high border-b border-outline-variant flex items-center justify-between text-xs">
                   <span className="font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
                     <span className="material-symbols-outlined text-[18px] text-primary">description</span>
-                    Layout Preview: <strong className="text-on-surface">{activeTemplateSlug.toUpperCase()}</strong>
+                    Layout Preview: <strong className="text-on-surface">{(activeTemplateSlug || 'classic').toUpperCase()}</strong>
                   </span>
-
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => {
@@ -304,16 +448,12 @@ export default function UnifiedItineraryCanvas() {
                       <span className="material-symbols-outlined text-[16px]">open_in_new</span>
                       Open Web View Studio
                     </button>
-                    <span className="text-[11px] text-emerald-400 font-bold px-2.5 py-0.5 bg-emerald-500/10 rounded-full border border-emerald-500/20">
-                      Live Dynamic Sync
-                    </span>
                   </div>
                 </div>
 
-                {/* Renderer Viewport */}
                 <div className="flex-1 p-6 bg-surface-container-lowest overflow-y-auto">
                   <TemplateRenderer 
-                    style={activeTemplateSlug}
+                    style={activeTemplateSlug || 'classic'}
                     data={{
                       proposal: p,
                       totals: { subtotal: finalTotal, currency: 'INR' },
@@ -327,6 +467,75 @@ export default function UnifiedItineraryCanvas() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* ─── Slide-Over RAG Vault & Search Drawer ────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showRAGDrawer && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex justify-end"
+          >
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="w-full max-w-2xl bg-surface-container-low border-l border-outline-variant h-full shadow-2xl flex flex-col"
+            >
+              {/* Drawer Header */}
+              <div className="p-4 border-b border-outline-variant bg-surface-container flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary">auto_awesome</span>
+                  <h2 className="font-bold text-base text-on-surface">RAG Knowledge Base & Supplier PDF Vault</h2>
+                </div>
+                <button
+                  onClick={() => setShowRAGDrawer(false)}
+                  className="p-1 rounded-lg hover:bg-surface-container-high text-on-surface-variant"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              {/* Drawer Tabs */}
+              <div className="flex border-b border-outline-variant bg-surface px-4 gap-4 text-xs font-semibold">
+                <button
+                  onClick={() => setRagActiveTab('query')}
+                  className={`py-3 border-b-2 flex items-center gap-1.5 transition-all ${
+                    ragActiveTab === 'query'
+                      ? 'border-primary text-primary font-bold'
+                      : 'border-transparent text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">search</span>
+                  Search Vector Knowledge Base
+                </button>
+                <button
+                  onClick={() => setRagActiveTab('upload')}
+                  className={`py-3 border-b-2 flex items-center gap-1.5 transition-all ${
+                    ragActiveTab === 'upload'
+                      ? 'border-primary text-primary font-bold'
+                      : 'border-transparent text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">cloud_upload</span>
+                  Upload & Index Supplier PDFs
+                </button>
+              </div>
+
+              {/* Drawer Content */}
+              <div className="flex-1 p-6 overflow-y-auto bg-surface-container-lowest">
+                {ragActiveTab === 'query' ? (
+                  <RAGQueryPanel agencyId={branding?.agency_id || 'demo-agency'} />
+                ) : (
+                  <PDFUploader agencyId={branding?.agency_id || 'demo-agency'} />
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ─── Modals ────────────────────────────────────────────────────────── */}
       <QuickIntakeModal isOpen={showQuickIntake} onClose={() => setShowQuickIntake(false)} />

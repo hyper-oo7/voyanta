@@ -430,8 +430,17 @@ async def assemble_1shot_route(
             num_travelers=input.num_travelers,
             preferences_text=pref,
             margin_config=margin_cfg,
-            agency_id=agency_id
+            agency_id=agency_id,
+            days_per_destination=input.days_per_destination
         )
+        
+        # Inject Dates
+        if input.start_date:
+            proposal.client_name = input.client_name
+            # There is no start_date on FinalProposalSchema? Let's check.
+            # wait, the frontend extracts it from client anyway, but we can set overview 
+            proposal.overview = f"Exclusive trip customized for {input.client_name} from {input.start_date} to {input.end_date or 'TBD'}."
+
 
         return {"status": "success", "proposal": proposal.model_dump(by_alias=True)}
 
@@ -439,5 +448,75 @@ async def assemble_1shot_route(
         logger.exception("[1-Shot Assembly] Generation failed")
         raise HTTPException(status_code=500, detail=str(e))
 
+class GenerateDayModuleInput(BaseModel):
+    sub_destination: str
+    agency_id: Optional[str] = "global"
 
-
+@router.post("/generate-day-module")
+async def generate_day_module(
+    input: GenerateDayModuleInput,
+    user: Any = Depends(verify_token_optional)
+):
+    """
+    Generate a dynamic ProposalDay block using RAG data for a specific sub-destination.
+    """
+    agency_id = "global"
+    if isinstance(user, dict):
+        agency_id = (
+            (user.get("user_metadata") or {}).get("agency_id")
+            or (user.get("app_metadata") or {}).get("agency_id")
+            or user.get("agency_id")
+            or "global"
+        )
+    
+    # Run RAG query for this specific sub-destination
+    from src.services.rag_engine import rag_engine
+    rag_result = rag_engine.run_rag(
+        agency_id=agency_id,
+        destination=input.sub_destination,
+        duration_days=1,
+        travelers=2,
+        travel_style="standard",
+    )
+    
+    prompt = f"""
+    Based on the following retrieved knowledge from our past proposals/PDFs, generate a single Day itinerary block for the sub-destination: {input.sub_destination}.
+    Do NOT invent attractions or hotels that are not present in the context. If the context is empty, provide a generic but realistic day for {input.sub_destination}.
+    
+    CONTEXT:
+    {rag_result['context']}
+    
+    Respond strictly in JSON format matching this schema:
+    {{
+        "title": "Day X: Title here",
+        "description": "Narrative description of the day",
+        "sub_destination": "{input.sub_destination}",
+        "activities": [
+            {{"name": "Activity Name", "timing": "10:00 AM"}}
+        ],
+        "hotels": [
+            {{"name": "Hotel Name", "category": "4 Star", "meal_plan": "MAP"}}
+        ]
+    }}
+    """
+    
+    from src.services.ai_client import call_llm
+    try:
+        raw_text = await call_llm(
+            prompt=prompt,
+            system_prompt="You are an expert Voyanta travel curator. Always return valid JSON only.",
+            temperature=0.5
+        )
+        
+        import json
+        clean_json = raw_text.strip()
+        if clean_json.startswith("```json"):
+            clean_json = clean_json[7:-3].strip()
+        elif clean_json.startswith("```"):
+            clean_json = clean_json[3:-3].strip()
+            
+        day_module = json.loads(clean_json)
+        return {"status": "success", "day_module": day_module}
+    except Exception as e:
+        logger.error(f"[AI GenerateDay] Failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate day module")

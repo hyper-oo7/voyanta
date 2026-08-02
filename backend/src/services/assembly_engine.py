@@ -141,7 +141,8 @@ def assemble_1shot_proposal(
     preferences_text: str = "",
     margin_config: Optional[MarginConfig] = None,
     agency_id: str = "global",
-    travel_month: int = 7
+    travel_month: int = 7,
+    days_per_destination: Optional[Dict[str, int]] = None
 ) -> FinalProposalSchema:
     """
     1-Shot Assembly Engine: Combines matching Day Modules, Vault Pricing, Feasibility Checks,
@@ -172,9 +173,36 @@ def assemble_1shot_proposal(
     # 3. Assemble sequence up to duration_days
     all_packing_items: List[str] = []
 
-    for d_num in range(1, duration_days + 1):
-        mod_index = (d_num - 1) % len(candidate_mods)
-        mod = candidate_mods[mod_index]
+    # If days_per_destination is provided, use it to build day_sequence
+    day_sequence = []
+    if days_per_destination and isinstance(days_per_destination, dict):
+        d_num = 1
+        for sub_dest, days in days_per_destination.items():
+            for _ in range(int(days)):
+                day_sequence.append({"day_number": d_num, "sub_destination": sub_dest})
+                d_num += 1
+    else:
+        for d_num in range(1, duration_days + 1):
+            day_sequence.append({"day_number": d_num, "sub_destination": None})
+
+    for seq_item in day_sequence:
+        d_num = seq_item["day_number"]
+        requested_sub = seq_item["sub_destination"]
+
+        # If a specific sub-destination is requested, filter candidate_mods for it
+        if requested_sub:
+            matching_mods = [m for m in candidate_mods if requested_sub.lower() in m.get("sub_destination", "").lower() or m.get("sub_destination", "").lower() in requested_sub.lower()]
+            if matching_mods:
+                mod = matching_mods[(d_num - 1) % len(matching_mods)]
+            else:
+                mod = candidate_mods[(d_num - 1) % len(candidate_mods)]
+                # Override title/description if no matching module is found
+                mod = mod.copy()
+                mod["sub_destination"] = requested_sub
+                mod["title"] = f"Explore {requested_sub}"
+                mod["description"] = f"Enjoy a curated day of sightseeing and experiences in {requested_sub}."
+        else:
+            mod = candidate_mods[(d_num - 1) % len(candidate_mods)]
 
         raw_acts = mod.get("activities", [])
         
