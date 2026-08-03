@@ -3,6 +3,20 @@
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- Ensure referenced documents table exists
+CREATE TABLE IF NOT EXISTS public.documents (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    agency_id TEXT NOT NULL DEFAULT 'global',
+    filename TEXT NOT NULL,
+    document_type TEXT DEFAULT 'pdf',
+    tags TEXT[] DEFAULT '{}',
+    extracted_entities JSONB DEFAULT '{}'::jsonb,
+    page_count INT DEFAULT 1,
+    status TEXT DEFAULT 'processed',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Document chunks table with vector embeddings
 CREATE TABLE IF NOT EXISTS public.document_chunks (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -40,12 +54,15 @@ ON public.document_chunks USING GIN (metadata);
 -- Enable RLS for Security Isolation
 ALTER TABLE public.document_chunks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Tenant Read Document Chunks" ON public.document_chunks;
 CREATE POLICY "Tenant Read Document Chunks" ON public.document_chunks
     FOR SELECT USING (agency_id = 'global' OR agency_id = current_setting('app.current_agency_id', true));
 
+DROP POLICY IF EXISTS "Tenant Insert Document Chunks" ON public.document_chunks;
 CREATE POLICY "Tenant Insert Document Chunks" ON public.document_chunks
     FOR INSERT WITH CHECK (agency_id = 'global' OR agency_id = current_setting('app.current_agency_id', true));
 
+DROP POLICY IF EXISTS "Tenant Delete Document Chunks" ON public.document_chunks;
 CREATE POLICY "Tenant Delete Document Chunks" ON public.document_chunks
     FOR DELETE USING (agency_id = 'global' OR agency_id = current_setting('app.current_agency_id', true));
 

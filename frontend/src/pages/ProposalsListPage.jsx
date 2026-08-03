@@ -12,6 +12,7 @@ import { logActivity } from '../services/activityLogService.js';
 import { getAgencyId } from '../lib/supabaseClient.js';
 import { api } from '../services/api.js';
 import SmartContactCaptureModal from '../components/common/SmartContactCaptureModal.jsx';
+import QuickGenerateModal from '../components/proposals/QuickGenerateModal.jsx';
 // Reuse the dashboard's Stitch HTML chrome (sidebar + topbar + table styling)
 // so the new Proposals list page matches the existing design language without
 // touching any styles.
@@ -30,6 +31,7 @@ export default function ProposalsListPage() {
   
   const [editing, setEditing] = useState(null);
   const [shareProposal, setShareProposal] = useState(null);
+  const [showQuickGenerate, setShowQuickGenerate] = useState(false);
   
   const [mountNode, setMountNode] = useState(null);
 
@@ -90,6 +92,7 @@ export default function ProposalsListPage() {
           loading={loading}
           error={error}
           highlightId={params.get('highlight')}
+          onQuickGenerate={() => setShowQuickGenerate(true)}
           onView={(p) => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=5`)}
           onEdit={(p) => navigate(`/proposals/wizard?id=${encodeURIComponent(p.id)}&step=1`)}
           onDuplicate={async (p) => {
@@ -172,6 +175,7 @@ export default function ProposalsListPage() {
       {shareProposal && (
         <ShareModal proposal={shareProposal} onClose={() => setShareProposal(null)} />
       )}
+      <QuickGenerateModal isOpen={showQuickGenerate} onClose={() => setShowQuickGenerate(false)} />
     </div>
   );
 }
@@ -183,7 +187,7 @@ import { settingsService } from '../services/resourceService.js';
 
 function Portal({ node, children }) { return createPortal(children, node); }
 
-function ProposalsListPanel({ proposals, loading, error, highlightId, onView, onEdit, onDuplicate, onDelete, onDeleteAll, onShare, onExport }) {
+function ProposalsListPanel({ proposals, loading, error, highlightId, onView, onEdit, onDuplicate, onDelete, onDeleteAll, onShare, onExport, onQuickGenerate }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [page, setPage] = useState(0);
@@ -211,6 +215,22 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
           <h2 className="text-base font-semibold text-on-surface-variant m-0">Manage and organize your client proposals in one place.</h2>
         </div>
         <div className="flex flex-wrap items-center gap-md w-full lg:w-auto justify-end">
+            <button
+              id="ai-quick-generate-btn"
+              onClick={onQuickGenerate}
+              className="flex items-center gap-sm px-xl py-md font-label-md font-bold rounded-xl border-none cursor-pointer transition-all"
+              style={{
+                background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                color: '#fff',
+                boxShadow: '0 4px 16px rgba(124,58,237,0.4)',
+                letterSpacing: '0.01em',
+              }}
+              onMouseEnter={e => e.currentTarget.style.boxShadow = '0 6px 24px rgba(124,58,237,0.6)'}
+              onMouseLeave={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(124,58,237,0.4)'}
+            >
+              <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+              AI Generate
+            </button>
           <div className="relative flex-1 min-w-[260px] sm:w-80 md:w-96">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
             <input
@@ -267,11 +287,22 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
             <span className="material-symbols-outlined text-[40px] text-primary">description</span>
           </div>
           <h3 className="text-headline-sm text-on-surface mb-xs">No proposals yet</h3>
-          <p className="text-on-surface-variant font-body-lg mb-xl max-w-md">Create your first stunning client proposal using our intuitive wizard.</p>
-          <button onClick={() => window.location.href = '/proposals/wizard?step=1'} className="px-xl py-md bg-primary text-white rounded-xl font-label-md hover:bg-primary/90 transition-colors shadow-md hover:shadow-lg flex items-center gap-sm">
-            <span className="material-symbols-outlined text-[20px]">add</span>
-            Create New Proposal
-          </button>
+          <p className="text-on-surface-variant font-body-lg mb-xl max-w-md">Create your first proposal with AI or use the step-by-step wizard.</p>
+          <div className="flex flex-wrap items-center justify-center gap-md">
+            <button
+              onClick={onQuickGenerate}
+              className="px-xl py-md font-label-md font-bold rounded-xl border-none cursor-pointer flex items-center gap-sm transition-all"
+              style={{ background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', color:'#fff', boxShadow:'0 4px 16px rgba(124,58,237,0.4)' }}
+            >
+              <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
+              AI Quick Generate
+            </button>
+            <button onClick={() => window.location.href = '/proposals/wizard?step=1'}
+              className="px-xl py-md bg-surface-container text-on-surface rounded-xl font-label-md hover:bg-surface-container-high transition-colors border border-outline-variant cursor-pointer flex items-center gap-sm">
+              <span className="material-symbols-outlined text-[20px]">edit_note</span>
+              Create with Wizard
+            </button>
+          </div>
         </div>
       )}
 

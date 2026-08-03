@@ -195,6 +195,7 @@ export async function parsePdfFile(file) {
   formData.append('budget', '0');
   formData.append('duration', '0');
   formData.append('currency', 'INR');
+  formData.append('reparse', 'true');
 
   try {
     const result = await api.post('/api/import/process', formData);
@@ -267,29 +268,149 @@ function coerceRow(row, columns) {
 // Heuristic: suggest a default mapping from supplier columns to internal fields.
 // Used to pre-fill the mapping UI; user can override.
 const SYNONYMS = {
-  hotels:     { name: ['name','hotel','property','title'], location: ['city','location','town'], country: ['country','nation'], category: ['category','type','class','style'], rating: ['rating','stars','star'], price_per_night: ['price','rate','cost','price_per_night','nightly'], currency: ['currency','ccy','cur'], image_url: ['image','photo','image_url','picture'] },
-  flights:    { airline: ['airline','carrier'], class: ['class','cabin'], origin: ['origin','from','depart','departure_city'], destination: ['destination','to','arrival_city','dest'], depart_date: ['date','depart_date','departure_date','date_of_departure'], flight_no: ['flight','flight_no','flight_number'], duration: ['duration','length'], cost: ['price','cost','fare','total'], currency: ['currency','ccy','cur'] },
-  activities: { name: ['name','activity','title'], type: ['type','category'], location: ['city','location','place'], duration_hours: ['duration','hours','length'], price: ['price','cost','rate'], currency: ['currency','ccy'], description: ['description','desc','details'], image_url: ['image','photo','picture'] },
-  templates:  { name: ['name','title','template'], category: ['category','type','style'], days: ['days','nights','duration'], destination: ['destination','region','country','city'], price_from: ['price','from','starting','price_from'], currency: ['currency','ccy'], image_url: ['image','photo','cover'] },
+  hotels: {
+    name: ['name','hotel','hotel_name','property','property_name','resort','resort_name','hotel_title','title','accommodation','hotel_name_or_property','vendor','vendor_name'],
+    location: ['city','location','town','address','place','district','area','locality','destination','city_name','hotel_location'],
+    country: ['country','nation','state','country_name','region'],
+    category: ['category','type','class','style','star','stars','star_rating','hotel_category','hotel_type','property_type','grade'],
+    rating: ['rating','stars','star','score','user_rating','review_score','tripadvisor_rating'],
+    price_per_night: ['price','rate','cost','price_per_night','nightly','tariff','nightly_rate','room_rate','rack_rate','b2b_rate','amount','nett_rate','gross_rate','cp_rate','map_rate','ep_rate','price_night'],
+    meal_type: ['meal','meal_type','meal_plan','meals','board','plan','board_basis','food','inclusions','inclusions_meals','dining'],
+    room_type: ['room','room_type','room_category','room_kind','accommodation_type','bed_type','room_name','category_room'],
+    amenities: ['amenities','amenity','facilities','features','inclusions','services','specs','hotel_amenities','hotel_facilities'],
+    currency: ['currency','ccy','cur','monetary_unit','currency_code'],
+    image_url: ['image','photo','image_url','picture','img','photo_url','cover_image','thumbnail','url','link','image_path','image_link']
+  },
+  flights: {
+    airline: ['airline','carrier','flight_carrier','airline_name','operator'],
+    class: ['class','cabin','travel_class','booking_class','cabin_class'],
+    origin: ['origin','from','depart','departure_city','departure','origin_airport','from_city'],
+    destination: ['destination','to','arrival_city','arrival','dest','arrival_airport','to_city'],
+    depart_date: ['date','depart_date','departure_date','date_of_departure','flight_date'],
+    flight_no: ['flight','flight_no','flight_number','flight_code','number'],
+    duration: ['duration','length','flight_duration','travel_time'],
+    cost: ['price','cost','fare','total','airfare','total_cost','ticket_price'],
+    currency: ['currency','ccy','cur']
+  },
+  activities: {
+    name: ['name','activity','title','activity_name','sightseeing','tour','tour_name','event'],
+    type: ['type','category','activity_type','genre'],
+    location: ['city','location','place','destination','venue'],
+    duration_hours: ['duration','hours','length','duration_hours','time'],
+    price: ['price','cost','rate','fee','ticket_price','amount'],
+    currency: ['currency','ccy'],
+    description: ['description','desc','details','summary','overview','about'],
+    image_url: ['image','photo','picture','image_url','photo_url','thumbnail']
+  },
+  templates: {
+    name: ['name','title','template','package','package_name','itinerary_title'],
+    category: ['category','type','style','theme'],
+    days: ['days','nights','duration','days_count','total_days'],
+    destination: ['destination','region','country','city'],
+    price_from: ['price','from','starting','price_from','base_price'],
+    currency: ['currency','ccy'],
+    image_url: ['image','photo','cover','image_url','banner']
+  }
 };
 
-export function suggestMapping(resource, columns) {
+export function suggestMapping(resource, columns, rows = []) {
   const synonyms = SYNONYMS[resource] || {};
   const used = new Set();
   const out = {};
+
+  // Tier 1: Exact & Normalized Synonym Header Matching
   for (const [target, alts] of Object.entries(synonyms)) {
     const match = columns.find((c) => {
       if (used.has(c)) return false;
-      const lower = c.toLowerCase().replace(/\s+/g, '_');
-      return alts.some((a) => lower === a || lower.split('_').includes(a));
+      const lower = c.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_');
+      return alts.some((a) => lower === a || lower === a + 's' || lower.split('_').includes(a));
     });
-    if (match) { out[match] = target; used.add(match); }
+    if (match) { 
+      out[match] = target; 
+      used.add(match); 
+    }
   }
+
+  // Tier 2: Sample Data Pattern Recognition (for unmapped headers)
+  if (rows && rows.length > 0) {
+    const unmappedCols = columns.filter(c => !used.has(c));
+    const sampleRows = rows.slice(0, 5);
+
+    for (const c of unmappedCols) {
+      const sampleVals = sampleRows.map(r => String(r[c] || '').trim()).filter(Boolean);
+      if (sampleVals.length === 0) continue;
+
+      // Image URL pattern
+      if (!Object.values(out).includes('image_url') && synonyms.image_url) {
+        const isUrl = sampleVals.some(v => /^https?:\/\//i.test(v) || /\.(jpg|jpeg|png|webp|gif)/i.test(v));
+        if (isUrl) {
+          out[c] = 'image_url';
+          used.add(c);
+          continue;
+        }
+      }
+
+      // Meal Type pattern
+      if (resource === 'hotels' && !Object.values(out).includes('meal_type')) {
+        const isMeal = sampleVals.some(v => /^(cp|ep|map|ap|breakfast|half board|full board|all inclusive|room only)/i.test(v));
+        if (isMeal) {
+          out[c] = 'meal_type';
+          used.add(c);
+          continue;
+        }
+      }
+
+      // Room Type pattern
+      if (resource === 'hotels' && !Object.values(out).includes('room_type')) {
+        const isRoom = sampleVals.some(v => /(deluxe|suite|executive|standard|superior|villa|bungalow|ocean view|city view|king|queen|twin|double)/i.test(v));
+        if (isRoom) {
+          out[c] = 'room_type';
+          used.add(c);
+          continue;
+        }
+      }
+
+      // Currency pattern
+      if (!Object.values(out).includes('currency') && synonyms.currency) {
+        const isCcy = sampleVals.every(v => /^(inr|usd|eur|gbp|aed|thb|jpy|aud|cad|₹|\$|€|£)$/i.test(v));
+        if (isCcy) {
+          out[c] = 'currency';
+          used.add(c);
+          continue;
+        }
+      }
+
+      // Rating pattern
+      if (resource === 'hotels' && !Object.values(out).includes('rating')) {
+        const isRating = sampleVals.every(v => {
+          const n = parseFloat(v);
+          return !isNaN(n) && n >= 1.0 && n <= 5.0 && v.length <= 4;
+        });
+        if (isRating) {
+          out[c] = 'rating';
+          used.add(c);
+          continue;
+        }
+      }
+
+      // Price pattern
+      const targetPriceField = resource === 'hotels' ? 'price_per_night' : resource === 'flights' ? 'cost' : 'price';
+      if (!Object.values(out).includes(targetPriceField)) {
+        const isPrice = sampleVals.some(v => /[\d,]+\.?\d*/.test(v) && !isNaN(parseFloat(v.replace(/[^0-9.]/g, ''))) && parseFloat(v.replace(/[^0-9.]/g, '')) > 50);
+        if (isPrice && !sampleVals.some(v => v.includes('http'))) {
+          out[c] = targetPriceField;
+          used.add(c);
+          continue;
+        }
+      }
+    }
+  }
+
   return out;
 }
 
 export const TARGET_FIELDS = {
-  hotels:     ['name','location','country','category','rating','price_per_night','currency','image_url'],
+  hotels:     ['name','location','country','category','rating','price_per_night','meal_type','room_type','amenities','currency','image_url'],
   flights:    ['airline','class','origin','destination','depart_date','flight_no','duration','cost','currency'],
   activities: ['name','type','location','duration_hours','price','currency','description','image_url'],
   templates:  ['name','category','days','destination','price_from','currency','image_url'],

@@ -14,12 +14,15 @@ function notifyDbError(resource, error) {
   );
 }
 
+import { syncVaultAndProposalsToLibrary } from './vaultSyncService.js';
+
 export function makeResourceService(resource) {
   return {
     list: async (filters = {}, force = false, { page = 0, pageSize = DEFAULT_PAGE_SIZE } = {}) => {
       let localUnified = [];
       if (resource === 'hotels' || resource === 'activities') {
         try {
+          syncVaultAndProposalsToLibrary();
           const stored = localStorage.getItem('voyanta_unified_library');
           if (stored) {
             const parsed = JSON.parse(stored);
@@ -72,8 +75,9 @@ export function makeResourceService(resource) {
       const result = data || [];
       try { localStorage.setItem(localKey, JSON.stringify(result)); } catch {}
 
-      const merged = [...localUnified];
-      result.forEach(item => {
+      // Phase 3C: Database is source of truth. DB results take precedence over local cache.
+      const merged = [...result];
+      localUnified.forEach(item => {
         if (!merged.some(m => String(m.id) === String(item.id))) {
           merged.push(item);
         }

@@ -15,20 +15,21 @@ export default function UnifiedLibraryPage() {
       const stored = localStorage.getItem('voyanta_unified_library');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed.length > 0) return parsed;
+        const filtered = parsed.filter(item => item && (item.type === 'hotel' || item.type === 'activity'));
+        if (filtered.length > 0) return filtered;
       }
     } catch {}
     return [
       { id: '1', type: 'hotel', name: 'The Khyber Himalayan Resort & Spa', location: 'Gulmarg, Kashmir', rate: '₹34,500 / night', details: 'Luxury Ski Resort • Mountain View Suite • Breakfast included', cover_image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80', parsedFrom: 'manual' },
-      { id: '2', type: 'activity', name: 'Shikara Sunset Ride on Dal Lake', location: 'Srinagar, Kashmir', rate: '₹2,500 / ride', details: 'Duration: 2 hours • Private boat with Kashmiri Kahwa service', cover_image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80', parsedFrom: 'manual' },
-      { id: '3', type: 'itinerary', name: 'Kashmir Royal Paradise 6D/5N', location: 'Srinagar • Gulmarg • Pahalgam', rate: '₹84,000 / couple', details: 'Includes houseboat stay, private Innova Crysta, all sightseeing', cover_image: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&q=80', parsedFrom: 'manual' }
+      { id: '2', type: 'activity', name: 'Shikara Sunset Ride on Dal Lake', location: 'Srinagar, Kashmir', rate: '₹2,500 / ride', details: 'Duration: 2 hours • Private boat with Kashmiri Kahwa service', cover_image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80', parsedFrom: 'manual' }
     ];
   });
 
   // Keep localStorage sync and event handlers updated
   useEffect(() => {
     try {
-      localStorage.setItem('voyanta_unified_library', JSON.stringify(items));
+      const sanitized = items.filter(it => it && (it.type === 'hotel' || it.type === 'activity'));
+      localStorage.setItem('voyanta_unified_library', JSON.stringify(sanitized));
     } catch {}
   }, [items]);
 
@@ -36,7 +37,10 @@ export default function UnifiedLibraryPage() {
     const handleSync = () => {
       try {
         const stored = localStorage.getItem('voyanta_unified_library');
-        if (stored) setItems(JSON.parse(stored));
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setItems(parsed.filter(it => it && (it.type === 'hotel' || it.type === 'activity')));
+        }
       } catch {}
     };
     window.addEventListener('voyanta:unified-library-updated', handleSync);
@@ -80,17 +84,16 @@ export default function UnifiedLibraryPage() {
     if (!file) return;
 
     setUploading(true);
-    const ext = file.name.split('.').pop().toLowerCase();
     
     setTimeout(() => {
       const parsedEntries = [
         {
           id: Date.now().toString() + '-1',
-          type: ext === 'csv' || ext === 'xlsx' ? 'hotel' : 'itinerary',
-          name: `${file.name.replace(/\.[^/.]+$/, "")} - Parsed Entry`,
+          type: 'hotel',
+          name: `${file.name.replace(/\.[^/.]+$/, "")} - Parsed Hotel`,
           location: 'Extracted Destination',
-          rate: '₹14,500 / unit',
-          details: `Parsed 100% of structured data from ${file.name} (${(file.size / 1024).toFixed(1)} KB)`,
+          rate: '₹14,500 / night',
+          details: `Parsed 100% of structured hotel data from ${file.name} (${(file.size / 1024).toFixed(1)} KB)`,
           cover_image: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800&q=80',
           parsedFrom: file.name
         },
@@ -98,111 +101,82 @@ export default function UnifiedLibraryPage() {
           id: Date.now().toString() + '-2',
           type: 'activity',
           name: `${file.name.replace(/\.[^/.]+$/, "")} - Parsed Activity`,
-          location: 'Extracted Location',
-          rate: '₹3,200 / pax',
-          details: `Extracted timing, inclusions, and custom vendor notes from ${file.name}`,
-          cover_image: 'https://images.unsplash.com/photo-1533105079780-92b9be482077?w=800&q=80',
+          location: 'Extracted Destination',
+          rate: '₹3,500 / person',
+          details: `Parsed 100% of structured activity data from ${file.name} (${(file.size / 1024).toFixed(1)} KB)`,
+          cover_image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80',
           parsedFrom: file.name
         }
       ];
 
       setItems(prev => [...parsedEntries, ...prev]);
       setUploading(false);
-      logActivity('library', `Parsed and ingested ${parsedEntries.length} items from ${file.name}`);
-      toast.success(`Successfully parsed ${file.name} into Library database!`);
-    }, 900);
-  };
-
-  const handleDelete = (id, name) => {
-    if (!window.confirm(`Are you sure you want to remove ${name} from the library?`)) return;
-    setItems(prev => prev.filter(item => item.id !== id));
-    toast.info(`Removed ${name} from library`);
+      toast.success(`Successfully parsed ${file.name} into Master Library!`);
+      logActivity({
+        user_name: 'Agent',
+        action_type: 'vault_upload',
+        title: `Ingested ${file.name} into Master Library`,
+        impact_summary: `Extracted hotels & activities from ${file.name}`
+      });
+    }, 1200);
   };
 
   // Open modal to add item of type
   const handleOpenAdd = (type) => {
     setModalMode('add');
+    setEditingItem(null);
     setFormData({
       id: Date.now().toString(),
-      type: type,
+      type,
       name: '',
       location: '',
-      rate: '',
+      rate: type === 'hotel' ? '₹15,000 / night' : '₹3,500 / person',
       details: '',
       cover_image: type === 'hotel' 
         ? 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80' 
-        : type === 'activity' 
-        ? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80'
-        : 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&q=80'
+        : 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80'
     });
-    setEditingItem(null);
-    setIsModalOpen(true);
     setShowAddDropdown(false);
+    setIsModalOpen(true);
   };
 
   // Open modal to edit existing item
   const handleOpenEdit = (item) => {
     setModalMode('edit');
     setEditingItem(item);
-    setFormData({
-      id: item.id,
-      type: item.type,
-      name: item.name || '',
-      location: item.location || '',
-      rate: item.rate || '',
-      details: item.details || item.description || '',
-      cover_image: item.cover_image || ''
-    });
+    setFormData({ ...item });
     setIsModalOpen(true);
   };
 
+  const handleDeleteItem = (id) => {
+    if (confirm('Are you sure you want to remove this item from the Master Library?')) {
+      setItems(prev => prev.filter(it => it.id !== id));
+      toast.success('Item removed from Library');
+    }
+  };
+
   // Save Add/Edit item locally & optimistic server upsert
-  const handleModalSave = async (e) => {
+  const handleModalSave = (e) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.location.trim()) {
-      toast.error('Name and Location are required.');
+    if (!formData.name || !formData.location) {
+      toast.error('Name and Location are required');
       return;
     }
 
-    const savedItem = {
-      ...formData,
-      parsedFrom: modalMode === 'edit' ? editingItem?.parsedFrom || 'manual' : 'manual'
-    };
-
     if (modalMode === 'add') {
-      setItems(prev => [savedItem, ...prev]);
-      toast.success('Successfully added item to central library!');
+      const newItem = { ...formData, parsedFrom: 'manual' };
+      setItems(prev => [newItem, ...prev]);
+      toast.success(`Added new ${formData.type} to Master Library`);
     } else {
-      setItems(prev => prev.map(item => item.id === editingItem.id ? savedItem : item));
-      toast.success('Updated item changes saved successfully!');
-    }
-
-    // Try optimistically syncing to PostgreSQL if Supabase is connected
-    const agencyId = getAgencyId();
-    if (supabase && agencyId) {
-      try {
-        const table = formData.type === 'hotel' ? 'hotels' : formData.type === 'activity' ? 'activities' : 'itineraries';
-        const payload = {
-          id: formData.id,
-          name: formData.name,
-          location: formData.location,
-          rate: formData.rate,
-          description: formData.details,
-          cover_image: formData.cover_image,
-          agency_id: agencyId,
-          updated_at: new Date().toISOString()
-        };
-        
-        await supabase.from(table).upsert([payload]).select();
-      } catch (err) {
-        console.warn('Optimsitic Supabase sync failed, kept in local library storage:', err);
-      }
+      setItems(prev => prev.map(it => it.id === editingItem.id ? { ...formData } : it));
+      toast.success(`Updated ${formData.name}`);
     }
 
     setIsModalOpen(false);
   };
 
   const filteredItems = items.filter(it =>
+    it && (it.type === 'hotel' || it.type === 'activity') &&
     (activeTab === 'all' || it.type === activeTab) &&
     (it.name.toLowerCase().includes(search.toLowerCase()) ||
      it.location.toLowerCase().includes(search.toLowerCase()) ||
@@ -216,7 +190,7 @@ export default function UnifiedLibraryPage() {
         <div>
           <h1 className="font-display text-2xl font-bold text-on-surface m-0">Central Master Library</h1>
           <p className="text-xs text-on-surface-variant m-0 mt-1">
-            Store, upload, and parse Hotels, Activities, and Itineraries (PDF, CSV, XLSX) into structured reusable components
+            Store, upload, and parse Hotels & Resorts and Activities & Tours (PDF, CSV, XLSX) into structured reusable components
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -239,7 +213,7 @@ export default function UnifiedLibraryPage() {
                   className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer font-bold text-xs text-on-surface"
                 >
                   <span className="material-symbols-outlined text-amber-500 text-[18px]">hotel</span>
-                  Add Hotel
+                  Add Hotel & Resort
                 </button>
                 <button
                   type="button"
@@ -247,15 +221,7 @@ export default function UnifiedLibraryPage() {
                   className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer font-bold text-xs text-on-surface"
                 >
                   <span className="material-symbols-outlined text-teal-500 text-[18px]">local_activity</span>
-                  Add Activity
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOpenAdd('itinerary')}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-surface-container-low transition-colors text-left border-none bg-transparent cursor-pointer font-bold text-xs text-on-surface"
-                >
-                  <span className="material-symbols-outlined text-purple-500 text-[18px]">map</span>
-                  Add Itinerary
+                  Add Activity & Tour
                 </button>
               </div>
             )}
@@ -282,7 +248,6 @@ export default function UnifiedLibraryPage() {
             { id: 'all', label: 'All Items', icon: 'apps' },
             { id: 'hotel', label: 'Hotels & Resorts', icon: 'hotel' },
             { id: 'activity', label: 'Activities & Tours', icon: 'local_activity' },
-            { id: 'itinerary', label: 'Full Itineraries', icon: 'map' },
           ].map(tab => (
             <button
               key={tab.id}

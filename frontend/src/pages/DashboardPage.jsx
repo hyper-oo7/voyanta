@@ -10,6 +10,7 @@ import { getActivityLogs } from '../services/activityLogService.js';
 import { fetchInvoices } from '../services/invoiceService.js';
 import { fetchClients } from '../services/crmService.js';
 import { TEMPLATE_LIST } from '../templates/registry.js';
+import QuickGenerateModal from '../components/proposals/QuickGenerateModal.jsx';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ export default function DashboardPage() {
   const [proposalsCollapsed, setProposalsCollapsed] = useState(false);
   const [proposalsEnlarged, setProposalsEnlarged] = useState(false);
   const [showDestModal, setShowDestModal] = useState(false);
+  const [showQuickGenerate, setShowQuickGenerate] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [analyticsVersion, setAnalyticsVersion] = useState(0);
   const [totalInvoicesCount, setTotalInvoicesCount] = useState(0);
@@ -237,6 +239,21 @@ export default function DashboardPage() {
           <p className="font-body-lg text-on-surface-variant m-0 mt-xs">Your concierge operations at a glance.</p>
         </div>
         <div className="flex items-center gap-md">
+          <button
+            id="dashboard-ai-generate-btn"
+            onClick={() => setShowQuickGenerate(true)}
+            className="flex items-center gap-sm px-xl py-md font-label-md font-bold rounded-xl border-none cursor-pointer transition-all"
+            style={{
+              background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
+              color: '#fff',
+              boxShadow: '0 4px 16px rgba(124,58,237,0.4)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.boxShadow = '0 6px 24px rgba(124,58,237,0.6)'}
+            onMouseLeave={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(124,58,237,0.4)'}
+          >
+            <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+            AI Generate
+          </button>
           <button 
             onClick={() => navigate('/proposals/wizard')}
             className="flex items-center gap-sm px-xl py-md bg-on-surface text-surface rounded-lg font-label-md hover:opacity-90 active:scale-[0.98] transition-all border-none shadow-md cursor-pointer"
@@ -575,6 +592,7 @@ export default function DashboardPage() {
           </div>
         </div>
       , document.body)}
+      <QuickGenerateModal isOpen={showQuickGenerate} onClose={() => setShowQuickGenerate(false)} />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { Step2Itinerary } from './wizard/Step2Itinerary.jsx';
 import PDFUploader from '../components/PDFUploader.jsx';
 import RAGQueryPanel from '../components/RAGQueryPanel.jsx';
 import { executeRAGQuery } from '../services/api.js';
+import AIProposalChatDrawer from '../components/canvas/AIProposalChatDrawer.jsx';
 
 export default function UnifiedItineraryCanvas() {
   const navigate = useNavigate();
@@ -24,6 +25,7 @@ export default function UnifiedItineraryCanvas() {
 
   const [activeTab, setActiveTab] = useState('proposal');
   const [showRAGDrawer, setShowRAGDrawer] = useState(false);
+  const [showAIChat, setShowAIChat] = useState(false);
   const [ragActiveTab, setRagActiveTab] = useState('query');
   const [selectedSubDestinations, setSelectedSubDestinations] = useState([]);
 
@@ -68,6 +70,50 @@ export default function UnifiedItineraryCanvas() {
       }
     };
     fetchVaultSubDestinations();
+  }, []);
+
+  // Hydrate from AI Quick Generate if ai_generated=1
+  useEffect(() => {
+    if (params.get('ai_generated') === '1') {
+      try {
+        const generatedRaw = localStorage.getItem('voyanta_ai_generated_proposal');
+        if (generatedRaw) {
+          const parsed = JSON.parse(generatedRaw);
+          if (parsed.proposal) {
+            const nextClient = {
+              ...client,
+              customer_name: parsed.form?.client_name || 'Valued Traveler',
+              destination: parsed.proposal.destination || parsed.form?.destination,
+              duration_days: parsed.proposal.duration_days || parsed.form?.duration_days,
+              budget: parsed.form?.budget_per_head || '',
+              tour_type: parsed.form?.group_type || 'friends',
+              pace: parsed.form?.pace || 'balanced',
+              num_adults: parsed.form?.num_travelers || 2,
+              special_notes: parsed.form?.preferences_text || ''
+            };
+            
+            useProposalStore.setState({
+              proposal: parsed.proposal,
+              items: parsed.items || [],
+              client: nextClient,
+              activeTemplateSlug: parsed.proposal.template_style || 'classic'
+            });
+            
+            // Default to Step 4 (Itinerary) or Wizard's active step if set
+            const requestedStep = params.get('step');
+            if (requestedStep === '4') {
+              setActiveTab('itinerary');
+            }
+            
+            // Clean up to avoid re-hydration issues on reload (optional, but safe)
+            localStorage.removeItem('voyanta_ai_generated_proposal');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to hydrate AI generated proposal:', err);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAddSubDestination = async (subDest) => {
@@ -467,6 +513,17 @@ export default function UnifiedItineraryCanvas() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Phase 5A: AI Proposal Chat FAB and Drawer */}
+      <button
+        onClick={() => setShowAIChat(true)}
+        className="fixed right-6 bottom-6 w-14 h-14 rounded-full bg-gradient-to-r from-primary to-accent text-on-primary shadow-2xl flex items-center justify-center hover:scale-105 transition-transform z-40 group"
+        title="Chat with AI Curator"
+      >
+        <span className="material-symbols-outlined text-[28px] group-hover:rotate-12 transition-transform">chat_bubble</span>
+      </button>
+
+      <AIProposalChatDrawer isOpen={showAIChat} onClose={() => setShowAIChat(false)} />
 
       {/* ─── Slide-Over RAG Vault & Search Drawer ────────────────────────────────────────── */}
       <AnimatePresence>

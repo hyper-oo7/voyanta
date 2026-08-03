@@ -1,6 +1,20 @@
 -- Migration: 20260801000001_phase0_itinerary_blocks_and_attractions.sql
 -- Description: Core Phase 0 Schemas — Itinerary Blocks, Attraction Master, Standardized Hotels, and Standardized Transfers
 
+-- If legacy itinerary_blocks table exists without block_id/destination, drop it to migrate to Phase 0 schema
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'itinerary_blocks'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'itinerary_blocks' AND column_name = 'block_id'
+    ) THEN
+        DROP TABLE public.itinerary_blocks CASCADE;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS public.itinerary_blocks (
     block_id TEXT PRIMARY KEY,
     agency_id TEXT DEFAULT 'global',
@@ -82,14 +96,18 @@ ALTER TABLE public.standardized_hotels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.standardized_transfers ENABLE ROW LEVEL SECURITY;
 
 -- Global Read / Agency Tenant Access Policies
+DROP POLICY IF EXISTS "Public/Tenant Read Itinerary Blocks" ON public.itinerary_blocks;
 CREATE POLICY "Public/Tenant Read Itinerary Blocks" ON public.itinerary_blocks
     FOR SELECT USING (agency_id = 'global' OR agency_id = current_setting('app.current_agency_id', true));
 
+DROP POLICY IF EXISTS "Public Read Attraction Master" ON public.attraction_master;
 CREATE POLICY "Public Read Attraction Master" ON public.attraction_master
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Public/Tenant Read Standardized Hotels" ON public.standardized_hotels;
 CREATE POLICY "Public/Tenant Read Standardized Hotels" ON public.standardized_hotels
     FOR SELECT USING (agency_id = 'global' OR agency_id = current_setting('app.current_agency_id', true));
 
+DROP POLICY IF EXISTS "Public/Tenant Read Standardized Transfers" ON public.standardized_transfers;
 CREATE POLICY "Public/Tenant Read Standardized Transfers" ON public.standardized_transfers
     FOR SELECT USING (agency_id = 'global' OR agency_id = current_setting('app.current_agency_id', true));

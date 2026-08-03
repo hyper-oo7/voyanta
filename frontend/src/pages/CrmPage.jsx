@@ -30,7 +30,8 @@ export default function CrmPage() {
     phone: '',
     destination: '',
     status: 'Inquiry',
-    notes: ''
+    notes: '',
+    preferences: { dietary: '', pace: '', dislikes: '' }
   });
 
   const loadClients = useCallback(async () => {
@@ -117,7 +118,7 @@ export default function CrmPage() {
 
   const handleOpenAdd = () => {
     setEditingClient(null);
-    setFormData({ name: '', email: '', phone: '', destination: '', status: 'Inquiry', notes: '' });
+    setFormData({ name: '', email: '', phone: '', destination: '', status: 'Inquiry', notes: '', preferences: { dietary: '', pace: '', dislikes: '' } });
     setIsModalOpen(true);
   };
 
@@ -129,7 +130,8 @@ export default function CrmPage() {
       phone: client.phone || '',
       destination: client.destination || '',
       status: client.status || 'Inquiry',
-      notes: client.notes || ''
+      notes: client.notes || '',
+      preferences: client.preferences || { dietary: '', pace: '', dislikes: '' }
     });
     setIsModalOpen(true);
   };
@@ -588,8 +590,49 @@ export default function CrmPage() {
                   </select>
                 </div>
               </div>
+              
+              {/* Phase 4C: Client Preference Memory */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-outline-variant pt-4 mt-2">
+                <div className="col-span-full">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-primary flex items-center gap-1.5 mb-1">
+                    <span className="material-symbols-outlined text-[16px]">psychology</span>
+                    Travel Preferences (AI Memory)
+                  </h4>
+                  <p className="text-[10px] text-on-surface-variant mb-3">These preferences will automatically guide the AI when generating proposals for this client.</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Dietary Restrictions</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Vegan, Halal"
+                    value={formData.preferences?.dietary || ''}
+                    onChange={(e) => setFormData({ ...formData, preferences: { ...formData.preferences, dietary: e.target.value } })}
+                    className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface text-xs text-on-surface focus:border-primary outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Pacing Style</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Relaxed, Action-packed"
+                    value={formData.preferences?.pace || ''}
+                    onChange={(e) => setFormData({ ...formData, preferences: { ...formData.preferences, pace: e.target.value } })}
+                    className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface text-xs text-on-surface focus:border-primary outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Dislikes / Avoid</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Crowded beaches, Early mornings"
+                    value={formData.preferences?.dislikes || ''}
+                    onChange={(e) => setFormData({ ...formData, preferences: { ...formData.preferences, dislikes: e.target.value } })}
+                    className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface text-xs text-on-surface focus:border-primary outline-none"
+                  />
+                </div>
+              </div>
 
-              <div>
+              <div className="border-t border-outline-variant pt-4">
                 <label className="block text-xs font-extrabold uppercase tracking-widest text-on-surface-variant mb-1">
                   Concierge Remarks & Preferences
                 </label>

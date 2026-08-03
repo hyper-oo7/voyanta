@@ -9,6 +9,7 @@ Changes:
 - Returns faithfully extracted single package
 """
 import os
+import asyncio
 import hashlib
 import logging
 import httpx
@@ -29,10 +30,14 @@ from src.services.cascading_ai_service import route_model_cascading
 from src.services.vault_knowledge_service import (
     save_vault_package,
     accumulate_destination_knowledge,
+    perform_pdf_delta_sync,
 )
 from src.services.r2_storage_service import upload_file_to_r2
 from src.services.knowledge_extraction_service import extract_knowledge_objects, save_knowledge_objects
 from src.services.supabase_client import get_supabase_client, get_user_supabase_client
+from src.services.chunker import TravelDocumentChunker
+from src.services.embedder import embedder
+from src.services.vector_store import vector_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/pdf")
@@ -88,16 +93,17 @@ async def process_vault_pdf(
     budget: float = Form(0),              # Optional budget hint for cache keying only
     duration: int = Form(0),             # Optional duration hint — actual duration extracted from PDF
     currency: str = Form("INR"),          # Default but overridden by PDF-detected currency
+    reparse: bool = Form(True),           # True by default to force re-parsing & finding new items
     user: Any = Depends(verify_token),
     token: Optional[str] = Depends(get_request_token),
 ):
     """
-    Vault V2 Pipeline:
+    Vault V2 Pipeline with Delta Extraction:
     1. 15-Day Server Storage
     2. Full text extraction (PyMuPDF + pdfminer.six, zero data loss)
     3. Deterministic pre-parse (strip boilerplate, keep itinerary content)
-    4. Semantic Cache check ($0 cost if matched)
-    5. Gemini 2.5 Flash: FAITHFUL extraction (extract, never generate)
+    4. Gemini 2.5 Flash: FAITHFUL extraction (extract, never generate)
+    5. Delta Engine: Compares against existing inventory, extracts & appends ONLY newly discovered items
     6. Store parsed package to Supabase vault_packages
     7. Accumulate static sections into destination_knowledge
     """
@@ -212,23 +218,23 @@ async def process_vault_pdf(
         # ── Step 4: Extract embedded images from PDF ───────────────────────
         images_list = await asyncio.to_thread(extract_images_and_link_spatially, storage_meta["file_path"], agency_id)
 
-        # ── Step 5: Semantic Cache check ───────────────────────────────────
+        # ── Step 5: Semantic Cache check (Bypassed if reparse=True) ────────
         hash_key = compute_content_hash(compressed_text, budget, duration)
-        cached_result = await get_cached_recommendation(hash_key, agency_id=agency_id)
+        if not reparse:
+            cached_result = await get_cached_recommendation(hash_key, agency_id=agency_id)
+            if cached_result:
+                logger.info(f"[VaultProcess] Semantic cache HIT — returning $0 cached result")
+                return JSONResponse(content={
+                    "status": "success",
+                    "cache_hit": True,
+                    "cost_incurred": "$0.00 (Served instantly from Semantic Cache)",
+                    "storage_meta": {**storage_meta, "pdf_url": pdf_url},
+                    "compression_metrics": compression_metrics,
+                    "pdf_hash": pdf_hash,
+                    "data": cached_result,
+                })
 
-        if cached_result:
-            logger.info(f"[VaultProcess] Semantic cache HIT — returning $0 cached result")
-            return JSONResponse(content={
-                "status": "success",
-                "cache_hit": True,
-                "cost_incurred": "$0.00 (Served instantly from Semantic Cache)",
-                "storage_meta": {**storage_meta, "pdf_url": pdf_url},
-                "compression_metrics": compression_metrics,
-                "pdf_hash": pdf_hash,
-                "data": cached_result,
-            })
-
-        # ── Step 6: Gemini faithful extraction ────────────────────────────
+        # ── Step 6: Gemini faithful re-extraction ──────────────────────────
         ai_result = await route_model_cascading(
             compressed_text=compressed_text,
             images=images_list,
@@ -239,10 +245,23 @@ async def process_vault_pdf(
             agency_id=agency_id,
         )
 
-        # ── Step 7: Store parsed package to Supabase vault_packages ───────
         extracted_pkg = ai_result.get("extracted_package") or (
             ai_result.get("recommendations", [{}])[0]
         )
+
+        # ── Step 6b: Delta Extraction Engine (finds & appends NEW items) ───
+        delta_summary = {}
+        if extracted_pkg:
+            delta_summary = perform_pdf_delta_sync(
+                extracted_pkg=extracted_pkg,
+                agency_id=agency_id,
+                sb=sb
+            )
+            ai_result["delta_summary"] = delta_summary
+            logger.info(f"[VaultProcess] Delta sync complete: {delta_summary.get('total_new_items')} new items added.")
+
+        # ── Step 7: Store parsed package to Supabase vault_packages ───────
+        vault_package_id = None
         if extracted_pkg:
             saved = save_vault_package(
                 parsed_data=extracted_pkg,
@@ -255,8 +274,37 @@ async def process_vault_pdf(
                 extraction_version="v2.0.0",
             )
             if saved:
-                ai_result["vault_package_id"] = saved.get("id")
-                logger.info(f"[VaultProcess] Saved to vault_packages: id={saved.get('id')}")
+                vault_package_id = saved.get("id")
+                ai_result["vault_package_id"] = vault_package_id
+                logger.info(f"[VaultProcess] Saved to vault_packages: id={vault_package_id}")
+
+        # ── Step 7b: Auto-Chunk, Embed & Store to Vector Store (RAG Engine) ─
+        if raw_text and vault_package_id and agency_id:
+            try:
+                doc_dest = (extracted_pkg or {}).get("destination") or destination or "General"
+                chunker_svc = TravelDocumentChunker()
+                chunks = chunker_svc.chunk_text(raw_text, metadata={
+                    "document_name": file.filename or "supplier_package.pdf",
+                    "destination": doc_dest,
+                    "agency_id": agency_id,
+                    "source_type": "pdf",
+                    "vault_package_id": vault_package_id,
+                    "pdf_url": pdf_url or ""
+                })
+                if chunks:
+                    chunk_texts = [c["content"] for c in chunks]
+                    embeddings = await asyncio.to_thread(embedder.embed_texts, chunk_texts)
+                    stored_count = vector_store.store_chunks(
+                        agency_id=agency_id,
+                        document_id=vault_package_id,
+                        chunks=chunks,
+                        embeddings=embeddings
+                    )
+                    ai_result["chunks_indexed"] = stored_count
+                    delta_summary["chunks_indexed"] = stored_count
+                    logger.info(f"[VaultProcess] RAG: {stored_count} chunks indexed for '{doc_dest}' (agency={agency_id})")
+            except Exception as embed_err:
+                logger.error(f"[VaultProcess] RAG embedding pipeline failed (non-fatal): {embed_err}")
 
         # ── Step 8: Accumulate destination knowledge ───────────────────────
         extra_sections = ai_result.get("extra_sections") or {}
@@ -275,7 +323,9 @@ async def process_vault_pdf(
         return JSONResponse(content={
             "status": "success",
             "cache_hit": False,
-            "cost_incurred": "Optimized via Gemini Faithful Extraction",
+            "reparsed": True,
+            "delta_summary": delta_summary,
+            "cost_incurred": "Optimized via Gemini Faithful Re-Extraction & Delta Sync",
             "storage_meta": {**storage_meta, "pdf_url": pdf_url},
             "compression_metrics": compression_metrics,
             "pdf_hash": pdf_hash,

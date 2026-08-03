@@ -22,11 +22,14 @@ CREATE INDEX IF NOT EXISTS idx_documents_type ON public.documents(document_type)
 -- Security Isolation RLS
 ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Tenant Read Documents" ON public.documents;
 CREATE POLICY "Tenant Read Documents" ON public.documents
     FOR SELECT USING (agency_id = 'global' OR agency_id = current_setting('app.current_agency_id', true));
 
+DROP POLICY IF EXISTS "Tenant Insert Documents" ON public.documents;
 CREATE POLICY "Tenant Insert Documents" ON public.documents
     FOR INSERT WITH CHECK (agency_id = 'global' OR agency_id = current_setting('app.current_agency_id', true));
 
+DROP POLICY IF EXISTS "Tenant Delete Documents" ON public.documents;
 CREATE POLICY "Tenant Delete Documents" ON public.documents
     FOR DELETE USING (agency_id = 'global' OR agency_id = current_setting('app.current_agency_id', true));

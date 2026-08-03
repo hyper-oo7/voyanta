@@ -473,3 +473,148 @@ def get_destination_knowledge(
         logger.error(f"[VaultKnowledge] get_destination_knowledge failed: {e}")
 
     return result
+
+
+def perform_pdf_delta_sync(
+    extracted_pkg: Dict[str, Any],
+    agency_id: Optional[str] = "global",
+    sb: Any = None
+) -> Dict[str, Any]:
+    """
+    Delta Extraction Engine:
+    Compares newly extracted entities against existing Vault & Master Library inventory.
+    Identifies brand-new hotels, activities, and attractions, appends them to DB,
+    and returns a transparent delta summary.
+    """
+    delta_summary = {
+        "new_hotels": [],
+        "new_activities": [],
+        "updated_hotels": [],
+        "updated_activities": [],
+        "total_new_items": 0
+    }
+
+    if not sb:
+        from src.services.supabase_client import get_supabase_client
+        sb = get_supabase_client()
+
+    new_hotels = extracted_pkg.get("hotels", [])
+    new_activities = extracted_pkg.get("activities", [])
+    destination = extracted_pkg.get("destination", "")
+
+    # 1. Delta check for Hotels
+    existing_hotels = []
+    if sb:
+        try:
+            h_query = sb.table("hotels").select("id, name, location, price_per_night")
+            if agency_id and agency_id != "global":
+                h_query = h_query.eq("agency_id", agency_id)
+            h_res = h_query.execute()
+            if h_res.data:
+                existing_hotels = h_res.data
+        except Exception as e:
+            logger.error(f"[DeltaSync] Error fetching existing hotels: {e}")
+
+    existing_h_names = {str(h.get("name") or "").strip().lower() for h in existing_hotels if h.get("name")}
+
+    for h in new_hotels:
+        if not isinstance(h, dict):
+            continue
+        h_name = (h.get("name") or "").strip()
+        if not h_name:
+            continue
+
+        normalized_name = h_name.lower()
+        if normalized_name not in existing_h_names:
+            # Brand new hotel found!
+            delta_summary["new_hotels"].append(h_name)
+            existing_h_names.add(normalized_name)
+            delta_summary["total_new_items"] += 1
+
+            if sb:
+                try:
+                    hotel_record = {
+                        "name": h_name,
+                        "location": h.get("location") or destination or "Imported Location",
+                        "price_per_night": float(h.get("price_per_night") or h.get("rate") or 5000),
+                        "meal_type": h.get("meal_plan") or h.get("meal_type") or "CP (Breakfast)",
+                        "room_type": h.get("room_type") or "Deluxe Room",
+                        "category": h.get("category") or "4 Star",
+                        "rating": float(h.get("rating") or 4.5),
+                        "amenities": h.get("amenities") if isinstance(h.get("amenities"), list) else ["WiFi", "Room Service"],
+                        "currency": h.get("currency") or "INR",
+                        "image_url": h.get("image_url") or h.get("cover_image") or "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800"
+                    }
+                    if agency_id:
+                        hotel_record["agency_id"] = agency_id
+                    sb.table("hotels").insert(hotel_record).execute()
+                    logger.info(f"[DeltaSync] Appended NEW hotel to DB: {h_name}")
+                except Exception as ins_err:
+                    logger.error(f"[DeltaSync] Failed to insert new hotel {h_name}: {ins_err}")
+        else:
+            delta_summary["updated_hotels"].append(h_name)
+
+    # 2. Delta check for Activities & Attractions
+    existing_activities = []
+    if sb:
+        try:
+            a_query = sb.table("activities").select("id, name, location, price")
+            if agency_id and agency_id != "global":
+                a_query = a_query.eq("agency_id", agency_id)
+            a_res = a_query.execute()
+            if a_res.data:
+                existing_activities = a_res.data
+        except Exception as e:
+            logger.error(f"[DeltaSync] Error fetching existing activities: {e}")
+
+    existing_act_names = {str(a.get("name") or "").strip().lower() for a in existing_activities if a.get("name")}
+
+    all_extracted_acts = list(new_activities)
+    for day in extracted_pkg.get("days", []):
+        if isinstance(day, dict):
+            for d_act in day.get("activities", []):
+                if isinstance(d_act, dict) and d_act not in all_extracted_acts:
+                    all_extracted_acts.append(d_act)
+                elif isinstance(d_act, str):
+                    all_extracted_acts.append({"name": d_act})
+
+    for act in all_extracted_acts:
+        if not isinstance(act, dict):
+            continue
+        act_name = (act.get("name") or "").strip()
+        if not act_name:
+            continue
+
+        normalized_act = act_name.lower()
+        if normalized_act not in existing_act_names:
+            # Brand new activity found!
+            delta_summary["new_activities"].append(act_name)
+            existing_act_names.add(normalized_act)
+            delta_summary["total_new_items"] += 1
+
+            if sb:
+                try:
+                    act_record = {
+                        "name": act_name,
+                        "location": act.get("location") or destination or "Imported Location",
+                        "type": act.get("type") or "Sightseeing",
+                        "duration_hours": float(act.get("duration_hours") or 4),
+                        "price": float(act.get("price") or act.get("rate") or 3500),
+                        "currency": act.get("currency") or "INR",
+                        "description": act.get("description") or act.get("details") or "",
+                        "image_url": act.get("image_url") or "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=800"
+                    }
+                    if agency_id:
+                        act_record["agency_id"] = agency_id
+                    sb.table("activities").insert(act_record).execute()
+                    logger.info(f"[DeltaSync] Appended NEW activity to DB: {act_name}")
+                except Exception as ins_err:
+                    logger.error(f"[DeltaSync] Failed to insert new activity {act_name}: {ins_err}")
+        else:
+            delta_summary["updated_activities"].append(act_name)
+
+    logger.info(
+        f"[DeltaSync] Complete. Discovered {delta_summary['total_new_items']} new items "
+        f"({len(delta_summary['new_hotels'])} hotels, {len(delta_summary['new_activities'])} activities)."
+    )
+    return delta_summary

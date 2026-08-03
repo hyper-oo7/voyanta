@@ -8,11 +8,15 @@ from fastapi.responses import JSONResponse
 
 from src.core.security import verify_token_optional, get_request_token
 from src.services.supabase_client import get_supabase_client, get_user_supabase_client
+from src.services.chunker import TravelDocumentChunker
+from src.services.embedder import embedder
+from src.services.vector_store import vector_store
 from src.services.r2_storage_service import upload_file_to_r2
 from src.services.semantic_cache_service import compute_content_hash, get_cached_recommendation, store_cached_recommendation
 from src.services.vault_knowledge_service import (
     save_vault_package,
     accumulate_destination_knowledge,
+    perform_pdf_delta_sync,
     SECTION_TITLES
 )
 from src.services.pdf_vault_service import deterministic_pre_parse_and_compress
@@ -69,13 +73,14 @@ async def process_file_import(
     duration: int = Form(0),
     currency: str = Form("INR"),
     preview_only: bool = Form(True),
+    reparse: bool = Form(True),            # True by default to force re-parsing & finding new items
     user: Any = Depends(verify_token_optional),
     token: Optional[str] = Depends(get_request_token),
 ):
     """
     Unified Import Processing Endpoint:
     Processes PDF, XLSX, and CSV file formats, computes confidence metadata,
-    and supports preview_only pre-save review workflow.
+    re-parses documents to extract new items via Delta Extraction, and appends them to DB.
     """
     # 1. Size Validation (50MB limit)
     try:
@@ -101,7 +106,7 @@ async def process_file_import(
             )
             user_id = user.get("sub") or user.get("id")
             
-        logger.info(f"[ImportProcess] Start - file={file.filename}, agency_id={agency_id}, user_id={user_id}, preview_only={preview_only}")
+        logger.info(f"[ImportProcess] Start - file={file.filename}, agency_id={agency_id}, user_id={user_id}, reparse={reparse}")
 
         # Initialize Supabase client
         if token:
@@ -116,7 +121,6 @@ async def process_file_import(
                 entitlements = await get_agency_entitlements_data(sb, agency_id)
                 check_feature_entitlement(entitlements, "ai_vault")
             except HTTPException as http_e:
-                # If specifically 403 upgrade required, bubble up
                 if http_e.status_code == 403:
                     raise http_e
             except Exception as ent_err:
@@ -170,7 +174,6 @@ async def process_file_import(
         )
         file_url = r2_upload_res.get("url") if r2_upload_res else None
 
-        # Insert upload trace to public.supplier_pdfs
         source_pdf_id = None
         if sb:
             try:
@@ -214,29 +217,66 @@ async def process_file_import(
         })
         raw_text = normalized.pop("_raw_text", "")
 
-        # Compute hash key from the compressed text/raw text
         compressed_text, _ = deterministic_pre_parse_and_compress(raw_text)
         hash_key = compute_content_hash(compressed_text, budget, duration or normalized.get("duration_days", 7))
         
-        # Check cache
-        cached_result = await get_cached_recommendation(hash_key, supabase_client=sb, agency_id=agency_id)
-        if cached_result:
-            logger.info(f"[ImportProcess] Cache HIT for hash {hash_key[:8]}")
-            if "fields" not in cached_result:
-                from src.services.import_service import build_normalized_fields
-                cached_result["fields"] = build_normalized_fields(cached_result, file_type)
-            
-            return JSONResponse(content={
-                "status": "success",
-                "cache_hit": True,
-                "cost_incurred": "$0.00 (Served instantly from Semantic Cache)",
-                "storage_meta": {**storage_meta, "pdf_url": file_url},
-                "compression_metrics": compression_metrics,
-                "pdf_hash": file_hash,
-                "data": cached_result
-            })
+        # Bypass static cache hit when reparse=True to ensure delta extraction happens
+        if not reparse:
+            cached_result = await get_cached_recommendation(hash_key, supabase_client=sb, agency_id=agency_id)
+            if cached_result:
+                logger.info(f"[ImportProcess] Cache HIT for hash {hash_key[:8]}")
+                if "fields" not in cached_result:
+                    from src.services.import_service import build_normalized_fields
+                    cached_result["fields"] = build_normalized_fields(cached_result, file_type)
+                
+                return JSONResponse(content={
+                    "status": "success",
+                    "cache_hit": True,
+                    "cost_incurred": "$0.00 (Served instantly from Semantic Cache)",
+                    "storage_meta": {**storage_meta, "pdf_url": file_url},
+                    "compression_metrics": compression_metrics,
+                    "pdf_hash": file_hash,
+                    "data": cached_result
+                })
 
-        # Attach metadata to normalized data so confirm step can persist accurately
+        # 6. Delta Extraction Engine: Compare extracted items & append new ones to DB
+        delta_summary = perform_pdf_delta_sync(
+            extracted_pkg=normalized,
+            agency_id=agency_id,
+            sb=sb
+        )
+        normalized["delta_summary"] = delta_summary
+        logger.info(f"[ImportProcess] Delta extraction complete: {delta_summary.get('total_new_items')} new items appended.")
+
+        # 6b. Auto-Chunk, Embed & Store to Vector Store (RAG Engine)
+        # Runs for all file types (PDF, XLSX, CSV) so any imported knowledge is retrievable
+        if raw_text and agency_id:
+            try:
+                doc_dest = normalized.get("destination") or destination or "General"
+                embed_doc_id = normalized.get("vault_package_id") or file_hash
+                chunker_svc = TravelDocumentChunker()
+                chunks = chunker_svc.chunk_text(raw_text, metadata={
+                    "document_name": filename,
+                    "destination": doc_dest,
+                    "agency_id": agency_id,
+                    "source_type": file_type,
+                    "file_url": file_url or ""
+                })
+                if chunks:
+                    chunk_texts = [c["content"] for c in chunks]
+                    embeddings = await asyncio.to_thread(embedder.embed_texts, chunk_texts)
+                    stored_count = vector_store.store_chunks(
+                        agency_id=agency_id,
+                        document_id=embed_doc_id,
+                        chunks=chunks,
+                        embeddings=embeddings
+                    )
+                    normalized["chunks_indexed"] = stored_count
+                    delta_summary["chunks_indexed"] = stored_count
+                    logger.info(f"[ImportProcess] RAG: {stored_count} chunks indexed for '{doc_dest}' (agency={agency_id})")
+            except Exception as embed_err:
+                logger.error(f"[ImportProcess] RAG embedding pipeline failed (non-fatal): {embed_err}")
+
         normalized["_pdf_filename"] = filename
         normalized["_pdf_hash"] = file_hash
         normalized["_pdf_url"] = file_url
@@ -244,7 +284,6 @@ async def process_file_import(
         normalized["_hash_key"] = hash_key
 
         if not preview_only:
-            # Save package directly to DB if not in preview mode
             saved_pkg = save_vault_package(
                 parsed_data=normalized,
                 pdf_filename=filename,
@@ -259,7 +298,6 @@ async def process_file_import(
                 normalized["vault_package_id"] = saved_pkg.get("id")
                 logger.info(f"[ImportProcess] Saved to vault_packages: id={saved_pkg.get('id')}")
 
-            # Accumulate destination knowledge
             extra_sections = normalized.get("extra_sections") or {}
             dest_for_knowledge = normalized.get("destination") or destination
             if extra_sections and dest_for_knowledge:

@@ -3,9 +3,10 @@ API Router for proposal generation, template rendering, and saving.
 Exposes endpoints for generating RAG proposals, rendering HTML templates, saving proposal drafts, and querying proposal records.
 """
 import uuid
+import asyncio
 import logging
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from typing import Optional, Any
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 
 from src.models.schemas import (
     ProposalGenerateRequest,
@@ -17,6 +18,9 @@ from src.services.proposal_generator import proposal_generator
 from src.services.template_renderer import template_renderer
 from src.services.image_service import image_service
 from src.services.supabase_client import get_supabase_client
+from src.services.chunker import TravelDocumentChunker
+from src.services.embedder import embedder
+from src.services.vector_store import vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +105,104 @@ async def save_proposal(request: ProposalSaveRequest):
         status="saved",
     )
 
+
+def _embed_proposal_in_background(proposal_id: str, agency_id: str, sb: Any) -> None:
+    """
+    Background task: chunks and embeds finalized proposal content into the RAG
+    vector store so future proposal generation benefits from real past trips.
+    """
+    try:
+        resp = sb.table("proposals").select("*").eq("id", proposal_id).single().execute()
+        if not resp.data:
+            logger.warning(f"[ProposalEmbed] Proposal {proposal_id} not found — skipping embed")
+            return
+
+        data = resp.data
+        content = data.get("content") or {}
+        destination = data.get("destination") or (content.get("destination") if isinstance(content, dict) else "") or "General"
+
+        # Build a plain-text representation from day descriptions
+        lines = [
+            f"Proposal: {data.get('title', '')}",
+            f"Destination: {destination}",
+            f"Duration: {data.get('duration_days', '')} days",
+        ]
+        if isinstance(content, dict):
+            for day in content.get("days", []):
+                lines.append(f"\nDay {day.get('day_number', '')}: {day.get('title', '')}")
+                lines.append(day.get("description", ""))
+                for act in day.get("activities", []):
+                    act_name = act.get("name", "") if isinstance(act, dict) else str(act)
+                    lines.append(f"  - {act_name}")
+                for hotel in day.get("hotels", []):
+                    h_name = hotel.get("name", "") if isinstance(hotel, dict) else str(hotel)
+                    lines.append(f"  Hotel: {h_name}")
+
+        raw_text = "\n".join(filter(None, lines))
+        if len(raw_text) < 50:
+            logger.info(f"[ProposalEmbed] Proposal {proposal_id} too short to embed — skipping")
+            return
+
+        chunker_svc = TravelDocumentChunker()
+        chunks = chunker_svc.chunk_text(raw_text, metadata={
+            "document_name": data.get("title", f"Proposal {proposal_id}"),
+            "destination": destination,
+            "agency_id": agency_id,
+            "source_type": "proposal",
+            "proposal_id": proposal_id,
+        })
+
+        if not chunks:
+            return
+
+        chunk_texts = [c["content"] for c in chunks]
+        embeddings = embedder.embed_texts(chunk_texts)
+        stored = vector_store.store_chunks(
+            agency_id=agency_id,
+            document_id=proposal_id,
+            chunks=chunks,
+            embeddings=embeddings,
+        )
+        logger.info(f"[ProposalEmbed] Indexed {stored} chunks for finalized proposal '{proposal_id}' (dest={destination})")
+    except Exception as e:
+        logger.error(f"[ProposalEmbed] Background embedding failed for proposal {proposal_id}: {e}")
+
+
+@router.post("/{proposal_id}/finalize")
+async def finalize_proposal(
+    proposal_id: str,
+    background_tasks: BackgroundTasks,
+    agency_id: str = Query("global"),
+):
+    """
+    Marks proposal as finalized and triggers async RAG embedding.
+    Call this endpoint whenever a proposal is sent / approved.
+    Embedding runs in the background — response is immediate.
+    """
+    sb = get_supabase()
+    if not sb:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    try:
+        sb.table("proposals").update({"status": "finalized"}).eq("id", proposal_id).execute()
+    except Exception as e:
+        logger.error(f"[ProposalsRouter] Failed to update status for {proposal_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Finalize failed: {e}")
+
+    # Kick off background embedding — non-blocking
+    background_tasks.add_task(_embed_proposal_in_background, proposal_id, agency_id, sb)
+    
+    # 4A: Style Fingerprint Auto-Rebuild
+    from src.services.proposal_style_service import rebuild_style_profile
+    background_tasks.add_task(rebuild_style_profile, agency_id)
+
+    return {
+        "status": "finalized",
+        "proposal_id": proposal_id,
+        "message": "Proposal finalized. Content is being indexed into vault knowledge in the background."
+    }
+
+
 @router.get("/{proposal_id}")
 async def get_proposal(proposal_id: str):
     sb = get_supabase()
@@ -128,3 +230,5 @@ async def list_proposals(agency_id: str = Query("global"), client_id: Optional[s
     except Exception as e:
         logger.error(f"[ProposalsRouter] Error listing proposals: {e}")
         return {"proposals": []}
+
+

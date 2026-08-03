@@ -18,10 +18,12 @@ export default function ResourceModulePage({
   const [selection, setSelection] = useState(new Set());
   const [adding, setAdding] = useState(false);
 
+  const [selectedDestination, setSelectedDestination] = useState(null);
+
   // Search & Sort states
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('name-asc');
-  const [viewMode, setViewMode] = useState(resource === 'flights' ? 'list' : 'grid');
+  const [viewMode, setViewMode] = useState(resource === 'flights' || resource === 'hotels' || resource === 'activities' ? 'list' : 'grid');
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -300,6 +302,225 @@ export default function ResourceModulePage({
             </div>
           ))}
         </div>
+      ) : resource === 'hotels' ? (
+        // Hotels List Table View
+        <div className="bg-surface border border-outline-variant rounded-2xl overflow-hidden shadow-sm overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-surface-container-low border-b border-outline-variant">
+              <tr>
+                <th className="p-md w-10 text-center">
+                  <input 
+                    type="checkbox" 
+                    checked={selection.size > 0 && selection.size === processedRows.length}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelection(new Set(processedRows.map(r => r.id)));
+                      else setSelection(new Set());
+                    }}
+                    className="w-4 h-4 rounded cursor-pointer"
+                  />
+                </th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider w-16">Image</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider">Hotel Name</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider">Location</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider">Price / Night</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider">Meal Type</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider">Room Type</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider">Amenities</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant">
+              {processedRows.map(item => {
+                const ams = Array.isArray(item.amenities) ? item.amenities : (item.amenities ? String(item.amenities).split(',') : []);
+                return (
+                  <tr key={item.id} className={`hover:bg-surface-container-lowest transition-colors ${selection.has(item.id) ? 'bg-primary-fixed/20' : ''}`}>
+                    <td className="p-md text-center">
+                      <input 
+                        type="checkbox" 
+                        checked={selection.has(item.id)}
+                        onChange={() => toggleSelect(item.id)}
+                        className="w-4 h-4 rounded cursor-pointer"
+                      />
+                    </td>
+                    <td className="p-md">
+                      <button 
+                        onClick={() => setEditing(item)}
+                        className="w-12 h-12 rounded-lg bg-surface-container-high overflow-hidden border border-outline-variant cursor-pointer group relative block p-0 text-left"
+                      >
+                        <img 
+                          src={item.image_url || item.cover_image || 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=300'} 
+                          alt={item.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
+                      </button>
+                    </td>
+                    <td className="p-md">
+                      <button
+                        onClick={() => setEditing(item)}
+                        className="font-display text-sm font-bold text-primary hover:underline text-left bg-transparent border-none p-0 cursor-pointer block"
+                      >
+                        {item.name}
+                      </button>
+                      {item.category && <span className="text-[11px] text-on-surface-variant block mt-xs">{item.category}</span>}
+                      <BestRateChip objId={item.id} />
+                    </td>
+                    <td className="p-md text-sm text-on-surface">
+                      {item.location}{item.country ? `, ${item.country}` : ''}
+                    </td>
+                    <td className="p-md font-display text-sm font-bold text-on-surface whitespace-nowrap">
+                      {item.currency || 'INR'} {toUnitPrice(item).toLocaleString()} <span className="font-normal text-xs text-on-surface-variant">/nt</span>
+                    </td>
+                    <td className="p-md text-xs font-label-md text-on-surface whitespace-nowrap">
+                      <span className="bg-surface-container-high px-2 py-1 rounded font-semibold text-[11px] text-on-surface-variant">
+                        {item.meal_type || item.meal_plan || 'CP (Breakfast)'}
+                      </span>
+                    </td>
+                    <td className="p-md text-xs text-on-surface">
+                      {item.room_type || 'Deluxe Room'}
+                    </td>
+                    <td className="p-md">
+                      <div className="flex flex-wrap gap-xs max-w-[200px]">
+                        {ams.slice(0, 3).map((am, i) => (
+                          <span key={i} className="bg-surface-container px-2 py-0.5 text-[10px] rounded font-label-sm text-on-surface-variant uppercase tracking-wider">
+                            {String(am).trim()}
+                          </span>
+                        ))}
+                        {ams.length > 3 && (
+                          <span className="text-[10px] text-on-surface-variant font-bold">+{ams.length - 3}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-md text-right">
+                      <div className="flex items-center justify-end gap-xs">
+                        <button 
+                          onClick={() => setEditing(item)}
+                          title="View & Edit Details"
+                          className="px-md py-xs rounded-lg border border-outline-variant hover:bg-surface-container-low flex items-center gap-xs text-xs font-semibold text-on-surface bg-white cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">edit</span>
+                          Edit
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(item.id)}
+                          title="Remove Hotel"
+                          className="w-8 h-8 rounded-lg border border-outline-variant hover:bg-error-container/20 flex items-center justify-center text-error bg-white cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : resource === 'activities' ? (
+        // Activities List Table View
+        <div className="bg-surface border border-outline-variant rounded-2xl overflow-hidden shadow-sm overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-surface-container-low border-b border-outline-variant">
+              <tr>
+                <th className="p-md w-10 text-center">
+                  <input 
+                    type="checkbox" 
+                    checked={selection.size > 0 && selection.size === processedRows.length}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelection(new Set(processedRows.map(r => r.id)));
+                      else setSelection(new Set());
+                    }}
+                    className="w-4 h-4 rounded cursor-pointer"
+                  />
+                </th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider w-16">Image</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider">Destination</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider">Attractions & Activities</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider">Category</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider">Duration</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider">Price / Person</th>
+                <th className="p-md font-label-sm text-xs text-on-surface-variant uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant">
+              {processedRows.map(item => (
+                <tr key={item.id} className={`hover:bg-surface-container-lowest transition-colors ${selection.has(item.id) ? 'bg-primary-fixed/20' : ''}`}>
+                  <td className="p-md text-center">
+                    <input 
+                      type="checkbox" 
+                      checked={selection.has(item.id)}
+                      onChange={() => toggleSelect(item.id)}
+                      className="w-4 h-4 rounded cursor-pointer"
+                    />
+                  </td>
+                  <td className="p-md">
+                    <button 
+                      onClick={() => setEditing(item)}
+                      className="w-12 h-12 rounded-lg bg-surface-container-high overflow-hidden border border-outline-variant cursor-pointer group relative block p-0 text-left"
+                    >
+                      <img 
+                        src={item.image_url || 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=300'} 
+                        alt={item.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                    </button>
+                  </td>
+                  <td className="p-md">
+                    <button
+                      onClick={() => setSelectedDestination(item.location || item.destination || 'General')}
+                      className="font-label-md text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 px-2.5 py-1 rounded-full border-none cursor-pointer inline-flex items-center gap-1 transition-colors"
+                      title={`Click to view all attractions & activities in ${item.location || 'this destination'}`}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">location_on</span>
+                      {item.location || item.destination || 'General'}
+                    </button>
+                  </td>
+                  <td className="p-md">
+                    <button
+                      onClick={() => setEditing(item)}
+                      className="font-display text-sm font-bold text-on-surface hover:text-primary hover:underline text-left bg-transparent border-none p-0 cursor-pointer block"
+                    >
+                      {item.name}
+                    </button>
+                    {item.description && (
+                      <p className="text-xs text-on-surface-variant m-0 mt-0.5 truncate max-w-xs">{item.description}</p>
+                    )}
+                    <BestRateChip objId={item.id} />
+                  </td>
+                  <td className="p-md text-xs font-label-md whitespace-nowrap">
+                    <span className="bg-surface-container-high px-2 py-1 rounded font-semibold text-[11px] text-on-surface-variant">
+                      {item.type || 'Sightseeing'}
+                    </span>
+                  </td>
+                  <td className="p-md text-xs text-on-surface whitespace-nowrap">
+                    {item.duration_hours ? `${item.duration_hours} hrs` : (item.duration || '—')}
+                  </td>
+                  <td className="p-md font-display text-sm font-bold text-on-surface whitespace-nowrap">
+                    {item.currency || 'INR'} {toUnitPrice(item).toLocaleString()}
+                  </td>
+                  <td className="p-md text-right">
+                    <div className="flex items-center justify-end gap-xs">
+                      <button 
+                        onClick={() => setEditing(item)}
+                        title="View & Edit Activity Details"
+                        className="px-md py-xs rounded-lg border border-outline-variant hover:bg-surface-container-low flex items-center gap-xs text-xs font-semibold text-on-surface bg-white cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">edit</span>
+                        Edit
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(item.id)}
+                        title="Remove Activity"
+                        className="w-8 h-8 rounded-lg border border-outline-variant hover:bg-error-container/20 flex items-center justify-center text-error bg-white cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         // List View / Flights View (Image 8 style)
         <div className="bg-surface border border-outline-variant rounded-2xl overflow-hidden shadow-sm divide-y divide-outline-variant">
@@ -348,7 +569,7 @@ export default function ResourceModulePage({
                     </div>
                   </div>
                 ) : (
-                  /* Default list layout for Hotels/Activities */
+                  /* Default list layout */
                   <div className="flex items-center gap-md min-w-0">
                     {item.image_url && (
                       <img src={item.image_url} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
@@ -368,7 +589,6 @@ export default function ResourceModulePage({
                   <span className="font-label-sm text-[10px] text-on-surface-variant uppercase tracking-wider block">PRICE</span>
                   <span className="font-display text-md font-bold text-on-surface">
                     {item.currency || 'INR'} {toUnitPrice(item).toLocaleString()}
-                    {resource === 'hotels' ? '/nt' : ''}
                   </span>
                 </div>
 
@@ -437,10 +657,28 @@ export default function ResourceModulePage({
           resource={resource} 
           service={service}
           onClose={() => setEditing(null)}
+          onDelete={(id) => {
+            handleDelete(id);
+            setEditing(null);
+          }}
           onSaved={() => { 
             setEditing(null); 
             reload(); 
             toast.success('Saved details'); 
+          }}
+        />
+      )}
+      {selectedDestination && (
+        <DestinationDetailModal 
+          destination={selectedDestination}
+          items={rows.filter(r => (r.location || r.destination || '').toLowerCase() === selectedDestination.toLowerCase())}
+          onClose={() => setSelectedDestination(null)}
+          onEditItem={(item) => {
+            setSelectedDestination(null);
+            setEditing(item);
+          }}
+          onDeleteItem={(id) => {
+            handleDelete(id);
           }}
         />
       )}
@@ -492,6 +730,105 @@ function BestRateChip({ objId }) {
     <div className="inline-flex items-center gap-xs px-2 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded border border-emerald-200 shadow-sm animate-fade-in no-print mt-1">
       <span className="material-symbols-outlined text-[12px] text-emerald-600">auto_awesome</span>
       <span>best rate: {bestRate.currency === 'INR' ? '₹' : bestRate.currency}{bestRate.rate.toLocaleString()} via {bestRate.supplier_name}</span>
+    </div>
+  );
+}
+
+function DestinationDetailModal({ destination, items, onClose, onEditItem, onDeleteItem }) {
+  const coverImage = items.find(i => i.image_url)?.image_url || 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=1000';
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-md text-on-surface">
+      <div className="absolute inset-0 bg-on-surface/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-surface-container-lowest w-full max-w-4xl rounded-2xl shadow-2xl border border-outline-variant max-h-[90vh] flex flex-col z-10 overflow-hidden">
+        {/* Banner Header */}
+        <div className="relative h-44 bg-surface-container-high flex-shrink-0">
+          <img src={coverImage} alt={destination} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent flex items-end p-xl justify-between">
+            <div>
+              <span className="bg-white/20 backdrop-blur-md text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-2 inline-block">
+                Destination Portfolio
+              </span>
+              <h2 className="font-headline-lg text-3xl font-bold text-white m-0 leading-tight">
+                {destination} Attractions & Activities
+              </h2>
+              <p className="text-white/80 text-sm m-0 mt-1">
+                {items.length} curated sightseeing spots, excursions, and activities
+              </p>
+            </div>
+            <button onClick={onClose} className="w-9 h-9 inline-flex items-center justify-center rounded-full bg-white/20 hover:bg-white text-white hover:text-black transition-colors border-none cursor-pointer">
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Content Body */}
+        <div className="flex-1 overflow-y-auto p-xl space-y-xl">
+          {items.length === 0 ? (
+            <div className="text-center py-xl text-on-surface-variant">
+              <p>No activities or attractions recorded for {destination} yet.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+              {items.map((item) => (
+                <div key={item.id} className="bg-surface border border-outline-variant rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+                  <div className="h-44 relative bg-surface-container-high">
+                    <img src={item.image_url || 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=600'} alt={item.name} className="w-full h-full object-cover" />
+                    {item.type && (
+                      <span className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm text-white px-2.5 py-1 rounded-full text-[11px] font-bold">
+                        {item.type}
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-md flex-1 flex flex-col justify-between">
+                    <div>
+                      <h4 className="font-display text-base font-bold text-on-surface m-0 mb-1">{item.name}</h4>
+                      {item.description && (
+                        <p className="text-xs text-on-surface-variant m-0 mb-3 line-clamp-2">{item.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between border-t border-outline-variant pt-md mt-sm">
+                      <div>
+                        <span className="text-[10px] text-on-surface-variant uppercase tracking-wider block font-bold">Price per Person</span>
+                        <span className="font-display text-base font-bold text-primary">
+                          {item.currency || 'INR'} {Number(item.price || 0).toLocaleString()}
+                        </span>
+                        {item.duration_hours && (
+                          <span className="text-xs text-on-surface-variant ml-2">({item.duration_hours} hrs)</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-xs">
+                        <button 
+                          onClick={() => onEditItem(item)}
+                          className="px-md py-xs rounded-lg border border-outline-variant hover:bg-surface-container-low text-xs font-semibold text-on-surface bg-white cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (confirm(`Remove ${item.name}?`)) onDeleteItem(item.id);
+                          }}
+                          className="w-8 h-8 rounded-lg border border-outline-variant hover:bg-error-container/20 text-error bg-white cursor-pointer flex items-center justify-center"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-md border-t border-outline-variant bg-surface-container-low flex justify-between items-center">
+          <span className="text-xs text-on-surface-variant">Click any item to edit pricing, details, or upload photos.</span>
+          <button onClick={onClose} className="px-xl py-sm bg-on-surface text-surface rounded-lg font-label-md border-none cursor-pointer">
+            Done
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

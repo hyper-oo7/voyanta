@@ -109,6 +109,9 @@ export const useVaultStore = create((set, get) => ({
                 compression: resultData.compression_metrics,
                 cost: cacheHitsCount === filesList.length ? '$0.00 (100% Cache Hits)' : 'Optimized via Faithful Extraction',
                 cacheHit: cacheHitsCount > 0,
+                delta_summary: resultData.data?.delta_summary || resultData.delta_summary,
+                chunks_indexed: resultData.data?.chunks_indexed || resultData.chunks_indexed,
+                vault_package_id: resultData.data?.vault_package_id || resultData.vault_package_id
               }
             });
           }

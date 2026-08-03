@@ -142,14 +142,20 @@ def assemble_1shot_proposal(
     margin_config: Optional[MarginConfig] = None,
     agency_id: str = "global",
     travel_month: int = 7,
-    days_per_destination: Optional[Dict[str, int]] = None
+    days_per_destination: Optional[Dict[str, int]] = None,
+    # RAG-augmented context — passed from ai_router after retrieval
+    rag_context: str = "",
+    rag_hotels: List[Dict[str, Any]] = None,
+    rag_activities: List[Dict[str, Any]] = None,
 ) -> FinalProposalSchema:
     """
     1-Shot Assembly Engine: Combines matching Day Modules, Vault Pricing, Feasibility Checks,
     Pace & Weather Protection Rules, and Margins into a valid FinalProposalSchema in < 1.5 seconds.
     """
-    logger.info(f"[AssemblyEngine] Assembling 1-Shot proposal for '{destination}' ({duration_days} days, {pace} pace, ₹{budget_per_head}/head)")
+    logger.info(f"[AssemblyEngine] Assembling 1-Shot proposal for '{destination}' ({duration_days} days, {pace} pace, ₹{budget_per_head}/head, rag_hotels={len(rag_hotels or [])})")
 
+    rag_hotels = rag_hotels or []
+    rag_activities = rag_activities or []
     dest_clean = destination.strip().title()
     days_list: List[ProposalDay] = []
     total_net_cost = 0.0
@@ -212,10 +218,19 @@ def assemble_1shot_proposal(
         )
         all_packing_items.extend(packing_additions)
 
+        # --- RAG Override: prefer vault-sourced activities over seed data ---
+        if rag_activities:
+            # Take up to 3 RAG activities for this day (cycle through them)
+            start_idx = (d_num - 1) * 2
+            day_rag_acts = rag_activities[start_idx:start_idx + 3]
+            if day_rag_acts:
+                adjusted_acts = day_rag_acts
+                logger.info(f"[AssemblyEngine] Day {d_num}: Using {len(day_rag_acts)} RAG-sourced activities")
+
         activities = [
             ProposalActivity(
                 name=a.get("name", "Sightseeing"),
-                duration=a.get("duration", "2 hrs"),
+                duration=a.get("duration") or a.get("duration_hours", "2 hrs"),
                 timing=a.get("timing", "10:00 AM"),
                 location=a.get("location", mod.get("sub_destination")),
                 description=a.get("description", "")
@@ -223,17 +238,31 @@ def assemble_1shot_proposal(
             for a in adjusted_acts
         ]
 
-        # Extract hotels
-        hotels = [
-            ProposalHotel(
-                name=h.get("name", "Deluxe Resort"),
-                category=h.get("category", "4 Star"),
-                location=h.get("location", mod.get("sub_destination")),
-                meal_plan=h.get("meal_plan", "MAP"),
-                price_per_night=h.get("price_per_night", 4000.0)
-            )
-            for h in mod.get("hotels", [])
-        ]
+        # Extract hotels — RAG-sourced hotels override seed data
+        if rag_hotels:
+            # Pick one hotel per day cycling through RAG results
+            rag_hotel = rag_hotels[(d_num - 1) % len(rag_hotels)]
+            hotels = [
+                ProposalHotel(
+                    name=rag_hotel.get("name", "Deluxe Resort"),
+                    category=rag_hotel.get("category") or rag_hotel.get("star", "4 Star"),
+                    location=rag_hotel.get("location", dest_clean),
+                    meal_plan=rag_hotel.get("meal_plan") or rag_hotel.get("meal_type", "MAP"),
+                    price_per_night=float(rag_hotel.get("price_per_night") or rag_hotel.get("price_min") or 4000.0)
+                )
+            ]
+            logger.info(f"[AssemblyEngine] Day {d_num}: Using RAG-sourced hotel: {rag_hotel.get('name')}")
+        else:
+            hotels = [
+                ProposalHotel(
+                    name=h.get("name", "Deluxe Resort"),
+                    category=h.get("category", "4 Star"),
+                    location=h.get("location", mod.get("sub_destination")),
+                    meal_plan=h.get("meal_plan", "MAP"),
+                    price_per_night=h.get("price_per_night", 4000.0)
+                )
+                for h in mod.get("hotels", [])
+            ]
 
         day_obj = ProposalDay(
             day_number=d_num,
@@ -270,7 +299,9 @@ def assemble_1shot_proposal(
     proposal = FinalProposalSchema(
         destination=dest_clean,
         sub_destinations=list(set(d.sub_destination for d in days_list if d.sub_destination)),
-        overview=f"Exclusive {duration_days}-Day curated trip to {dest_clean} customized for {client_name}.",
+        overview=f"Exclusive {duration_days}-Day curated trip to {dest_clean} customized for {client_name}." + (
+            f" Built from your agency's vault knowledge." if rag_hotels or rag_activities else ""
+        ),
         duration_days=duration_days,
         currency="INR",
         total_price=costing.final_package_total,
@@ -279,7 +310,7 @@ def assemble_1shot_proposal(
         inclusions=["Private AC Vehicle for all transfers & sightseeing", "Hotel Accommodation with breakfast & dinner", "All toll, parking, driver allowances & taxes"],
         exclusions=["Airfare / Train tickets", "Personal expenses & tips", "Monument entry fees & adventure activity charges"],
         extra_sections=extra_sections,
-        model_used="1-Shot Deterministic Engine v2.0 (Feasibility & Weather Enabled)"
+        model_used="1-Shot RAG-Augmented Assembly v3.0" if (rag_hotels or rag_activities) else "1-Shot Deterministic Engine v2.0 (Feasibility & Weather Enabled)"
     )
 
     return proposal

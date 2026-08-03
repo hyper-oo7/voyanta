@@ -420,6 +420,105 @@ async def assemble_1shot_route(
         if not dest:
             dest = "Himachal"
 
+        # ── RAG Pre-retrieval: Query vector store for vault-sourced hotels & activities ──
+        rag_hotels = []
+        rag_activities = []
+        rag_context = ""
+        try:
+            from src.services.rag_engine import rag_engine
+            rag_result = rag_engine.run_rag(
+                agency_id=agency_id,
+                destination=dest,
+                duration_days=dur,
+                travelers=input.num_travelers,
+                travel_style=input.group_type,
+                budget_inr=int(input.budget_per_head * input.num_travelers),
+                special_requests=pref or None,
+            )
+            rag_context = rag_result.get("context", "")
+            chunks = rag_result.get("chunks", [])
+
+            # Extract structured hotels & activities from retrieved RAG chunks
+            for chunk in chunks:
+                meta = chunk.get("metadata", {})
+                chunk_type = meta.get("chunk_type", "")
+                content = chunk.get("content", "")
+
+                if chunk_type in ("hotel", "accommodation") or any(kw in content.lower() for kw in ["hotel", "resort", "lodge", "inn", "cottage"]):
+                    # Parse hotel name from content
+                    lines = content.split("\n")
+                    for line in lines:
+                        line = line.strip()
+                        if len(line) > 5 and any(kw in line.lower() for kw in ["hotel", "resort", "lodge", "inn"]):
+                            rag_hotels.append({
+                                "name": line[:80],
+                                "category": "4 Star",
+                                "location": dest,
+                                "meal_plan": "MAP",
+                                "price_per_night": 4500.0
+                            })
+                            if len(rag_hotels) >= dur:
+                                break
+
+                if chunk_type in ("activity", "sightseeing") or any(kw in content.lower() for kw in ["visit", "excursion", "trek", "temple", "waterfall", "cave", "market", "falls", "lake", "peak"]):
+                    lines = content.split("\n")
+                    for line in lines:
+                        line = line.strip()
+                        if 8 < len(line) < 120 and not line.startswith("["):
+                            rag_activities.append({
+                                "name": line[:100],
+                                "timing": "10:00 AM",
+                                "duration": "2 hrs",
+                                "location": dest,
+                                "description": ""
+                            })
+                            if len(rag_activities) >= dur * 3:
+                                break
+
+            # Deduplicate by name
+            seen = set()
+            rag_hotels = [h for h in rag_hotels if h["name"] not in seen and not seen.add(h["name"])]
+            seen.clear()
+            rag_activities = [a for a in rag_activities if a["name"] not in seen and not seen.add(a["name"])]
+
+            if rag_hotels or rag_activities:
+                logger.info(f"[1-Shot] RAG enriched: {len(rag_hotels)} hotels, {len(rag_activities)} activities from vault for '{dest}'")
+            else:
+                logger.info(f"[1-Shot] RAG returned no structured data for '{dest}' — using seed baseline")
+        except Exception as rag_err:
+            logger.warning(f"[1-Shot] RAG retrieval failed (non-fatal, using seed): {rag_err}")
+
+        # ── Also pull hotels & activities from the Delta-synced DB tables ──────────
+        if not rag_hotels:
+            try:
+                from src.services.supabase_client import get_supabase_client
+                sb_global = get_supabase_client()
+                if sb_global:
+                    h_query = sb_global.table("hotels").select("name, location, price_per_night, meal_type, category, rating")
+                    if agency_id and agency_id != "global":
+                        h_query = h_query.eq("agency_id", agency_id)
+                    h_res = h_query.ilike("location", f"%{dest}%").limit(dur + 2).execute()
+                    if h_res.data:
+                        rag_hotels = h_res.data
+                        logger.info(f"[1-Shot] DB fallback: {len(rag_hotels)} hotels from hotels table for '{dest}'")
+            except Exception as db_err:
+                logger.warning(f"[1-Shot] DB hotel lookup failed (non-fatal): {db_err}")
+
+        if not rag_activities:
+            try:
+                from src.services.supabase_client import get_supabase_client
+                sb_global = get_supabase_client()
+                if sb_global:
+                    a_query = sb_global.table("activities").select("name, location, type, duration_hours, price, description")
+                    if agency_id and agency_id != "global":
+                        a_query = a_query.eq("agency_id", agency_id)
+                    a_res = a_query.ilike("location", f"%{dest}%").limit(dur * 3).execute()
+                    if a_res.data:
+                        rag_activities = a_res.data
+                        logger.info(f"[1-Shot] DB fallback: {len(rag_activities)} activities from activities table for '{dest}'")
+            except Exception as db_err:
+                logger.warning(f"[1-Shot] DB activity lookup failed (non-fatal): {db_err}")
+
         proposal = assemble_1shot_proposal(
             destination=dest,
             duration_days=dur,
@@ -431,7 +530,10 @@ async def assemble_1shot_route(
             preferences_text=pref,
             margin_config=margin_cfg,
             agency_id=agency_id,
-            days_per_destination=input.days_per_destination
+            days_per_destination=input.days_per_destination,
+            rag_context=rag_context,
+            rag_hotels=rag_hotels,
+            rag_activities=rag_activities,
         )
         
         # Inject Dates
@@ -520,3 +622,54 @@ async def generate_day_module(
     except Exception as e:
         logger.error(f"[AI GenerateDay] Failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate day module")
+
+class RefineItineraryInput(BaseModel):
+    proposal: Dict[str, Any]
+    user_prompt: str
+
+@router.post("/refine-itinerary")
+async def refine_itinerary(
+    input: RefineItineraryInput,
+    user: Any = Depends(verify_token_optional)
+):
+    """
+    Phase 5A: AI Proposal Chat
+    Modifies an existing proposal based on a natural language user prompt.
+    Allowed to restructure days completely.
+    """
+    from src.services.ai_client import call_llm
+    import json
+    
+    prompt = f"""
+    You are an expert luxury travel curator for Voyanta. 
+    You are given a JSON representing a travel proposal, and a user request to modify it.
+    The user request is: "{input.user_prompt}"
+    
+    You are ALLOWED to completely restructure the days (e.g. changing duration) or swap hotels/activities to fulfill the user's request.
+    
+    Here is the current proposal JSON:
+    {json.dumps(input.proposal, indent=2)}
+    
+    Respond STRICTLY with the modified JSON matching the same schema structure.
+    Do NOT include markdown backticks like ```json in your response, just the raw JSON object.
+    Ensure prices and totals are updated reasonably if days or hotels are changed.
+    """
+    
+    try:
+        raw_text = await call_llm(
+            prompt=prompt,
+            system_prompt="You are an expert Voyanta travel curator. Always return valid JSON only.",
+            temperature=0.7
+        )
+        
+        clean_json = raw_text.strip()
+        if clean_json.startswith("```json"):
+            clean_json = clean_json[7:-3].strip()
+        elif clean_json.startswith("```"):
+            clean_json = clean_json[3:-3].strip()
+            
+        modified_proposal = json.loads(clean_json)
+        return {"status": "success", "modified_proposal": modified_proposal}
+    except Exception as e:
+        logger.error(f"[AI RefineItinerary] Failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to refine itinerary")

@@ -28,8 +28,11 @@ CREATE INDEX IF NOT EXISTS idx_attraction_review_queue_status ON public.attracti
 ALTER TABLE public.block_embeddings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attraction_review_queue ENABLE ROW LEVEL SECURITY;
 
+-- Global Read / Tenant Access Policies
+DROP POLICY IF EXISTS "Public/Tenant Read Block Embeddings" ON public.block_embeddings;
 CREATE POLICY "Public/Tenant Read Block Embeddings" ON public.block_embeddings
     FOR SELECT USING (agency_id = 'global' OR agency_id = current_setting('app.current_agency_id', true));
 
+DROP POLICY IF EXISTS "Public Read Attraction Review Queue" ON public.attraction_review_queue;
 CREATE POLICY "Public Read Attraction Review Queue" ON public.attraction_review_queue
     FOR SELECT USING (true);

@@ -193,26 +193,9 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
         }
       });
 
-      const itineraryId = `itinerary_${pkgId}`;
-      if (!library.some(item => String(item.id) === String(itineraryId))) {
-        library.push({
-          id: itineraryId,
-          name: pkg.name || `${pkg.destination || 'Custom'} Tour Package`,
-          type: 'itinerary',
-          location: pkg.destination || '',
-          rate: pkg.budget || pkg.total_price || 0,
-          cover_image: pkg.cover_image || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&q=80',
-          details: `${pkg.duration_days || parsed.duration_days || 0} Days itinerary package`,
-          description: pkg.itinerary_text || parsed.overview || '',
-          days: parsed.days || [],
-          source: 'vault',
-          pkg_id: pkgId
-        });
-        updated = true;
-      }
-
-      if (updated) {
-        localStorage.setItem('voyanta_unified_library', JSON.stringify(library));
+      const cleanLib = library.filter(item => item && (item.type === 'hotel' || item.type === 'activity'));
+      if (updated || cleanLib.length !== library.length) {
+        localStorage.setItem('voyanta_unified_library', JSON.stringify(cleanLib));
         window.dispatchEvent(new Event('voyanta:unified-library-updated'));
       }
     } catch (err) {

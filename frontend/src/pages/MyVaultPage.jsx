@@ -5,6 +5,7 @@ import { useProposalStore } from '../store/proposalStore.js';
 import { supabase } from '../lib/supabaseClient.js';
 import { api } from '../services/api.js';
 import BatchExtractionReviewModal from '../components/vault/BatchExtractionReviewModal.jsx';
+import RateConflictWidget from '../components/vault/RateConflictWidget.jsx';
 import { useVaultStore } from '../store/vaultStore.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,29 +89,12 @@ function syncVaultItemsToLibrary(items) {
           updated = true;
         }
       });
-      
-      // 3. Process itinerary package itself
-      const itineraryId = `itinerary_${pkg.id}`;
-      if (!library.some(item => String(item.id) === String(itineraryId))) {
-        library.push({
-          id: itineraryId,
-          name: pkg.name || `${pkg.destination || 'Custom'} Tour Package`,
-          type: 'itinerary',
-          location: pkg.destination || '',
-          rate: pkg.budget || pkg.total_price || 0,
-          cover_image: pkg.cover_image || 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&q=80',
-          details: `${pkg.duration_days || parsed.duration_days || 0} Days itinerary package`,
-          description: pkg.itinerary_text || parsed.overview || '',
-          days: parsed.days || [],
-          source: 'vault',
-          pkg_id: pkg.id
-        });
-        updated = true;
-      }
     });
 
-    if (updated) {
-      localStorage.setItem('voyanta_unified_library', JSON.stringify(library));
+    // Ensure itinerary type items are purged
+    const cleanLib = library.filter(item => item && (item.type === 'hotel' || item.type === 'activity'));
+    if (updated || cleanLib.length !== library.length) {
+      localStorage.setItem('voyanta_unified_library', JSON.stringify(cleanLib));
       window.dispatchEvent(new CustomEvent('voyanta:unified-library-updated'));
     }
   } catch (err) {
@@ -148,6 +132,7 @@ export default function MyVaultPage() {
   // Filter state
   const [filterDest, setFilterDest] = useState('');
   const [filterBudget, setFilterBudget] = useState('');
+  const [confidenceStats, setConfidenceStats] = useState(null);
 
   const isReviewOpenRef = useRef(isReviewOpen);
   isReviewOpenRef.current = isReviewOpen;
@@ -247,6 +232,35 @@ export default function MyVaultPage() {
     window.addEventListener('voyanta:vault-updated', handleSync);
     return () => window.removeEventListener('voyanta:vault-updated', handleSync);
   }, [loadVaultItems]);
+
+  // Phase 4B: Fetch Destination Confidence Scoring
+  useEffect(() => {
+    if (!filterDest) {
+      setConfidenceStats(null);
+      return;
+    }
+    
+    (async () => {
+      try {
+        let token = null;
+        try {
+          const { data: { session } } = await supabase?.auth?.getSession?.() || { data: { session: null } };
+          if (session?.access_token) token = session.access_token;
+        } catch {}
+        
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        
+        const res = await fetch(`/api/vault/destination-confidence?destination=${encodeURIComponent(filterDest)}`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setConfidenceStats(data);
+        }
+      } catch (err) {
+        console.warn('Failed to load confidence stats', err);
+      }
+    })();
+  }, [filterDest]);
 
   // ── Process uploaded files with pre-save review and token refresh ──────────
   const handleUploadAndProcess = async (e) => {
@@ -495,77 +509,173 @@ export default function MyVaultPage() {
           )}
         </button>
 
-        {/* Metrics */}
+        {/* Phase 3A: Post-Upload Learning Panel */}
         {metrics && (
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-xs">
-            <p className="font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-2 mb-2">
-              <span className="material-symbols-outlined text-sm">check_circle</span>
-              Extraction Complete
-              {metrics.cacheHit && ' (Cache Hit — $0 Cost)'}
-            </p>
+          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-lg space-y-4">
+            <h3 className="font-black text-emerald-700 dark:text-emerald-400 flex items-center gap-2 text-base">
+              <span className="material-symbols-outlined">auto_awesome</span>
+              Vault Learning Summary
+              {metrics.cacheHit && <span className="text-[10px] bg-emerald-500/20 px-2 py-0.5 rounded-full ml-2">Cache Hit — $0 Cost</span>}
+            </h3>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-surface p-3 rounded-lg border border-emerald-500/20">
+                <span className="text-2xl mb-1 block">📚</span>
+                <p className="font-bold text-sm text-on-surface">
+                  {metrics.delta_summary?.chunks_indexed || metrics.chunks_indexed || 0}
+                </p>
+                <p className="text-[11px] text-on-surface-variant font-medium uppercase tracking-wider">Chunks Indexed</p>
+              </div>
+              
+              <div className="bg-surface p-3 rounded-lg border border-emerald-500/20">
+                <span className="text-2xl mb-1 block">🏨</span>
+                <p className="font-bold text-sm text-on-surface">
+                  {metrics.delta_summary?.new_hotels || 0}
+                </p>
+                <p className="text-[11px] text-on-surface-variant font-medium uppercase tracking-wider">New Hotels</p>
+              </div>
+              
+              <div className="bg-surface p-3 rounded-lg border border-emerald-500/20">
+                <span className="text-2xl mb-1 block">🎯</span>
+                <p className="font-bold text-sm text-on-surface">
+                  {metrics.delta_summary?.new_activities || 0}
+                </p>
+                <p className="text-[11px] text-on-surface-variant font-medium uppercase tracking-wider">New Activities</p>
+              </div>
+              
+              <div className="bg-surface p-3 rounded-lg border border-emerald-500/20">
+                <span className="text-2xl mb-1 block">✨</span>
+                <p className="font-bold text-sm text-on-surface">
+                  {metrics.delta_summary?.total_new_items || 0}
+                </p>
+                <p className="text-[11px] text-on-surface-variant font-medium uppercase tracking-wider">Total Delta</p>
+              </div>
+            </div>
+
             {metrics.compression && (
-              <p className="text-on-surface-variant">Token savings: {metrics.compression.savings_percentage} ({metrics.compression.original_chars} → {metrics.compression.compressed_chars} chars)</p>
+              <p className="text-xs text-on-surface-variant flex items-center gap-1.5 opacity-80">
+                <span className="material-symbols-outlined text-[14px]">compress</span>
+                Tokens compressed by {metrics.compression.savings_percentage} ({metrics.compression.original_chars} → {metrics.compression.compressed_chars} chars)
+              </p>
             )}
+            
             {metrics.vault_package_id && (
-              <p className="text-on-surface-variant mt-1">Saved to Vault: <code className="font-mono text-primary">{metrics.vault_package_id}</code></p>
+              <p className="text-[11px] text-on-surface-variant opacity-60">
+                Saved to Vault: <code className="font-mono">{metrics.vault_package_id}</code>
+              </p>
             )}
           </div>
         )}
       </div>
 
-      {/* ── Vault Packages Catalog ── */}
-      <div className="space-y-md">
-        {/* Catalog Header + Filters */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-md">
-          <div>
-            <h2 className="text-lg font-black text-on-surface flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">folder_special</span>
-              Digitalized Packages ({filteredItems.length})
-            </h2>
-            <p className="text-xs text-on-surface-variant">Click a card to view full itinerary, then "Use in Proposal" to load it</p>
-          </div>
-          <div className="flex items-center gap-sm">
-            {/* Destination filter */}
-            {allDestinations.length > 0 && (
-              <select
-                value={filterDest}
-                onChange={e => setFilterDest(e.target.value)}
-                className="text-xs px-3 py-2 rounded-lg border border-outline-variant bg-surface focus:border-primary focus:outline-none"
-              >
-                <option value="">All Destinations</option>
-                {allDestinations.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-            )}
-            {/* Budget filter */}
-            <input
-              type="number"
-              value={filterBudget}
-              onChange={e => setFilterBudget(e.target.value)}
-              placeholder="Budget filter (₹)"
-              className="text-xs px-3 py-2 rounded-lg border border-outline-variant bg-surface focus:border-primary focus:outline-none w-36"
-            />
-            {filterBudget && (
-              <span className="text-xs text-on-surface-variant">±30% match</span>
-            )}
-          </div>
+      {/* ── Vault Packages Catalog (Phase 3B: Destination Grouping) ── */}
+      <div className="flex flex-col lg:flex-row gap-6 mt-8">
+        
+        {/* Left Sidebar: Destinations */}
+        <div className="w-full lg:w-64 flex-shrink-0 space-y-2">
+          <h2 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-4 px-1">Destinations</h2>
+          <button
+             onClick={() => setFilterDest('')}
+             className={`w-full text-left px-4 py-2.5 rounded-xl font-bold transition-all flex items-center justify-between ${
+               filterDest === '' ? 'bg-primary text-on-primary shadow-md' : 'hover:bg-surface-container bg-surface border border-outline-variant text-on-surface'
+             }`}
+          >
+             <span>All Packages</span>
+             <span className={`text-xs px-2 py-0.5 rounded-full ${filterDest === '' ? 'bg-black/20 text-white' : 'bg-surface-container-high'}`}>{vaultItems.length}</span>
+          </button>
+          
+          {allDestinations.map(d => {
+             const count = vaultItems.filter(i => i.destination === d).length;
+             const coverage = count > 5 ? 'Strong' : count > 2 ? 'Moderate' : 'Light';
+             const coverageBg = count > 5 ? 'bg-emerald-500/10 text-emerald-600' : count > 2 ? 'bg-amber-500/10 text-amber-600' : 'bg-surface-container text-on-surface-variant';
+             
+             return (
+               <button
+                 key={d}
+                 onClick={() => setFilterDest(d)}
+                 className={`w-full text-left px-4 py-3 rounded-xl transition-all flex flex-col gap-2 ${
+                   filterDest === d ? 'bg-primary text-on-primary shadow-md' : 'hover:bg-surface-container bg-surface border border-outline-variant text-on-surface'
+                 }`}
+               >
+                 <div className="flex items-center justify-between w-full">
+                   <span className="font-bold text-sm truncate pr-2">{d}</span>
+                   <span className={`text-xs px-2 py-0.5 rounded-full ${filterDest === d ? 'bg-black/20 text-white' : 'bg-surface-container-high'}`}>{count}</span>
+                 </div>
+                 <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md inline-block w-max border ${
+                    filterDest === d ? 'bg-white/20 border-white/20 text-white' : `${coverageBg} border-transparent`
+                 }`}>
+                   {coverage} Coverage
+                 </span>
+               </button>
+             );
+          })}
+          
+          {/* Phase 4B: RAG Confidence Details (shown only when a destination is selected) */}
+          {filterDest && confidenceStats && (
+            <div className="mt-4 p-4 bg-primary/10 border border-primary/20 rounded-xl">
+              <h3 className="text-xs font-bold text-primary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[14px]">psychology</span>
+                AI Confidence
+              </h3>
+              <div className="flex items-end gap-2 mb-2">
+                <span className="text-2xl font-black text-on-surface">{confidenceStats.confidence_score}%</span>
+              </div>
+              <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                {confidenceStats.message}
+              </p>
+              {confidenceStats.confidence_score < 50 && (
+                <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mt-2 bg-amber-500/10 px-2 py-1.5 rounded-md">
+                  Suggestion: Upload more PDFs for {filterDest} to improve AI accuracy.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Empty State */}
-        {isLoading ? (
-          <div className="bg-surface p-12 text-center rounded-2xl border border-outline-variant">
-            <span className="material-symbols-outlined text-5xl text-primary animate-spin mb-3 block">progress_activity</span>
-            <p className="text-sm text-on-surface-variant">Loading your vault...</p>
+        {/* Main Content: Packages List */}
+        <div className="flex-1 space-y-4">
+          
+          {/* Phase 5B: Rate Conflict Resolution Widget */}
+          <RateConflictWidget />
+
+          <div className="flex items-center justify-between bg-surface-container-low p-4 rounded-2xl border border-outline-variant">
+            <div>
+              <h2 className="text-base font-black text-on-surface flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">folder_special</span>
+                {filterDest ? `${filterDest} Packages` : 'All Packages'} ({filteredItems.length})
+              </h2>
+              <p className="text-[11px] text-on-surface-variant mt-0.5">Click a card to view full itinerary</p>
+            </div>
+            
+            {/* Budget filter */}
+            <div className="flex flex-col items-end">
+              <input
+                type="number"
+                value={filterBudget}
+                onChange={e => setFilterBudget(e.target.value)}
+                placeholder="Budget filter (₹)"
+                className="text-xs px-3 py-2 rounded-lg border border-outline-variant bg-surface focus:border-primary focus:outline-none w-36"
+              />
+              {filterBudget && <span className="text-[10px] text-on-surface-variant mt-1">±30% match</span>}
+            </div>
           </div>
-        ) : filteredItems.length === 0 ? (
-          <div className="bg-surface p-12 text-center rounded-2xl border border-outline-variant">
-            <span className="material-symbols-outlined text-5xl text-on-surface-variant opacity-40 mb-3 block">auto_stories</span>
-            <h3 className="font-bold text-base text-on-surface">No Packages in Your Vault Yet</h3>
-            <p className="text-sm text-on-surface-variant max-w-md mx-auto mt-2">
-              Upload your first supplier PDF above — every hotel, activity, meal, transfer, and price will be faithfully extracted and stored here.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-md">
+
+          {/* Empty State */}
+          {isLoading ? (
+            <div className="bg-surface p-12 text-center rounded-2xl border border-outline-variant">
+              <span className="material-symbols-outlined text-5xl text-primary animate-spin mb-3 block">progress_activity</span>
+              <p className="text-sm text-on-surface-variant">Loading your vault...</p>
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div className="bg-surface p-12 text-center rounded-2xl border border-outline-variant">
+              <span className="material-symbols-outlined text-5xl text-on-surface-variant opacity-40 mb-3 block">auto_stories</span>
+              <h3 className="font-bold text-base text-on-surface">No Packages Found</h3>
+              <p className="text-sm text-on-surface-variant max-w-md mx-auto mt-2">
+                Upload your first supplier PDF above to extract hotels, activities, and prices.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-md">
             {filteredItems.map((item) => {
               const data = item.parsed_data || item;
               const isExpanded = expandedId === item.id;
@@ -927,7 +1037,8 @@ export default function MyVaultPage() {
             })}
           </div>
         )}
-      </div>
+        </div> {/* End of Main Content: Packages List */}
+      </div> {/* End of flex flex-col lg:flex-row gap-6 mt-8 */}
 
       <BatchExtractionReviewModal
         isOpen={isReviewOpen || Boolean(editingPackage)}

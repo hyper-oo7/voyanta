@@ -41,7 +41,7 @@ export default function ImportModal({ resource, onClose, onImported }) {
       } else {
         const { columns: cols, rows: rs } = await parseFile(f);
         if (!cols.length) throw new Error('No columns detected. Make sure row 1 has headers.');
-        const sugg = suggestMapping(resource, cols);
+        const sugg = suggestMapping(resource, cols, rs);
         const saved = await loadSavedMapping(resource);
         // saved is { src: tgt }; merge but only for cols that exist this time
         const start = {};

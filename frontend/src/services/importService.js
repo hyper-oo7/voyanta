@@ -30,8 +30,23 @@ export async function saveImport({ resource, filename, fileFormat, columns, rows
       if (v === undefined || v === '') continue;
       r[tgt] = coerceValue(resource, tgt, v);
     }
-    // Required-field defaults so insert doesn't fail on `not null`
-    if (resource === 'hotels'     && !r.name)    r.name    = row[Object.keys(row)[0]] || 'Imported Hotel';
+    // Predefined schema normalization & required field defaults
+    if (resource === 'hotels') {
+      if (!r.name) {
+        const fallbackName = Object.values(row).find(val => val && String(val).trim().length > 2 && !String(val).startsWith('http'));
+        r.name = fallbackName || 'Imported Hotel';
+      }
+      if (!r.location) r.location = r.country || 'Imported Location';
+      if (!r.meal_type) r.meal_type = r.meal_plan || 'CP (Breakfast)';
+      if (!r.room_type) r.room_type = 'Deluxe Room';
+      if (!r.price_per_night && r.price) r.price_per_night = Number(r.price);
+      if (!r.price_per_night) r.price_per_night = 5000;
+      if (!r.currency) r.currency = 'INR';
+      if (!r.image_url) r.image_url = 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=800';
+      if (!r.amenities || !Array.isArray(r.amenities) || r.amenities.length === 0) {
+        r.amenities = ['WiFi', 'Air Conditioning', 'Room Service'];
+      }
+    }
     if (resource === 'flights'    && !r.airline) r.airline = row[Object.keys(row)[0]] || 'Imported Airline';
     if (resource === 'activities' && !r.name)    r.name    = row[Object.keys(row)[0]] || 'Imported Activity';
     if (resource === 'templates'  && !r.name)    r.name    = row[Object.keys(row)[0]] || 'Imported Template';
@@ -65,6 +80,11 @@ function coerceValue(resource, field, v) {
   if (numericFields.has(field)) {
     const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
     return isNaN(n) ? null : n;
+  }
+  if (field === 'amenities') {
+    if (Array.isArray(v)) return v;
+    if (typeof v === 'string') return v.split(',').map(s => s.trim()).filter(Boolean);
+    return [];
   }
   if (field === 'depart_date') {
     const d = new Date(v);

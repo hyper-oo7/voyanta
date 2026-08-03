@@ -6,7 +6,7 @@ import ImageSearchPicker from './common/ImageSearchPicker.jsx';
 
 const HIDDEN = new Set(['id', 'agency_id', 'created_at', 'updated_at', 'raw', 'created_by']);
 
-export default function EditItemDrawer({ item: record, resource, service, onClose, onSaved }) {
+export default function EditItemDrawer({ item: record, resource, service, onClose, onSaved, onDelete }) {
   const toast = useToast();
   const [form, setForm] = useState({ ...record });
   const [saving, setSaving] = useState(false);
@@ -73,6 +73,16 @@ export default function EditItemDrawer({ item: record, resource, service, onClos
             <label className="flex flex-col gap-xs">
               <span className="font-label-md text-label-md">Rating</span>
               <input type="number" min="0" max="5" step="0.1" value={form.rating ?? ''} onChange={upd('rating')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-md">
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Meal Type</span>
+              <input value={form.meal_type ?? form.meal_plan ?? ''} onChange={upd('meal_type')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" placeholder="e.g. CP, Breakfast, MAP" />
+            </label>
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Room Type</span>
+              <input value={form.room_type ?? ''} onChange={upd('room_type')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" placeholder="e.g. Deluxe, Executive, Suite" />
             </label>
           </div>
           <div className="grid grid-cols-2 gap-md">
@@ -163,6 +173,55 @@ export default function EditItemDrawer({ item: record, resource, service, onClos
         </>
       );
     }
+
+    if (resource === 'activities') {
+      return (
+        <>
+          <label className="flex flex-col gap-xs">
+            <span className="font-label-md text-label-md">Activity / Attraction Name</span>
+            <input value={form.name ?? ''} onChange={upd('name')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" placeholder="e.g. Elephant Falls Sightseeing" />
+          </label>
+          <label className="flex flex-col gap-xs">
+            <span className="font-label-md text-label-md">Destination / Location</span>
+            <input value={form.location ?? ''} onChange={upd('location')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" placeholder="e.g. Shillong" />
+          </label>
+          <div className="grid grid-cols-2 gap-md">
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Category / Type</span>
+              <input value={form.type ?? ''} onChange={upd('type')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" placeholder="e.g. Tour, Sightseeing, Adventure" />
+            </label>
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Duration (Hours)</span>
+              <input type="number" min="0" step="0.5" value={form.duration_hours ?? ''} onChange={upd('duration_hours')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-md">
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Price per Person</span>
+              <input type="number" min="0" value={form.price ?? ''} onChange={upd('price')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+            </label>
+            <label className="flex flex-col gap-xs">
+              <span className="font-label-md text-label-md">Currency</span>
+              <input value={form.currency ?? 'INR'} onChange={upd('currency')} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" />
+            </label>
+          </div>
+          <label className="flex flex-col gap-xs">
+            <span className="font-label-md text-label-md">Description / Details</span>
+            <textarea value={form.description ?? ''} onChange={upd('description')} rows={3} className="px-md py-md bg-white border border-outline-variant rounded-lg font-body-md" placeholder="Provide attraction details, entry fees, or activity inclusions..." />
+          </label>
+          <HotelImagesManager
+            images={form.raw?.images || (form.image_url ? [form.image_url] : [])}
+            onChange={(newImages) => {
+              setForm((s) => ({
+                ...s,
+                image_url: newImages[0] || '',
+                raw: { ...(s.raw || {}), images: newImages }
+              }));
+            }}
+          />
+        </>
+      );
+    }
     
     // Fallback to dynamic fields
     return fields.map((f) => (
@@ -198,9 +257,21 @@ export default function EditItemDrawer({ item: record, resource, service, onClos
           {renderFields()}
         </div>
         <div className="flex gap-md mt-xl">
-          <button onClick={onClose} className="flex-1 py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
+          {onDelete && (
+            <button 
+              onClick={() => {
+                if (confirm(`Are you sure you want to delete this ${resource.slice(0, -1)}?`)) {
+                  onDelete(record.id);
+                }
+              }} 
+              className="py-md px-lg bg-error-container/30 text-error hover:bg-error-container/60 border border-error-variant/40 rounded-lg font-label-md transition-colors cursor-pointer"
+            >
+              Delete
+            </button>
+          )}
+          <button onClick={onClose} className="flex-1 py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low cursor-pointer">Cancel</button>
           <button onClick={onSave} disabled={saving} data-testid="edit-drawer-save"
-            className="flex-1 py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-60">
+            className="flex-1 py-md bg-primary text-on-primary rounded-lg font-label-md hover:opacity-90 disabled:opacity-60 cursor-pointer">
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
