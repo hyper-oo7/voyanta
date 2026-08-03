@@ -32,8 +32,15 @@ export default function AIProposalChatDrawer({ isOpen, onClose }) {
     setIsProcessing(true);
 
     try {
+      const { client } = useProposalStore.getState();
+      const enrichedProposal = {
+        ...proposal,
+        destination: proposal?.destination || client?.destination,
+        num_travelers: proposal?.num_travelers || client?.num_adults,
+      };
+
       const res = await api.post('/api/refine-itinerary', {
-        proposal: proposal,
+        proposal: enrichedProposal,
         user_prompt: userText
       });
 

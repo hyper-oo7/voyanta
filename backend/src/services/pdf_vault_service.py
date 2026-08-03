@@ -332,6 +332,47 @@ def _extract_via_pymupdf_html(file_path: str) -> Optional[str]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# STRATEGY 4 — Tesseract OCR: scanned PDFs fallback
+# Best for: image-only scanned PDFs (e.g., older Indian supplier PDFs)
+# ─────────────────────────────────────────────────────────────────────────────
+def _extract_via_tesseract_ocr(file_path: str) -> Optional[str]:
+    """
+    Fallback OCR strategy using Tesseract via pdf2image and pytesseract.
+    Only called when text-based extraction fails (scanned PDFs).
+    """
+    try:
+        from pdf2image import convert_from_path
+        import pytesseract
+    except ImportError:
+        logger.warning("[Strategy OCR] pdf2image or pytesseract not installed, skipping.")
+        return None
+
+    try:
+        # Convert PDF to list of images (PIL Images)
+        # Using a moderate DPI (200) to balance speed and accuracy
+        images = convert_from_path(file_path, dpi=200)
+    except Exception as e:
+        logger.warning(f"[Strategy OCR] pdf2image conversion failed: {e}")
+        return None
+
+    parts = []
+    for page_num, img in enumerate(images):
+        try:
+            # Extract text from image
+            page_text = pytesseract.image_to_string(img)
+            if page_text.strip():
+                parts.append(f"[Page {page_num + 1}]\n{page_text.strip()}")
+            else:
+                logger.debug(f"[Strategy OCR] Page {page_num} yielded no text.")
+        except Exception as e:
+            logger.warning(f"[Strategy OCR] pytesseract page {page_num} failed: {e}")
+
+    result = "\n\n".join(parts)
+    logger.info(f"[Strategy OCR] Tesseract extracted {len(result)} chars from {file_path}")
+    return result if result.strip() else None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CONTENT MERGE HELPER
 # Unions unique prose paragraphs from secondary strategies into the primary.
 # Limitation: paragraph-level dedup works well for narrative text but may
@@ -457,12 +498,22 @@ def extract_text_from_pdf(file_path: str) -> Tuple[str, Dict[str, Any]]:
     merged_text, primary_strategy, paragraphs_added = _merge_strategy_results(results)
 
     if not merged_text or len(merged_text) < MIN_VIABLE_TEXT_LENGTH:
-        strategies_tried = list(results.keys())
-        raise ValueError(
-            f"All PDF text extraction strategies failed or returned insufficient text "
-            f"(tried: {', '.join(strategies_tried)}). "
-            f"The PDF may be fully image-based (scanned). Please use a digitally-created PDF."
-        )
+        logger.info("[PDF Extraction] Digital extraction failed. Attempting Tesseract OCR fallback for scanned PDF...")
+        ocr_text = _extract_via_tesseract_ocr(file_path)
+        if ocr_text and len(ocr_text) >= MIN_VIABLE_TEXT_LENGTH:
+            merged_text = ocr_text
+            primary_strategy = "Tesseract-OCR"
+            paragraphs_added = 0
+            results["Tesseract-OCR"] = ocr_text
+        else:
+            strategies_tried = list(results.keys())
+            if "Tesseract-OCR" not in strategies_tried:
+                strategies_tried.append("Tesseract-OCR")
+            raise ValueError(
+                f"All PDF text extraction strategies (including OCR) failed or returned insufficient text "
+                f"(tried: {', '.join(strategies_tried)}). "
+                f"The document may be blank, heavily corrupted, or unreadable."
+            )
 
     # ── Price-coverage heuristic for table-heavy documents ────────────────────
     # Paragraph-level merge works well for prose but can miss pricing tables

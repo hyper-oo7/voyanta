@@ -20,7 +20,7 @@ export default function UnifiedItineraryCanvas() {
     showTemplateGallery, setShowTemplateGallery,
     showQuickIntake, setShowQuickIntake,
     activeTemplateSlug, setTemplateSlug,
-    setClient, setCostingPrefs, updateProposal
+    setClient, setCostingPrefs, updateProposal, loadProposal
   } = useProposalStore();
 
   const [activeTab, setActiveTab] = useState('proposal');
@@ -32,17 +32,14 @@ export default function UnifiedItineraryCanvas() {
   const p = proposal || {};
   const currentClient = client || {};
 
+  // Unify days location since UI stores it in p.itinerary.days and AI generates in p.days
+  const daysList = p.itinerary?.days || p.days || [];
+
   // Check if proposal actually has itinerary days or items (a real plan)
   const hasPlanContent = Boolean(
-    (p.days && p.days.length > 0) || 
-    (p.items && p.items.length > 0) ||
-    p.total_price || 
-    p.price_per_person
+    (daysList && daysList.length > 0) || 
+    (p.items && p.items.length > 0)
   );
-
-  const rawTotalPrice = Number(p.total_price) || (Number(p.price_per_person) ? Number(p.price_per_person) * (Number(p.num_travelers) || 2) : 0);
-  const finalTotal = hasPlanContent ? (rawTotalPrice > 0 ? rawTotalPrice : (Number(currentClient?.budget) ? Number(currentClient.budget) * (Number(p.num_travelers) || 2) : 0)) : 0;
-  const pricePerPerson = hasPlanContent ? (Number(p.price_per_person) || (finalTotal > 0 ? Math.round(finalTotal / (Number(p.num_travelers) || 2)) : 0)) : 0;
 
   // Dynamic Costing & Margins Calculation (No Hardcoded Fractions)
   const marginType = costingPrefs.margin_type || 'percentage';
@@ -52,31 +49,36 @@ export default function UnifiedItineraryCanvas() {
 
   const itemSum = (p.items || []).reduce((acc, item) => acc + (Number(item.qty || 1) * Number(item.unit_price || item.price || 0)), 0);
 
-  let subtotal = 0;
+  const dayBlockSum = daysList.reduce((dayAcc, day) => {
+    let dayTotal = 0;
+    if (day.hotels) {
+      dayTotal += day.hotels.reduce((hAcc, h) => hAcc + (Number(h.price_per_night || h.price || 0) * (Number(h.nights || 1))), 0);
+    }
+    if (day.activities) {
+      dayTotal += day.activities.reduce((aAcc, a) => aAcc + Number(a.price || 0), 0);
+    }
+    if (day.transfers) {
+      dayTotal += day.transfers.reduce((tAcc, t) => tAcc + Number(t.price || 0), 0);
+    }
+    return dayAcc + dayTotal;
+  }, 0);
+
+  let subtotal = itemSum + dayBlockSum;
   let marginAmount = 0;
   let taxAmount = 0;
   let computedFinalTotal = 0;
 
-  if (hasPlanContent) {
-    if (itemSum > 0) {
-      subtotal = itemSum;
-      marginAmount = marginType === 'percentage' ? subtotal * (marginVal / 100) : marginVal;
-      const grossAmount = subtotal + marginAmount;
-      taxAmount = grossAmount * (taxRate / 100);
-      computedFinalTotal = Math.max(0, (grossAmount + taxAmount) - discountVal);
-    } else {
-      // Back-calculate subtotal and margin dynamically from final total based on configured percentages
-      const marginFrac = marginType === 'percentage' ? (marginVal / 100) : 0;
-      const taxFrac = taxRate / 100;
-      const totalMultiplier = (1 + marginFrac) * (1 + taxFrac);
-      
-      computedFinalTotal = finalTotal;
-      subtotal = totalMultiplier > 0 ? Math.round((computedFinalTotal + discountVal) / totalMultiplier) : computedFinalTotal;
-      marginAmount = marginType === 'percentage' ? Math.round(subtotal * marginFrac) : marginVal;
-      const grossAmount = subtotal + marginAmount;
-      taxAmount = Math.round(grossAmount * taxFrac);
-    }
+  if (hasPlanContent && subtotal > 0) {
+    marginAmount = marginType === 'percentage' ? subtotal * (marginVal / 100) : marginVal;
+    const grossAmount = subtotal + marginAmount;
+    taxAmount = grossAmount * (taxRate / 100);
+    computedFinalTotal = Math.max(0, (grossAmount + taxAmount) - discountVal);
   }
+
+  // For display purposes at the top header
+  const finalTotal = computedFinalTotal;
+  const pricePerPerson = finalTotal > 0 ? Math.round(finalTotal / (Number(p.num_travelers) || 2)) : 0;
+
 
   const [subDestCandidates, setSubDestCandidates] = useState([]);
   const [isGeneratingDay, setIsGeneratingDay] = useState(false);
@@ -84,7 +86,7 @@ export default function UnifiedItineraryCanvas() {
   useEffect(() => {
     const fetchVaultSubDestinations = async () => {
       try {
-        const res = await fetch('/api/v1/vault/sub-destinations', {
+        const res = await fetch('/api/vault/sub-destinations', {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('voyanta_token')}` }
         });
         if (res.ok) {
@@ -140,9 +142,14 @@ export default function UnifiedItineraryCanvas() {
       } catch (err) {
         console.error('Failed to hydrate AI generated proposal:', err);
       }
+    } else {
+      const id = params.get('id');
+      if (id && id !== proposal?.id) {
+        loadProposal(id).catch(console.error);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [params.get('id'), params.get('ai_generated')]);
 
   const handleAddSubDestination = async (subDest) => {
     const name = typeof subDest === 'string' ? subDest : subDest.name;
@@ -153,7 +160,7 @@ export default function UnifiedItineraryCanvas() {
     setIsGeneratingDay(true);
 
     try {
-      const res = await fetch('/api/v1/ai/generate-day-module', {
+      const res = await fetch('/api/generate-day-module', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

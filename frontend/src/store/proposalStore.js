@@ -82,7 +82,7 @@ export const useProposalStore = create((set, get) => ({
   assemble1Shot: async (intakeData) => {
     set({ status: 'loading' });
     try {
-      const res = await fetch('/api/v1/ai/assemble-1shot', {
+      const res = await fetch('/api/assemble-1shot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(intakeData)
@@ -90,6 +90,11 @@ export const useProposalStore = create((set, get) => ({
       const data = await res.json();
       if (data.status === 'success' && data.proposal) {
         const p = data.proposal;
+        // Normalize schema mismatch: Backend sends days in p.days, Frontend expects them in p.itinerary.days
+        if (p.days && p.days.length > 0 && (!p.itinerary || !p.itinerary.days)) {
+          p.itinerary = { ...(p.itinerary || {}), days: p.days };
+        }
+        
         const nextClient = {
           ...get().client,
           customer_name: intakeData.client_name || 'Valued Traveler',

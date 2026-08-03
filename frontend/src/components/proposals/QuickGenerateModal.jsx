@@ -4,6 +4,7 @@ import { useProposalStore } from '../../store/proposalStore.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { api } from '../../services/api.js';
 import { getAgencyId } from '../../lib/supabaseClient.js';
+import { createProposal } from '../../services/proposalService.js';
 import ContactPicker from '../common/ContactPicker.jsx';
 
 // ── India + popular international destinations ────────────────────────────────
@@ -83,7 +84,25 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
   const [generating, setGenerating] = useState(false);
   const [progressStep, setProgressStep] = useState(0);
   const [done, setDone] = useState(false);
+  const [vaultConfidence, setVaultConfidence] = useState(null);
   const destRef = useRef(null);
+
+  // Phase 4: Fetch Destination Confidence dynamically
+  useEffect(() => {
+    if (!form.destination || form.destination.length < 3) {
+      setVaultConfidence(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get(`/api/vault/destination-confidence?destination=${encodeURIComponent(form.destination)}`);
+        setVaultConfidence(res.data);
+      } catch (err) {
+        setVaultConfidence({ confidence_score: 0, pdfs: 0, proposals: 0 });
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [form.destination]);
 
   useEffect(() => {
     if (isOpen) {
@@ -130,7 +149,13 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
     }, 1400);
 
     try {
-      const agencyId = await getAgencyId().catch(() => 'global');
+      let agencyId = 'global';
+      try {
+        agencyId = getAgencyId() || 'global';
+      } catch (err) {
+        agencyId = 'global';
+      }
+      
       const payload = {
         destination: form.destination,
         duration_days: Number(form.duration_days),
@@ -147,12 +172,35 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
         discount_amount: 0,
       };
 
-      const res = await api.post('/api/assemble-1shot', payload);
+      const res = await api.post('/api/assemble-1shot', payload, { timeout: 90000 });
       clearInterval(stepInterval);
       setProgressStep(PROGRESS_STEPS.length - 1);
 
       const proposal = res?.proposal;
       if (!proposal) throw new Error('No proposal returned from server');
+
+      // Phase 4: Create draft proposal in database
+      const newProposalPayload = {
+        name: (form.client_name || 'AI Draft') + ' - ' + (proposal.destination || form.destination) + ' Trip',
+        client_name: form.client_name || 'Valued Traveler',
+        destination: proposal.destination || form.destination,
+        travelers: Number(form.num_travelers),
+        status: 'Draft',
+        trip_details: proposal,
+        currency: proposal.currency || 'INR',
+        budget_min: Number(form.budget_per_head) * Number(form.num_travelers),
+        budget_max: Number(form.budget_per_head) * Number(form.num_travelers)
+      };
+      
+      let createdProposalId = '';
+      try {
+        const saved = await createProposal(newProposalPayload);
+        if (saved && saved.id) {
+          createdProposalId = saved.id;
+        }
+      } catch (err) {
+        console.warn('[QuickGenerate] Failed to save draft proposal to DB, falling back to local.', err);
+      }
 
       setDone(true);
       await new Promise(r => setTimeout(r, 900));
@@ -184,7 +232,11 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
       const isRagAugmented = (proposal.model_used || '').includes('RAG');
       toast.success(`✨ Proposal generated!${isRagAugmented ? ' Powered by your vault.' : ''}`);
       onClose();
-      navigate(`/proposals/wizard?step=4&ai_generated=1&destination=${encodeURIComponent(proposal.destination || form.destination)}`);
+      
+      const navUrl = createdProposalId 
+        ? `/proposals/wizard?step=4&ai_generated=1&id=${createdProposalId}`
+        : `/proposals/wizard?step=4&ai_generated=1&destination=${encodeURIComponent(proposal.destination || form.destination)}`;
+      navigate(navUrl);
 
     } catch (err) {
       clearInterval(stepInterval);
@@ -476,12 +528,22 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
                 rows={2} className="qg-input w-full px-4 py-3 text-sm rounded-xl resize-none" />
             </div>
 
-            {/* Vault note */}
-            <div className="flex items-start gap-3 px-4 py-3 rounded-xl"
-              style={{ background: 'rgba(139,92,246,0.09)', border: '1px solid rgba(139,92,246,0.22)' }}>
-              <span className="material-symbols-outlined text-purple-400 text-[20px] flex-shrink-0 mt-0.5">bolt</span>
-              <p className="text-[11px] text-purple-200/75 m-0 leading-relaxed">
-                Voyanta searches your <strong className="text-purple-300">uploaded PDFs and library</strong> first. Falls back to curated baseline data for new destinations.
+            {/* Vault note / Confidence Banner */}
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl transition-all"
+              style={{ background: vaultConfidence?.pdfs > 0 ? 'rgba(34,197,94,0.09)' : 'rgba(139,92,246,0.09)', border: `1px solid ${vaultConfidence?.pdfs > 0 ? 'rgba(34,197,94,0.22)' : 'rgba(139,92,246,0.22)'}` }}>
+              <span className={`material-symbols-outlined text-[20px] flex-shrink-0 mt-0.5 ${vaultConfidence?.pdfs > 0 ? 'text-green-400' : 'text-purple-400'}`}>
+                {vaultConfidence?.pdfs > 0 ? 'check_circle' : 'bolt'}
+              </span>
+              <p className={`text-[11px] m-0 leading-relaxed ${vaultConfidence?.pdfs > 0 ? 'text-green-200/75' : 'text-purple-200/75'}`}>
+                {vaultConfidence?.pdfs > 0 ? (
+                  <>
+                    <strong className="text-green-300">✓ {vaultConfidence.pdfs} supplier {vaultConfidence.pdfs === 1 ? 'PDF' : 'PDFs'} found for {form.destination}.</strong> Voyanta will use authentic rates and descriptions from your vault for this draft.
+                  </>
+                ) : (
+                  <>
+                    Voyanta searches your <strong className="text-purple-300">uploaded PDFs and library</strong> first. Falls back to curated baseline data for new destinations.
+                  </>
+                )}
               </p>
             </div>
 

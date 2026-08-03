@@ -81,7 +81,7 @@ const buildDayDescription = (vaultDay, name, contentBlocks = [], vaultItems = []
 export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItinerary, client, items, setItems, proposalCurrency, addItemsOptimistic, saveDraft }) {
   const toast = useToast();
   const { saveDraftBackground, updateProposal } = useProposalStore();
-  const days = proposal?.itinerary?.days || [];
+  const days = proposal?.itinerary?.days || proposal?.days || [];
 
   const [activeTab, setActiveTab] = useState('sub_destinations');
   const [libraryData, setLibraryData] = useState({ hotels: [], flights: [], itinerary: [] });

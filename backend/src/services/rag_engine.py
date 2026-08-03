@@ -111,4 +111,40 @@ class RAGEngine:
             "chunk_count": len(chunks),
         }
 
+    def run_rag_by_type(
+        self,
+        agency_id: str,
+        destination: str,
+        duration_days: int = 7,
+        k_per_query: int = 5
+    ) -> Dict[str, Any]:
+        """
+        Executes distinct specialized queries (hotels, itineraries, rules)
+        and merges the results to ensure diverse context.
+        """
+        queries = [
+            f"{destination} hotel accommodation resorts premium",
+            f"{destination} itinerary day plan activities sightseeing",
+            f"{destination} inclusions exclusions terms conditions packing"
+        ]
+        
+        all_chunks = []
+        seen_hashes = set()
+        
+        for q in queries:
+            chunks = self.retrieve(agency_id=agency_id, query=q, destination=destination, k=k_per_query)
+            for chunk in chunks:
+                chash = hash(chunk.get("content", "")[:100])
+                if chash not in seen_hashes:
+                    seen_hashes.add(chash)
+                    all_chunks.append(chunk)
+                    
+        context = self.format_context(all_chunks)
+        return {
+            "query": f"Multi-Type RAG for {destination}",
+            "chunks": all_chunks,
+            "context": context,
+            "chunk_count": len(all_chunks),
+        }
+
 rag_engine = RAGEngine()

@@ -74,7 +74,7 @@ CRITICAL RULES — VIOLATING THESE IS UNACCEPTABLE:
 1. Extract ONLY what is explicitly written in the document. Do NOT invent, generate, or fabricate ANY content.
 2. TRAVEL CLASS ALIGNMENT: Target Medium Class / Value-Comfort / Premium Commercial Travel (3-star to 4-star boutique hotels, quality resort stays, commercial flights, comfortable cab/train transfers, authentic local experiences). STRICTLY EXCLUDE ultra-luxury extravagances like private jets, chartered yachts, helicopter transfers, or 7-star VIP estates unless explicitly written in the input document.
 3. Preserve exact hotel names, exact activity names, exact meal venue names — word for word.
-4. Prices MUST come directly from the document. If a document says "₹41,000" extract {price: 41000, currency: "INR"}. Never calculate prices from percentages.
+4. Prices MUST come directly from the document. If a document says "₹41,000" extract {{price: 41000, currency: "INR"}}. Never calculate prices from percentages.
 5. If a price is not mentioned for an item, set it to null — NEVER make up a number.
 6. If a timing is mentioned (e.g. "09:00 AM Transfer"), preserve it in the "timing" field.
 7. Extract the FULL overview/introduction text from the first page verbatim.
@@ -470,6 +470,14 @@ def _extract_days_pure_code(text: str) -> List[Dict[str, Any]]:
         })
 
     return days
+
+
+def _extract_hotels_pure_code(text: str) -> List[Dict[str, Any]]:
+    """
+    Deterministic pure-code hotel extraction fallback.
+    Currently returns an empty list, can be expanded to regex for 'Hotel X'.
+    """
+    return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────

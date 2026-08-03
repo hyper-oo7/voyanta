@@ -10,7 +10,7 @@ export default function RateConflictWidget() {
   const fetchConflicts = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/v1/vault/rate-conflicts');
+      const res = await api.get('/api/vault/rate-conflicts');
       if (res?.conflicts) {
         setConflicts(res.conflicts);
       }
@@ -27,7 +27,7 @@ export default function RateConflictWidget() {
 
   const handleResolve = async (hotelName, resolvedRate) => {
     try {
-      const res = await api.post('/api/v1/vault/resolve-rate-conflict', {
+      const res = await api.post('/api/vault/resolve-rate-conflict', {
         hotel_name: hotelName,
         resolved_rate: resolvedRate
       });

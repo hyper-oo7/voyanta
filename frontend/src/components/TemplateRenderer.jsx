@@ -53,7 +53,9 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
   const branding = brandingProp || b || {};
   const lang = p.language || p.lang || branding.language || 'en';
   const items = data.items_by_kind || {};
-  const total = Number(data.totals?.subtotal) || Number(p.total_price) || Number(p.total_amount) || (Number(p.price_per_person || p.pricePerPerson) ? (Number(p.price_per_person || p.pricePerPerson) * (Number(p.num_travelers || brief.num_adults || 2))) : 0) || 50000;
+  const total = (data.totals && data.totals.subtotal !== undefined) 
+    ? Number(data.totals.subtotal) 
+    : (Number(p.total_price) || Number(p.total_amount) || (Number(p.price_per_person || p.pricePerPerson) ? (Number(p.price_per_person || p.pricePerPerson) * (Number(p.num_travelers || brief.num_adults || 2))) : 0) || 50000);
   const currency = data.totals?.currency || 'INR';
   const days = (p.itinerary && Array.isArray(p.itinerary.days)) ? p.itinerary.days : [];
   const brief = p.brief || {};

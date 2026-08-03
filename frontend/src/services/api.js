@@ -166,6 +166,11 @@ async function fetchWithRetry(endpoint, options = {}, retries = 1) {
       return fetchWithRetry(endpoint, options, retries - 1);
     }
 
+    if (error.message === 'Failed to fetch' || error.message.includes('NetworkError')) {
+      logger.error(`Network Connection Error on ${config.method || 'GET'} ${endpoint}`);
+      throw new Error('Network error: Unable to connect to server. Please ensure the backend is running.');
+    }
+
     logger.error(`API Error on ${config.method || 'GET'} ${endpoint}:`, error.message);
     throw error;
   }

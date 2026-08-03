@@ -426,14 +426,10 @@ async def assemble_1shot_route(
         rag_context = ""
         try:
             from src.services.rag_engine import rag_engine
-            rag_result = rag_engine.run_rag(
+            rag_result = rag_engine.run_rag_by_type(
                 agency_id=agency_id,
                 destination=dest,
-                duration_days=dur,
-                travelers=input.num_travelers,
-                travel_style=input.group_type,
-                budget_inr=int(input.budget_per_head * input.num_travelers),
-                special_requests=pref or None,
+                duration_days=dur
             )
             rag_context = rag_result.get("context", "")
             chunks = rag_result.get("chunks", [])
@@ -487,6 +483,55 @@ async def assemble_1shot_route(
                 logger.info(f"[1-Shot] RAG returned no structured data for '{dest}' — using seed baseline")
         except Exception as rag_err:
             logger.warning(f"[1-Shot] RAG retrieval failed (non-fatal, using seed): {rag_err}")
+
+        # ── Vault Structured Fetch: Query vault_packages for exact structured data ──
+        vault_hotels = []
+        vault_activities = []
+        try:
+            from src.services.supabase_client import get_supabase_client
+            sb_global = get_supabase_client()
+            if sb_global:
+                v_query = sb_global.table("vault_packages").select("parsed_data")
+                if agency_id and agency_id != "global":
+                    v_query = v_query.eq("agency_id", agency_id)
+                # We can't easily ILIKE on jsonb in a simple query, so we use string match on raw_text or just fetch all for agency and filter
+                v_res = v_query.ilike("parsed_data->>destination", f"%{dest}%").limit(5).execute()
+                
+                for row in (v_res.data or []):
+                    pd = row.get("parsed_data", {})
+                    # Extract hotels
+                    for h in pd.get("hotels", []):
+                        if isinstance(h, dict) and "name" in h:
+                            vault_hotels.append({
+                                "name": h.get("name")[:80],
+                                "category": h.get("category") or "4 Star",
+                                "location": h.get("location") or dest,
+                                "meal_plan": h.get("meal_plan") or "MAP",
+                                "price_per_night": float(h.get("price_per_night") or 4500.0)
+                            })
+                    # Extract activities
+                    for d in pd.get("itinerary_days", []):
+                        if isinstance(d, dict):
+                            for act in d.get("activities", []):
+                                if isinstance(act, dict) and "name" in act:
+                                    vault_activities.append({
+                                        "name": act.get("name")[:100],
+                                        "timing": act.get("timing") or "10:00 AM",
+                                        "duration": act.get("duration") or "2 hrs",
+                                        "location": dest,
+                                        "description": ""
+                                    })
+        except Exception as v_err:
+            logger.warning(f"[1-Shot] Vault structured fetch failed: {v_err}")
+
+        rag_hotels.extend(vault_hotels)
+        rag_activities.extend(vault_activities)
+
+        # Deduplicate combined vault and RAG items by name
+        seen = set()
+        rag_hotels = [h for h in rag_hotels if h["name"] not in seen and not seen.add(h["name"])]
+        seen.clear()
+        rag_activities = [a for a in rag_activities if a["name"] not in seen and not seen.add(a["name"])]
 
         # ── Also pull hotels & activities from the Delta-synced DB tables ──────────
         if not rag_hotels:
@@ -645,7 +690,10 @@ async def refine_itinerary(
     You are given a JSON representing a travel proposal, and a user request to modify it.
     The user request is: "{input.user_prompt}"
     
-    You are ALLOWED to completely restructure the days (e.g. changing duration) or swap hotels/activities to fulfill the user's request.
+    CRITICAL INSTRUCTIONS:
+    1. NEVER change the destination from '{input.proposal.get("destination", "the original destination")}' unless explicitly requested.
+    2. If the current days list is empty and the user asks to add an activity, create a new day block for '{input.proposal.get("destination", "the original destination")}' and add the activity there. DO NOT hallucinate a trip to Manali.
+    3. You are ALLOWED to completely restructure the days (e.g. changing duration) or swap hotels/activities to fulfill the user's request, but maintain the core destination context.
     
     Here is the current proposal JSON:
     {json.dumps(input.proposal, indent=2)}
@@ -662,13 +710,15 @@ async def refine_itinerary(
             temperature=0.7
         )
         
-        clean_json = raw_text.strip()
-        if clean_json.startswith("```json"):
-            clean_json = clean_json[7:-3].strip()
-        elif clean_json.startswith("```"):
-            clean_json = clean_json[3:-3].strip()
-            
-        modified_proposal = json.loads(clean_json)
+        try:
+            modified_proposal = json.loads(raw_text.strip())
+        except Exception:
+            import re
+            json_match = re.search(r'\{[\s\S]+\}', raw_text)
+            if json_match:
+                modified_proposal = json.loads(json_match.group())
+            else:
+                raise ValueError("No JSON object could be extracted from LLM response.")
         return {"status": "success", "modified_proposal": modified_proposal}
     except Exception as e:
         logger.error(f"[AI RefineItinerary] Failed: {e}")

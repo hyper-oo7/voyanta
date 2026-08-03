@@ -72,7 +72,7 @@ async def process_file_import(
     budget: float = Form(0.0),
     duration: int = Form(0),
     currency: str = Form("INR"),
-    preview_only: bool = Form(True),
+    preview_only: bool = Form(False),
     reparse: bool = Form(True),            # True by default to force re-parsing & finding new items
     user: Any = Depends(verify_token_optional),
     token: Optional[str] = Depends(get_request_token),
