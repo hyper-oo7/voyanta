@@ -12,8 +12,9 @@ logger = logging.getLogger(__name__)
 class ImageService:
     def __init__(self):
         settings = get_settings()
-        self.unsplash_key = getattr(settings, "UNSPLASH_ACCESS_KEY", os.environ.get("UNSPLASH_ACCESS_KEY", ""))
-        self.pexels_key = getattr(settings, "PEXELS_API_KEY", os.environ.get("PEXELS_API_KEY", ""))
+        DEFAULT_UNSPLASH_KEY = "siZY4H_ZJXFAfmG6oUbzazfIkZZ-aV0S6LgkWB3Z9GE"
+        self.unsplash_key = getattr(settings, "UNSPLASH_ACCESS_KEY", None) or os.environ.get("UNSPLASH_ACCESS_KEY") or DEFAULT_UNSPLASH_KEY
+        self.pexels_key = getattr(settings, "PEXELS_API_KEY", None) or os.environ.get("PEXELS_API_KEY", "")
 
     async def search_images(
         self,

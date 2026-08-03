@@ -69,6 +69,7 @@ export function SelectedHotelItem({ it, onRemoveItem, onPatchItem }) {
 export function ResourceStep({ kind, service, resource, items, addItems, onRemoveItem, onPatchItem, setImportOpen }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('list'); // Default to list view
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -109,15 +110,43 @@ export function ResourceStep({ kind, service, resource, items, addItems, onRemov
 
   return (
     <div className="space-y-md" data-testid={`step-${kind}`}>
-      <div className="glass-card p-md rounded-xl flex items-center gap-md flex-wrap">
-        <h3 className="font-headline-sm text-headline-sm text-primary flex-1 capitalize">{resource} inventory</h3>
-        <button onClick={() => setImportOpen(true)} data-testid={`import-${resource}-btn`}
-          className="px-lg py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
-          <span className="material-symbols-outlined text-[18px]">upload</span> Import
-        </button>
+      <div className="glass-card p-md rounded-xl flex items-center justify-between gap-md flex-wrap">
+        <h3 className="font-headline-sm text-headline-sm text-primary capitalize m-0">{resource} inventory</h3>
+        <div className="flex items-center gap-3">
+          {/* View Mode Toggle: List View (Default) vs Box View */}
+          <div className="flex items-center border border-outline-variant rounded-lg overflow-hidden bg-surface p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              title="List View"
+              className={`px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1 border-none cursor-pointer transition-all ${
+                viewMode === 'list' ? 'bg-primary text-white' : 'bg-transparent text-on-surface-variant hover:bg-surface-container-high'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">view_list</span>
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              title="Box View"
+              className={`px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1 border-none cursor-pointer transition-all ${
+                viewMode === 'grid' ? 'bg-primary text-white' : 'bg-transparent text-on-surface-variant hover:bg-surface-container-high'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">grid_view</span>
+              Box
+            </button>
+          </div>
+
+          <button onClick={() => setImportOpen(true)} data-testid={`import-${resource}-btn`}
+            className="px-lg py-sm border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low flex items-center gap-xs">
+            <span className="material-symbols-outlined text-[18px]">upload</span> Import
+          </button>
+        </div>
       </div>
 
-      {kind === 'hotel' ? (
+      {kind === 'hotel' && viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
           {loading ? (
             <div className="col-span-3 text-center py-xl text-on-surface-variant">Loading hotels…</div>

@@ -73,23 +73,13 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
 
-  // When category changes, filter curated local results (no API call)
-  useEffect(() => {
-    if (!isApiResults) {
-      const cat = activeCategory;
-      const filtered = cat === 'all' ? CURATED_PHOTOS : CURATED_PHOTOS.filter(p => p.category === cat);
-      setResults(filtered);
-    }
-  }, [activeCategory, isApiResults]);
-
-  const handleSearchSubmit = async (e) => {
-    if (e) e.preventDefault();
-    const trimmed = query.trim();
-
+  // Execute search function
+  const executeSearch = async (searchQueryText, category) => {
+    const trimmed = (searchQueryText || '').trim();
     if (!trimmed) {
-      // No query — reset to local curated
       setIsApiResults(false);
-      const filtered = activeCategory === 'all' ? CURATED_PHOTOS : CURATED_PHOTOS.filter(p => p.category === activeCategory);
+      setApiError(null);
+      const filtered = category === 'all' ? CURATED_PHOTOS : CURATED_PHOTOS.filter(p => p.category === category);
       setResults(filtered);
       return;
     }
@@ -98,36 +88,58 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
     setApiError(null);
 
     try {
-      const searchQuery = [trimmed, activeCategory !== 'all' ? activeCategory.replace('_', ' ') : ''].filter(Boolean).join(' ');
-      const data = await api.get(`/api/public/images/search?query=${encodeURIComponent(searchQuery)}`);
+      const fullQuery = [trimmed, category !== 'all' ? category.replace('_', ' ') : ''].filter(Boolean).join(' ');
+      const data = await api.get(`/api/public/images/search?query=${encodeURIComponent(fullQuery)}`);
       const apiResults = (data.results || []).map(img => ({
         ...img,
-        title: img.title || `${trimmed} by ${img.author || 'Stock Photo'}`,
+        title: img.title || `${trimmed} photo by ${img.author || 'Unsplash'}`,
         thumb: img.thumb || img.url
       }));
 
       if (apiResults.length > 0) {
         setResults(apiResults);
         setIsApiResults(true);
+        setApiError(null);
       } else {
-        // Fallback to local curated if API returns nothing
-        const filtered = activeCategory === 'all'
+        const filtered = category === 'all'
           ? CURATED_PHOTOS.filter(p => p.title.toLowerCase().includes(trimmed.toLowerCase()) || p.category.includes(trimmed.toLowerCase()))
-          : CURATED_PHOTOS.filter(p => p.category === activeCategory);
+          : CURATED_PHOTOS.filter(p => p.category === category);
         setResults(filtered.length > 0 ? filtered : CURATED_PHOTOS);
         setIsApiResults(false);
-        setApiError('No results from API – showing curated photos instead.');
+        setApiError(null);
       }
     } catch (err) {
-      console.error('Stock photo API error:', err);
-      // Graceful fallback to local curated photos
-      const filtered = activeCategory === 'all' ? CURATED_PHOTOS : CURATED_PHOTOS.filter(p => p.category === activeCategory);
-      setResults(filtered);
+      console.warn('Stock photo API notice (showing curated fallback library):', err);
+      const filtered = category === 'all' ? CURATED_PHOTOS : CURATED_PHOTOS.filter(p => p.category === category);
+      setResults(filtered.length > 0 ? filtered : CURATED_PHOTOS);
       setIsApiResults(false);
-      setApiError('Could not reach photo API. Showing local library.');
+      setApiError(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Auto-search on mount if defaultQuery exists
+  useEffect(() => {
+    if (defaultQuery && defaultQuery.trim()) {
+      executeSearch(defaultQuery, activeCategory);
+    }
+  }, [defaultQuery]);
+
+  // When category changes, re-run search or filter curated local results
+  useEffect(() => {
+    if (query && query.trim()) {
+      executeSearch(query, activeCategory);
+    } else if (!isApiResults) {
+      const cat = activeCategory;
+      const filtered = cat === 'all' ? CURATED_PHOTOS : CURATED_PHOTOS.filter(p => p.category === cat);
+      setResults(filtered);
+    }
+  }, [activeCategory]);
+
+  const handleSearchSubmit = (e) => {
+    if (e) e.preventDefault();
+    executeSearch(query, activeCategory);
   };
 
   const handleDrag = (e) => {

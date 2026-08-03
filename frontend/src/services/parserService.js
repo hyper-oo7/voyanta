@@ -293,14 +293,23 @@ const SYNONYMS = {
     currency: ['currency','ccy','cur']
   },
   activities: {
-    name: ['name','activity','title','activity_name','sightseeing','tour','tour_name','event'],
+    name: ['name','activity','title','activity_name','sightseeing','tour','tour_name','event','experience','excursion'],
     type: ['type','category','activity_type','genre'],
-    location: ['city','location','place','destination','venue'],
-    duration_hours: ['duration','hours','length','duration_hours','time'],
-    price: ['price','cost','rate','fee','ticket_price','amount'],
+    location: ['place','city','location','venue','destination','area','district'],
+    duration_hours: ['duration','hours','length','duration_hours','time','timing'],
+    price: ['price_per_person','price_person','price','cost_per_person','rate_per_person','pax_price','ticket_price','rate','cost','fee','amount'],
     currency: ['currency','ccy'],
-    description: ['description','desc','details','summary','overview','about'],
-    image_url: ['image','photo','picture','image_url','photo_url','thumbnail']
+    description: ['description','desc','details','summary','overview','about','inclusions'],
+    image_url: ['image','photo','picture','image_url','photo_url','thumbnail','cover_image']
+  },
+  attractions: {
+    name: ['name','attraction','attraction_name','monument','site','spot','place_name','point_of_interest','landmark','destination_spot'],
+    location: ['location','place','city','destination','district','area','address'],
+    duration: ['duration','hours','time','visit_duration','recommended_time','timing','hours_needed','length'],
+    price: ['price','entry_fee','fee','ticket_price','cost','amount'],
+    currency: ['currency','ccy'],
+    description: ['description','desc','details','summary','overview','about','highlights'],
+    image_url: ['image','photo','picture','image_url','photo_url','thumbnail','cover_image']
   },
   templates: {
     name: ['name','title','template','package','package_name','itinerary_title'],
@@ -413,5 +422,6 @@ export const TARGET_FIELDS = {
   hotels:     ['name','location','country','category','rating','price_per_night','meal_type','room_type','amenities','currency','image_url'],
   flights:    ['airline','class','origin','destination','depart_date','flight_no','duration','cost','currency'],
   activities: ['name','type','location','duration_hours','price','currency','description','image_url'],
+  attractions:['name','location','duration','price','currency','description','image_url'],
   templates:  ['name','category','days','destination','price_from','currency','image_url'],
 };

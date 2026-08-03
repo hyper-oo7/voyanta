@@ -209,16 +209,16 @@ export default function ResourceModulePage({
           </button>
         </div>
       ) : viewMode === 'grid' && resource !== 'flights' ? (
-        // Grid View (Hotels, Activities)
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-lg">
+        // Grid View (Hotels, Activities) - Scrollable Container
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-lg max-h-[calc(100vh-270px)] overflow-y-auto pr-2 pb-4 custom-scrollbar">
           {processedRows.map(item => (
             <div 
               key={item.id} 
               onClick={() => toggleSelect(item.id)}
-              className={`bg-surface border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow relative flex flex-col justify-between h-[420px] cursor-pointer ${selection.has(item.id) ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant hover:border-primary/40'}`}
+              className={`bg-surface border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow relative flex flex-col justify-between h-[440px] cursor-pointer ${selection.has(item.id) ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant hover:border-primary/40'}`}
             >
               {/* Hotel / Activity Cover Image */}
-              <div className="h-48 relative bg-surface-container-high flex-shrink-0">
+              <div className="h-44 relative bg-surface-container-high flex-shrink-0">
                 <img 
                   src={item.image_url || item.cover_image || 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80'} 
                   alt={item.name} 
@@ -244,8 +244,8 @@ export default function ResourceModulePage({
                 )}
               </div>
 
-              {/* Card Body */}
-              <div className="p-lg flex-1 flex flex-col justify-between">
+              {/* Card Body (Scrollable) */}
+              <div className="p-lg flex-1 flex flex-col justify-between overflow-y-auto custom-scrollbar">
                 <div>
                   <h3 className="font-display text-lg text-on-surface mb-xs m-0 leading-tight truncate">{item.name}</h3>
                   <BestRateChip objId={item.id} />

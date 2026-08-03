@@ -79,10 +79,8 @@ async def search_images(query: str):
     Live Unsplash & Pexels high-resolution stock imagery search endpoint.
     Uses Unsplash primary API with Pexels automatic fallback.
     """
-    import os
-    import httpx
-    
-    unsplash_key = os.environ.get("UNSPLASH_ACCESS_KEY")
+    DEFAULT_UNSPLASH_KEY = "siZY4H_ZJXFAfmG6oUbzazfIkZZ-aV0S6LgkWB3Z9GE"
+    unsplash_key = os.environ.get("UNSPLASH_ACCESS_KEY") or DEFAULT_UNSPLASH_KEY
     pexels_key = os.environ.get("PEXELS_API_KEY")
 
     results = []

@@ -29,26 +29,54 @@ export default function UnifiedItineraryCanvas() {
   const [ragActiveTab, setRagActiveTab] = useState('query');
   const [selectedSubDestinations, setSelectedSubDestinations] = useState([]);
 
-  const p = proposal || {
-    destination: 'Himachal Pradesh',
-    duration_days: 3,
-    total_price: 50000,
-    price_per_person: 25000,
-    currency: 'INR',
-    days: [
-      { day_number: 1, title: 'Day 1: Arrival in Manali & Old Manali Stroll', description: 'Check-in and evening café stroll in Old Manali.', sub_destination: 'Manali', activities: [{ name: 'Hadimba Temple', timing: '10:00 AM' }] },
-      { day_number: 2, title: 'Day 2: Solang Valley & Atal Tunnel Excursion', description: 'Paragliding and Atal Tunnel drive.', sub_destination: 'Solang Valley', activities: [{ name: 'Solang Paragliding', timing: '09:30 AM' }] },
-      { day_number: 3, title: 'Day 3: Kasol & Departure', description: 'Kasol riverfront walk and departure.', sub_destination: 'Kasol', activities: [{ name: 'Parvati Riverfront', timing: '11:00 AM' }] }
-    ],
-    inclusions: ['Private AC Vehicle', 'Hotel with Breakfast & Dinner', 'All Taxes & Tolls'],
-    exclusions: ['Airfare / Train', 'Personal Expenses'],
-    extra_sections: { what_to_pack: 'Comfortable walking shoes, sunscreen SPF 50+, casual attire.' }
-  };
+  const p = proposal || {};
+  const currentClient = client || {};
 
-  const currentClient = client || { customer_name: 'Rahul Sharma', destination: 'Himachal', budget: '25000' };
+  // Check if proposal actually has itinerary days or items (a real plan)
+  const hasPlanContent = Boolean(
+    (p.days && p.days.length > 0) || 
+    (p.items && p.items.length > 0) ||
+    p.total_price || 
+    p.price_per_person
+  );
 
-  const finalTotal = Number(p.total_price) || (Number(p.price_per_person) ? Number(p.price_per_person) * (Number(p.num_travelers) || 2) : 0) || (Number(currentClient?.budget) ? Number(currentClient.budget) * (Number(p.num_travelers) || 2) : 50000);
-  const pricePerPerson = Number(p.price_per_person) || Math.round(finalTotal / (Number(p.num_travelers) || 2)) || 25000;
+  const rawTotalPrice = Number(p.total_price) || (Number(p.price_per_person) ? Number(p.price_per_person) * (Number(p.num_travelers) || 2) : 0);
+  const finalTotal = hasPlanContent ? (rawTotalPrice > 0 ? rawTotalPrice : (Number(currentClient?.budget) ? Number(currentClient.budget) * (Number(p.num_travelers) || 2) : 0)) : 0;
+  const pricePerPerson = hasPlanContent ? (Number(p.price_per_person) || (finalTotal > 0 ? Math.round(finalTotal / (Number(p.num_travelers) || 2)) : 0)) : 0;
+
+  // Dynamic Costing & Margins Calculation (No Hardcoded Fractions)
+  const marginType = costingPrefs.margin_type || 'percentage';
+  const marginVal = Number(costingPrefs.pct_markup !== undefined ? costingPrefs.pct_markup : (costingPrefs.margin_value || 15));
+  const taxRate = Number(costingPrefs.tax !== undefined ? costingPrefs.tax : 5);
+  const discountVal = Number(costingPrefs.discount || 0);
+
+  const itemSum = (p.items || []).reduce((acc, item) => acc + (Number(item.qty || 1) * Number(item.unit_price || item.price || 0)), 0);
+
+  let subtotal = 0;
+  let marginAmount = 0;
+  let taxAmount = 0;
+  let computedFinalTotal = 0;
+
+  if (hasPlanContent) {
+    if (itemSum > 0) {
+      subtotal = itemSum;
+      marginAmount = marginType === 'percentage' ? subtotal * (marginVal / 100) : marginVal;
+      const grossAmount = subtotal + marginAmount;
+      taxAmount = grossAmount * (taxRate / 100);
+      computedFinalTotal = Math.max(0, (grossAmount + taxAmount) - discountVal);
+    } else {
+      // Back-calculate subtotal and margin dynamically from final total based on configured percentages
+      const marginFrac = marginType === 'percentage' ? (marginVal / 100) : 0;
+      const taxFrac = taxRate / 100;
+      const totalMultiplier = (1 + marginFrac) * (1 + taxFrac);
+      
+      computedFinalTotal = finalTotal;
+      subtotal = totalMultiplier > 0 ? Math.round((computedFinalTotal + discountVal) / totalMultiplier) : computedFinalTotal;
+      marginAmount = marginType === 'percentage' ? Math.round(subtotal * marginFrac) : marginVal;
+      const grossAmount = subtotal + marginAmount;
+      taxAmount = Math.round(grossAmount * taxFrac);
+    }
+  }
 
   const [subDestCandidates, setSubDestCandidates] = useState([]);
   const [isGeneratingDay, setIsGeneratingDay] = useState(false);
@@ -441,31 +469,120 @@ export default function UnifiedItineraryCanvas() {
 
               {/* Section 3: Costing & Margins */}
               <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold font-headline text-lg text-on-surface flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="font-bold font-headline text-lg text-on-surface flex items-center gap-2 m-0">
                     <span className="material-symbols-outlined text-primary">payments</span> Full-Budget Costing & Margins
                   </h3>
-                  <span className="text-xs text-emerald-400 font-bold uppercase">{costingPrefs.visibility_mode}</span>
+                  <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    {costingPrefs.visibility_mode || 'ITEMIZED'}
+                  </span>
                 </div>
 
-                <div className="p-4 bg-surface border border-outline-variant rounded-xl space-y-3 text-xs">
-                  <div className="flex justify-between py-1 border-b border-outline-variant/30">
-                    <span className="text-on-surface-variant">Net Trip Subtotal (Hotels + Transfers + Activities):</span>
-                    <span className="font-bold text-on-surface">₹{(finalTotal * 0.82).toLocaleString()}</span>
+                {/* Interactive Costing Controls */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-surface rounded-xl border border-outline-variant/60 text-xs">
+                  <div>
+                    <label className="block text-[11px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
+                      Agency Margin ({costingPrefs.margin_type === 'flat' ? '₹' : '%'})
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={costingPrefs.pct_markup !== undefined ? costingPrefs.pct_markup : (costingPrefs.margin_value || 15)}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setCostingPrefs({ ...costingPrefs, pct_markup: val, margin_value: val });
+                      }}
+                      className="w-full px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container text-xs font-bold text-primary outline-none focus:border-primary"
+                    />
                   </div>
-                  <div className="flex justify-between py-1 border-b border-outline-variant/30">
-                    <span className="text-on-surface-variant">Agency Margin ({costingPrefs.pct_markup || 15}%):</span>
-                    <span className="font-bold text-primary">+₹{(finalTotal * 0.13).toLocaleString()}</span>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
+                      GST / Taxes (%)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="30"
+                      value={costingPrefs.tax !== undefined ? costingPrefs.tax : 5}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setCostingPrefs({ ...costingPrefs, tax: val });
+                      }}
+                      className="w-full px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container text-xs font-bold text-on-surface outline-none focus:border-primary"
+                    />
                   </div>
-                  <div className="flex justify-between py-1 border-b border-outline-variant/30">
-                    <span className="text-on-surface-variant">GST / Taxes (5%):</span>
-                    <span className="font-bold text-on-surface">+₹{(finalTotal * 0.05).toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between pt-2 text-sm font-bold text-primary">
-                    <span>Final Client Package Total:</span>
-                    <span>₹{finalTotal.toLocaleString()}</span>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
+                      Visibility Mode
+                    </label>
+                    <select
+                      value={costingPrefs.visibility_mode || 'ITEMIZED'}
+                      onChange={(e) => setCostingPrefs({ ...costingPrefs, visibility_mode: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container text-xs font-bold text-on-surface outline-none"
+                    >
+                      <option value="ITEMIZED">ITEMIZED (Show Breakdown)</option>
+                      <option value="TOTAL_ONLY">TOTAL_ONLY (Hide Breakdown)</option>
+                      <option value="HIDDEN">HIDDEN (No Pricing)</option>
+                    </select>
                   </div>
                 </div>
+
+                {/* Dynamic Costing Breakdown Display */}
+                {costingPrefs.visibility_mode === 'HIDDEN' ? (
+                  <div className="p-5 bg-surface border border-outline-variant/80 rounded-xl text-center text-xs text-on-surface-variant space-y-1.5">
+                    <span className="material-symbols-outlined text-2xl text-on-surface-variant/40 block">visibility_off</span>
+                    <p className="font-bold text-on-surface text-sm m-0">Pricing & Costing Hidden from Client</p>
+                    <p className="text-[11px] text-on-surface-variant m-0">
+                      Visibility mode is set to <strong>HIDDEN</strong>. Costing breakdown and totals are concealed in client web studio & PDF proposal exports.
+                    </p>
+                  </div>
+                ) : !hasPlanContent || computedFinalTotal <= 0 ? (
+                  <div className="p-5 bg-surface border border-outline-variant/80 rounded-xl text-center text-xs text-on-surface-variant space-y-1.5">
+                    <span className="material-symbols-outlined text-2xl text-on-surface-variant/40 block">payments</span>
+                    <p className="font-bold text-on-surface text-sm m-0">No Itinerary Days or Plan Items Added Yet</p>
+                    <p className="text-[11px] text-on-surface-variant m-0">
+                      Add day blocks above or click "1-Shot Quick Intake" to generate a complete itinerary plan with costing.
+                    </p>
+                  </div>
+                ) : costingPrefs.visibility_mode === 'TOTAL_ONLY' ? (
+                  <div className="p-4 bg-surface border border-outline-variant rounded-xl space-y-2 text-xs">
+                    <div className="flex justify-between items-center text-sm font-bold text-primary">
+                      <span>Final Client Package Total:</span>
+                      <span className="text-base">₹{Math.round(computedFinalTotal).toLocaleString('en-IN')}</span>
+                    </div>
+                    <p className="text-[11px] text-on-surface-variant m-0 border-t border-outline-variant/30 pt-2">
+                      Inclusive of all accommodations, transfers, activities, and taxes. Itemized subtotal breakdown hidden per TOTAL_ONLY setting.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-surface border border-outline-variant rounded-xl space-y-3 text-xs">
+                    <div className="flex justify-between py-1 border-b border-outline-variant/30">
+                      <span className="text-on-surface-variant">Net Trip Subtotal (Hotels + Transfers + Activities):</span>
+                      <span className="font-bold text-on-surface">₹{Math.round(subtotal).toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-outline-variant/30">
+                      <span className="text-on-surface-variant">Agency Margin ({marginVal}{marginType === 'percentage' ? '%' : ' Flat'}):</span>
+                      <span className="font-bold text-primary">+₹{Math.round(marginAmount).toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-outline-variant/30">
+                      <span className="text-on-surface-variant">GST / Taxes ({taxRate}%):</span>
+                      <span className="font-bold text-on-surface">+₹{Math.round(taxAmount).toLocaleString('en-IN')}</span>
+                    </div>
+                    {discountVal > 0 && (
+                      <div className="flex justify-between py-1 border-b border-outline-variant/30">
+                        <span className="text-on-surface-variant">Special Discount:</span>
+                        <span className="font-bold text-emerald-500">-₹{Math.round(discountVal).toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between pt-2 text-sm font-bold text-primary">
+                      <span>Final Client Package Total:</span>
+                      <span>₹{Math.round(computedFinalTotal).toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           ) : (
