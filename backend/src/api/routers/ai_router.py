@@ -359,237 +359,59 @@ class Assemble1ShotInput(BaseModel):
     tax_rate_percent: float = 5.0
     discount_amount: float = 0.0
     visibility_mode: str = "ITEMIZED"
+    rag_context: Optional[Dict[str, Any]] = None
+    vault_matches: Optional[Dict[str, Any]] = None
 
 
 
-@router.post("/assemble-1shot")
+from src.models.assembly_schemas import AssembleRequest, AssembleResponse, CostingPrefs, RAGContext, VaultMatches
+
+@router.post("/assemble-1shot", response_model=AssembleResponse)
 async def assemble_1shot_route(
-    input: Assemble1ShotInput,
+    req: AssembleRequest,
     user: Any = Depends(verify_token_optional)
 ):
     """
-    1-Shot Automated Assembly Endpoint.
-    Assembles a complete, costed, and branded proposal in under 1.5 seconds.
-    Leverages zero-cost in-memory Day Module caching.
+    Agentic 1-Shot Assembly Endpoint.
+    Accepts client brief + RAG context + vault matches.
+    Returns a fully costed proposal with real resource IDs.
     """
     try:
-        from src.models.day_module_schema import MarginConfig
-        from src.services.assembly_engine import assemble_1shot_proposal
-
-        agency_id = "global"
-        if isinstance(user, dict):
-            agency_id = (
-                (user.get("user_metadata") or {}).get("agency_id")
-                or (user.get("app_metadata") or {}).get("agency_id")
-                or user.get("agency_id")
-                or "global"
-            )
-
-        margin_cfg = MarginConfig(
-            margin_type="percentage" if input.margin_type.lower() == "percentage" else "flat",
-            margin_value=float(input.margin_value),
-            tax_rate_percent=float(input.tax_rate_percent),
-            discount_amount=float(input.discount_amount),
-            visibility_mode="TOTAL_ONLY" if input.visibility_mode.upper() == "TOTAL_ONLY" else "ITEMIZED"
-        )
-
-        # If prompt is provided, extract destination and duration via regex/light parsing
-        dest = input.destination
-        dur = input.duration_days
-        pref = input.preferences_text
-
-        if input.prompt:
-            import re
-            p_text = input.prompt.strip()
-            # Extract duration e.g. '4 day' or '5 days'
-            dur_match = re.search(r"(\d+)\s*day", p_text, re.IGNORECASE)
-            if dur_match:
-                dur = int(dur_match.group(1))
-
-            # Extract destination
-            if not dest:
-                for kw in ["Manali", "Shillong", "Leh", "Kerala", "Rajasthan", "Goa", "Kashmir", "Rishikesh", "Jaipur", "Udaipur"]:
-                    if kw.lower() in p_text.lower():
-                        dest = kw
-                        break
-            if not dest:
-                dest = "Himachal"
-
-            pref = f"{pref} {p_text}".strip()
-
-        if not dest:
-            dest = "Himachal"
-
-        # ── RAG Pre-retrieval: Query vector store for vault-sourced hotels & activities ──
-        rag_hotels = []
-        rag_activities = []
-        rag_context = ""
+        from src.services.agentic_assembly_service import assemble_itinerary
+        proposal = await assemble_itinerary(req)
+        return AssembleResponse(status="success", proposal=proposal)
+    except ValueError as e:
+        logger.warning(f"[1-Shot Agentic] Validation/Inventory warning: {e}")
+        # Try deterministic engine as fallback
         try:
-            from src.services.rag_engine import rag_engine
-            rag_result = rag_engine.run_rag_by_type(
-                agency_id=agency_id,
-                destination=dest,
-                duration_days=dur
+            from src.services.assembly_engine import assemble_1shot_proposal
+            from src.models.day_module_schema import MarginConfig
+            margin_cfg = MarginConfig(
+                margin_type=req.costing_prefs.margin_type,
+                margin_value=req.costing_prefs.margin_value,
+                tax_rate_percent=req.costing_prefs.tax,
+                discount_amount=req.costing_prefs.discount,
+                visibility_mode=req.costing_prefs.visibility_mode
             )
-            rag_context = rag_result.get("context", "")
-            chunks = rag_result.get("chunks", [])
-
-            # Extract structured hotels & activities from retrieved RAG chunks
-            for chunk in chunks:
-                meta = chunk.get("metadata", {})
-                chunk_type = meta.get("chunk_type", "")
-                content = chunk.get("content", "")
-
-                if chunk_type in ("hotel", "accommodation") or any(kw in content.lower() for kw in ["hotel", "resort", "lodge", "inn", "cottage"]):
-                    # Parse hotel name from content
-                    lines = content.split("\n")
-                    for line in lines:
-                        line = line.strip()
-                        if len(line) > 5 and any(kw in line.lower() for kw in ["hotel", "resort", "lodge", "inn"]):
-                            rag_hotels.append({
-                                "name": line[:80],
-                                "category": "4 Star",
-                                "location": dest,
-                                "meal_plan": "MAP",
-                                "price_per_night": 4500.0
-                            })
-                            if len(rag_hotels) >= dur:
-                                break
-
-                if chunk_type in ("activity", "sightseeing") or any(kw in content.lower() for kw in ["visit", "excursion", "trek", "temple", "waterfall", "cave", "market", "falls", "lake", "peak"]):
-                    lines = content.split("\n")
-                    for line in lines:
-                        line = line.strip()
-                        if 8 < len(line) < 120 and not line.startswith("["):
-                            rag_activities.append({
-                                "name": line[:100],
-                                "timing": "10:00 AM",
-                                "duration": "2 hrs",
-                                "location": dest,
-                                "description": ""
-                            })
-                            if len(rag_activities) >= dur * 3:
-                                break
-
-            # Deduplicate by name
-            seen = set()
-            rag_hotels = [h for h in rag_hotels if h["name"] not in seen and not seen.add(h["name"])]
-            seen.clear()
-            rag_activities = [a for a in rag_activities if a["name"] not in seen and not seen.add(a["name"])]
-
-            if rag_hotels or rag_activities:
-                logger.info(f"[1-Shot] RAG enriched: {len(rag_hotels)} hotels, {len(rag_activities)} activities from vault for '{dest}'")
-            else:
-                logger.info(f"[1-Shot] RAG returned no structured data for '{dest}' — using seed baseline")
-        except Exception as rag_err:
-            logger.warning(f"[1-Shot] RAG retrieval failed (non-fatal, using seed): {rag_err}")
-
-        # ── Vault Structured Fetch: Query vault_packages for exact structured data ──
-        vault_hotels = []
-        vault_activities = []
-        try:
-            from src.services.supabase_client import get_supabase_client
-            sb_global = get_supabase_client()
-            if sb_global:
-                v_query = sb_global.table("vault_packages").select("parsed_data")
-                if agency_id and agency_id != "global":
-                    v_query = v_query.eq("agency_id", agency_id)
-                # We can't easily ILIKE on jsonb in a simple query, so we use string match on raw_text or just fetch all for agency and filter
-                v_res = v_query.ilike("parsed_data->>destination", f"%{dest}%").limit(5).execute()
-                
-                for row in (v_res.data or []):
-                    pd = row.get("parsed_data", {})
-                    # Extract hotels
-                    for h in pd.get("hotels", []):
-                        if isinstance(h, dict) and "name" in h:
-                            vault_hotels.append({
-                                "name": h.get("name")[:80],
-                                "category": h.get("category") or "4 Star",
-                                "location": h.get("location") or dest,
-                                "meal_plan": h.get("meal_plan") or "MAP",
-                                "price_per_night": float(h.get("price_per_night") or 4500.0)
-                            })
-                    # Extract activities
-                    for d in pd.get("itinerary_days", []):
-                        if isinstance(d, dict):
-                            for act in d.get("activities", []):
-                                if isinstance(act, dict) and "name" in act:
-                                    vault_activities.append({
-                                        "name": act.get("name")[:100],
-                                        "timing": act.get("timing") or "10:00 AM",
-                                        "duration": act.get("duration") or "2 hrs",
-                                        "location": dest,
-                                        "description": ""
-                                    })
-        except Exception as v_err:
-            logger.warning(f"[1-Shot] Vault structured fetch failed: {v_err}")
-
-        rag_hotels.extend(vault_hotels)
-        rag_activities.extend(vault_activities)
-
-        # Deduplicate combined vault and RAG items by name
-        seen = set()
-        rag_hotels = [h for h in rag_hotels if h["name"] not in seen and not seen.add(h["name"])]
-        seen.clear()
-        rag_activities = [a for a in rag_activities if a["name"] not in seen and not seen.add(a["name"])]
-
-        # ── Also pull hotels & activities from the Delta-synced DB tables ──────────
-        if not rag_hotels:
-            try:
-                from src.services.supabase_client import get_supabase_client
-                sb_global = get_supabase_client()
-                if sb_global:
-                    h_query = sb_global.table("hotels").select("name, location, price_per_night, meal_type, category, rating")
-                    if agency_id and agency_id != "global":
-                        h_query = h_query.eq("agency_id", agency_id)
-                    h_res = h_query.ilike("location", f"%{dest}%").limit(dur + 2).execute()
-                    if h_res.data:
-                        rag_hotels = h_res.data
-                        logger.info(f"[1-Shot] DB fallback: {len(rag_hotels)} hotels from hotels table for '{dest}'")
-            except Exception as db_err:
-                logger.warning(f"[1-Shot] DB hotel lookup failed (non-fatal): {db_err}")
-
-        if not rag_activities:
-            try:
-                from src.services.supabase_client import get_supabase_client
-                sb_global = get_supabase_client()
-                if sb_global:
-                    a_query = sb_global.table("activities").select("name, location, type, duration_hours, price, description")
-                    if agency_id and agency_id != "global":
-                        a_query = a_query.eq("agency_id", agency_id)
-                    a_res = a_query.ilike("location", f"%{dest}%").limit(dur * 3).execute()
-                    if a_res.data:
-                        rag_activities = a_res.data
-                        logger.info(f"[1-Shot] DB fallback: {len(rag_activities)} activities from activities table for '{dest}'")
-            except Exception as db_err:
-                logger.warning(f"[1-Shot] DB activity lookup failed (non-fatal): {db_err}")
-
-        proposal = assemble_1shot_proposal(
-            destination=dest,
-            duration_days=dur,
-            client_name=input.client_name,
-            group_type=input.group_type,
-            pace=input.pace,
-            budget_per_head=input.budget_per_head,
-            num_travelers=input.num_travelers,
-            preferences_text=pref,
-            margin_config=margin_cfg,
-            agency_id=agency_id,
-            days_per_destination=input.days_per_destination,
-            rag_context=rag_context,
-            rag_hotels=rag_hotels,
-            rag_activities=rag_activities,
-        )
-        
-        # Inject Dates
-        if input.start_date:
-            proposal.client_name = input.client_name
-            # There is no start_date on FinalProposalSchema? Let's check.
-            # wait, the frontend extracts it from client anyway, but we can set overview 
-            proposal.overview = f"Exclusive trip customized for {input.client_name} from {input.start_date} to {input.end_date or 'TBD'}."
-
-
-        return {"status": "success", "proposal": proposal.model_dump(by_alias=True)}
+            fallback_prop = assemble_1shot_proposal(
+                destination=req.destination,
+                duration_days=req.duration_days,
+                client_name=req.client_name,
+                num_travelers=req.num_travelers,
+                budget_per_head=req.budget_per_head or 25000.0,
+                pace=req.pace or "medium",
+                margin_config=margin_cfg
+            )
+            return AssembleResponse(status="success", proposal=fallback_prop.dict(), used_fallback=True)
+        except Exception as fb_err:
+            return AssembleResponse(
+                status="insufficient_inventory",
+                detail=str(e),
+                used_fallback=True
+            )
+    except Exception as e:
+        logger.exception("Agentic Assembly engine error")
+        raise HTTPException(status_code=500, detail=f"Assembly engine error: {str(e)}")
 
     except Exception as e:
         logger.exception("[1-Shot Assembly] Generation failed")

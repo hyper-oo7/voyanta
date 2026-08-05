@@ -7,7 +7,7 @@ import TemplateGalleryModal from '../components/canvas/TemplateGalleryModal.jsx'
 import TemplateRenderer from '../components/TemplateRenderer.jsx';
 import { Step2Itinerary } from './wizard/Step2Itinerary.jsx';
 import PDFUploader from '../components/PDFUploader.jsx';
-import RAGQueryPanel from '../components/RAGQueryPanel.jsx';
+import RAGContextPanel from '../components/RAGContextPanel.jsx';
 import { executeRAGQuery } from '../services/api.js';
 import AIProposalChatDrawer from '../components/canvas/AIProposalChatDrawer.jsx';
 
@@ -708,7 +708,7 @@ export default function UnifiedItineraryCanvas() {
               {/* Drawer Content */}
               <div className="flex-1 p-6 overflow-y-auto bg-surface-container-lowest">
                 {ragActiveTab === 'query' ? (
-                  <RAGQueryPanel agencyId={branding?.agency_id || 'demo-agency'} />
+                  <RAGContextPanel isOpen={true} onClose={() => setShowRAGDrawer(false)} />
                 ) : (
                   <PDFUploader agencyId={branding?.agency_id || 'demo-agency'} />
                 )}

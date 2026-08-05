@@ -1,232 +1,143 @@
-// File parser — xlsx + csv only (per scope decision).
-// Returns { columns: string[], rows: Array<Object> }.
+// File parser — CSV/XLSX remain client-side. PDF is now 100% backend-driven.
+// Backend contract required:
+//   POST /api/import/process      → { job_id: string }
+//   GET  /api/import/status/:id   → { status, progress?, result?, error?, raw_text? }
+//   POST /api/import/extract-text → { text: string }  (raw fallback)
+
 import * as XLSX from 'xlsx';
 import { api } from './api.js';
 import { logger } from '../utils/logger.js';
 import Papa from 'papaparse';
 
-// pdfjs-dist is bundled via npm — no CDN, no runtime script injection.
-// The worker is served as a hashed static asset via Vite's ?url import.
-import * as pdfjsLib from 'pdfjs-dist';
-import PdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-pdfjsLib.GlobalWorkerOptions.workerSrc = PdfWorkerUrl;
+const POLL_INTERVAL_MS = 2000;
+const MAX_POLL_ATTEMPTS = 150; // 5 minutes max
 
-async function extractTextFromPdf(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  let text = '';
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    const strings = content.items.map(item => item.str);
-    text += strings.join(' ') + '\n';
-  }
-  return text;
-}
+/* ------------------------------------------------------------------ */
+/*  PDF — Async backend extraction with polling                       */
+/* ------------------------------------------------------------------ */
 
-function parseItineraryTextLocally(text) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  
-  let name = "Imported Itinerary";
-  let destination = "";
-  let days = [];
-  let currentDay = null;
-  
-  if (lines.length > 0) {
-    name = lines[0].slice(0, 80);
-  }
-  
-  const dayRegex = /^(?:Day|DAY)\s*(\d+|[a-zA-Z]+)(?::|-|\s+)?(.*)$/i;
-  
-  for (const line of lines) {
-    const dayMatch = line.match(dayRegex);
-    if (dayMatch) {
-      if (currentDay) {
-        days.push(currentDay);
-      }
-      const dayNum = parseInt(dayMatch[1], 10) || (days.length + 1);
-      const dayTitle = dayMatch[2].trim() || `Day ${dayNum}`;
-      currentDay = {
-        day: dayNum,
-        title: dayTitle,
-        description: "",
-        hotels: [],
-        activities: [],
-        transfers: [],
-        meals: [],
-        notes: ""
-      };
-      continue;
-    }
-    
-    if (!currentDay) {
-      if (line.toLowerCase().includes('destination:') || line.toLowerCase().includes('location:')) {
-        destination = line.split(':').pop().trim();
-      }
-      continue;
-    }
-    
-    const lower = line.toLowerCase();
-    
-    if (lower.includes('hotel:') || lower.includes('accommodation:') || lower.includes('stay:')) {
-      currentDay.hotels.push(line.split(':').pop().trim());
-    } else if (lower.includes('activity:') || lower.includes('sightseeing:') || lower.includes('tour:')) {
-      currentDay.activities.push(line.split(':').pop().trim());
-    } else if (lower.includes('transfer:') || lower.includes('flight:') || lower.includes('drive:')) {
-      currentDay.transfers.push(line.split(':').pop().trim());
-    } else if (lower.includes('meal:') || lower.includes('breakfast') || lower.includes('lunch') || lower.includes('dinner')) {
-      if (lower.includes('breakfast')) currentDay.meals.push('Breakfast');
-      if (lower.includes('lunch')) currentDay.meals.push('Lunch');
-      if (lower.includes('dinner')) currentDay.meals.push('Dinner');
-      if (currentDay.meals.length === 0) currentDay.meals.push(line.split(':').pop().trim());
-    } else if (lower.includes('note:') || lower.includes('notes:') || lower.includes('important:')) {
-      currentDay.notes += (currentDay.notes ? ' ' : '') + line.split(':').pop().trim();
-    } else {
-      currentDay.description += (currentDay.description ? '\n' : '') + line;
-    }
-  }
-  
-  if (currentDay) {
-    days.push(currentDay);
-  }
-  
-  for (const d of days) {
-    d.meals = Array.from(new Set(d.meals));
-  }
-  
-  const hotels = [];
-  const activities = [];
-  const flights = [];
-  
-  for (const d of days) {
-    for (const h of d.hotels) {
-      if (h && !hotels.some(x => x.name.toLowerCase() === h.toLowerCase())) {
-        hotels.push({ name: h, location: destination || "Imported Location", price_per_night: null });
-      }
-    }
-    for (const act of d.activities) {
-      if (act && !activities.some(x => x.name.toLowerCase() === act.toLowerCase())) {
-        activities.push({ name: act, price: null, description: "Imported activity" });
-      }
-    }
-    for (const t of d.transfers) {
-      if (t && (t.toLowerCase().includes('flight') || t.toLowerCase().includes('air'))) {
-        const cleanVal = t.replace(/(?:flight|transfer|drive|air)\s*/i, '').trim();
-        if (cleanVal && !flights.some(x => x.flight_no.toLowerCase() === cleanVal.toLowerCase())) {
-          const parts = cleanVal.split(/\s+/);
-          flights.push({
-            airline: parts[0] || 'Imported Airline',
-            flight_no: parts[1] || parts[0] || 'TBD',
-            cost: null,
-            currency: 'INR'
-          });
-        }
-      }
-    }
-  }
-  
-  const fields = {
-    destination: {
-      value: destination,
-      confidence: destination ? 0.5 : 0.0,
-      source: destination ? 'deterministic' : 'missing',
-      needs_review: !destination
-    },
-    total_price: {
-      value: null,
-      confidence: 0.0,
-      source: 'missing',
-      needs_review: true
-    },
-    currency: {
-      value: 'INR',
-      confidence: 0.5,
-      source: 'deterministic',
-      needs_review: true
-    },
-    duration_days: {
-      value: days.length,
-      confidence: days.length > 0 ? 0.8 : 0.0,
-      source: days.length > 0 ? 'deterministic' : 'missing',
-      needs_review: days.length === 0
-    },
-    days: {
-      value: days,
-      confidence: days.length > 0 ? 0.7 : 0.0,
-      source: days.length > 0 ? 'deterministic' : 'missing',
-      needs_review: days.length === 0
-    },
-    hotels: {
-      value: hotels,
-      confidence: hotels.length > 0 ? 0.6 : 0.0,
-      source: hotels.length > 0 ? 'deterministic' : 'missing',
-      needs_review: hotels.length > 0
-    },
-    activities: {
-      value: activities,
-      confidence: activities.length > 0 ? 0.6 : 0.0,
-      source: activities.length > 0 ? 'deterministic' : 'missing',
-      needs_review: activities.length > 0
-    },
-    flights: {
-      value: flights,
-      confidence: flights.length > 0 ? 0.6 : 0.0,
-      source: flights.length > 0 ? 'deterministic' : 'missing',
-      needs_review: flights.length > 0
-    }
-  };
-  
-  return {
-    name,
-    destination,
-    days_count: days.length,
-    days,
-    hotels,
-    activities,
-    flights,
-    fields
-  };
-}
-
-export async function parsePdfFile(file) {
+/**
+ * Upload a PDF and receive a jobId for async processing.
+ */
+export async function uploadPdfForExtraction(file, agencyId = 'demo-agency') {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('destination', '');
-  formData.append('budget', '0');
-  formData.append('duration', '0');
+  formData.append('agency_id', agencyId);
   formData.append('currency', 'INR');
-  formData.append('reparse', 'true');
+
+  const result = await api.post('/api/import/process', formData, {
+    headers: {}, // Let browser set multipart boundary
+  });
+
+  if (!result?.job_id) {
+    throw new Error('Backend did not return a job_id. Ensure /api/import/process returns { job_id }.');
+  }
+  return result.job_id;
+}
+
+/**
+ * Poll backend until extraction completes or fails.
+ * @param {string} jobId
+ * @param {(progress: {stage:string,current:number,total:number})=>void} [onProgress]
+ */
+export async function pollExtractionStatus(jobId, onProgress) {
+  let attempts = 0;
+
+  while (attempts < MAX_POLL_ATTEMPTS) {
+    attempts++;
+    const status = await api.get(`/api/import/status/${jobId}`);
+
+    if (onProgress && status?.progress) {
+      onProgress(status.progress);
+    }
+
+    if (status?.status === 'completed') {
+      return status.result;
+    }
+
+    if (status?.status === 'failed') {
+      const err = new Error(status.error || 'Extraction failed on the backend.');
+      err.rawText = status.raw_text || null;
+      err.jobId = jobId;
+      logger.error(`Extraction job ${jobId} failed:`, err.message);
+      throw err;
+    }
+
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+  }
+
+  throw new Error('Extraction timed out. The backend is taking too long to process this PDF.');
+}
+
+/**
+ * Last-resort endpoint: ask backend to return raw text only (no LLM parsing).
+ * Used when structured extraction fails so the user can copy-paste manually.
+ */
+export async function extractRawPdfText(file, agencyId = 'demo-agency') {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('agency_id', agencyId);
 
   try {
-    const result = await api.post('/api/import/process', formData);
-    if (result && result.status === 'success' && result.data) {
-      const pkg = result.data;
-      return {
-        name: pkg.destination || file.name.replace('.pdf', ''),
-        destination: pkg.destination || '',
-        days_count: pkg.days?.length || 0,
-        days: pkg.days || [],
-        hotels: pkg.hotels || [],
-        activities: pkg.activities || [],
-        flights: pkg.flights || [],
-        fields: pkg.fields || {}
-      };
-    }
-    throw new Error('Invalid response format from import processor');
+    const result = await api.post('/api/import/extract-text', formData, {
+      headers: {},
+    });
+    return result?.text || '';
   } catch (err) {
-    logger.warn('Failed to use unified import/process parser, falling back to local extraction.', err);
-    const text = await extractTextFromPdf(file);
-    return parseItineraryTextLocally(text);
+    logger.error('Raw text extraction failed:', err);
+    return '';
   }
 }
+
+/**
+ * Parse a PDF file.
+ * 1. Uploads to backend
+ * 2. Polls for completion
+ * 3. Returns normalized structured data
+ * 4. On failure: attempts raw-text extraction for manual fallback
+ */
+export async function parsePdfFile(file, options = {}) {
+  const { agencyId = 'demo-agency', onProgress } = options;
+
+  let jobId;
+  try {
+    jobId = await uploadPdfForExtraction(file, agencyId);
+  } catch (uploadErr) {
+    logger.error('PDF upload failed:', uploadErr);
+    throw new Error('Failed to upload PDF for processing. Please check your network connection.');
+  }
+
+  try {
+    const result = await pollExtractionStatus(jobId, onProgress);
+
+    return {
+      name: result?.destination || file.name.replace(/\.pdf$/i, ''),
+      destination: result?.destination || '',
+      days_count: result?.days?.length || 0,
+      days: result?.days || [],
+      hotels: result?.hotels || [],
+      activities: result?.activities || [],
+      flights: result?.flights || [],
+      fields: result?.fields || {},
+    };
+  } catch (pollErr) {
+    // Structured extraction failed — try to fetch raw text for manual copy-paste
+    if (!pollErr.rawText) {
+      pollErr.rawText = await extractRawPdfText(file, agencyId);
+    }
+    throw pollErr;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  CSV / XLSX — Client-side (fast, reliable)                         */
+/* ------------------------------------------------------------------ */
 
 export async function parseFile(file) {
   const ext = (file.name.split('.').pop() || '').toLowerCase();
   if (ext === 'csv') return parseCsv(file);
   if (ext === 'xlsx' || ext === 'xls') return parseXlsx(file);
-  if (ext === 'pdf') {
-    return parsePdfFile(file);
-  }
+  if (ext === 'pdf') return parsePdfFile(file);
   throw new Error(`Unsupported file type: .${ext} (supported: .csv, .xlsx, .pdf)`);
 }
 
@@ -265,8 +176,10 @@ function coerceRow(row, columns) {
   return out;
 }
 
-// Heuristic: suggest a default mapping from supplier columns to internal fields.
-// Used to pre-fill the mapping UI; user can override.
+/* ------------------------------------------------------------------ */
+/*  Heuristic column mapping (CSV/XLSX)                               */
+/* ------------------------------------------------------------------ */
+
 const SYNONYMS = {
   hotels: {
     name: ['name','hotel','hotel_name','property','property_name','resort','resort_name','hotel_title','title','accommodation','hotel_name_or_property','vendor','vendor_name'],
@@ -327,31 +240,31 @@ export function suggestMapping(resource, columns, rows = []) {
   const used = new Set();
   const out = {};
 
-  // Tier 1: Exact & Normalized Synonym Header Matching
+  // Tier 1: Exact & normalized synonym header matching
   for (const [target, alts] of Object.entries(synonyms)) {
     const match = columns.find((c) => {
       if (used.has(c)) return false;
       const lower = c.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_');
       return alts.some((a) => lower === a || lower === a + 's' || lower.split('_').includes(a));
     });
-    if (match) { 
-      out[match] = target; 
-      used.add(match); 
+    if (match) {
+      out[match] = target;
+      used.add(match);
     }
   }
 
-  // Tier 2: Sample Data Pattern Recognition (for unmapped headers)
+  // Tier 2: Sample data pattern recognition (for unmapped headers)
   if (rows && rows.length > 0) {
-    const unmappedCols = columns.filter(c => !used.has(c));
+    const unmappedCols = columns.filter((c) => !used.has(c));
     const sampleRows = rows.slice(0, 5);
 
     for (const c of unmappedCols) {
-      const sampleVals = sampleRows.map(r => String(r[c] || '').trim()).filter(Boolean);
+      const sampleVals = sampleRows.map((r) => String(r[c] || '').trim()).filter(Boolean);
       if (sampleVals.length === 0) continue;
 
       // Image URL pattern
       if (!Object.values(out).includes('image_url') && synonyms.image_url) {
-        const isUrl = sampleVals.some(v => /^https?:\/\//i.test(v) || /\.(jpg|jpeg|png|webp|gif)/i.test(v));
+        const isUrl = sampleVals.some((v) => /^https?:\/\//i.test(v) || /\.(jpg|jpeg|png|webp|gif)/i.test(v));
         if (isUrl) {
           out[c] = 'image_url';
           used.add(c);
@@ -361,7 +274,7 @@ export function suggestMapping(resource, columns, rows = []) {
 
       // Meal Type pattern
       if (resource === 'hotels' && !Object.values(out).includes('meal_type')) {
-        const isMeal = sampleVals.some(v => /^(cp|ep|map|ap|breakfast|half board|full board|all inclusive|room only)/i.test(v));
+        const isMeal = sampleVals.some((v) => /^(cp|ep|map|ap|breakfast|half board|full board|all inclusive|room only)/i.test(v));
         if (isMeal) {
           out[c] = 'meal_type';
           used.add(c);
@@ -371,7 +284,7 @@ export function suggestMapping(resource, columns, rows = []) {
 
       // Room Type pattern
       if (resource === 'hotels' && !Object.values(out).includes('room_type')) {
-        const isRoom = sampleVals.some(v => /(deluxe|suite|executive|standard|superior|villa|bungalow|ocean view|city view|king|queen|twin|double)/i.test(v));
+        const isRoom = sampleVals.some((v) => /(deluxe|suite|executive|standard|superior|villa|bungalow|ocean view|city view|king|queen|twin|double)/i.test(v));
         if (isRoom) {
           out[c] = 'room_type';
           used.add(c);
@@ -381,7 +294,7 @@ export function suggestMapping(resource, columns, rows = []) {
 
       // Currency pattern
       if (!Object.values(out).includes('currency') && synonyms.currency) {
-        const isCcy = sampleVals.every(v => /^(inr|usd|eur|gbp|aed|thb|jpy|aud|cad|₹|\$|€|£)$/i.test(v));
+        const isCcy = sampleVals.every((v) => /^(inr|usd|eur|gbp|aed|thb|jpy|aud|cad|₹|\$|€|£)$/i.test(v));
         if (isCcy) {
           out[c] = 'currency';
           used.add(c);
@@ -391,7 +304,7 @@ export function suggestMapping(resource, columns, rows = []) {
 
       // Rating pattern
       if (resource === 'hotels' && !Object.values(out).includes('rating')) {
-        const isRating = sampleVals.every(v => {
+        const isRating = sampleVals.every((v) => {
           const n = parseFloat(v);
           return !isNaN(n) && n >= 1.0 && n <= 5.0 && v.length <= 4;
         });
@@ -405,8 +318,8 @@ export function suggestMapping(resource, columns, rows = []) {
       // Price pattern
       const targetPriceField = resource === 'hotels' ? 'price_per_night' : resource === 'flights' ? 'cost' : 'price';
       if (!Object.values(out).includes(targetPriceField)) {
-        const isPrice = sampleVals.some(v => /[\d,]+\.?\d*/.test(v) && !isNaN(parseFloat(v.replace(/[^0-9.]/g, ''))) && parseFloat(v.replace(/[^0-9.]/g, '')) > 50);
-        if (isPrice && !sampleVals.some(v => v.includes('http'))) {
+        const isPrice = sampleVals.some((v) => /[\d,]+\.?\d*/.test(v) && !isNaN(parseFloat(v.replace(/[^0-9.]/g, ''))) && parseFloat(v.replace(/[^0-9.]/g, '')) > 50);
+        if (isPrice && !sampleVals.some((v) => v.includes('http'))) {
           out[c] = targetPriceField;
           used.add(c);
           continue;

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient.js';
+import { api } from '../services/api.js';
 
 export const useVaultStore = create((set, get) => ({
   isProcessing: false,
@@ -20,15 +21,6 @@ export const useVaultStore = create((set, get) => ({
       metrics: null,
       batchProgress: { current: 0, total: filesList.length, currentFile: filesList[0].name, status: 'Starting...' }
     });
-
-    let token = null;
-    try {
-      await supabase?.auth?.refreshSession?.();
-      const { data: { session } } = await supabase?.auth?.getSession?.() || { data: { session: null } };
-      token = session?.access_token || null;
-    } catch (authErr) {
-      console.warn('[VaultStore] Session refresh check warning:', authErr);
-    }
 
     const extractedBatch = [];
     let cacheHitsCount = 0;
@@ -65,36 +57,46 @@ export const useVaultStore = create((set, get) => ({
             formData.append('preview_only', 'true');
             formData.append('currency', 'INR');
 
-            const reqHeaders = {};
-            if (token) reqHeaders['Authorization'] = `Bearer ${token}`;
-
-            let response = await fetch('/api/import/process', {
-              method: 'POST',
-              headers: reqHeaders,
-              body: formData,
-            });
-
-            // Retry without token if auth error occurs
-            if ((response.status === 401 || response.status === 403) && token) {
-              const retryFormData = new FormData();
-              retryFormData.append('file', currentF);
-              retryFormData.append('preview_only', 'true');
-              retryFormData.append('currency', 'INR');
-              response = await fetch('/api/import/process', { method: 'POST', body: retryFormData });
+            const response = await api.post('/api/import/process', formData);
+            if (!response?.job_id) {
+              throw new Error('No job_id returned from server');
             }
 
-            if (response.ok) {
-              resultData = await response.json();
-              try { localStorage.setItem(cacheKey, JSON.stringify(resultData)); } catch {}
-            } else {
-              let errText = response.statusText;
-              try {
-                const errJson = await response.json();
-                errText = errJson.detail || errJson.message || errText;
-              } catch {}
-              toast.error(`Error processing ${currentF.name}: ${errText}`);
-              return;
+            let attempts = 0;
+            let finalResult = null;
+            while (attempts < 150) {
+              const status = await api.get(`/api/import/status/${response.job_id}`);
+              
+              if (status?.progress) {
+                set({
+                  batchProgress: {
+                    current: fileIndex + 1,
+                    total: filesList.length,
+                    currentFile: currentF.name,
+                    status: `${status.progress.stage} (${status.progress.current}/${status.progress.total})`
+                  }
+                });
+              }
+
+              if (status?.status === 'completed') {
+                finalResult = status.result;
+                break;
+              }
+              if (status?.status === 'failed') {
+                throw new Error(status.error || 'Extraction failed');
+              }
+
+              await new Promise(r => setTimeout(r, 2000));
+              attempts++;
             }
+
+            if (!finalResult) {
+              throw new Error('Extraction timed out');
+            }
+
+            resultData = { data: finalResult };
+            try { localStorage.setItem(cacheKey, JSON.stringify(resultData)); } catch {}
+
           } catch (err) {
             toast.error(`Failed to process ${currentF.name}: ${err.message}`);
             return;

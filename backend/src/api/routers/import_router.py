@@ -1,9 +1,10 @@
 import os
+import uuid
 import hashlib
 import logging
 import asyncio
 from typing import Any, Optional, Dict
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import JSONResponse
 
 from src.core.security import verify_token_optional, get_request_token
@@ -25,6 +26,9 @@ from src.services.import_service import PdfExtractor, XlsxExtractor, CsvExtracto
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/import")
 
+# Global In-Memory Job Tracking Store for Async PDF Extraction
+EXTRACTION_JOBS: Dict[str, Dict[str, Any]] = {}
+
 def accumulate_agency_packing_rules(
     destination: str,
     extra_sections: Dict[str, str],
@@ -33,7 +37,7 @@ def accumulate_agency_packing_rules(
 ):
     """
     Persists packing lists and custom extra sections learned from files
-    exclusively to the agency_packing_rules table scoped by agency_id (Rule 5).
+    exclusively to the agency_packing_rules table scoped by agency_id.
     """
     if not agency_id or not destination or not extra_sections:
         return
@@ -56,7 +60,6 @@ def accumulate_agency_packing_rules(
                 "section_title": title,
                 "content": content.strip()
             }
-            # Upsert using standard combination key
             sb.table("agency_packing_rules").upsert(
                 data,
                 on_conflict="agency_id,destination_keyword,section_type"
@@ -65,24 +68,139 @@ def accumulate_agency_packing_rules(
         except Exception as e:
             logger.error(f"[Agency Packing Rules] Failed to upsert exclusive rule for {dest_kw} ({sec_type}): {e}")
 
+def _run_extraction_bg(
+    job_id: str,
+    file_bytes: bytes,
+    filename: str,
+    destination: str,
+    budget: float,
+    duration: int,
+    currency: str,
+    preview_only: bool,
+    reparse: bool,
+    agency_id: Optional[str],
+    user_id: Optional[str],
+    token: Optional[str]
+):
+    try:
+        EXTRACTION_JOBS[job_id] = {
+            "status": "extracting",
+            "progress": {"stage": "Uploading & Analyzing Document", "current": 1, "total": 4},
+            "result": None,
+            "error": None,
+            "raw_text": None
+        }
+
+        ext = (filename.split(".")[-1] if "." in filename else "").lower()
+        EXTRACTION_JOBS[job_id]["progress"] = {"stage": "Extracting Text & Structured Content", "current": 2, "total": 4}
+
+        if ext == "pdf":
+            from src.services.pdf_engine import extract_pdf_safe
+            from src.services.structured_parser import StructuredItineraryParser
+
+            # CPU-bound PDF extraction runs synchronously in this background thread
+            extracted = extract_pdf_safe(file_bytes)
+            raw_text = extracted["full_text"]
+            EXTRACTION_JOBS[job_id]["raw_text"] = raw_text[:50000]
+
+            parser = StructuredItineraryParser()
+            normalized = asyncio.run(parser.parse(raw_text))
+            
+            # Enrich metadata
+            normalized["agency_id"] = agency_id
+            normalized["file_hash"] = extracted["file_hash"]
+            normalized["file_size_mb"] = extracted["file_size_mb"]
+        else:
+            if ext in ("xlsx", "xls"):
+                extractor = XlsxExtractor()
+            else:
+                extractor = CsvExtractor()
+                
+            normalized = asyncio.run(extractor.extract(
+                file_bytes=file_bytes,
+                filename=filename,
+                destination_hint=destination,
+                budget_hint=budget,
+                duration_hint=duration,
+                currency_hint=currency,
+                agency_id=agency_id,
+                user_id=user_id
+            ))
+            raw_text = normalized.pop("_raw_text", "")
+            EXTRACTION_JOBS[job_id]["raw_text"] = raw_text
+
+
+        EXTRACTION_JOBS[job_id]["progress"] = {"stage": "Indexing Entities & Vector Knowledge", "current": 3, "total": 4}
+
+        sb = get_user_supabase_client(token, agency_id) if token else get_supabase_client()
+
+        delta_summary = perform_pdf_delta_sync(
+            extracted_pkg=normalized,
+            agency_id=agency_id,
+            sb=sb
+        )
+        normalized["delta_summary"] = delta_summary
+
+        if raw_text and agency_id:
+            try:
+                doc_dest = normalized.get("destination") or destination or "General"
+                chunker_svc = TravelDocumentChunker()
+                chunks = chunker_svc.chunk_text(raw_text, metadata={
+                    "document_name": filename,
+                    "destination": doc_dest,
+                    "agency_id": agency_id,
+                    "source_type": ext,
+                    "file_url": ""
+                })
+                if chunks:
+                    chunk_texts = [c["content"] for c in chunks]
+                    embeddings = embedder.embed_texts(chunk_texts)
+                    stored_count = vector_store.store_chunks(
+                        agency_id=agency_id,
+                        document_id=job_id,
+                        chunks=chunks,
+                        embeddings=embeddings
+                    )
+                    normalized["chunks_indexed"] = stored_count
+            except Exception as embed_err:
+                logger.error(f"[ImportProcess] Background RAG embedding error: {embed_err}")
+
+        EXTRACTION_JOBS[job_id]["progress"] = {"stage": "Done", "current": 4, "total": 4}
+        EXTRACTION_JOBS[job_id]["status"] = "completed"
+        EXTRACTION_JOBS[job_id]["result"] = normalized
+
+    except Exception as e:
+        logger.exception(f"Background extraction failed for job {job_id}")
+        raw_text = ""
+        try:
+            import fitz
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            raw_text = "\n\n".join([page.get_text() for page in doc])
+        except Exception:
+            pass
+
+        EXTRACTION_JOBS[job_id]["status"] = "failed"
+        EXTRACTION_JOBS[job_id]["error"] = str(e)
+        EXTRACTION_JOBS[job_id]["raw_text"] = raw_text
+
 @router.post("/process")
 async def process_file_import(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    agency_id: str = Form("demo-agency"),
     destination: str = Form(""),
     budget: float = Form(0.0),
     duration: int = Form(0),
     currency: str = Form("INR"),
     preview_only: bool = Form(False),
-    reparse: bool = Form(True),            # True by default to force re-parsing & finding new items
+    reparse: bool = Form(True),
     user: Any = Depends(verify_token_optional),
     token: Optional[str] = Depends(get_request_token),
 ):
     """
     Unified Import Processing Endpoint:
-    Processes PDF, XLSX, and CSV file formats, computes confidence metadata,
-    re-parses documents to extract new items via Delta Extraction, and appends them to DB.
+    Accepts PDF/CSV/XLSX, creates an async processing job, and immediately returns a job_id for polling.
     """
-    # 1. Size Validation (50MB limit)
     try:
         file.file.seek(0, 2)
         file_size = file.file.tell()
@@ -94,246 +212,82 @@ async def process_file_import(
     if file_size > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File size exceeds 50MB limit")
 
+    file_bytes = await file.read()
+    filename = file.filename or "uploaded_doc.pdf"
+
+    resolved_agency_id = agency_id
+    user_id = None
+    if isinstance(user, dict):
+        resolved_agency_id = (
+            (user.get("user_metadata") or {}).get("agency_id")
+            or (user.get("app_metadata") or {}).get("agency_id")
+            or user.get("agency_id")
+            or agency_id
+        )
+        user_id = user.get("sub") or user.get("id")
+
+    job_id = str(uuid.uuid4())
+    EXTRACTION_JOBS[job_id] = {
+        "status": "queued",
+        "progress": {"stage": "Queued", "current": 0, "total": 4},
+        "result": None,
+        "error": None,
+        "raw_text": None
+    }
+
+    background_tasks.add_task(
+        _run_extraction_bg,
+        job_id=job_id,
+        file_bytes=file_bytes,
+        filename=filename,
+        destination=destination,
+        budget=budget,
+        duration=duration,
+        currency=currency,
+        preview_only=preview_only,
+        reparse=reparse,
+        agency_id=resolved_agency_id,
+        user_id=user_id,
+        token=token
+    )
+
+    return JSONResponse(content={"status": "queued", "job_id": job_id})
+
+@router.get("/status/{job_id}")
+async def get_import_status(job_id: str):
+    """
+    Polls current status of an async extraction job by job_id.
+    """
+    job = EXTRACTION_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Extraction job '{job_id}' not found.")
+    return JSONResponse(content=job)
+
+@router.post("/extract-text")
+async def extract_raw_text(
+    file: UploadFile = File(...),
+    agency_id: str = Form("demo-agency")
+):
+    """
+    Raw text fallback extraction using PyMuPDF / pdfminer without LLM processing.
+    """
     try:
-        # 2. Context Isolation
-        agency_id = None
-        user_id = None
-        if isinstance(user, dict):
-            agency_id = (
-                (user.get("user_metadata") or {}).get("agency_id")
-                or (user.get("app_metadata") or {}).get("agency_id")
-                or user.get("agency_id")
-            )
-            user_id = user.get("sub") or user.get("id")
-            
-        logger.info(f"[ImportProcess] Start - file={file.filename}, agency_id={agency_id}, user_id={user_id}, reparse={reparse}")
-
-        # Initialize Supabase client
-        if token:
-            sb = get_user_supabase_client(token, agency_id)
-        else:
-            sb = get_supabase_client()
-
-        # 3. Entitlements Check (if authenticated with an agency)
-        if agency_id:
-            from src.core.entitlements import get_agency_entitlements_data, check_feature_entitlement
-            try:
-                entitlements = await get_agency_entitlements_data(sb, agency_id)
-                check_feature_entitlement(entitlements, "ai_vault")
-            except HTTPException as http_e:
-                if http_e.status_code == 403:
-                    raise http_e
-            except Exception as ent_err:
-                logger.warning(f"[ImportProcess] Entitlements check fallback: {ent_err}")
-
-        # 4. Upload original file to R2
         file_bytes = await file.read()
-        file_hash = hashlib.sha256(file_bytes).hexdigest()
-        
-        # Determine MIME and extractor
-        filename = file.filename or "supplier_file"
-        ext = (filename.split(".")[-1] if "." in filename else "").lower()
-        
-        if ext == "pdf":
-            if b"%PDF-" not in file_bytes[:1024]:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid PDF file structure. Only valid PDF files starting with '%PDF-' magic bytes are allowed."
-                )
-            content_type = "application/pdf"
-            extractor = PdfExtractor()
-            file_type = "pdf"
-        elif ext in ("xlsx", "xls"):
-            if not (file_bytes.startswith(b"PK\x03\x04") or file_bytes.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid Excel file structure. Only valid spreadsheet files (.xlsx or .xls) are allowed."
-                )
-            content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            extractor = XlsxExtractor()
-            file_type = "xlsx"
-        elif ext == "csv":
-            if file_bytes.startswith(b"PK\x03\x04") or file_bytes.startswith(b"%PDF-") or b"\x00" in file_bytes[:1024]:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid CSV file structure. Binary format or unsupported content detected."
-                )
-            content_type = "text/csv"
-            extractor = CsvExtractor()
-            file_type = "csv"
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported file type: .{ext}")
+        raw_text = ""
+        try:
+            import fitz
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            raw_text = "\n\n".join([page.get_text() for page in doc])
+        except Exception as e:
+            logger.warning(f"[ExtractText] PyMuPDF failed: {e}")
+            from pdfminer.high_level import extract_text
+            import io
+            raw_text = extract_text(io.BytesIO(file_bytes))
 
-        r2_upload_res = await asyncio.to_thread(
-            upload_file_to_r2,
-            file_bytes=file_bytes,
-            filename=filename,
-            folder="supplier-pdfs",
-            agency_id=agency_id,
-            content_type=content_type
-        )
-        file_url = r2_upload_res.get("url") if r2_upload_res else None
-
-        source_pdf_id = None
-        if sb:
-            try:
-                pdf_record = {
-                    "filename": filename,
-                    "file_path": file_url or f"temp_supplier_pdfs/{filename}",
-                    "size_bytes": len(file_bytes),
-                    "status": "active"
-                }
-                if agency_id:
-                    pdf_record["agency_id"] = agency_id
-                
-                pdf_insert_res = sb.table("supplier_pdfs").insert(pdf_record).execute()
-                if pdf_insert_res.data:
-                    source_pdf_id = pdf_insert_res.data[0]["id"]
-                    logger.info(f"[ImportProcess] Created supplier_pdfs row: id={source_pdf_id}")
-            except Exception as pdf_err:
-                logger.error(f"[ImportProcess] Failed to insert supplier_pdfs row: {pdf_err}")
-
-        # 5. Extract via multi-reader pipeline
-        normalized = await extractor.extract(
-            file_bytes=file_bytes,
-            filename=filename,
-            destination_hint=destination,
-            budget_hint=budget,
-            duration_hint=duration,
-            currency_hint=currency,
-            agency_id=agency_id,
-            user_id=user_id
-        )
-
-        storage_meta = normalized.pop("_storage_meta", {
-            "file_path": file_url or "",
-            "filename": filename,
-            "size_bytes": len(file_bytes)
-        })
-        compression_metrics = normalized.pop("_compression_metrics", {
-            "original_chars": len(normalized.get("_raw_text", "")),
-            "compressed_chars": len(normalized.get("_raw_text", "")),
-            "savings_percentage": "0%"
-        })
-        raw_text = normalized.pop("_raw_text", "")
-
-        compressed_text, _ = deterministic_pre_parse_and_compress(raw_text)
-        hash_key = compute_content_hash(compressed_text, budget, duration or normalized.get("duration_days", 7))
-        
-        # Bypass static cache hit when reparse=True to ensure delta extraction happens
-        if not reparse:
-            cached_result = await get_cached_recommendation(hash_key, supabase_client=sb, agency_id=agency_id)
-            if cached_result:
-                logger.info(f"[ImportProcess] Cache HIT for hash {hash_key[:8]}")
-                if "fields" not in cached_result:
-                    from src.services.import_service import build_normalized_fields
-                    cached_result["fields"] = build_normalized_fields(cached_result, file_type)
-                
-                return JSONResponse(content={
-                    "status": "success",
-                    "cache_hit": True,
-                    "cost_incurred": "$0.00 (Served instantly from Semantic Cache)",
-                    "storage_meta": {**storage_meta, "pdf_url": file_url},
-                    "compression_metrics": compression_metrics,
-                    "pdf_hash": file_hash,
-                    "data": cached_result
-                })
-
-        # 6. Delta Extraction Engine: Compare extracted items & append new ones to DB
-        delta_summary = perform_pdf_delta_sync(
-            extracted_pkg=normalized,
-            agency_id=agency_id,
-            sb=sb
-        )
-        normalized["delta_summary"] = delta_summary
-        logger.info(f"[ImportProcess] Delta extraction complete: {delta_summary.get('total_new_items')} new items appended.")
-
-        # 6b. Auto-Chunk, Embed & Store to Vector Store (RAG Engine)
-        # Runs for all file types (PDF, XLSX, CSV) so any imported knowledge is retrievable
-        if raw_text and agency_id:
-            try:
-                doc_dest = normalized.get("destination") or destination or "General"
-                embed_doc_id = normalized.get("vault_package_id") or file_hash
-                chunker_svc = TravelDocumentChunker()
-                chunks = chunker_svc.chunk_text(raw_text, metadata={
-                    "document_name": filename,
-                    "destination": doc_dest,
-                    "agency_id": agency_id,
-                    "source_type": file_type,
-                    "file_url": file_url or ""
-                })
-                if chunks:
-                    chunk_texts = [c["content"] for c in chunks]
-                    embeddings = await asyncio.to_thread(embedder.embed_texts, chunk_texts)
-                    stored_count = vector_store.store_chunks(
-                        agency_id=agency_id,
-                        document_id=embed_doc_id,
-                        chunks=chunks,
-                        embeddings=embeddings
-                    )
-                    normalized["chunks_indexed"] = stored_count
-                    delta_summary["chunks_indexed"] = stored_count
-                    logger.info(f"[ImportProcess] RAG: {stored_count} chunks indexed for '{doc_dest}' (agency={agency_id})")
-            except Exception as embed_err:
-                logger.error(f"[ImportProcess] RAG embedding pipeline failed (non-fatal): {embed_err}")
-
-        normalized["_pdf_filename"] = filename
-        normalized["_pdf_hash"] = file_hash
-        normalized["_pdf_url"] = file_url
-        normalized["_raw_text"] = raw_text
-        normalized["_hash_key"] = hash_key
-
-        if not preview_only:
-            saved_pkg = save_vault_package(
-                parsed_data=normalized,
-                pdf_filename=filename,
-                pdf_hash=file_hash,
-                agency_id=agency_id,
-                user_id=user_id,
-                pdf_url=file_url,
-                raw_text=raw_text,
-                extraction_version="v3.0.0"
-            )
-            if saved_pkg:
-                normalized["vault_package_id"] = saved_pkg.get("id")
-                logger.info(f"[ImportProcess] Saved to vault_packages: id={saved_pkg.get('id')}")
-
-            extra_sections = normalized.get("extra_sections") or {}
-            dest_for_knowledge = normalized.get("destination") or destination
-            if extra_sections and dest_for_knowledge:
-                accumulate_destination_knowledge(
-                    destination=dest_for_knowledge,
-                    extra_sections=extra_sections,
-                    agency_id=agency_id,
-                    user_id=user_id
-                )
-                accumulate_agency_packing_rules(
-                    destination=dest_for_knowledge,
-                    extra_sections=extra_sections,
-                    agency_id=agency_id,
-                    token=token
-                )
-            await store_cached_recommendation(hash_key, normalized, dest_for_knowledge, budget, supabase_client=sb, agency_id=agency_id)
-
-        return JSONResponse(content={
-            "status": "success",
-            "cache_hit": False,
-            "preview_only": preview_only,
-            "cost_incurred": "Optimized via Faithful Extraction",
-            "storage_meta": {**storage_meta, "pdf_url": file_url},
-            "compression_metrics": compression_metrics,
-            "pdf_hash": file_hash,
-            "data": normalized
-        })
-
-    except HTTPException:
-        raise
+        return JSONResponse(content={"status": "success", "text": raw_text})
     except Exception as e:
-        logger.exception("Unified file import processing failed")
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e)}
-        )
+        logger.error(f"[ExtractText] Failed to extract raw text: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "text": "", "message": str(e)})
 
 @router.post("/confirm")
 async def confirm_file_import(
@@ -362,7 +316,6 @@ async def confirm_file_import(
         raw_text = payload.pop("_raw_text", "")
         hash_key = payload.pop("_hash_key", None)
 
-        # Recalculate fields metadata if agent edited values
         from src.services.import_service import build_normalized_fields
         fields_dict = build_normalized_fields(payload, payload.get("source_type", "pdf"))
         payload["fields"] = fields_dict
@@ -400,7 +353,6 @@ async def confirm_file_import(
             except Exception as ex:
                 logger.error(f"[VaultKnowledge] Background persist error: {ex}")
 
-        # Launch saving and knowledge accumulation in background thread for instant response (< 50ms)
         asyncio.create_task(asyncio.to_thread(_bg_persist))
 
         if hash_key:

@@ -61,7 +61,32 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
 
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class LongRequestHeartbeatMiddleware(BaseHTTPMiddleware):
+    """
+    Logs slow requests (>10s) and monitors long-running LLM and extraction tasks.
+    """
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        long_endpoints = ("/api/assemble-1shot", "/api/import/process")
+        if not any(path.startswith(ep) for ep in long_endpoints):
+            return await call_next(request)
+
+        start = time.time()
+        try:
+            response = await call_next(request)
+            duration = time.time() - start
+            if duration > 10:
+                logger.info(f"[SLOW REQUEST] {path} took {duration:.1f}s")
+            return response
+        except asyncio.TimeoutError:
+            logger.error(f"[TIMEOUT] {path} exceeded worker limit")
+            raise
+
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(LongRequestHeartbeatMiddleware)
 app.add_middleware(DistributedRateLimiterMiddleware, max_requests=1000, window_seconds=60)
 
 # Add CORS Middleware

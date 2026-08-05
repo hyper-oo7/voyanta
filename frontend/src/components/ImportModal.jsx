@@ -1,293 +1,288 @@
-import { useEffect, useState } from 'react';
-import { parseFile, suggestMapping, TARGET_FIELDS } from '../services/parserService.js';
-import { saveImport, loadSavedMapping } from '../services/importService.js';
-import { useToast } from '../context/ToastContext.jsx';
-import { templatesService, itinerariesService } from '../services/resourceService.js';
-import { useBackendHealth } from '../context/BackendHealthContext.jsx';
-import { motion } from 'framer-motion';
+import { useState, useCallback } from 'react';
+import { parsePdfFile, parseFile } from '../services/parserService';
+import { logger } from '../utils/logger';
 
-// 3-step modal: Upload → Map columns / PDF Preview → Confirm.
-export default function ImportModal({ resource, onClose, onImported }) {
-  const toast = useToast();
-  const { isHealthy } = useBackendHealth();
-  const [stage, setStage] = useState('pick');
+export default function ImportModal({ resource, onClose, onImported, agencyId = 'demo-agency' }) {
   const [file, setFile] = useState(null);
-  const [columns, setColumns] = useState([]);
-  const [rows, setRows] = useState([]);
-  const [mapping, setMapping] = useState({});
-  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('idle'); // idle | uploading | extracting | success | error
+  const [progress, setProgress] = useState(null);
   const [pdfResult, setPdfResult] = useState(null);
+  const [rawText, setRawText] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
-  // Load any previously-saved mapping for this resource as a starting point
-  useEffect(() => {
-    if (resource !== 'itineraries') {
-      loadSavedMapping(resource).then((m) => setMapping((p) => ({ ...m, ...p })));
+  const isPdf = (f) => (f?.name.split('.').pop() || '').toLowerCase() === 'pdf';
+
+  const handleFileChange = useCallback((e) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      setFile(f);
+      setStatus('idle');
+      setErrorMsg('');
+      setRawText('');
+      setPdfResult(null);
     }
-  }, [resource]);
+  }, []);
 
-  const onPick = async (e) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    setBusy(true);
-    try {
-      const ext = (f.name.split('.').pop() || '').toLowerCase();
-      if (ext === 'pdf') {
-        if (!isHealthy) {
-           throw new Error('AI Parsing is offline. Please try again later or use CSV/XLSX.');
-        }
-        const result = await parseFile(f);
-        setFile(f);
+  const handleProcess = async () => {
+    if (!file) return;
+
+    if (isPdf(file)) {
+      setStatus('uploading');
+      setErrorMsg('');
+      setRawText('');
+      setPdfResult(null);
+
+      try {
+        setStatus('extracting');
+        const result = await parsePdfFile(file, {
+          agencyId,
+          onProgress: (p) => setProgress(p),
+        });
+
         setPdfResult(result);
-        setStage('pdf-preview');
-      } else {
-        const { columns: cols, rows: rs } = await parseFile(f);
-        if (!cols.length) throw new Error('No columns detected. Make sure row 1 has headers.');
-        const sugg = suggestMapping(resource, cols, rs);
-        const saved = await loadSavedMapping(resource);
-        // saved is { src: tgt }; merge but only for cols that exist this time
-        const start = {};
-        for (const c of cols) start[c] = saved[c] || sugg[c] || '';
-        setFile(f); setColumns(cols); setRows(rs); setMapping(start); setStage('map');
+        setStatus('success');
+      } catch (err) {
+        logger.error('PDF extraction failed:', err);
+        setErrorMsg(err.message || 'Failed to extract PDF');
+        setRawText(err.rawText || '');
+        setStatus('error');
       }
-    } catch (err) { toast.error(err.message || 'Failed to parse file'); }
-    finally { setBusy(false); }
+    } else {
+      // CSV / XLSX — immediate client-side parse
+      setStatus('uploading');
+      try {
+        const { rows } = await parseFile(file);
+        setStatus('idle');
+        onImported(rows?.length || 0, { rows });
+        onClose();
+      } catch (err) {
+        setErrorMsg(err.message || 'Failed to parse file');
+        setStatus('error');
+      }
+    }
   };
 
-  const onConfirm = async () => {
-    setBusy(true);
-    try {
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
-      const fileFormat = ext === 'xlsx' || ext === 'xls' ? 'xlsx' : 'csv';
-      const cleanMapping = {};
-      for (const [src, tgt] of Object.entries(mapping)) if (tgt) cleanMapping[src] = tgt;
-      const { inserted_count } = await saveImport({
-        resource, filename: file.name, fileFormat, columns, rows, mapping: cleanMapping,
-      });
-      toast.success(`Imported ${inserted_count} ${resource}`);
-      onImported?.();
-      onClose();
-    } catch (err) { toast.error(err.message || 'Import failed'); }
-    finally { setBusy(false); }
+  const handleImportExtracted = () => {
+    if (!pdfResult) return;
+
+    let count = 0;
+    if (resource === 'templates' || resource === 'itineraries') {
+      count = pdfResult.days?.length || 0;
+    } else {
+      count = pdfResult[resource]?.length || 0;
+    }
+
+    onImported(count, pdfResult);
+    onClose();
   };
 
-  const onConfirmPdf = async () => {
-    setBusy(true);
-    try {
-      if (resource === 'templates') {
-        await templatesService.create({
-          name: pdfResult.name || file.name.replace('.pdf', ''),
-          category: 'Imported',
-          days: pdfResult.days_count,
-          destination: pdfResult.destination,
-          price_from: 0,
-          currency: 'INR',
-          data: { days: pdfResult.days }
-        });
-        toast.success('Successfully imported PDF as a reusable proposal template');
-      } else if (resource === 'itineraries') {
-        await itinerariesService.create({
-          name: pdfResult.name || file.name.replace('.pdf', ''),
-          days: pdfResult.days_count,
-          destination: pdfResult.destination,
-          price_from: 0,
-          currency: 'INR',
-          data: { days: pdfResult.days }
-        });
-        toast.success('Successfully imported PDF as a standalone itinerary');
-      } else if (resource === 'hotels') {
-        const { hotelsService } = await import('../services/resourceService.js');
-        const imported = pdfResult.hotels || [];
-        await Promise.all(imported.map(h => hotelsService.create({
-          name: h.name,
-          location: h.location || pdfResult.destination || 'Imported Location',
-          price_per_night: h.price_per_night || 5000,
-          currency: 'INR'
-        })));
-        toast.success(`Successfully imported ${imported.length} hotels from PDF`);
-      } else if (resource === 'flights') {
-        const { flightsService } = await import('../services/resourceService.js');
-        const imported = pdfResult.flights || [];
-        await Promise.all(imported.map(f => flightsService.create({
-          airline: f.airline,
-          flight_no: f.flight_no,
-          cost: f.cost || 1500,
-          currency: 'INR'
-        })));
-        toast.success(`Successfully imported ${imported.length} flights from PDF`);
-      } else if (resource === 'activities') {
-        const { activitiesService } = await import('../services/resourceService.js');
-        const imported = pdfResult.activities || [];
-        await Promise.all(imported.map(a => activitiesService.create({
-          name: a.name,
-          price: a.price || 1000,
-          description: a.description || 'Imported from PDF',
-          currency: 'INR'
-        })));
-        toast.success(`Successfully imported ${imported.length} activities from PDF`);
-      }
-      onImported?.();
-      onClose();
-    } catch (err) { toast.error(err.message || 'Import failed'); }
-    finally { setBusy(false); }
+  const reset = () => {
+    setStatus('idle');
+    setFile(null);
+    setErrorMsg('');
+    setRawText('');
+    setPdfResult(null);
+    setProgress(null);
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center text-on-surface" data-testid="import-modal">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-on-surface/30 backdrop-blur-sm" onClick={onClose} />
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="relative bg-surface-container-lowest w-full max-w-3xl rounded-xl shadow-2xl border border-outline-variant max-h-[90vh] flex flex-col z-10">
-        <div className="flex items-center justify-between p-lg border-b border-outline-variant">
-          <h3 className="font-headline-sm text-headline-sm text-primary flex items-center gap-xs">
-            Import {resource} <span className="font-label-sm text-on-surface-variant uppercase tracking-widest ml-sm">{stage}</span>
-          </h3>
-          <button onClick={onClose} data-testid="import-close" className="w-9 h-9 inline-flex items-center justify-center rounded-full hover:bg-surface-container-low">
-            <span className="material-symbols-outlined">close</span>
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 m-4">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold text-gray-900">Import {resource}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
         </div>
 
-        <div className="flex-1 overflow-auto p-lg">
-          {stage === 'pick' && (
-            <div className="space-y-md">
-              <p className="font-body-md text-on-surface-variant">
-                Upload an .xlsx, .csv, or .pdf file. Columns or itinerary structures will be detected automatically.
-              </p>
-              <label className="block border-2 border-dashed border-outline-variant rounded-xl p-xl text-center cursor-pointer hover:border-primary transition-colors" data-testid="import-dropzone">
-                <span className="material-symbols-outlined text-[40px] text-primary">upload_file</span>
-                <p className="font-label-md mt-sm">Click to choose a file</p>
-                <p className="font-body-sm text-on-surface-variant">.xlsx · .csv · .pdf</p>
-                <input type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onPick} className="hidden" data-testid="import-file-input" />
+        {/* IDLE — File picker */}
+        {status === 'idle' && (
+          <div className="space-y-4">
+            <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-400 transition-colors">
+              <input
+                type="file"
+                accept=".pdf,.csv,.xlsx,.xls"
+                onChange={handleFileChange}
+                className="hidden"
+                id="import-file-input"
+              />
+              <label htmlFor="import-file-input" className="cursor-pointer block">
+                <p className="text-gray-700 font-medium mb-1">Drop file here or click to browse</p>
+                <p className="text-sm text-gray-400">Supports PDF, CSV, XLSX</p>
               </label>
-              {busy && <p className="text-on-surface-variant">Parsing…</p>}
             </div>
-          )}
 
-          {stage === 'pdf-preview' && (
-            <div className="space-y-md">
-              <p className="font-body-md text-on-surface-variant">
-                Successfully parsed the PDF! Below are the details extracted:
-              </p>
-              <div className="p-md rounded-lg border border-outline-variant bg-surface-container-low space-y-sm">
-                <div>
-                  <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block">Source File</span>
-                  <span className="font-headline-sm text-primary font-bold">{file?.name}</span>
+            {file && (
+              <div className="p-3 bg-gray-50 rounded-lg border text-sm text-gray-700 flex items-center justify-between">
+                <span className="truncate max-w-[80%]">📄 {file.name}</span>
+                <button onClick={() => setFile(null)} className="text-red-500 hover:text-red-700 text-xs font-medium">
+                  Remove
+                </button>
+              </div>
+            )}
+
+            {file && (
+              <button
+                onClick={handleProcess}
+                className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+              >
+                {isPdf(file) ? 'Start AI Extraction' : 'Parse File'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* UPLOADING / EXTRACTING — Progress */}
+        {(status === 'uploading' || status === 'extracting') && (
+          <div className="py-10 text-center">
+            <div className="relative w-12 h-12 mx-auto mb-4">
+              <div className="absolute inset-0 rounded-full border-4 border-gray-200" />
+              <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
+            </div>
+            <p className="text-gray-800 font-medium">
+              {status === 'uploading' ? 'Uploading PDF…' : 'AI is reading your document…'}
+            </p>
+            {progress && (
+              <div className="mt-5 max-w-sm mx-auto">
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-600 transition-all duration-500"
+                    style={{
+                      width: progress.total
+                        ? `${Math.min((progress.current / progress.total) * 100, 100)}%`
+                        : '10%',
+                    }}
+                  />
                 </div>
-                {pdfResult?.destination && (
-                  <div>
-                    <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block">Destination</span>
-                    <span className="font-body-md font-bold">{pdfResult?.destination}</span>
-                  </div>
-                )}
-                
-                {resource === 'templates' || resource === 'itineraries' ? (
-                  <>
-                    <div>
-                      <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block">Duration</span>
-                      <span className="font-body-md font-bold">{pdfResult?.days_count} Days</span>
+                <p className="text-xs text-gray-500 mt-2 uppercase tracking-wide">
+                  {progress.stage}
+                  {progress.total > 0 && ` • ${progress.current} / ${progress.total}`}
+                </p>
+              </div>
+            )}
+            <p className="text-xs text-gray-400 mt-4">This may take up to a minute for large files.</p>
+          </div>
+        )}
+
+        {/* SUCCESS — Review extracted data */}
+        {status === 'success' && pdfResult && (
+          <div className="space-y-4">
+            {pdfResult.destination && (
+              <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                <span className="text-sm text-blue-600 font-medium">Destination</span>
+                <span className="text-gray-900 font-semibold">{pdfResult.destination}</span>
+              </div>
+            )}
+
+            {resource === 'templates' || resource === 'itineraries' ? (
+              <div className="space-y-3">
+                <div className="text-sm text-gray-700">
+                  <span className="font-medium">Duration:</span> {pdfResult.days_count} Days
+                </div>
+                {pdfResult.days?.length > 0 && (
+                  <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
+                    <div className="px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Itinerary Days
                     </div>
-                    {pdfResult?.days && pdfResult.days.length > 0 && (
-                      <div>
-                        <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block mb-1">Itinerary Days</span>
-                        <div className="max-h-40 overflow-y-auto border border-outline-variant rounded-md p-xs space-y-xs bg-white">
-                          {pdfResult.days.map((d, i) => (
-                            <div key={i} className="text-xs border-b border-outline-variant pb-xs last:border-none last:pb-none">
-                              <span className="font-bold text-primary mr-1 font-mono">Day {d.day}:</span>
-                              <span className="font-bold">{d.title}</span>
-                              <p className="text-on-surface-variant text-[11px] whitespace-pre-wrap">{d.description}</p>
-                            </div>
-                          ))}
-                        </div>
+                    {pdfResult.days.map((d, i) => (
+                      <div key={i} className="px-4 py-3">
+                        <p className="font-medium text-gray-900 text-sm">Day {d.day}: {d.title}</p>
+                        {d.description && <p className="text-sm text-gray-500 mt-1 line-clamp-2">{d.description}</p>}
                       </div>
-                    )}
-                  </>
-                ) : (
-                  <div>
-                    <span className="font-label-sm uppercase tracking-widest text-on-surface-variant block mb-1">Extracted Items ({resource})</span>
-                    <div className="max-h-40 overflow-y-auto border border-outline-variant rounded-md p-xs space-y-xs bg-white">
-                      {resource === 'hotels' && (pdfResult?.hotels || []).map((h, i) => (
-                        <div key={i} className="text-xs p-xs border-b border-outline-variant last:border-none">
-                          <strong>{h.name}</strong> — {h.location || pdfResult.destination || 'Unknown Location'}
-                        </div>
-                      ))}
-                      {resource === 'flights' && (pdfResult?.flights || []).map((f, i) => (
-                        <div key={i} className="text-xs p-xs border-b border-outline-variant last:border-none">
-                          <strong>{f.airline}</strong> ({f.flight_no})
-                        </div>
-                      ))}
-                      {resource === 'activities' && (pdfResult?.activities || []).map((a, i) => (
-                        <div key={i} className="text-xs p-xs border-b border-outline-variant last:border-none">
-                          <strong>{a.name}</strong>
-                        </div>
-                      ))}
-                      {((resource === 'hotels' && (!pdfResult?.hotels || pdfResult.hotels.length === 0)) ||
-                        (resource === 'flights' && (!pdfResult?.flights || pdfResult.flights.length === 0)) ||
-                        (resource === 'activities' && (!pdfResult?.activities || pdfResult.activities.length === 0))) && (
-                        <p className="text-xs text-on-surface-variant p-sm">No items found matching this resource type in the PDF.</p>
-                      )}
-                    </div>
+                    ))}
                   </div>
                 )}
               </div>
-              {busy && <p className="text-on-surface-variant">Importing…</p>}
-            </div>
-          )}
-
-          {stage === 'map' && (
-            <div className="space-y-md">
-              <p className="font-body-md">
-                Detected <b>{columns.length}</b> columns and <b>{rows.length}</b> rows. Map each column to a Travel OS field
-                (or leave blank to keep it only inside the raw record).
-              </p>
-              <div className="rounded-lg border border-outline-variant overflow-hidden">
-                <table className="w-full text-left">
-                  <thead className="bg-surface-container">
-                    <tr>
-                      <th className="px-md py-sm font-label-sm text-label-sm uppercase tracking-wider">Source column</th>
-                      <th className="px-md py-sm font-label-sm text-label-sm uppercase tracking-wider">Travel OS field</th>
-                      <th className="px-md py-sm font-label-sm text-label-sm uppercase tracking-wider">Sample</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-outline-variant">
-                    {columns.map((c) => (
-                      <tr key={c}>
-                        <td className="px-md py-sm font-label-md">{c}</td>
-                        <td className="px-md py-sm">
-                          <select className="w-full px-sm py-xs border border-outline-variant rounded bg-white" data-testid={`map-${c}`}
-                            value={mapping[c] || ''} onChange={(e) => setMapping((m) => ({ ...m, [c]: e.target.value }))}>
-                            <option value="">— skip —</option>
-                            {TARGET_FIELDS[resource].map((f) => <option key={f} value={f}>{f}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-md py-sm font-body-sm text-on-surface-variant truncate max-w-[200px]">{String(rows[0]?.[c] ?? '')}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                <p className="text-sm font-medium text-gray-700">Extracted {resource}</p>
+                {resource === 'hotels' && (pdfResult?.hotels || []).map((h, i) => (
+                  <div key={i} className="p-3 border rounded-lg text-sm">
+                    <p className="font-medium text-gray-900">{h.name}</p>
+                    <p className="text-gray-500">{h.location || pdfResult.destination || 'Unknown Location'}</p>
+                  </div>
+                ))}
+                {resource === 'flights' && (pdfResult?.flights || []).map((f, i) => (
+                  <div key={i} className="p-3 border rounded-lg text-sm">
+                    <p className="font-medium text-gray-900">{f.airline} <span className="text-gray-500">({f.flight_no})</span></p>
+                  </div>
+                ))}
+                {resource === 'activities' && (pdfResult?.activities || []).map((a, i) => (
+                  <div key={i} className="p-3 border rounded-lg text-sm">
+                    <p className="font-medium text-gray-900">{a.name}</p>
+                  </div>
+                ))}
+                {(!pdfResult[resource] || pdfResult[resource].length === 0) && (
+                  <p className="text-sm text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-100">
+                    No {resource} found in this PDF. You can still import the itinerary structure.
+                  </p>
+                )}
               </div>
-            </div>
-          )}
-        </div>
+            )}
 
-        <div className="p-lg border-t border-outline-variant flex justify-end gap-md">
-          {(stage === 'map' || stage === 'pdf-preview') && (
-            <button onClick={() => setStage('pick')} className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Back</button>
-          )}
-          <button onClick={onClose} className="px-lg py-md border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low" data-testid="import-cancel">Cancel</button>
-          {stage === 'map' && (
-            <button onClick={onConfirm} disabled={busy} data-testid="import-confirm"
-              className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md shadow-md hover:opacity-90 disabled:opacity-60">
-              {busy ? 'Importing…' : `Import ${rows.length} rows`}
-            </button>
-          )}
-          {stage === 'pdf-preview' && (
-            <button onClick={onConfirmPdf} disabled={busy} data-testid="import-confirm-pdf"
-              className="px-lg py-md bg-primary text-on-primary rounded-lg font-label-md shadow-md hover:opacity-90 disabled:opacity-60">
-              {busy ? 'Importing…' : `Confirm PDF Import`}
-            </button>
-          )}
-        </div>
-      </motion.div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={handleImportExtracted}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+              >
+                Import Extracted Data
+              </button>
+              <button
+                onClick={reset}
+                className="px-4 py-2.5 border rounded-lg hover:bg-gray-50 text-gray-700 font-medium transition-colors"
+              >
+                Start Over
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ERROR — Show message + raw text fallback */}
+        {status === 'error' && (
+          <div className="space-y-4">
+            <div className="p-4 bg-red-50 border border-red-100 rounded-lg">
+              <p className="text-red-800 font-semibold text-sm">Extraction Failed</p>
+              <p className="text-sm text-red-600 mt-1">{errorMsg}</p>
+            </div>
+
+            {rawText && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Raw Extracted Text <span className="text-gray-400 font-normal">— copy-paste manually</span>
+                </label>
+                <textarea
+                  readOnly
+                  value={rawText}
+                  rows={10}
+                  className="w-full p-3 border rounded-lg text-xs font-mono bg-gray-50 text-gray-700 focus:outline-none resize-y"
+                />
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => navigator.clipboard.writeText(rawText)}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Copy to Clipboard
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={reset}
+                className="flex-1 px-4 py-2.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 font-medium transition-colors"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-2.5 border rounded-lg hover:bg-gray-50 text-gray-700 font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

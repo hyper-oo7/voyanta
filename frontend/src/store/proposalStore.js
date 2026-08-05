@@ -3,6 +3,9 @@ import { fetchProposalById, updateProposal, createProposal } from '../services/p
 import { listItems, addItem, removeItem, updateItem } from '../services/proposalItemService.js';
 import { DEFAULT_COUNTRY } from '../lib/countries.js';
 import { sanitizeBrandingObject } from '../services/resourceService.js';
+import { executeRAGQuery } from '../services/api.js';
+import { matchVaultResources } from '../services/resourceMatchingService.js';
+import { assembleProposal } from '../services/assemblyService.js';
 
 const saveLocalBackup = (state) => {
   try {
@@ -22,6 +25,109 @@ const saveLocalBackup = (state) => {
     }
   } catch {}
 };
+
+/* ------------------------------------------------------------------ */
+/*  Vault-aware local fallback builder                                */
+/* ------------------------------------------------------------------ */
+
+function buildProposalFromVault(intakeData, vault) {
+  const daysCount = Math.max(1, intakeData.duration_days || 3);
+  const travelers = Math.max(1, intakeData.num_travelers || 2);
+  const hotels = vault.hotels || [];
+  const activities = vault.activities || [];
+  const flights = vault.flights || [];
+  const destination = intakeData.destination || 'Destination';
+
+  const days = [];
+
+  for (let i = 1; i <= daysCount; i++) {
+    // Rotate through available hotels
+    const hotel = hotels.length > 0 ? hotels[(i - 1) % hotels.length] : null;
+
+    // Distribute activities evenly (2–3 per day)
+    const actsPerDay = Math.max(1, Math.min(3, Math.ceil(activities.length / daysCount)));
+    const startIdx = (i - 1) * actsPerDay;
+    const dayActivities = [];
+    for (let j = 0; j < actsPerDay; j++) {
+      const act = activities[startIdx + j];
+      if (act) dayActivities.push(act);
+    }
+
+    // Flights: arrival on day 1, departure on last day
+    const dayFlights = [];
+    if (i === 1 && flights.length > 0) dayFlights.push(flights[0]);
+    if (i === daysCount && flights.length > 1) dayFlights.push(flights[1]);
+
+    // Day pricing
+    let dayPrice = 0;
+    if (hotel) dayPrice += (hotel.price_per_night || 0);
+    dayActivities.forEach((a) => (dayPrice += (a.price || 0) * travelers));
+    dayFlights.forEach((f) => (dayPrice += (f.cost || 0) * travelers));
+
+    days.push({
+      day_number: i,
+      title: `Day ${i}: ${destination} Experience`,
+      description: `Explore ${destination} with curated activities${hotel ? ` and stay at ${hotel.name}` : ''}.`,
+      sub_destination: destination,
+      hotels: hotel
+        ? [
+            {
+              id: hotel.id,
+              name: hotel.name,
+              category: hotel.category || '4 Star',
+              meal_plan: hotel.meal_type || 'CP (Breakfast)',
+              price_per_night: hotel.price_per_night || 0,
+              location: hotel.location,
+              image_url: hotel.image_url,
+            },
+          ]
+        : [],
+      activities: dayActivities.map((a) => ({
+        id: a.id,
+        name: a.name,
+        duration: a.duration_hours ? `${a.duration_hours} hrs` : '3 hrs',
+        timing: a.timing || '10:00 AM',
+        price: a.price || 0,
+        location: a.location,
+        description: a.description || '',
+      })),
+      flights: dayFlights.map((f) => ({
+        id: f.id,
+        airline: f.airline,
+        flight_no: f.flight_no,
+        origin: f.origin,
+        destination: f.destination,
+        cost: f.cost || 0,
+        class: f.class || 'Economy',
+      })),
+      day_total: dayPrice,
+    });
+  }
+
+  const totalPrice = days.reduce((sum, d) => sum + d.day_total, 0);
+  const pricePerPerson = travelers > 0 ? Math.round(totalPrice / travelers) : totalPrice;
+
+  return {
+    id: `prop_${Date.now()}`,
+    name: `${destination} Itinerary`,
+    destination,
+    duration_days: daysCount,
+    total_price: totalPrice,
+    price_per_person: pricePerPerson,
+    currency: 'INR',
+    overview: `Curated ${daysCount}-day itinerary for ${intakeData.client_name || 'Valued Traveler'} to ${destination}.`,
+    days,
+    inclusions: ['Private AC Car', 'Hotel with Breakfast', 'Taxes & Driver Allowances'],
+    exclusions: ['Flight / Train', 'Personal Expenses'],
+    extra_sections: {},
+    vault_sourced: true,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Store                                                             */
+/* ------------------------------------------------------------------ */
 
 export const useProposalStore = create((set, get) => ({
   // State
@@ -62,11 +168,11 @@ export const useProposalStore = create((set, get) => ({
     margin_value: 15,
     visibility_mode: 'ITEMIZED'
   },
-  viewMode: 'web', // 'web' | 'pdf'
+  viewMode: 'web',
   showTemplateGallery: false,
   showQuickIntake: false,
   activeTemplateSlug: 'classic',
-  status: 'idle', // 'idle' | 'loading' | 'saving' | 'error'
+  status: 'idle',
 
   // Canvas Actions
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -79,22 +185,55 @@ export const useProposalStore = create((set, get) => ({
     return { activeTemplateSlug: slug, branding: nextBranding, proposal: nextProposal };
   }),
 
+  /* ── ONE-SHOT ASSEMBLY (RAG + Vault integrated) ───────────────── */
   assemble1Shot: async (intakeData) => {
     set({ status: 'loading' });
+
     try {
-      const res = await fetch('/api/assemble-1shot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(intakeData)
-      });
-      const data = await res.json();
-      if (data.status === 'success' && data.proposal) {
-        const p = data.proposal;
+      // 1. Parallel retrieval: RAG context + Vault resources
+      const [ragRes, vaultMatches] = await Promise.all([
+        executeRAGQuery({
+          agency_id: intakeData.agency_id || 'demo-agency',
+          destination: intakeData.destination,
+          duration_days: intakeData.duration_days,
+          travelers: intakeData.num_travelers,
+          travel_style: intakeData.pace || 'medium',
+          budget_inr: intakeData.budget_per_head,
+          special_requests: intakeData.special_notes || '',
+        }).catch((err) => {
+          console.warn('[1-Shot] RAG query failed, continuing without doc context:', err);
+          return { data: { chunks: [], query: '' } };
+        }),
+
+        matchVaultResources({
+          destination: intakeData.destination,
+          budgetPerHead: intakeData.budget_per_head,
+          travelers: intakeData.num_travelers,
+          durationDays: intakeData.duration_days,
+          travelStyle: intakeData.pace,
+        }).catch((err) => {
+          console.warn('[1-Shot] Vault matching failed:', err);
+          return { hotels: [], activities: [], flights: [], templates: [] };
+        }),
+      ]);
+
+      const ragChunks = ragRes?.data?.chunks || [];
+      const ragQuery = ragRes?.data?.query || '';
+
+      // 2. Call assembly API with full grounding context via assembleProposal service
+      const p = await assembleProposal(
+        intakeData,
+        { chunks: ragChunks, assembled_query: ragQuery },
+        vaultMatches,
+        get().costingPrefs
+      );
+
+      if (p) {
         // Normalize schema mismatch: Backend sends days in p.days, Frontend expects them in p.itinerary.days
         if (p.days && p.days.length > 0 && (!p.itinerary || !p.itinerary.days)) {
           p.itinerary = { ...(p.itinerary || {}), days: p.days };
         }
-        
+
         const nextClient = {
           ...get().client,
           customer_name: intakeData.client_name || 'Valued Traveler',
@@ -103,69 +242,55 @@ export const useProposalStore = create((set, get) => ({
           pace: intakeData.pace || 'medium',
           budget: intakeData.budget_per_head || '',
           start_date: intakeData.start_date || '',
-          end_date: intakeData.end_date || ''
+          end_date: intakeData.end_date || '',
         };
+
         set({
           proposal: p,
           client: nextClient,
           status: 'idle',
-          showQuickIntake: false
+          showQuickIntake: false,
         });
         saveLocalBackup(get());
         return p;
-      } else {
-        throw new Error(data.detail || 'Assembly failed');
       }
     } catch (err) {
-      console.warn('[1-Shot Store] Assembly API error, applying local deterministic fallback:', err);
-      // Fallback local assembly if API is offline
-      let fallbackDays = [];
-      if (intakeData.days_per_destination && Object.keys(intakeData.days_per_destination).length > 0) {
-        let dNum = 1;
-        for (const [subDest, count] of Object.entries(intakeData.days_per_destination)) {
-          for (let i = 0; i < count; i++) {
-            fallbackDays.push({
-              day_number: dNum,
-              title: `Day ${dNum}: Explore ${subDest}`,
-              description: `Enjoy sightseeing, culture, and relaxation in ${subDest} at ${intakeData.pace || 'medium'} pace.`,
-              sub_destination: subDest,
-              activities: [{ name: `${subDest} Sightseeing Tour`, duration: '3 hrs', timing: '10:00 AM' }],
-              hotels: [{ name: 'Grand Deluxe Resort', category: '4 Star', meal_plan: 'MAP', price_per_night: 4500 }]
-            });
-            dNum++;
-          }
-        }
-      } else {
-        fallbackDays = Array.from({ length: intakeData.duration_days || 3 }, (_, i) => ({
-          day_number: i + 1,
-          title: `Day ${i + 1}: ${intakeData.destination || 'Destination'} Exploration`,
-          description: `Enjoy sightseeing, culture, and relaxation at ${intakeData.pace || 'medium'} pace.`,
-          sub_destination: intakeData.destination || 'City Center',
-          activities: [{ name: 'City Sightseeing Tour', duration: '3 hrs', timing: '10:00 AM' }],
-          hotels: [{ name: 'Grand Deluxe Resort', category: '4 Star', meal_plan: 'MAP', price_per_night: 4500 }]
-        }));
+      console.warn('[1-Shot Store] Assembly API error, building from vault fallback:', err);
+
+      // 3. Local fallback: build from ACTUAL vault resources (no hallucinations)
+      const vaultMatches = await matchVaultResources({
+        destination: intakeData.destination,
+        budgetPerHead: intakeData.budget_per_head,
+        travelers: intakeData.num_travelers,
+        durationDays: intakeData.duration_days,
+        travelStyle: intakeData.pace,
+      }).catch(() => ({ hotels: [], activities: [], flights: [] }));
+
+      if (vaultMatches.hotels.length > 0 || vaultMatches.activities.length > 0) {
+        const fallbackProposal = buildProposalFromVault(intakeData, vaultMatches);
+
+        set({
+          proposal: fallbackProposal,
+          client: {
+            ...get().client,
+            customer_name: intakeData.client_name || 'Valued Traveler',
+            destination: intakeData.destination,
+            start_date: intakeData.start_date,
+            end_date: intakeData.end_date,
+          },
+          status: 'idle',
+          showQuickIntake: false,
+        });
+        saveLocalBackup(get());
+        return fallbackProposal;
       }
 
-      const fallbackProposal = {
-        id: `prop_${Date.now()}`,
-        destination: intakeData.destination || 'Himachal',
-        duration_days: intakeData.duration_days || 3,
-        total_price: (intakeData.budget_per_head || 25000) * (intakeData.num_travelers || 2),
-        price_per_person: intakeData.budget_per_head || 25000,
-        currency: 'INR',
-        overview: `Curated ${intakeData.duration_days || 3}-Day itinerary for ${intakeData.client_name || 'Valued Traveler'} from ${intakeData.start_date || 'TBD'} to ${intakeData.end_date || 'TBD'}.`,
-        days: fallbackDays,
-        inclusions: ['Private AC Car', 'Hotel with Breakfast & Dinner', 'Taxes & Driver Allowances'],
-        exclusions: ['Flight / Train', 'Personal Expenses'],
-        extra_sections: { what_to_pack: 'Comfortable walking shoes, sunscreen SPF 50+, casual attire.' }
-      };
-      set({
-        proposal: fallbackProposal,
-        client: { ...get().client, customer_name: intakeData.client_name || 'Valued Traveler', destination: intakeData.destination, start_date: intakeData.start_date, end_date: intakeData.end_date },
-        status: 'idle',
-        showQuickIntake: false
-      });
-      return fallbackProposal;
+      // Absolute last resort: hard error, no fake data
+      set({ status: 'error' });
+      throw new Error(
+        'Unable to generate itinerary. No vault resources found for this destination. ' +
+        'Please upload supplier PDFs or add hotels / activities to your library first.'
+      );
     }
   },
 
@@ -179,25 +304,25 @@ export const useProposalStore = create((set, get) => ({
     set({ activeId: id });
   },
 
-  setClient: (partialClient) => set((state) => { 
+  setClient: (partialClient) => set((state) => {
     const nextClient = typeof partialClient === 'function' ? partialClient(state.client) : { ...state.client, ...partialClient };
     saveLocalBackup({ ...state, client: nextClient });
     return { client: nextClient };
   }),
 
-  setBranding: (partialBranding) => set((state) => { 
+  setBranding: (partialBranding) => set((state) => {
     const nextBranding = sanitizeBrandingObject(typeof partialBranding === 'function' ? partialBranding(state.branding) : { ...state.branding, ...partialBranding });
     saveLocalBackup({ ...state, branding: nextBranding });
     return { branding: nextBranding };
   }),
 
-  setCostingPrefs: (partialCosting) => set((state) => { 
+  setCostingPrefs: (partialCosting) => set((state) => {
     const nextCosting = typeof partialCosting === 'function' ? partialCosting(state.costingPrefs) : { ...state.costingPrefs, ...partialCosting };
     saveLocalBackup({ ...state, costingPrefs: nextCosting });
     return { costingPrefs: nextCosting };
   }),
 
-  setProposal: (partialProposal) => set((state) => { 
+  setProposal: (partialProposal) => set((state) => {
     const nextProposal = typeof partialProposal === 'function' ? partialProposal(state.proposal) : { ...state.proposal, ...partialProposal };
     saveLocalBackup({ ...state, proposal: nextProposal });
     return { proposal: nextProposal };
@@ -213,7 +338,6 @@ export const useProposalStore = create((set, get) => ({
     return { items: nextItems };
   }),
 
-  // Load a proposal from the DB
   loadProposal: async (id) => {
     if (!id) {
       if (!get().activeId) get().setActiveId(crypto.randomUUID());
@@ -242,13 +366,12 @@ export const useProposalStore = create((set, get) => ({
       if (p) {
         get().setActiveId(p.id || id);
         const b = p.brief || {};
-        
+
         const { settingsService } = await import('../services/resourceService.js');
         const defaultSettings = await settingsService.get().catch(() => ({})) || {};
-        
+
         const rawBranding = { ...get().branding, ...(p.preferences?.branding || {}) };
-        
-        // Fallback to global settings if branding fields are missing/empty
+
         const mergedBranding = {
           ...rawBranding,
           agency_name: rawBranding.agency_name || defaultSettings.agency_name || '',
@@ -306,7 +429,6 @@ export const useProposalStore = create((set, get) => ({
     }
   },
 
-  // Build the DB payload from current state
   buildPayload: () => {
     const { client: rawClient, branding, costingPrefs, proposal } = get();
     const c = rawClient || {};
@@ -363,7 +485,6 @@ export const useProposalStore = create((set, get) => ({
     };
   },
 
-  // Save draft background sync
   saveDraftBackground: async () => {
     if (get().status === 'saving') {
       return get().proposal;
@@ -387,13 +508,11 @@ export const useProposalStore = create((set, get) => ({
     }
   },
 
-  // Optimistic Background Syncs for Items
   addItemsOptimistic: async (newItemsToInsert) => {
     const previousItems = [...get().items];
     const pid = get().proposal?.id;
     if (!pid) throw new Error('No active proposal');
-    
-    // 1. Optimistic UI Update with permanent UUIDs
+
     const isUuid = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
     const optimisticItems = newItemsToInsert.map((item) => {
       const checkId = item.id;
@@ -411,14 +530,12 @@ export const useProposalStore = create((set, get) => ({
     });
     set({ items: [...previousItems, ...optimisticItems] });
 
-    // 2. Background Database Sync without overwriting live user typing
     try {
       const addedResults = await Promise.all(optimisticItems.map((item) => addItem(pid, item)));
       set((state) => ({
         items: state.items.map((it) => {
           const matched = addedResults.find((r) => r && String(r.id) === String(it.id));
           if (matched) {
-            // Merge DB metadata while strictly preserving live user edits (label, qty, unit_price)
             return { ...matched, label: it.label, qty: it.qty, unit_price: it.unit_price };
           }
           return it;
@@ -436,9 +553,8 @@ export const useProposalStore = create((set, get) => ({
   removeItemOptimistic: async (itemId) => {
     const previousItems = [...get().items];
     const pid = get().proposal?.id;
-    // Optimistic remove
     set({ items: previousItems.filter(i => String(i.id) !== String(itemId)) });
-    
+
     try {
       await removeItem(itemId);
     } catch (err) {
@@ -453,7 +569,6 @@ export const useProposalStore = create((set, get) => ({
   updateItemOptimistic: async (itemId, patch) => {
     const previousItems = [...get().items];
     const pid = get().proposal?.id;
-    // Optimistic patch
     set({ items: previousItems.map(i => String(i.id) === String(itemId) ? { ...i, ...patch } : i) });
 
     try {
@@ -461,7 +576,6 @@ export const useProposalStore = create((set, get) => ({
       set((state) => ({
         items: state.items.map(i => {
           if (String(i.id) === String(itemId)) {
-            // Merge DB response while preserving live user edits in current state
             return { ...updated, ...i };
           }
           return i;
@@ -475,6 +589,94 @@ export const useProposalStore = create((set, get) => ({
       } catch {}
     }
   },
+
+  /* ── Vault-to-Day insertion actions ────────────────────────────── */
+
+  addVaultHotelToDay: (dayNumber, hotel) => set((state) => {
+    if (!state.proposal?.days) return state;
+    const nextDays = state.proposal.days.map((d) => {
+      if (d.day_number !== dayNumber) return d;
+      const exists = d.hotels?.some((h) => h.id === hotel.id);
+      if (exists) return d;
+      return {
+        ...d,
+        hotels: [
+          ...(d.hotels || []),
+          {
+            id: hotel.id,
+            name: hotel.name,
+            category: hotel.category || '4 Star',
+            meal_plan: hotel.meal_type || 'CP (Breakfast)',
+            price_per_night: hotel.price_per_night || 0,
+            location: hotel.location || '',
+            image_url: hotel.image_url,
+          },
+        ],
+        day_total: (d.day_total || 0) + (hotel.price_per_night || 0),
+      };
+    });
+    const nextProposal = { ...state.proposal, days: nextDays };
+    saveLocalBackup({ ...state, proposal: nextProposal });
+    return { proposal: nextProposal };
+  }),
+
+  addVaultActivityToDay: (dayNumber, activity) => set((state) => {
+    if (!state.proposal?.days) return state;
+    const travelers = Math.max(1, (state.client?.num_adults || 0) + (state.client?.num_children || 0));
+    const nextDays = state.proposal.days.map((d) => {
+      if (d.day_number !== dayNumber) return d;
+      const exists = d.activities?.some((a) => a.id === activity.id);
+      if (exists) return d;
+      return {
+        ...d,
+        activities: [
+          ...(d.activities || []),
+          {
+            id: activity.id,
+            name: activity.name,
+            duration: activity.duration_hours ? `${activity.duration_hours} hrs` : '3 hrs',
+            timing: activity.timing || '10:00 AM',
+            price: activity.price || 0,
+            location: activity.location || '',
+            description: activity.description || '',
+          },
+        ],
+        day_total: (d.day_total || 0) + ((activity.price || 0) * travelers),
+      };
+    });
+    const nextProposal = { ...state.proposal, days: nextDays };
+    saveLocalBackup({ ...state, proposal: nextProposal });
+    return { proposal: nextProposal };
+  }),
+
+  addVaultFlightToDay: (dayNumber, flight) => set((state) => {
+    if (!state.proposal?.days) return state;
+    const travelers = Math.max(1, (state.client?.num_adults || 0) + (state.client?.num_children || 0));
+    const nextDays = state.proposal.days.map((d) => {
+      if (d.day_number !== dayNumber) return d;
+      const exists = d.flights?.some((f) => f.id === flight.id);
+      if (exists) return d;
+      return {
+        ...d,
+        flights: [
+          ...(d.flights || []),
+          {
+            id: flight.id,
+            airline: flight.airline,
+            flight_no: flight.flight_no || 'TBD',
+            origin: flight.origin || '',
+            destination: flight.destination || '',
+            cost: flight.cost || 0,
+            class: flight.class_ || 'Economy',
+          },
+        ],
+        day_total: (d.day_total || 0) + ((flight.cost || 0) * travelers),
+      };
+    });
+    const nextProposal = { ...state.proposal, days: nextDays };
+    saveLocalBackup({ ...state, proposal: nextProposal });
+    return { proposal: nextProposal };
+  }),
 
   setField: (field, value) => set((state) => ({
     client: { ...state.client, [field]: value },
