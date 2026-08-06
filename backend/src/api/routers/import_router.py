@@ -1,8 +1,10 @@
 import os
+import time
 import uuid
 import hashlib
 import logging
 import asyncio
+from collections import OrderedDict
 from typing import Any, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -26,8 +28,33 @@ from src.services.import_service import PdfExtractor, XlsxExtractor, CsvExtracto
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/import")
 
-# Global In-Memory Job Tracking Store for Async PDF Extraction
-EXTRACTION_JOBS: Dict[str, Dict[str, Any]] = {}
+JOB_TTL_SECONDS = 60 * 60 
+MAX_TRACKED_JOBS = 500
+
+EXTRACTION_JOBS: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+
+
+def _prune_extraction_jobs() -> None:
+    """Drop jobs that are older than the TTL, then trim to the size cap."""
+    now = time.time()
+    stale = [
+        jid for jid, job in EXTRACTION_JOBS.items()
+        if now - job.get("created_at", now) > JOB_TTL_SECONDS
+    ]
+    for jid in stale:
+        EXTRACTION_JOBS.pop(jid, None)
+
+    while len(EXTRACTION_JOBS) > MAX_TRACKED_JOBS:
+        EXTRACTION_JOBS.popitem(last=False)
+
+
+def _set_job(job_id: str, **fields: Any) -> None:
+    """Create or update a tracked job, preserving its created_at stamp."""
+    job = EXTRACTION_JOBS.get(job_id)
+    if job is None:
+        job = {"created_at": time.time()}
+        EXTRACTION_JOBS[job_id] = job
+    job.update(fields)
 
 def accumulate_agency_packing_rules(
     destination: str,
@@ -82,17 +109,19 @@ def _run_extraction_bg(
     user_id: Optional[str],
     token: Optional[str]
 ):
+    ext = (filename.split(".")[-1] if "." in filename else "").lower()
+    raw_text = ""
     try:
-        EXTRACTION_JOBS[job_id] = {
-            "status": "extracting",
-            "progress": {"stage": "Uploading & Analyzing Document", "current": 1, "total": 4},
-            "result": None,
-            "error": None,
-            "raw_text": None
-        }
+        _set_job(
+            job_id,
+            status="extracting",
+            progress={"stage": "Uploading & Analyzing Document", "current": 1, "total": 4},
+            result=None,
+            error=None,
+            raw_text=None,
+        )
 
-        ext = (filename.split(".")[-1] if "." in filename else "").lower()
-        EXTRACTION_JOBS[job_id]["progress"] = {"stage": "Extracting Text & Structured Content", "current": 2, "total": 4}
+        _set_job(job_id, progress={"stage": "Extracting Text & Structured Content", "current": 2, "total": 4})
 
         if ext == "pdf":
             from src.services.pdf_engine import extract_pdf_safe
@@ -101,7 +130,7 @@ def _run_extraction_bg(
             # CPU-bound PDF extraction runs synchronously in this background thread
             extracted = extract_pdf_safe(file_bytes)
             raw_text = extracted["full_text"]
-            EXTRACTION_JOBS[job_id]["raw_text"] = raw_text[:50000]
+            _set_job(job_id, raw_text=raw_text[:50000])
 
             parser = StructuredItineraryParser()
             normalized = asyncio.run(parser.parse(raw_text))
@@ -127,10 +156,9 @@ def _run_extraction_bg(
                 user_id=user_id
             ))
             raw_text = normalized.pop("_raw_text", "")
-            EXTRACTION_JOBS[job_id]["raw_text"] = raw_text
+            _set_job(job_id, raw_text=raw_text)
 
-
-        EXTRACTION_JOBS[job_id]["progress"] = {"stage": "Indexing Entities & Vector Knowledge", "current": 3, "total": 4}
+        _set_job(job_id, progress={"stage": "Indexing Entities & Vector Knowledge", "current": 3, "total": 4})
 
         sb = get_user_supabase_client(token, agency_id) if token else get_supabase_client()
 
@@ -165,23 +193,31 @@ def _run_extraction_bg(
             except Exception as embed_err:
                 logger.error(f"[ImportProcess] Background RAG embedding error: {embed_err}")
 
-        EXTRACTION_JOBS[job_id]["progress"] = {"stage": "Done", "current": 4, "total": 4}
-        EXTRACTION_JOBS[job_id]["status"] = "completed"
-        EXTRACTION_JOBS[job_id]["result"] = normalized
+        _set_job(
+            job_id,
+            progress={"stage": "Done", "current": 4, "total": 4},
+            status="completed",
+            result=normalized,
+        )
 
     except Exception as e:
         logger.exception(f"Background extraction failed for job {job_id}")
-        raw_text = ""
-        try:
-            import fitz
-            doc = fitz.open(stream=file_bytes, filetype="pdf")
-            raw_text = "\n\n".join([page.get_text() for page in doc])
-        except Exception:
-            pass
+        if not raw_text and ext == "pdf":
+            try:
+                import fitz
+                with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+                    raw_text = "\n\n".join(page.get_text() for page in doc)
+            except Exception:
+                pass
 
-        EXTRACTION_JOBS[job_id]["status"] = "failed"
-        EXTRACTION_JOBS[job_id]["error"] = str(e)
-        EXTRACTION_JOBS[job_id]["raw_text"] = raw_text
+        _set_job(
+            job_id,
+            status="failed",
+            error=str(e),
+            raw_text=raw_text[:50000] if raw_text else "",
+        )
+    finally:
+        _prune_extraction_jobs()
 
 @router.post("/process")
 async def process_file_import(
@@ -227,13 +263,15 @@ async def process_file_import(
         user_id = user.get("sub") or user.get("id")
 
     job_id = str(uuid.uuid4())
-    EXTRACTION_JOBS[job_id] = {
-        "status": "queued",
-        "progress": {"stage": "Queued", "current": 0, "total": 4},
-        "result": None,
-        "error": None,
-        "raw_text": None
-    }
+    _prune_extraction_jobs()
+    _set_job(
+        job_id,
+        status="queued",
+        progress={"stage": "Queued", "current": 0, "total": 4},
+        result=None,
+        error=None,
+        raw_text=None,
+    )
 
     background_tasks.add_task(
         _run_extraction_bg,

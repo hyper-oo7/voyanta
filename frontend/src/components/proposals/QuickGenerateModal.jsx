@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useProposalStore } from '../../store/proposalStore.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { api } from '../../services/api.js';
+import { generateGroundedProposal } from '../../services/assemblyService.js';
 import { getAgencyId } from '../../lib/supabaseClient.js';
 import { createProposal } from '../../services/proposalService.js';
 import ContactPicker from '../common/ContactPicker.jsx';
@@ -156,27 +157,31 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
         agencyId = 'global';
       }
       
-      const payload = {
+      const intakeData = {
         destination: form.destination,
         duration_days: Number(form.duration_days),
         budget_per_head: Number(form.budget_per_head),
-        group_type: form.group_type,
         pace: form.pace,
         client_name: form.client_name || 'Valued Traveler',
         num_travelers: Number(form.num_travelers),
-        num_adults: Number(form.num_travelers),
-        preferences_text: form.preferences_text || '',
-        margin_type: 'percentage',
-        margin_value: 15,
-        tax_rate_percent: 5,
-        discount_amount: 0,
+        special_notes: form.preferences_text || '',
+        agency_id: agencyId,
       };
 
-      const res = await api.post('/api/assemble-1shot', payload, { timeout: 90000 });
+      const costingPrefs = {
+        fixed_markup: 0,
+        pct_markup: 15,
+        discount: 0,
+        tax: 5,
+        margin_type: 'percentage',
+        margin_value: 15,
+        visibility_mode: 'ITEMIZED',
+      };
+
+      const proposal = await generateGroundedProposal(intakeData, costingPrefs);
       clearInterval(stepInterval);
       setProgressStep(PROGRESS_STEPS.length - 1);
 
-      const proposal = res?.proposal;
       if (!proposal) throw new Error('No proposal returned from server');
 
       // Phase 4: Create draft proposal in database

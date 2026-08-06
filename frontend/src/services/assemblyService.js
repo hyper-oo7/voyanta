@@ -1,5 +1,41 @@
-import { api } from './api.js';
+import { api, executeRAGQuery } from './api.js';
+import { matchVaultResources } from './resourceMatchingService.js';
 import { TimeoutError, ServerError } from '../utils/apiErrors.js';
+
+export async function generateGroundedProposal(intakeData, costingPrefs) {
+  const [ragRes, vaultMatches] = await Promise.all([
+    executeRAGQuery({
+      agency_id: intakeData.agency_id || 'demo-agency',
+      destination: intakeData.destination,
+      duration_days: intakeData.duration_days,
+      travelers: intakeData.num_travelers,
+      travel_style: intakeData.pace || 'medium',
+      budget_inr: intakeData.budget_per_head,
+      special_requests: intakeData.special_notes || '',
+    }).catch((err) => {
+      console.warn('[1-Shot] RAG query failed, continuing without doc context:', err);
+      return { data: { chunks: [], query: '' } };
+    }),
+
+    matchVaultResources({
+      destination: intakeData.destination,
+      budgetPerHead: intakeData.budget_per_head,
+      travelers: intakeData.num_travelers,
+      durationDays: intakeData.duration_days,
+      travelStyle: intakeData.pace,
+    }).catch((err) => {
+      console.warn('[1-Shot] Vault matching failed:', err);
+      return { hotels: [], activities: [], flights: [], templates: [] };
+    }),
+  ]);
+
+  return assembleProposal(
+    intakeData,
+    { chunks: ragRes?.data?.chunks || [], assembled_query: ragRes?.data?.query || '' },
+    vaultMatches,
+    costingPrefs
+  );
+}
 
 /**
  * Call the agentic assembly API with full grounding context.

@@ -169,6 +169,6 @@ class AssembledProposalOut(BaseModel):
 
 class AssembleResponse(BaseModel):
     status: str
-    proposal: Optional[AssembledProposalOut] = None
+    proposal: Optional[Dict[str, Any]] = None
     detail: Optional[str] = None
     used_fallback: bool = False

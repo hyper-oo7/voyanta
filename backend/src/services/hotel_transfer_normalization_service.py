@@ -159,8 +159,10 @@ def normalize_hotel_entry(raw_data: Dict[str, Any], agency_id: str = "global") -
     else:
         amenities_list = []
 
+    hotel_slug = re.sub(r"^\w", "", name)[:12]
+
     return StandardizedHotel(
-        hotel_id=f"hotel_{agency_id}_{re.sub(r'^\w', '', name)[:12]}",
+        hotel_id=f"hotel_{agency_id}_{hotel_slug}",
         name=name,
         location=location,
         price_min=num_min,
@@ -211,8 +213,11 @@ def normalize_transfer_entry(raw_data: Dict[str, Any], agency_id: str = "global"
     else:
         inc_list = ["toll_tax", "parking", "driver_bhatta", "fuel"]
 
+    vehicle_slug = vehicle_type.lower().replace(" ", "_")
+    location_slug = re.sub(r"[^\w]", "", location)[:10]
+
     return StandardizedTransfer(
-        transfer_id=f"transfer_{agency_id}_{vehicle_type.lower().replace(' ', '_')}_{re.sub(r'[^\w]', '', location)[:10]}",
+        transfer_id=f"transfer_{agency_id}_{vehicle_slug}_{location_slug}",
         location=location,
         vehicle_type=vehicle_type,
         capacity=capacity,

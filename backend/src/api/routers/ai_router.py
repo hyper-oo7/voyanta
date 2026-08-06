@@ -334,37 +334,31 @@ async def ai_health_check():
     return res
 
 
-class Assemble1ShotInput(BaseModel):
-    destination: Optional[str] = None
-    prompt: Optional[str] = None
-    duration_days: int = 3
-    days_per_destination: Optional[Dict[str, int]] = None
-    client_name: str = "Valued Traveler"
-    contact_info: Optional[str] = None
-    group_type: str = "friends"
-    pace: str = "medium"
-    budget_per_head: float = 25000.0
-    budget_band: str = "mid"  # low, mid, high
-    num_travelers: int = 2
-    num_adults: int = 2
-    num_children: int = 0
-    theme_tags: Optional[list] = None  # family, honeymoon, adventure, budget, luxury
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    start_city: Optional[str] = None  # arrival point for transfer logic
-    end_city: Optional[str] = None
-    preferences_text: str = ""
-    margin_type: str = "percentage"
-    margin_value: float = 15.0
-    tax_rate_percent: float = 5.0
-    discount_amount: float = 0.0
-    visibility_mode: str = "ITEMIZED"
-    rag_context: Optional[Dict[str, Any]] = None
-    vault_matches: Optional[Dict[str, Any]] = None
-
-
-
 from src.models.assembly_schemas import AssembleRequest, AssembleResponse, CostingPrefs, RAGContext, VaultMatches
+
+
+def _deterministic_assembly(req: AssembleRequest):
+    """Offline, rules-based assembly. Needs no LLM and no vault inventory."""
+    from src.services.assembly_engine import assemble_1shot_proposal
+    from src.models.day_module_schema import MarginConfig
+
+    margin_cfg = MarginConfig(
+        margin_type=req.costing_prefs.margin_type,
+        margin_value=req.costing_prefs.margin_value,
+        tax_rate_percent=req.costing_prefs.tax,
+        discount_amount=req.costing_prefs.discount,
+        visibility_mode=req.costing_prefs.visibility_mode,
+    )
+    return assemble_1shot_proposal(
+        destination=req.destination,
+        duration_days=req.duration_days,
+        client_name=req.client_name,
+        num_travelers=req.num_travelers,
+        budget_per_head=req.budget_per_head or 25000.0,
+        pace=req.pace or "medium",
+        margin_config=margin_cfg,
+    )
+
 
 @router.post("/assemble-1shot", response_model=AssembleResponse)
 async def assemble_1shot_route(
@@ -379,43 +373,23 @@ async def assemble_1shot_route(
     try:
         from src.services.agentic_assembly_service import assemble_itinerary
         proposal = await assemble_itinerary(req)
-        return AssembleResponse(status="success", proposal=proposal)
-    except ValueError as e:
-        logger.warning(f"[1-Shot Agentic] Validation/Inventory warning: {e}")
-        # Try deterministic engine as fallback
+        return AssembleResponse(status="success", proposal=proposal.model_dump())
+    except Exception as e:
+        logger.warning(f"[1-Shot Agentic] Agentic assembly failed, falling back: {e}")
         try:
-            from src.services.assembly_engine import assemble_1shot_proposal
-            from src.models.day_module_schema import MarginConfig
-            margin_cfg = MarginConfig(
-                margin_type=req.costing_prefs.margin_type,
-                margin_value=req.costing_prefs.margin_value,
-                tax_rate_percent=req.costing_prefs.tax,
-                discount_amount=req.costing_prefs.discount,
-                visibility_mode=req.costing_prefs.visibility_mode
+            fallback_prop = _deterministic_assembly(req)
+            return AssembleResponse(
+                status="success",
+                proposal=fallback_prop.model_dump(mode="json"),
+                used_fallback=True,
             )
-            fallback_prop = assemble_1shot_proposal(
-                destination=req.destination,
-                duration_days=req.duration_days,
-                client_name=req.client_name,
-                num_travelers=req.num_travelers,
-                budget_per_head=req.budget_per_head or 25000.0,
-                pace=req.pace or "medium",
-                margin_config=margin_cfg
-            )
-            return AssembleResponse(status="success", proposal=fallback_prop.dict(), used_fallback=True)
-        except Exception as fb_err:
+        except Exception:
+            logger.exception("[1-Shot Assembly] Deterministic fallback also failed")
             return AssembleResponse(
                 status="insufficient_inventory",
                 detail=str(e),
-                used_fallback=True
+                used_fallback=True,
             )
-    except Exception as e:
-        logger.exception("Agentic Assembly engine error")
-        raise HTTPException(status_code=500, detail=f"Assembly engine error: {str(e)}")
-
-    except Exception as e:
-        logger.exception("[1-Shot Assembly] Generation failed")
-        raise HTTPException(status_code=500, detail=str(e))
 
 class GenerateDayModuleInput(BaseModel):
     sub_destination: str

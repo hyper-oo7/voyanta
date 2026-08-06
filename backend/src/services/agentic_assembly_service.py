@@ -1,9 +1,7 @@
-import os
 import json
 import math
 import logging
-from typing import Dict, Any, List, Optional
-from openai import OpenAI
+from typing import Dict, Any
 
 from src.models.assembly_schemas import (
     AssembleRequest,
@@ -13,16 +11,6 @@ from src.models.assembly_schemas import (
 )
 
 logger = logging.getLogger(__name__)
-
-_client: Optional[OpenAI] = None
-
-def _get_openai_client() -> Optional[OpenAI]:
-    global _client
-    if _client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
-            _client = OpenAI(api_key=api_key)
-    return _client
 
 
 # ── Prompt Builder ─────────────────────────────────────────────────
@@ -73,6 +61,8 @@ def _build_prompt(req: AssembleRequest) -> str:
             src = c.source or "Document"
             rag_section += f"[{i}] {src}: {c.text[:700]}\n"
 
+    catalog_block = "\n".join(catalog)
+
     prompt = f"""You are Voyanta, an expert B2B travel itinerary assembler.
 Your job is to build a day-by-day itinerary using ONLY the inventory provided below.
 NEVER invent hotel names, activity names, flight numbers, or IDs that are not in the catalog.
@@ -94,7 +84,7 @@ CLIENT BRIEF:
 {rag_section}
 
 AVAILABLE INVENTORY:
-{'\n'.join(catalog)}
+{catalog_block}
 
 RULES:
 1. Create EXACTLY {req.duration_days} days.
@@ -152,41 +142,36 @@ OUTPUT JSON SCHEMA:
 # ── LLM Call ───────────────────────────────────────────────────────
 
 async def _call_llm_async(prompt: str) -> Dict[str, Any]:
-    client = _get_openai_client()
-    if client:
-        response = client.chat.completions.create(
-            model=os.getenv("ASSEMBLY_MODEL", "gpt-4o"),
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a strict JSON-only travel itinerary assembler. "
-                        "You never hallucinate inventory. You only use provided IDs and names."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.25,
-            max_tokens=6000,
-        )
-
-        content = response.choices[0].message.content
-        if not content:
-            raise ValueError("LLM returned empty content")
-        return json.loads(content)
-    
-    # Fallback to call_llm (e.g., Gemini) if OpenAI client is not initialized
+    """
+    Routed through the shared ai_client so we inherit provider cascading
+    (Gemini -> OpenAI), retries and caching. The OpenAI SDK is deliberately not
+    used directly here: its sync client blocked the event loop for the whole
+    generation, and `openai` is not a declared dependency of this service.
+    """
     from src.services.ai_client import call_llm
+
     res_str = await call_llm(
         prompt=prompt,
-        system_prompt="You are a strict JSON-only travel itinerary assembler.",
-        temperature=0.25
+        system_prompt=(
+            "You are a strict JSON-only travel itinerary assembler. "
+            "You never hallucinate inventory. You only use provided IDs and names."
+        ),
+        temperature=0.25,
+        response_schema={"type": "object"},
+        max_tokens=32768,
     )
+    if not res_str:
+        raise ValueError("LLM returned empty content")
+
     clean_str = res_str.strip()
     if clean_str.startswith("```"):
         clean_str = clean_str.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-    return json.loads(clean_str)
+
+    try:
+        return json.loads(clean_str)
+    except json.JSONDecodeError:
+        from src.services.json_utils import loads_forgiving
+        return loads_forgiving(clean_str)
 
 
 # ── Validation & Cost Calculation ──────────────────────────────────

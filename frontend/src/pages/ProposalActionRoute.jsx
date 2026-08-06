@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
+  CheckCircle, 
   CheckCircle2, 
   MessageSquare, 
   Send, 
