@@ -422,7 +422,15 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
                 { id: 'summary', label: 'Summary & Price', icon: 'payments' },
                 { id: 'days', label: `Itinerary Days (${(currentPkg.days || []).length})`, icon: 'calendar_month' },
                 { id: 'hotels', label: `Hotels (${(currentPkg.hotels || []).length})`, icon: 'hotel' },
-                { id: 'extra', label: `Extra Sections (${Object.keys(currentPkg.extra_sections || {}).length})`, icon: 'menu_book' },
+                { 
+                  id: 'extra', 
+                  label: `Extra Sections (${
+                    Object.keys(currentPkg.extra_sections || {}).length +
+                    ((currentPkg.inclusions || []).length > 0 && !currentPkg.extra_sections?.inclusions ? 1 : 0) +
+                    ((currentPkg.exclusions || []).length > 0 && !currentPkg.extra_sections?.exclusions ? 1 : 0)
+                  })`, 
+                  icon: 'menu_book' 
+                },
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -449,54 +457,45 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
                       type="text"
                       value={currentPkg.destination || ''}
                       onChange={e => handleFieldChange('destination', e.target.value)}
-                      placeholder="Primary Destination"
-                      className="w-full px-4 py-2.5 rounded-xl border border-subtle bg-surface text-sm font-medium text-primary focus:outline-none focus:border-primary transition-all"
+                      placeholder="Destination Name"
+                      className="w-full px-4 py-2.5 rounded-xl border border-subtle bg-surface text-sm font-bold text-primary focus:outline-none focus:border-primary"
                     />,
-                    'Destination Name'
+                    'Destination'
                   )}
 
                   <div className="grid grid-cols-2 gap-4">
-                    {renderDoubtWrapper(
-                      'total_price',
+                    <div>
+                      <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1">Total Price</label>
                       <input
                         type="number"
                         value={currentPkg.total_price ?? ''}
-                        onChange={e => handleFieldChange('total_price', parseFloat(e.target.value) || 0)}
-                        placeholder="0.00"
-                        className="w-full px-4 py-2.5 rounded-xl border border-subtle bg-surface text-sm font-medium text-primary focus:outline-none focus:border-primary transition-all font-mono"
-                      />,
-                      'Total Price'
-                    )}
-
-                    {renderDoubtWrapper(
-                      'currency',
-                      <select
+                        onChange={e => handleFieldChange('total_price', parseFloat(e.target.value) || null)}
+                        placeholder="e.g. 42000"
+                        className="w-full px-4 py-2.5 rounded-xl border border-subtle bg-surface text-sm font-mono text-primary focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1">Currency</label>
+                      <input
+                        type="text"
                         value={currentPkg.currency || 'INR'}
-                        onChange={e => handleFieldChange('currency', e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-xl border border-subtle bg-surface text-sm font-medium text-primary focus:outline-none focus:border-primary transition-all"
-                      >
-                        <option value="INR">₹ INR</option>
-                        <option value="USD">$ USD</option>
-                        <option value="EUR">€ EUR</option>
-                        <option value="GBP">£ GBP</option>
-                        <option value="AED">AED</option>
-                      </select>,
-                      'Currency'
-                    )}
+                        onChange={e => handleFieldChange('currency', e.target.value.toUpperCase())}
+                        placeholder="INR"
+                        className="w-full px-4 py-2.5 rounded-xl border border-subtle bg-surface text-sm font-mono text-primary focus:outline-none focus:border-primary"
+                      />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    {renderDoubtWrapper(
-                      'duration_days',
+                    <div>
+                      <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-1">Duration (Days)</label>
                       <input
                         type="number"
-                        value={currentPkg.duration_days || (currentPkg.days || []).length || 1}
-                        onChange={e => handleFieldChange('duration_days', parseInt(e.target.value, 10) || 1)}
-                        className="w-full px-4 py-2.5 rounded-xl border border-subtle bg-surface text-sm font-medium text-primary focus:outline-none focus:border-primary transition-all"
-                      />,
-                      'Duration (Days)'
-                    )}
-
+                        value={currentPkg.duration_days ?? 7}
+                        onChange={e => handleFieldChange('duration_days', parseInt(e.target.value) || 1)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-subtle bg-surface text-sm font-mono text-primary focus:outline-none focus:border-primary"
+                      />
+                    </div>
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-secondary uppercase tracking-wider">Sub-Destinations</label>
                       <input
@@ -552,11 +551,11 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
                         />
                       </div>
                       <textarea
-                        rows={3}
+                        rows={5}
                         value={day.description || ''}
                         onChange={e => handleDayChange(dIdx, 'description', e.target.value)}
                         placeholder="Day schedule and detailed activities..."
-                        className="w-full px-3 py-2 rounded-xl border border-subtle bg-surface text-xs text-secondary focus:outline-none focus:border-primary leading-relaxed"
+                        className="w-full px-3 py-2 rounded-xl border border-subtle bg-surface text-xs text-secondary focus:outline-none focus:border-primary leading-relaxed resize-y"
                       />
                     </div>
                   ))
@@ -633,24 +632,52 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
             {/* Tab 4: Extra Sections */}
             {activeTab === 'extra' && (
               <div className="space-y-4 animate-fade-in">
-                {Object.keys(currentPkg.extra_sections || {}).length === 0 ? (
+                {Object.keys(currentPkg.extra_sections || {}).length === 0 && (currentPkg.inclusions || []).length === 0 && (currentPkg.exclusions || []).length === 0 ? (
                   <div className="p-8 rounded-2xl border border-subtle text-center text-secondary text-xs">
                     No extra sections (Inclusions, What to Pack, Visa info) discovered at the end of this document.
                   </div>
                 ) : (
-                  Object.entries(currentPkg.extra_sections || {}).map(([secKey, secContent], sIdx) => (
-                    <div key={sIdx} className="p-4 rounded-2xl border border-subtle bg-surface-hover/10 space-y-2">
-                      <label className="block font-bold text-xs text-primary uppercase tracking-wider">
-                        {secKey.replace(/_/g, ' ')}
-                      </label>
-                      <textarea
-                        rows={4}
-                        value={secContent || ''}
-                        onChange={e => handleExtraSectionChange(secKey, e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-subtle bg-surface text-xs text-secondary focus:outline-none focus:border-primary leading-relaxed"
-                      />
-                    </div>
-                  ))
+                  <>
+                    {(currentPkg.inclusions || []).length > 0 && !currentPkg.extra_sections?.inclusions && (
+                      <div className="p-4 rounded-2xl border border-subtle bg-surface-hover/10 space-y-2">
+                        <label className="block font-bold text-xs text-primary uppercase tracking-wider">
+                          Inclusions
+                        </label>
+                        <textarea
+                          rows={5}
+                          value={currentPkg.inclusions.map(x => `• ${x}`).join('\n')}
+                          onChange={e => handleFieldChange('inclusions', e.target.value.split('\n').map(s => s.replace(/^•\s*/, '').trim()).filter(Boolean))}
+                          className="w-full px-3 py-2 rounded-xl border border-subtle bg-surface text-xs text-secondary focus:outline-none focus:border-primary leading-relaxed resize-y"
+                        />
+                      </div>
+                    )}
+                    {(currentPkg.exclusions || []).length > 0 && !currentPkg.extra_sections?.exclusions && (
+                      <div className="p-4 rounded-2xl border border-subtle bg-surface-hover/10 space-y-2">
+                        <label className="block font-bold text-xs text-primary uppercase tracking-wider">
+                          Exclusions
+                        </label>
+                        <textarea
+                          rows={5}
+                          value={currentPkg.exclusions.map(x => `• ${x}`).join('\n')}
+                          onChange={e => handleFieldChange('exclusions', e.target.value.split('\n').map(s => s.replace(/^•\s*/, '').trim()).filter(Boolean))}
+                          className="w-full px-3 py-2 rounded-xl border border-subtle bg-surface text-xs text-secondary focus:outline-none focus:border-primary leading-relaxed resize-y"
+                        />
+                      </div>
+                    )}
+                    {Object.entries(currentPkg.extra_sections || {}).map(([secKey, secContent], sIdx) => (
+                      <div key={sIdx} className="p-4 rounded-2xl border border-subtle bg-surface-hover/10 space-y-2">
+                        <label className="block font-bold text-xs text-primary uppercase tracking-wider">
+                          {secKey.replace(/_/g, ' ')}
+                        </label>
+                        <textarea
+                          rows={5}
+                          value={secContent || ''}
+                          onChange={e => handleExtraSectionChange(secKey, e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-subtle bg-surface text-xs text-secondary focus:outline-none focus:border-primary leading-relaxed resize-y"
+                        />
+                      </div>
+                    ))}
+                  </>
                 )}
               </div>
             )}
