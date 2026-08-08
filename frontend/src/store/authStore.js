@@ -180,7 +180,7 @@ export const useAuthStore = create((set, get) => ({
     });
     if (error) throw error;
     
-    if (data?.user) {
+    if (data?.user && data?.session) {
       get().setUser(data.user, data.session, false);
       try {
         await supabase.from('user_terms_acceptances').insert({

@@ -30,10 +30,7 @@ export default function ContactsPage() {
       const stored = localStorage.getItem('voyanta_crm_contacts');
       if (stored) return JSON.parse(stored);
     } catch {}
-    return [
-      { id: '1', name: 'Marcus Thorne', email: 'marcus.t@venturecap.io', phone: '+91 98200 11223', destination: 'Tokyo, Japan', status: 'Inquiry', consentRecorded: '2026-06-15' },
-      { id: '2', name: 'Eleanor Vance', email: 'eleanor.vance@vancemedia.com', phone: '+91 98110 44556', destination: 'Swiss Alps', status: 'Inquiry', consentRecorded: '2026-06-20' }
-    ];
+    return [];
   });
 
   // Save manual contacts overrides

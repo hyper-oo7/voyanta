@@ -65,7 +65,7 @@ export default function AuthenticationPage() {
           toast.success('Account created successfully!');
           setTimeout(() => navigate(redirectTo, { replace: true }), 300);
         } else {
-          toast.success('Account created successfully! Please sign in with your credentials.');
+          toast.success('Account created! Please check your email to verify your account before signing in.');
           setIsSignUp(false);
         }
       } else {

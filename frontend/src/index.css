@@ -142,6 +142,30 @@
   animation: float 6s ease-in-out infinite;
 }
 
+@keyframes fly-float {
+  0%, 100% { transform: translateY(0px) rotate(15deg); }
+  50% { transform: translateY(-15px) rotate(12deg); }
+}
+.animate-fly-float {
+  animation: fly-float 3s ease-in-out infinite;
+}
+
+@keyframes wind-dash {
+  0% { transform: translateX(80px); opacity: 0; }
+  20% { opacity: 0.6; }
+  80% { opacity: 0.6; }
+  100% { transform: translateX(-80px); opacity: 0; }
+}
+.animate-wind {
+  animation: wind-dash 1.2s linear infinite;
+}
+.animate-wind-delayed {
+  animation: wind-dash 1.2s linear infinite 0.6s;
+}
+.animate-wind-slow {
+  animation: wind-dash 1.8s linear infinite 0.3s;
+}
+
 #root {
   display: contents;
 }
