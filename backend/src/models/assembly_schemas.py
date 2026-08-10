@@ -108,6 +108,27 @@ class AssembleRequest(BaseModel):
     rag_context: RAGContext = Field(default_factory=RAGContext)
     vault_matches: VaultMatches = Field(default_factory=VaultMatches)
     costing_prefs: CostingPrefs = Field(default_factory=CostingPrefs)
+    
+    # Advanced / Intake fields
+    group_type: str = "friends"
+    num_children: int = 0
+    child_ages: List[int] = []
+    hotel_category: str = "4_star"
+    flight_class: str = "economy"
+    transport_type: str = "private_car"
+    dietary: str = ""
+    budget_flexibility: str = "strict"
+    
+    # Corporate fields
+    company_name: Optional[str] = None
+    gstin: Optional[str] = None
+    room_preference: str = "double"
+    requires_gst_invoice: bool = False
+    single_room_supplement: bool = False
+    early_checkin_required: bool = False
+    late_checkout_required: bool = False
+    meeting_room_required: bool = False
+    corporate_cancellation_terms: bool = False
 
 
 class DayHotelOut(BaseModel):

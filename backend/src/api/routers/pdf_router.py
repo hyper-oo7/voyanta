@@ -272,6 +272,7 @@ async def process_vault_pdf(
                 pdf_url=pdf_url,
                 raw_text=raw_text,
                 extraction_version="v2.0.0",
+                sb=sb,
             )
             if saved:
                 vault_package_id = saved.get("id")

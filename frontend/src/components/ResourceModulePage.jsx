@@ -3,6 +3,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import { useProposalStore } from '../store/proposalStore.js';
 import EditItemDrawer from './EditItemDrawer.jsx';
 import ImportModal from './ImportModal.jsx';
+import FlyingLoader from './common/FlyingLoader.jsx';
 
 export default function ResourceModulePage({
   resource, service, title, subtitle, sidebarLabel,
@@ -194,7 +195,7 @@ export default function ResourceModulePage({
       {/* Main Grid / List container */}
       {loading ? (
         <div className="py-xxl text-center text-on-surface-variant font-body-lg">
-          <span className="material-symbols-outlined animate-spin text-xxl mb-md">progress_activity</span>
+          <FlyingLoader size="text-5xl" className="mb-md" />
           <div>Loading database...</div>
         </div>
       ) : processedRows.length === 0 ? (

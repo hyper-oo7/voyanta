@@ -5,6 +5,7 @@ import { fetchInvoices, updateInvoice } from '../services/invoiceService.js';
 import { useNavigate } from 'react-router-dom';
 import { Client360Modal } from '../components/crm/Client360Modal.jsx';
 import ContactPicker from '../components/common/ContactPicker.jsx';
+import FlyingLoader from '../components/common/FlyingLoader.jsx';
 
 const formatCurr = (val, curr = 'INR') => new Intl.NumberFormat('en-IN', { style: 'currency', currency: curr, maximumFractionDigits: 0 }).format(Number(val) || 0);
 
@@ -307,7 +308,7 @@ export default function CrmPage() {
                   <tr>
                     <td colSpan={7} className="py-12 text-center text-on-surface-variant">
                       <div className="flex flex-col items-center justify-center gap-3">
-                        <span className="material-symbols-outlined animate-spin text-3xl text-primary">progress_activity</span>
+                        <FlyingLoader  />
                         <span className="text-sm font-semibold">Loading client directory...</span>
                       </div>
                     </td>

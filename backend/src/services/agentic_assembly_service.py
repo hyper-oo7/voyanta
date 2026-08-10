@@ -73,21 +73,48 @@ def _build_prompt(req: AssembleRequest) -> str:
             src = c.source or "Document"
             rag_section += f"[{i}] {src}: {c.text[:700]}\n"
 
+    is_corporate = req.group_type == "corporate"
+
+    child_str = ""
+    if req.num_children > 0:
+        ages = ", ".join(str(a) for a in req.child_ages) if req.child_ages else "ages not specified"
+        child_str = f"  - Children: {req.num_children} (ages: {ages}) — apply extra bed supplements\n"
+
+    corporate_str = ""
+    if is_corporate:
+        corporate_str = f"""
+CORPORATE TRIP REQUIREMENTS:
+  - Company: {req.company_name or 'Not specified'}
+  - GSTIN: {req.gstin or 'Not specified'}
+  - GST Invoice Required: {'Yes — add GST line item in exclusions and notes' if req.requires_gst_invoice else 'No'}
+  - Room Arrangement: {'Single occupancy (NO room sharing). Add single supplement cost.' if req.single_room_supplement else req.room_preference}
+  - Early Check-in: {'Required — factor into Day 1 logistics' if req.early_checkin_required else 'Not required'}
+  - Late Checkout: {'Required — factor into last day logistics' if req.late_checkout_required else 'Not required'}
+  - Meeting Room: {'Required — include in hotel selection criteria' if req.meeting_room_required else 'Not required'}
+  - Cancellation Terms: {'Use strict 30-day cancellation policy in terms section' if req.corporate_cancellation_terms else 'Standard'}
+  NOTE: This is a CORPORATE itinerary. Prioritize business hotels with conference facilities, executive floors, and branded properties. Exclude leisure/couple activities. Include team-building options. Add corporate-appropriate inclusions/exclusions.
+"""
+
     prompt = f"""You are Voyanta, an expert B2B travel itinerary assembler.
 Your job is to build a day-by-day itinerary using ONLY the inventory provided below.
 NEVER invent hotel names, activity names, flight numbers, or IDs that are not in the catalog.
 
 CLIENT BRIEF:
-- Client: {req.client_name}
-- Destination: {req.destination}
-- Duration: {req.duration_days} days
-- Travelers: {req.num_travelers}
-- Budget per head: ₹{req.budget_per_head or 'Not specified'}
-- Pace: {req.pace or 'medium'}
-- Dates: {req.start_date or 'TBD'} to {req.end_date or 'TBD'}
-- Arrival: {req.arrival_city or 'TBD'} ({req.arrival_airport or ''})
-- Departure: {req.departure_city or 'TBD'} ({req.departure_airport or ''})
-- Special requests: {req.special_notes or 'None'}
+  - Client: {req.client_name}
+  - Destination: {req.destination}
+  - Group Type: {req.group_type.upper()}
+  - Duration: {req.duration_days} days ({req.start_date or 'TBD'} to {req.end_date or 'TBD'})
+  - Adults: {req.num_travelers}
+{child_str}  - Budget per head: ₹{req.budget_per_head or 'Not specified'} ({req.budget_flexibility} — {'Do NOT exceed budget' if req.budget_flexibility == 'strict' else 'Can go 10-15% over for exceptional experiences'})
+  - Hotel Category: {req.hotel_category.replace('_', ' ').title()} — select hotels matching this category ONLY
+  - Flight Class: {req.flight_class.title()} — use this class for all flights in the itinerary
+  - Transport: {req.transport_type.replace('_', ' ').title()}
+  - Dietary: {req.dietary or 'No restrictions'}
+  - Travel Style / Pace: {req.pace or 'balanced'}
+  - Arrival: {req.arrival_city or 'TBD'} ({req.arrival_airport or ''})
+  - Departure: {req.departure_city or 'TBD'} ({req.departure_airport or ''})
+  - Special Requests: {req.special_notes or 'None'}
+{corporate_str}
 
 {"RAG Query: " + query if query else ""}
 
@@ -196,6 +223,7 @@ def _validate_and_price(
     vault: VaultMatches,
     costing: CostingPrefs,
     travelers: int,
+    req: AssembleRequest,
 ) -> Dict[str, Any]:
     """Ensure every ID exists in vault and recalculate all math exactly."""
 
@@ -229,7 +257,7 @@ def _validate_and_price(
             validated_hotels.append({
                 "id": vault_h.id,
                 "name": vault_h.name,
-                "category": vault_h.category or "4 Star",
+                "category": vault_h.category or req.hotel_category.replace('_', ' ').title(),
                 "meal_plan": vault_h.meal_type or "CP",
                 "price_per_night": price,
                 "location": vault_h.location or "",
@@ -279,7 +307,7 @@ def _validate_and_price(
                 "origin": vault_f.origin or "",
                 "destination": vault_f.destination or "",
                 "cost": price,
-                "class": vault_f.class_ or "Economy",
+                "class": vault_f.class_ or req.flight_class.title(),
             })
         day["flights"] = validated_flights
 
@@ -348,6 +376,7 @@ async def assemble_itinerary(req: AssembleRequest) -> AssembledProposalOut:
         vault=req.vault_matches,
         costing=req.costing_prefs,
         travelers=max(1, req.num_travelers),
+        req=req,
     )
 
     # 5. Return

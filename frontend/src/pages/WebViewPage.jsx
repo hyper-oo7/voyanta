@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import FlyingLoader from '../components/common/FlyingLoader.jsx';
 import { fetchSharedProposalByToken } from '../services/proposalItemService.js';
 import { api } from '../services/api.js';
 import { formatPrice } from '../lib/currency.js';
@@ -564,9 +565,7 @@ export default function WebViewPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-surface font-body-md text-on-surface-variant">
-        <span className="material-symbols-outlined animate-spin text-4xl mb-4 text-primary">
-          progress_activity
-        </span>
+        <FlyingLoader size="text-4xl" className="mb-4" />
         Loading travel proposal...
       </div>
     );

@@ -66,7 +66,7 @@ const PROGRESS_STEPS = [
 export default function QuickGenerateModal({ isOpen, onClose }) {
   const navigate = useNavigate();
   const toast = useToast();
-  const { setClient } = useProposalStore();
+  const { setClient, assemble1Shot, ragStatus, vaultStatus } = useProposalStore();
 
   const [form, setForm] = useState({
     destination: '',
@@ -149,13 +149,6 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
     }, 1400);
 
     try {
-      let agencyId = 'global';
-      try {
-        agencyId = getAgencyId() || 'global';
-      } catch (err) {
-        agencyId = 'global';
-      }
-      
       const payload = {
         destination: form.destination,
         duration_days: Number(form.duration_days),
@@ -172,11 +165,11 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
         discount_amount: 0,
       };
 
-      const res = await api.post('/api/assemble-1shot', payload, { timeout: 90000 });
+      // Use global assemble1Shot to get RAG/Vault context and track statuses
+      const proposal = await assemble1Shot(payload);
       clearInterval(stepInterval);
       setProgressStep(PROGRESS_STEPS.length - 1);
 
-      const proposal = res?.proposal;
       if (!proposal) throw new Error('No proposal returned from server');
 
       // Phase 4: Create draft proposal in database
@@ -203,6 +196,17 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
       }
 
       setDone(true);
+      
+      const currentRagStatus = useProposalStore.getState().ragStatus;
+      const currentVaultStatus = useProposalStore.getState().vaultStatus;
+      
+      // If there are partial failures, stay on the modal so the user sees the banners.
+      if (currentRagStatus !== 'ok' || currentVaultStatus !== 'ok') {
+        setGenerating(false);
+        setForm(f => ({ ...f, createdProposalId }));
+        return; 
+      }
+
       await new Promise(r => setTimeout(r, 900));
 
       // Store generated proposal for wizard hydration
@@ -389,7 +393,7 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
         )}
 
         {/* Form */}
-        {!generating && (
+        {!generating && !done && (
           <div className="px-8 py-7 flex flex-col gap-6">
 
             {/* Destination */}
