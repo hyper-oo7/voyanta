@@ -7,6 +7,7 @@ import { api } from '../services/api.js';
 import BatchExtractionReviewModal from '../components/vault/BatchExtractionReviewModal.jsx';
 import RateConflictWidget from '../components/vault/RateConflictWidget.jsx';
 import { useVaultStore } from '../store/vaultStore.js';
+import FlyingLoader from '../components/common/FlyingLoader.jsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -498,7 +499,7 @@ export default function MyVaultPage() {
         >
           {isProcessing ? (
             <>
-              <span className="material-symbols-outlined animate-spin">progress_activity</span>
+              <FlyingLoader  />
               <span>Extracting data from {batchProgress.currentFile}...</span>
             </>
           ) : (
@@ -663,7 +664,7 @@ export default function MyVaultPage() {
           {/* Empty State */}
           {isLoading ? (
             <div className="bg-surface p-12 text-center rounded-2xl border border-outline-variant">
-              <span className="material-symbols-outlined text-5xl text-primary animate-spin mb-3 block">progress_activity</span>
+              <FlyingLoader size="text-5xl" className="mb-3 block" />
               <p className="text-sm text-on-surface-variant">Loading your vault...</p>
             </div>
           ) : filteredItems.length === 0 ? (

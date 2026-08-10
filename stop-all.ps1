@@ -14,7 +14,7 @@ $pidFile = ".\.dev-pids"
 if (-not (Test-Path $pidFile)) {
     Write-ColorMessage "No .dev-pids file found. Searching for leftover node/python processes..." "Yellow"
     # Alternatively, you can kill by port if pids are missing
-    $nodePids = Get-NetTCPConnection -LocalPort 3000, 3001, 8002 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
+    $nodePids = Get-NetTCPConnection -LocalPort 3000, 3001, 8001, 8002 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
     $pythonPids = Get-NetTCPConnection -LocalPort 8001 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
     
     foreach ($p in $nodePids) {
@@ -35,8 +35,8 @@ if (-not (Test-Path $pidFile)) {
         # For npm we also need to kill child node processes
     }
     Remove-Item $pidFile -Force
-    Write-ColorMessage "To ensure services are fully terminated, cleaning up ports 3000, 3001, 8002..." "Cyan"
-    $nodePids = Get-NetTCPConnection -LocalPort 3000, 3001, 8002 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
+    Write-ColorMessage "To ensure services are fully terminated, cleaning up ports 3000, 3001, 8001, 8002..." "Cyan"
+    $nodePids = Get-NetTCPConnection -LocalPort 3000, 3001, 8001, 8002 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
     foreach ($p in $nodePids) {
         taskkill /F /T /PID $p 2>$null
     }

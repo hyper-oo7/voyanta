@@ -32,6 +32,7 @@ def save_vault_package(
     pdf_url: Optional[str] = None,
     raw_text: Optional[str] = None,
     extraction_version: Optional[str] = "v1.0.0",
+    sb: Optional[Any] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Persist a parsed vault package to Supabase.
@@ -39,7 +40,8 @@ def save_vault_package(
     """
     from src.services.supabase_client import get_supabase_client
     from src.services.r2_storage_service import upload_text_to_r2
-    sb = get_supabase_client()
+    if not sb:
+        sb = get_supabase_client()
 
     raw_text_r2_key = None
     if raw_text:

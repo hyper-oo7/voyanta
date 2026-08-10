@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { uploadOrEmbed } from '../LogoUploader.jsx';
 import { api, getBackendUrl } from '../../services/api.js';
+import FlyingLoader from './/FlyingLoader.jsx';
 
 const CURATED_CATEGORIES = [
   { id: 'all', label: 'All Travel Images', icon: 'travel_explore' },
@@ -294,7 +295,7 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
                     disabled={loading}
                     className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-sm shadow-sm hover:bg-primary/90 transition-all flex gap-2 items-center cursor-pointer disabled:opacity-50"
                   >
-                    {loading ? <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span> : 'Search API'}
+                    {loading ? <FlyingLoader size="text-[18px]" /> : 'Search API'}
                   </button>
                 </div>
               </div>
@@ -315,7 +316,7 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
                 )}
                 {loading ? (
                   <div className="flex flex-col items-center justify-center h-64 text-on-surface-variant gap-3">
-                    <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
+                    <FlyingLoader size="text-4xl" />
                     <p className="text-sm font-semibold">Searching Unsplash & Pexels for real-time photos...</p>
                   </div>
                 ) : results.length > 0 ? (
@@ -383,7 +384,7 @@ export default function ImageSearchPicker({ onSelect, onClose, defaultQuery = ''
                 />
                 {uploading ? (
                   <>
-                    <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
+                    <FlyingLoader size="text-4xl" />
                     <p className="text-sm font-semibold text-on-surface">Uploading and optimizing your media asset...</p>
                   </>
                 ) : (

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useProposalStore } from '../../store/proposalStore.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { api } from '../../services/api.js';
+import FlyingLoader from '../common/FlyingLoader.jsx';
 
 export default function AIProposalChatDrawer({ isOpen, onClose }) {
   const toast = useToast();
@@ -94,7 +95,7 @@ export default function AIProposalChatDrawer({ isOpen, onClose }) {
         {isProcessing && (
           <div className="flex flex-col items-start">
             <div className="px-4 py-3 rounded-2xl bg-surface border border-outline-variant rounded-tl-sm shadow-sm flex items-center gap-2">
-              <span className="material-symbols-outlined animate-spin text-primary text-[16px]">progress_activity</span>
+              <FlyingLoader size="text-[16px]" />
               <span className="text-sm text-on-surface-variant font-medium">Refining itinerary...</span>
             </div>
           </div>

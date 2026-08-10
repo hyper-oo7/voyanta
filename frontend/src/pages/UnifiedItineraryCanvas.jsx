@@ -319,7 +319,7 @@ export default function UnifiedItineraryCanvas() {
               const token = p.share_token || p.id || 'demo';
               window.open(`/view/${token}`, '_blank');
             }}
-            className="px-3 py-1.5 bg-secondary-container text-on-secondary-container hover:bg-secondary-container/80 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
+            className="px-3 py-1.5 bg-purple-100 dark:bg-purple-900/50 text-purple-900 dark:text-purple-100 hover:bg-purple-200 dark:hover:bg-purple-900 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
           >
             <span className="material-symbols-outlined text-[16px]">open_in_new</span>
             Open Web View Studio

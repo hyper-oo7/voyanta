@@ -29,6 +29,14 @@ router = APIRouter(prefix="/import")
 # Global In-Memory Job Tracking Store for Async PDF Extraction
 EXTRACTION_JOBS: Dict[str, Dict[str, Any]] = {}
 
+def _run_async(coro):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
 def accumulate_agency_packing_rules(
     destination: str,
     extra_sections: Dict[str, str],
@@ -104,7 +112,7 @@ def _run_extraction_bg(
             EXTRACTION_JOBS[job_id]["raw_text"] = raw_text[:50000]
 
             parser = StructuredItineraryParser()
-            normalized = asyncio.run(parser.parse(raw_text))
+            normalized = _run_async(parser.parse(raw_text))
             
             # Enrich metadata
             normalized["agency_id"] = agency_id
@@ -116,7 +124,7 @@ def _run_extraction_bg(
             else:
                 extractor = CsvExtractor()
                 
-            normalized = asyncio.run(extractor.extract(
+            normalized = _run_async(extractor.extract(
                 file_bytes=file_bytes,
                 filename=filename,
                 destination_hint=destination,
@@ -310,6 +318,9 @@ async def confirm_file_import(
             )
             user_id = user.get("sub") or user.get("id")
 
+        from src.services.supabase_client import get_user_supabase_client
+        sb = get_user_supabase_client(token, agency_id)
+
         filename = payload.pop("_pdf_filename", payload.get("pdf_filename", "confirmed_package.pdf"))
         file_hash = payload.pop("_pdf_hash", payload.get("pdf_hash", hashlib.md5(str(payload).encode()).hexdigest()))
         file_url = payload.pop("_pdf_url", payload.get("pdf_url", ""))
@@ -335,7 +346,8 @@ async def confirm_file_import(
                     user_id=user_id,
                     pdf_url=file_url,
                     raw_text=raw_text,
-                    extraction_version="v3.0.0-reviewed"
+                    extraction_version="v3.0.0-reviewed",
+                    sb=sb,
                 )
                 if extra_sections and dest_for_knowledge:
                     accumulate_destination_knowledge(

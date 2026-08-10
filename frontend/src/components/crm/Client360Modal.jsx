@@ -5,6 +5,7 @@ import { fetchInvoices, createInvoiceFromProposal, createInvoice } from '../../s
 import { settingsService } from '../../services/resourceService.js';
 import { InvoicePreviewModal } from '../invoices/InvoicePreviewModal.jsx';
 import { formatCurrency } from '../invoices/UpiQrGenerator.jsx';
+import FlyingLoader from '../common/FlyingLoader.jsx';
 
 export function Client360Modal({ client, onClose }) {
   const toast = useToast();
@@ -203,7 +204,7 @@ export function Client360Modal({ client, onClose }) {
         <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-surface">
           {loading ? (
             <div className="py-16 flex flex-col items-center justify-center gap-3">
-              <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
+              <FlyingLoader size="text-4xl" />
               <span className="text-sm font-semibold text-on-surface-variant">Loading client history & financial records...</span>
             </div>
           ) : activeTab === 'proposals' ? (
