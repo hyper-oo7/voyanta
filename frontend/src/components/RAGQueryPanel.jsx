@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { executeRAGQuery } from "../services/api";
+import { getAgencyId } from '../lib/supabaseClient.js';
 import { Search, Loader2, Database, Layers } from "lucide-react";
 
-export default function RAGQueryPanel({ agencyId = "demo-agency" }) {
+export default function RAGQueryPanel({ agencyId = getAgencyId() }) {
   const [query, setQuery] = useState({
     destination: "Manali",
     duration_days: 5,

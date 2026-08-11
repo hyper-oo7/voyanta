@@ -7,6 +7,7 @@ import { executeRAGQuery } from '../services/api.js';
 import { matchVaultResources } from '../services/resourceMatchingService.js';
 import { assembleProposal } from '../services/assemblyService.js';
 import { useAuthStore } from './authStore.js';
+import { FinalProposalSchema } from '../schemas/proposalSchema.js';
 
 const saveLocalBackup = (state) => {
   try {
@@ -240,10 +241,6 @@ export const useProposalStore = create((set, get) => ({
       );
 
       if (p) {
-        // Normalize schema mismatch: Backend sends days in p.days, Frontend expects them in p.itinerary.days
-        if (p.days && p.days.length > 0 && (!p.itinerary || !p.itinerary.days)) {
-          p.itinerary = { ...(p.itinerary || {}), days: p.days };
-        }
 
         const nextClient = {
           ...get().client,
@@ -334,7 +331,14 @@ export const useProposalStore = create((set, get) => ({
   }),
 
   setProposal: (partialProposal) => set((state) => {
-    const nextProposal = typeof partialProposal === 'function' ? partialProposal(state.proposal) : { ...state.proposal, ...partialProposal };
+    let nextProposal = typeof partialProposal === 'function' ? partialProposal(state.proposal) : { ...state.proposal, ...partialProposal };
+    if (nextProposal) {
+      try {
+        nextProposal = FinalProposalSchema.parse(nextProposal);
+      } catch (err) {
+        console.warn('[proposalStore] Proposal schema validation failed:', err.errors);
+      }
+    }
     saveLocalBackup({ ...state, proposal: nextProposal });
     return { proposal: nextProposal };
   }),

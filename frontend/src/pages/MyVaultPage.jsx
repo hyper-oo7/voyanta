@@ -294,7 +294,7 @@ export default function MyVaultPage() {
     setProposalField('duration', data.duration_days || item.duration_days || 7);
     setProposalField('currency', data.currency || item.currency || 'INR');
     setProposalField('budget', data.total_price || item.total_price || data.price_per_person);
-    setProposalField('itineraryDays', data.days || []);
+    setProposalField('days', data.days || []);
     setProposalField('overview', data.overview || '');
     const safeSecText = (val) => {
       if (val == null) return '';

@@ -14,7 +14,7 @@ export default function LuxuryThemeEngine(props) {
   const items = data.items_by_kind || {};
   const total = data.totals?.subtotal || 0;
   const currency = data.totals?.currency || 'INR';
-  const days = Array.isArray(p.itinerary?.days) ? p.itinerary.days : (Array.isArray(p.itinerary) ? p.itinerary : (Array.isArray(p.days) ? p.days : []));
+  const days = Array.isArray(p.days) ? p.days : [];
   const brief = p.brief || {};
   const visibilityMode = (p.visibility_mode || data.visibility_mode || 'ITEMIZED').toUpperCase();
   const travelers = Number(brief.num_adults ?? p.travelers ?? 1) + Number(brief.num_children ?? 0) || Number(p.travelers) || 1;

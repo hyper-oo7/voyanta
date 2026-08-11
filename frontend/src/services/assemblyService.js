@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { getAgencyId } from '../lib/supabaseClient.js';
 import { TimeoutError, ServerError } from '../utils/apiErrors.js';
 
 /**
@@ -20,7 +21,7 @@ export async function assembleProposal(intakeData, ragContext, vaultMatches, cos
     departure_city: intakeData.departure_city || '',
     arrival_airport: intakeData.arrival_airport || '',
     departure_airport: intakeData.departure_airport || '',
-    agency_id: intakeData.agency_id || 'demo-agency',
+    agency_id: intakeData.agency_id || getAgencyId(),
     group_type: intakeData.group_type || 'friends',
     num_children: intakeData.num_children || 0,
     child_ages: intakeData.child_ages || [],

@@ -10,6 +10,7 @@ import PDFUploader from '../components/PDFUploader.jsx';
 import RAGContextPanel from '../components/RAGContextPanel.jsx';
 import { executeRAGQuery } from '../services/api.js';
 import AIProposalChatDrawer from '../components/canvas/AIProposalChatDrawer.jsx';
+import { getAgencyId } from '../lib/supabaseClient.js';
 
 export default function UnifiedItineraryCanvas() {
   const navigate = useNavigate();
@@ -32,8 +33,7 @@ export default function UnifiedItineraryCanvas() {
   const p = proposal || {};
   const currentClient = client || {};
 
-  // Unify days location since UI stores it in p.itinerary.days and AI generates in p.days
-  const daysList = p.itinerary?.days || p.days || [];
+  const daysList = p.days || [];
 
   // Check if proposal actually has itinerary days or items (a real plan)
   const hasPlanContent = Boolean(
@@ -710,7 +710,7 @@ export default function UnifiedItineraryCanvas() {
                 {ragActiveTab === 'query' ? (
                   <RAGContextPanel isOpen={true} onClose={() => setShowRAGDrawer(false)} />
                 ) : (
-                  <PDFUploader agencyId={branding?.agency_id || 'demo-agency'} />
+                  <PDFUploader agencyId={branding?.agency_id || getAgencyId()} />
                 )}
               </div>
             </motion.div>

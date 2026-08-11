@@ -355,6 +355,8 @@ async def assemble_itinerary(req: AssembleRequest) -> AssembledProposalOut:
     vm = req.vault_matches
     has_inventory = bool(vm.hotels or vm.activities or vm.flights)
     if not has_inventory:
+        logger.warning(f"[AgenticAssembly] No vault inventory found for {req.destination}. Falling back to deterministic engine.")
+        # We raise ValueError here so the router can catch it and route to the fallback engine.
         raise ValueError(
             f"No vault inventory found for {req.destination}. "
             "Please upload supplier PDFs or add resources to your library."

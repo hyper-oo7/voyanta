@@ -77,6 +77,7 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
     client_name: '',
     num_travelers: 2,
     preferences_text: '',
+    client_preferences: [],
   });
 
   const [destQuery, setDestQuery] = useState('');
@@ -85,23 +86,41 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
   const [progressStep, setProgressStep] = useState(0);
   const [done, setDone] = useState(false);
   const [vaultConfidence, setVaultConfidence] = useState(null);
+  const [confidenceLoading, setConfidenceLoading] = useState(false);
   const destRef = useRef(null);
 
   // Phase 4: Fetch Destination Confidence dynamically
   useEffect(() => {
     if (!form.destination || form.destination.length < 3) {
       setVaultConfidence(null);
+      setConfidenceLoading(false);
       return;
     }
+    
+    setConfidenceLoading(true);
+    const controller = new AbortController();
+
     const timer = setTimeout(async () => {
       try {
-        const res = await api.get(`/api/vault/destination-confidence?destination=${encodeURIComponent(form.destination)}`);
+        const res = await api.get(`/api/vault/destination-confidence?destination=${encodeURIComponent(form.destination)}`, {
+          signal: controller.signal
+        });
         setVaultConfidence(res.data);
       } catch (err) {
-        setVaultConfidence({ confidence_score: 0, pdfs: 0, proposals: 0 });
+        if (err.name !== 'CanceledError' && err.message !== 'canceled' && err.code !== 'ERR_CANCELED') {
+          setVaultConfidence({ confidence_score: 0, pdfs: 0, proposals: 0 });
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setConfidenceLoading(false);
+        }
       }
     }, 600);
-    return () => clearTimeout(timer);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [form.destination]);
 
   useEffect(() => {
@@ -158,7 +177,9 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
         client_name: form.client_name || 'Valued Traveler',
         num_travelers: Number(form.num_travelers),
         num_adults: Number(form.num_travelers),
-        preferences_text: form.preferences_text || '',
+        preferences_text: form.client_preferences && form.client_preferences.length > 0 
+          ? [form.client_preferences.join(', '), form.preferences_text].filter(Boolean).join(' | ') 
+          : (form.preferences_text || ''),
         margin_type: 'percentage',
         margin_value: 15,
         tax_rate_percent: 5,
@@ -227,7 +248,9 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
           duration_days: proposal.duration_days || form.duration_days,
           num_adults: Number(form.num_travelers),
           num_children: 0,
-          special_notes: form.preferences_text || '',
+          special_notes: form.client_preferences && form.client_preferences.length > 0 
+            ? [form.client_preferences.join(', '), form.preferences_text].filter(Boolean).join(' | ') 
+            : (form.preferences_text || ''),
           tour_type: form.group_type,
           pace: form.pace,
         });
@@ -508,9 +531,10 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
                       if (c.preferences.dislikes) prefLines.push(`Avoid: ${c.preferences.dislikes}`);
                       
                       if (prefLines.length > 0) {
-                        const newPrefs = (form.preferences_text ? form.preferences_text + ' | ' : '') + prefLines.join(', ');
-                        updateForm('preferences_text', newPrefs);
+                        updateForm('client_preferences', prefLines);
                         toast.success('Auto-applied client travel preferences!');
+                      } else {
+                        updateForm('client_preferences', []);
                       }
                     }
                   }}
@@ -527,6 +551,23 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
             {/* Preferences */}
             <div className="flex flex-col gap-2">
               <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-purple-300/80">Special Preferences (Optional)</label>
+              
+              {form.client_preferences && form.client_preferences.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-1">
+                  {form.client_preferences.map((pref, i) => (
+                    <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-500/20 border border-purple-500/30 text-[11px] text-purple-200">
+                      <span>{pref}</span>
+                      <button 
+                        onClick={() => updateForm('client_preferences', form.client_preferences.filter((_, idx) => idx !== i))}
+                        className="bg-transparent border-none text-purple-400 hover:text-white cursor-pointer p-0 flex items-center justify-center"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">close</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <textarea value={form.preferences_text} onChange={e => updateForm('preferences_text', e.target.value)}
                 placeholder="e.g. No trekking, vegetarian meals, houseboat stay…"
                 rows={2} className="qg-input w-full px-4 py-3 text-sm rounded-xl resize-none" />
@@ -534,19 +575,23 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
 
             {/* Vault note / Confidence Banner */}
             <div className="flex items-start gap-3 px-4 py-3 rounded-xl transition-all"
-              style={{ background: vaultConfidence?.pdfs > 0 ? 'rgba(34,197,94,0.09)' : 'rgba(139,92,246,0.09)', border: `1px solid ${vaultConfidence?.pdfs > 0 ? 'rgba(34,197,94,0.22)' : 'rgba(139,92,246,0.22)'}` }}>
-              <span className={`material-symbols-outlined text-[20px] flex-shrink-0 mt-0.5 ${vaultConfidence?.pdfs > 0 ? 'text-green-400' : 'text-purple-400'}`}>
-                {vaultConfidence?.pdfs > 0 ? 'check_circle' : 'bolt'}
+              style={{ background: vaultConfidence?.pdfs > 0 && !confidenceLoading ? 'rgba(34,197,94,0.09)' : 'rgba(139,92,246,0.09)', border: `1px solid ${vaultConfidence?.pdfs > 0 && !confidenceLoading ? 'rgba(34,197,94,0.22)' : 'rgba(139,92,246,0.22)'}` }}>
+              <span className={`material-symbols-outlined text-[20px] flex-shrink-0 mt-0.5 ${confidenceLoading ? 'animate-spin text-purple-400' : (vaultConfidence?.pdfs > 0 ? 'text-green-400' : 'text-purple-400')}`}>
+                {confidenceLoading ? 'sync' : (vaultConfidence?.pdfs > 0 ? 'check_circle' : 'bolt')}
               </span>
-              <p className={`text-[11px] m-0 leading-relaxed ${vaultConfidence?.pdfs > 0 ? 'text-green-200/75' : 'text-purple-200/75'}`}>
-                {vaultConfidence?.pdfs > 0 ? (
-                  <>
-                    <strong className="text-green-300">✓ {vaultConfidence.pdfs} supplier {vaultConfidence.pdfs === 1 ? 'PDF' : 'PDFs'} found for {form.destination}.</strong> Voyanta will use authentic rates and descriptions from your vault for this draft.
-                  </>
+              <p className={`text-[11px] m-0 flex-1 leading-relaxed ${vaultConfidence?.pdfs > 0 && !confidenceLoading ? 'text-green-200/75' : 'text-purple-200/75'}`}>
+                {confidenceLoading ? (
+                  <span className="animate-pulse">Checking vault for destination insights...</span>
                 ) : (
-                  <>
-                    Voyanta searches your <strong className="text-purple-300">uploaded PDFs and library</strong> first. Falls back to curated baseline data for new destinations.
-                  </>
+                  vaultConfidence?.pdfs > 0 ? (
+                    <>
+                      <strong className="text-green-300">✓ {vaultConfidence.pdfs} supplier {vaultConfidence.pdfs === 1 ? 'PDF' : 'PDFs'} found for {form.destination}.</strong> Voyanta will use authentic rates and descriptions from your vault for this draft.
+                    </>
+                  ) : (
+                    <>
+                      Voyanta searches your <strong className="text-purple-300">uploaded PDFs and library</strong> first. Falls back to curated baseline data for new destinations.
+                    </>
+                  )
                 )}
               </p>
             </div>

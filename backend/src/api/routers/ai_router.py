@@ -410,8 +410,8 @@ async def assemble_1shot_route(
                 used_fallback=True
             )
     except Exception as e:
-        logger.exception("Agentic Assembly engine error")
-        raise HTTPException(status_code=500, detail=f"Assembly engine error: {str(e)}")
+        logger.exception("[1-Shot Assembly] Generation failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 class GenerateDayModuleInput(BaseModel):
     sub_destination: str

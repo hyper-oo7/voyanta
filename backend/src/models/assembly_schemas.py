@@ -104,7 +104,7 @@ class AssembleRequest(BaseModel):
     departure_city: Optional[str] = ""
     arrival_airport: Optional[str] = ""
     departure_airport: Optional[str] = ""
-    agency_id: Optional[str] = "demo-agency"
+    agency_id: Optional[str] = None
     rag_context: RAGContext = Field(default_factory=RAGContext)
     vault_matches: VaultMatches = Field(default_factory=VaultMatches)
     costing_prefs: CostingPrefs = Field(default_factory=CostingPrefs)

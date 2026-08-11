@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getAgencyId } from '../lib/supabaseClient.js';
+import { api } from '../services/api.js';
 
 export default function DpdpConsentBanner() {
   const [visible, setVisible] = useState(false);
@@ -18,7 +20,7 @@ export default function DpdpConsentBanner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          agency_id: 'demo-agency-id',
+          agency_id: getAgencyId(),
           consent_type: 'dpdp_privacy_cookie',
           consent_payload: payload
         })
