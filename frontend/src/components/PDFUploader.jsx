@@ -1,12 +1,17 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Upload, FileText, X, Loader2, CheckCircle } from "lucide-react";
 import { uploadDocument, listDocuments, deleteDocument } from "../services/api";
+import { getAgencyId } from "../lib/supabaseClient.js";
 
-export default function PDFUploader({ agencyId = "demo-agency" }) {
+export default function PDFUploader({ agencyId = getAgencyId() }) {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [docs, setDocs] = useState([]);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    fetchDocs();
+  }, [agencyId]);
 
   const onDrop = useCallback((e) => {
     e.preventDefault();

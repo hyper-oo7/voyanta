@@ -1,5 +1,6 @@
 import { api, executeRAGQuery } from './api.js';
 import { matchVaultResources } from './resourceMatchingService.js';
+import { getAgencyId } from '../lib/supabaseClient.js';
 import { TimeoutError, ServerError } from '../utils/apiErrors.js';
 
 export async function generateGroundedProposal(intakeData, costingPrefs) {
@@ -56,7 +57,24 @@ export async function assembleProposal(intakeData, ragContext, vaultMatches, cos
     departure_city: intakeData.departure_city || '',
     arrival_airport: intakeData.arrival_airport || '',
     departure_airport: intakeData.departure_airport || '',
-    agency_id: intakeData.agency_id || 'demo-agency',
+    agency_id: intakeData.agency_id || getAgencyId(),
+    group_type: intakeData.group_type || 'friends',
+    num_children: intakeData.num_children || 0,
+    child_ages: intakeData.child_ages || [],
+    hotel_category: intakeData.hotel_category || '4_star',
+    flight_class: intakeData.flight_class || 'economy',
+    transport_type: intakeData.transport_type || 'private_car',
+    dietary: intakeData.dietary || '',
+    budget_flexibility: intakeData.budget_flexibility || 'strict',
+    company_name: intakeData.company_name || null,
+    gstin: intakeData.gstin || null,
+    room_preference: intakeData.room_preference || 'double',
+    requires_gst_invoice: intakeData.requires_gst_invoice || false,
+    single_room_supplement: intakeData.single_room_supplement || false,
+    early_checkin_required: intakeData.early_checkin_required || false,
+    late_checkout_required: intakeData.late_checkout_required || false,
+    meeting_room_required: intakeData.meeting_room_required || false,
+    corporate_cancellation_terms: intakeData.corporate_cancellation_terms || false,
     rag_context: ragContext || { chunks: [], assembled_query: '' },
     vault_matches: vaultMatches || { hotels: [], activities: [], flights: [], templates: [] },
     costing_prefs: costingPrefs || {

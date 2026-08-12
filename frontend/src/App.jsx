@@ -7,6 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute.jsx';
 import AppLayout from './components/AppLayout.jsx';
 import DiagnosticsPanel from './components/DiagnosticsPanel.jsx';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import FlyingLoader from './components/common/FlyingLoader.jsx';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,7 +61,7 @@ const Protected = ({ children }) => <ProtectedRoute>{children}</ProtectedRoute>;
 function PageLoader() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
-      <span className="material-symbols-outlined text-primary" style={{ fontSize: 32, animation: 'spin 1s linear infinite' }}>progress_activity</span>
+      <FlyingLoader size="text-[32px]" />
     </div>
   );
 }

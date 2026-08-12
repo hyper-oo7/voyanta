@@ -10,6 +10,7 @@ import { InvoiceShareModal } from '../components/invoices/InvoiceShareModal.jsx'
 import { formatCurrency } from '../components/invoices/UpiQrGenerator.jsx';
 import ReminderCenterModal from '../components/invoices/ReminderCenterModal.jsx';
 import SmartContactCaptureModal from '../components/common/SmartContactCaptureModal.jsx';
+import FlyingLoader from '../components/common/FlyingLoader.jsx';
 
 export default function InvoicesPage() {
   const toast = useToast();
@@ -405,7 +406,7 @@ export default function InvoicesPage() {
                   <tr>
                     <td colSpan={9} className="py-16 text-center text-on-surface-variant">
                       <div className="flex flex-col items-center justify-center gap-3">
-                        <span className="material-symbols-outlined animate-spin text-3xl text-primary">progress_activity</span>
+                        <FlyingLoader  />
                         <span className="text-sm font-semibold">Loading billing directory...</span>
                       </div>
                     </td>

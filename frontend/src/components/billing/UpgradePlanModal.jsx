@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../../services/api.js';
+import { getAgencyId } from '../../lib/supabaseClient.js';
 
 export default function UpgradePlanModal({ isOpen, onClose, lockedItemName, onUpgradeSuccess }) {
   const [selectedPlan, setSelectedPlan] = useState('professional');
@@ -24,12 +25,12 @@ export default function UpgradePlanModal({ isOpen, onClose, lockedItemName, onUp
       const orderData = await api.post('/api/billing/create-subscription', {
         plan_slug: selectedPlan,
         billing_cycle: billingCycle,
-        agency_id: 'demo-agency-id'
+        agency_id: getAgencyId()
       });
 
       // Step 2: Verify payment (using mock verification signature for instant test/demo)
       const result = await api.post('/api/billing/verify-payment', {
-        agency_id: 'demo-agency-id',
+        agency_id: getAgencyId(),
         plan_slug: selectedPlan,
         razorpay_payment_id: `pay_${Date.now()}`,
         razorpay_subscription_id: orderData.subscription_id,

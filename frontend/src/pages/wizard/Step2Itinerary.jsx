@@ -591,39 +591,38 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           nextDays[nextDays.length - 1].block_type = 'departure';
         }
       }
-
-      setProposal(prev => ({ ...(prev || {}), itinerary: { ...(prev?.itinerary || {}), days: nextDays } }));
+      setProposal(prev => ({ ...(prev || {}), days: nextDays }));
     }
   }, [days.length, proposal?.id, client?.date_mode, client?.duration_days, client?.start_date, client?.end_date, setProposal]);
 
   const updateDay = useCallback((index, patch) => {
     setProposal(prev => {
-      const nextDays = [...(prev?.itinerary?.days || [])];
+      const nextDays = [...(prev?.days || [])];
       nextDays[index] = { ...nextDays[index], ...patch };
-      return { ...(prev || {}), itinerary: { ...(prev?.itinerary || {}), days: nextDays } };
+      return { ...(prev || {}), days: nextDays };
     });
   }, [setProposal]);
 
   const removeDay = useCallback((index) => {
     if (!window.confirm('Are you sure you want to remove this day?')) return;
     setProposal(prev => {
-      const nextDays = [...(prev?.itinerary?.days || [])];
+      const nextDays = [...(prev?.days || [])];
       nextDays.splice(index, 1);
       nextDays.forEach((d, i) => d.day = i + 1);
-      return { ...(prev || {}), itinerary: { ...(prev?.itinerary || {}), days: nextDays } };
+      return { ...(prev || {}), days: nextDays };
     });
   }, [setProposal]);
 
   const addDay = useCallback(() => {
     setProposal(prev => {
-      const nextDays = [...(prev?.itinerary?.days || [])];
+      const nextDays = [...(prev?.days || [])];
       nextDays.push({
         day: nextDays.length + 1,
         title: '',
         description: '',
         image_url: null
       });
-      return { ...(prev || {}), itinerary: { ...(prev?.itinerary || {}), days: nextDays } };
+      return { ...(prev || {}), days: nextDays };
     });
   }, [setProposal]);
 
@@ -914,7 +913,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           (d.meals || []).forEach(m => contentBlocks.push({ id: crypto.randomUUID(), type: 'meal', data: m }));
           return { id: crypto.randomUUID(), day: d.day_number || i + 1, title: d.title || `Day ${i + 1}`, description: d.description || '', image_url: (d.hotels?.[0]?.image_url) || (d.activities?.[0]?.image_url) || null, content: contentBlocks };
         });
-        setProposal(p => ({ ...p, itinerary: { days: mappedDays }, destination: vt.destination || p?.destination }));
+        setProposal(p => ({ ...p, days: mappedDays, destination: vt.destination || p?.destination }));
         if (addItemsOptimistic) {
           const newItems = [];
           mappedDays.forEach((md, idx) => {

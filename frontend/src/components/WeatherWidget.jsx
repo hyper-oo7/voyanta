@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getUIText } from '../utils/translator.js';
+import FlyingLoader from './common/FlyingLoader.jsx';
 
 const CITY_COORDS = {
   'jaipur': { lat: 26.9124, lon: 75.7873, name: 'Jaipur' },
@@ -96,7 +97,7 @@ export default function WeatherWidget({ destination = 'Jaipur', lang = 'en' }) {
 
       {loading ? (
         <div className="py-6 flex items-center justify-center text-on-surface-variant text-sm">
-          <span className="material-symbols-outlined animate-spin mr-2">progress_activity</span>
+          <FlyingLoader className="mr-2" />
           Loading weather...
         </div>
       ) : (

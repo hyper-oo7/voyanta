@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api.js';
+import { getAgencyId } from '../lib/supabaseClient.js';
 
 const DEFAULT_ENTITLEMENT = {
   plan: 'Starter',
@@ -44,7 +45,7 @@ export function useEntitlements() {
     setLoading(true);
     const storedPlan = typeof window !== 'undefined' ? (localStorage.getItem('voyanta_active_plan') || localStorage.getItem('voyanta_pending_subscription_plan') || localStorage.getItem('voyanta_user_plan')) : null;
     try {
-      const data = await api.get('/api/billing/entitlements?agency_id=demo-agency-id');
+      const data = await api.get(`/api/billing/entitlements?agency_id=${getAgencyId()}`);
       if (storedPlan && storedPlan.toLowerCase() !== 'starter') {
         data.plan = storedPlan.charAt(0).toUpperCase() + storedPlan.slice(1);
         data.allowed_template_tiers = ['Basic', 'Premium', 'Bespoke', 'Luxury', 'Enterprise'];

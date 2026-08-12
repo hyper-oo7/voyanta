@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
 import { parsePdfFile, parseFile } from '../services/parserService';
+import { getAgencyId } from '../lib/supabaseClient.js';
 import { logger } from '../utils/logger';
 
-export default function ImportModal({ resource, onClose, onImported, agencyId = 'demo-agency' }) {
+export default function ImportModal({ resource, onClose, onImported, agencyId = getAgencyId() }) {
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState('idle'); // idle | uploading | extracting | success | error
   const [progress, setProgress] = useState(null);

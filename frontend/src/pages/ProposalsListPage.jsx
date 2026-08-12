@@ -184,6 +184,7 @@ export default function ProposalsListPage() {
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabaseClient.js';
 import { settingsService } from '../services/resourceService.js'; 
+import FlyingLoader from '../components/common/FlyingLoader.jsx';
 
 function Portal({ node, children }) { return createPortal(children, node); }
 
@@ -276,7 +277,7 @@ function ProposalsListPanel({ proposals, loading, error, highlightId, onView, on
 
       {loading && (
         <div className="px-xl py-xl text-center text-on-surface-variant font-body-md flex items-center justify-center gap-sm" data-testid="proposals-loading">
-          <span className="material-symbols-outlined animate-spin text-[24px]">progress_activity</span>
+          <FlyingLoader size="text-[24px]" />
           Loading proposals…
         </div>
       )}

@@ -373,6 +373,9 @@ async def confirm_file_import(
             )
             user_id = user.get("sub") or user.get("id")
 
+        from src.services.supabase_client import get_user_supabase_client
+        sb = get_user_supabase_client(token, agency_id)
+
         filename = payload.pop("_pdf_filename", payload.get("pdf_filename", "confirmed_package.pdf"))
         file_hash = payload.pop("_pdf_hash", payload.get("pdf_hash", hashlib.md5(str(payload).encode()).hexdigest()))
         file_url = payload.pop("_pdf_url", payload.get("pdf_url", ""))
@@ -398,7 +401,8 @@ async def confirm_file_import(
                     user_id=user_id,
                     pdf_url=file_url,
                     raw_text=raw_text,
-                    extraction_version="v3.0.0-reviewed"
+                    extraction_version="v3.0.0-reviewed",
+                    sb=sb,
                 )
                 if extra_sections and dest_for_knowledge:
                     accumulate_destination_knowledge(

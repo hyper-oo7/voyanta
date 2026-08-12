@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import FlyingLoader from '../components/common/FlyingLoader.jsx';
 import { fetchSharedProposalByToken } from '../services/proposalItemService.js';
 import { api } from '../services/api.js';
 import { formatPrice } from '../lib/currency.js';
@@ -131,10 +132,7 @@ export default function WebViewPage() {
 
       const updatedProposal = {
         ...data.proposal,
-        itinerary: {
-          ...data.proposal.itinerary,
-          days: nextDays
-        }
+        days: nextDays
       };
 
       const localKey = `voyanta_proposal_${p.id}`;
@@ -188,7 +186,7 @@ export default function WebViewPage() {
                 mergedProposal = {
                   ...mergedProposal,
                   ...parsed,
-                  itinerary: parsed.itinerary || mergedProposal.itinerary,
+                  days: parsed.days || mergedProposal.days,
                   preferences: {
                     ...(mergedProposal.preferences || {}),
                     ...(parsed.preferences || {})
@@ -270,11 +268,11 @@ export default function WebViewPage() {
   const items = data?.items || [];
   const visibilityMode = (p.visibility_mode || data?.visibility_mode || 'ITEMIZED').toUpperCase();
   const branding = p.preferences?.branding || {};
-  const daysList = (p.itinerary && Array.isArray(p.itinerary.days) && p.itinerary.days.length > 0)
-    ? p.itinerary.days
+  const daysList = (p.days && Array.isArray(p.days) && p.days.length > 0)
+    ? p.days
     : (p.trip_details && Array.isArray(p.trip_details.days) && p.trip_details.days.length > 0
       ? p.trip_details.days
-      : (Array.isArray(p.days) ? p.days : []));
+      : []);
 
   const include = p.preferences?.include_sections || ALL_SECTIONS;
   const sectionOrder = p.preferences?.section_order || SECTIONS;
@@ -564,9 +562,7 @@ export default function WebViewPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-surface font-body-md text-on-surface-variant">
-        <span className="material-symbols-outlined animate-spin text-4xl mb-4 text-primary">
-          progress_activity
-        </span>
+        <FlyingLoader size="text-4xl" className="mb-4" />
         Loading travel proposal...
       </div>
     );

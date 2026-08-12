@@ -8,6 +8,7 @@ import * as XLSX from 'xlsx';
 import { api } from './api.js';
 import { logger } from '../utils/logger.js';
 import Papa from 'papaparse';
+import { getAgencyId } from '../lib/supabaseClient.js';
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 150; // 5 minutes max
@@ -19,7 +20,7 @@ const MAX_POLL_ATTEMPTS = 150; // 5 minutes max
 /**
  * Upload a PDF and receive a jobId for async processing.
  */
-export async function uploadPdfForExtraction(file, agencyId = 'demo-agency') {
+export async function uploadPdfForExtraction(file, agencyId = getAgencyId()) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('agency_id', agencyId);
@@ -73,7 +74,7 @@ export async function pollExtractionStatus(jobId, onProgress) {
  * Last-resort endpoint: ask backend to return raw text only (no LLM parsing).
  * Used when structured extraction fails so the user can copy-paste manually.
  */
-export async function extractRawPdfText(file, agencyId = 'demo-agency') {
+export async function extractRawPdfText(file, agencyId = getAgencyId()) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('agency_id', agencyId);
@@ -97,7 +98,7 @@ export async function extractRawPdfText(file, agencyId = 'demo-agency') {
  * 4. On failure: attempts raw-text extraction for manual fallback
  */
 export async function parsePdfFile(file, options = {}) {
-  const { agencyId = 'demo-agency', onProgress } = options;
+  const { agencyId = getAgencyId(), onProgress } = options;
 
   let jobId;
   try {

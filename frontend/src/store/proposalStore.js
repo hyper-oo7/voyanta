@@ -6,6 +6,8 @@ import { sanitizeBrandingObject } from '../services/resourceService.js';
 import { executeRAGQuery } from '../services/api.js';
 import { matchVaultResources } from '../services/resourceMatchingService.js';
 import { assembleProposal } from '../services/assemblyService.js';
+import { useAuthStore } from './authStore.js';
+import { FinalProposalSchema } from '../schemas/proposalSchema.js';
 
 const saveLocalBackup = (state) => {
   try {
@@ -74,7 +76,7 @@ function buildProposalFromVault(intakeData, vault) {
             {
               id: hotel.id,
               name: hotel.name,
-              category: hotel.category || '4 Star',
+              category: hotel.category || (intakeData.hotel_category ? intakeData.hotel_category.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : '4 Star'),
               meal_plan: hotel.meal_type || 'CP (Breakfast)',
               price_per_night: hotel.price_per_night || 0,
               location: hotel.location,
@@ -98,7 +100,7 @@ function buildProposalFromVault(intakeData, vault) {
         origin: f.origin,
         destination: f.destination,
         cost: f.cost || 0,
-        class: f.class || 'Economy',
+        class: f.class || (intakeData.flight_class ? intakeData.flight_class.charAt(0).toUpperCase() + intakeData.flight_class.slice(1) : 'Economy'),
       })),
       day_total: dayPrice,
     });
@@ -173,6 +175,8 @@ export const useProposalStore = create((set, get) => ({
   showQuickIntake: false,
   activeTemplateSlug: 'classic',
   status: 'idle',
+  ragStatus: 'ok', // 'ok' | 'degraded' | 'empty'
+  vaultStatus: 'ok', // 'ok' | 'empty'
 
   // Canvas Actions
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -190,10 +194,13 @@ export const useProposalStore = create((set, get) => ({
     set({ status: 'loading' });
 
     try {
+      // Get the real agency_id from Auth store instead of hardcoded demo-agency
+      const agencyId = useAuthStore.getState().user?.agency_id || 'demo-agency';
+
       // 1. Parallel retrieval: RAG context + Vault resources
       const [ragRes, vaultMatches] = await Promise.all([
         executeRAGQuery({
-          agency_id: intakeData.agency_id || 'demo-agency',
+          agency_id: intakeData.agency_id || agencyId,
           destination: intakeData.destination,
           duration_days: intakeData.duration_days,
           travelers: intakeData.num_travelers,
@@ -202,7 +209,7 @@ export const useProposalStore = create((set, get) => ({
           special_requests: intakeData.special_notes || '',
         }).catch((err) => {
           console.warn('[1-Shot] RAG query failed, continuing without doc context:', err);
-          return { data: { chunks: [], query: '' } };
+          return { data: { chunks: [], query: '' }, isError: true };
         }),
 
         matchVaultResources({
@@ -213,26 +220,27 @@ export const useProposalStore = create((set, get) => ({
           travelStyle: intakeData.pace,
         }).catch((err) => {
           console.warn('[1-Shot] Vault matching failed:', err);
-          return { hotels: [], activities: [], flights: [], templates: [] };
+          return { hotels: [], activities: [], flights: [], templates: [], isError: true };
         }),
       ]);
 
       const ragChunks = ragRes?.data?.chunks || [];
       const ragQuery = ragRes?.data?.query || '';
+      
+      const newRagStatus = ragRes?.isError ? 'degraded' : (ragChunks.length === 0 ? 'empty' : 'ok');
+      const newVaultStatus = vaultMatches?.isError || (vaultMatches?.hotels?.length === 0 && vaultMatches?.activities?.length === 0) ? 'empty' : 'ok';
+      
+      set({ ragStatus: newRagStatus, vaultStatus: newVaultStatus });
 
       // 2. Call assembly API with full grounding context via assembleProposal service
       const p = await assembleProposal(
         intakeData,
         { chunks: ragChunks, assembled_query: ragQuery },
         vaultMatches,
-        get().costingPrefs
+        intakeData.costing_prefs || get().costingPrefs
       );
 
       if (p) {
-        // Normalize schema mismatch: Backend sends days in p.days, Frontend expects them in p.itinerary.days
-        if (p.days && p.days.length > 0 && (!p.itinerary || !p.itinerary.days)) {
-          p.itinerary = { ...(p.itinerary || {}), days: p.days };
-        }
 
         const nextClient = {
           ...get().client,
@@ -323,7 +331,14 @@ export const useProposalStore = create((set, get) => ({
   }),
 
   setProposal: (partialProposal) => set((state) => {
-    const nextProposal = typeof partialProposal === 'function' ? partialProposal(state.proposal) : { ...state.proposal, ...partialProposal };
+    let nextProposal = typeof partialProposal === 'function' ? partialProposal(state.proposal) : { ...state.proposal, ...partialProposal };
+    if (nextProposal) {
+      try {
+        nextProposal = FinalProposalSchema.parse(nextProposal);
+      } catch (err) {
+        console.warn('[proposalStore] Proposal schema validation failed:', err.errors);
+      }
+    }
     saveLocalBackup({ ...state, proposal: nextProposal });
     return { proposal: nextProposal };
   }),

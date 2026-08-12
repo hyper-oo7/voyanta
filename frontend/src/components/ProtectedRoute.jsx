@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore.js';
+import FlyingLoader from './common/FlyingLoader.jsx';
 
 // Wraps protected routes. While auth restores from storage we render nothing
 // to avoid a flash of redirect. If no user, redirect to /login preserving the
@@ -11,7 +12,7 @@ export default function ProtectedRoute({ children }) {
   if (loading || isInitialized === false) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-surface" data-testid="auth-loading">
-        <span className="material-symbols-outlined animate-spin text-primary text-3xl">progress_activity</span>
+        <FlyingLoader  />
       </div>
     );
   }

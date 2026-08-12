@@ -57,7 +57,7 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
     ? Number(data.totals.subtotal) 
     : (Number(p.total_price) || Number(p.total_amount) || (Number(p.price_per_person || p.pricePerPerson) ? (Number(p.price_per_person || p.pricePerPerson) * (Number(p.num_travelers || brief.num_adults || 2))) : 0) || 50000);
   const currency = data.totals?.currency || 'INR';
-  const days = (p.itinerary && Array.isArray(p.itinerary.days)) ? p.itinerary.days : [];
+  const days = (p.days && Array.isArray(p.days)) ? p.days : [];
   const brief = p.brief || {};
   const visibilityMode = (p.visibility_mode || data.visibility_mode || 'ITEMIZED').toUpperCase();
   const adults = Number(brief.num_adults ?? p.travelers ?? 1) || 0;

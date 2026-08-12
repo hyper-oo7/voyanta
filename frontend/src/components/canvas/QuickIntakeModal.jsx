@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useProposalStore } from '../../store/proposalStore.js';
 import { INDIA_SUB_DESTINATIONS, getLocalSubDestinations } from '../../lib/destinationHierarchy.js';
+import FlyingLoader from '../common/FlyingLoader.jsx';
 
 export default function QuickIntakeModal({ isOpen, onClose }) {
-  const { proposal, client, costingPrefs, assemble1Shot, status } = useProposalStore();
+  const { proposal, client, costingPrefs, assemble1Shot, status, ragStatus, vaultStatus } = useProposalStore();
 
   const [clientName, setClientName] = useState('');
   const [contactInfo, setContactInfo] = useState('');
@@ -21,6 +22,27 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
   const [endDate, setEndDate] = useState('');
   const [startCity, setStartCity] = useState('Guwahati');
 
+  // Advanced & Corporate Fields
+  const [childAges, setChildAges] = useState([]);
+  const [hotelCategory, setHotelCategory] = useState('4_star');
+  const [flightClass, setFlightClass] = useState('economy');
+  const [transportType, setTransportType] = useState('private_car');
+  const [dietary, setDietary] = useState('');
+  const [budgetFlexibility, setBudgetFlexibility] = useState('strict');
+  
+  const [companyName, setCompanyName] = useState('');
+  const [gstin, setGstin] = useState('');
+  const [roomPreference, setRoomPreference] = useState('double');
+  const [requiresGstInvoice, setRequiresGstInvoice] = useState(false);
+  const [singleRoomSupplement, setSingleRoomSupplement] = useState(false);
+  const [earlyCheckinRequired, setEarlyCheckinRequired] = useState(false);
+  const [lateCheckoutRequired, setLateCheckoutRequired] = useState(false);
+  const [meetingRoomRequired, setMeetingRoomRequired] = useState(false);
+  const [corporateCancellationTerms, setCorporateCancellationTerms] = useState(false);
+  
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showWarnings, setShowWarnings] = useState(false);
+
   // Existing Fields
   const [durationDays, setDurationDays] = useState(3);
   const [hasElderly, setHasElderly] = useState(false);
@@ -30,6 +52,7 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
   const [preferencesText, setPreferencesText] = useState('');
   const [marginType, setMarginType] = useState('percentage');
   const [marginValue, setMarginValue] = useState(15);
+  const [taxValue, setTaxValue] = useState(5);
   const [feasibilityWarning, setFeasibilityWarning] = useState('');
 
   // Sync state from current active proposal and client whenever modal opens or proposal updates
@@ -68,6 +91,7 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
       else setBudgetBand('mid');
 
       setMarginValue(costingPrefs?.pct_markup || 15);
+      setTaxValue(costingPrefs?.tax || 5);
       setPreferencesText(proposal?.extra_sections?.what_to_pack || '');
     }
   }, [isOpen, proposal, client, costingPrefs]);
@@ -197,9 +221,39 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
       end_date: endDate,
       start_city: startCity,
       preferences_text: preferencesText,
-      margin_type: marginType,
-      margin_value: Number(marginValue) || 15
+      costing_prefs: {
+        ...(costingPrefs || {}),
+        margin_type: marginType,
+        pct_markup: Number(marginValue),
+        margin_value: Number(marginValue),
+        tax: Number(taxValue),
+        visibility_mode: 'ITEMIZED'
+      },
+      // Advanced & Corporate
+      child_ages: childAges,
+      hotel_category: hotelCategory,
+      flight_class: flightClass,
+      transport_type: transportType,
+      dietary: dietary,
+      budget_flexibility: budgetFlexibility,
+      company_name: companyName,
+      gstin: gstin,
+      room_preference: roomPreference,
+      requires_gst_invoice: requiresGstInvoice,
+      single_room_supplement: singleRoomSupplement,
+      early_checkin_required: earlyCheckinRequired,
+      late_checkout_required: lateCheckoutRequired,
+      meeting_room_required: meetingRoomRequired,
+      corporate_cancellation_terms: corporateCancellationTerms,
     });
+
+    const currentRagStatus = useProposalStore.getState().ragStatus;
+    const currentVaultStatus = useProposalStore.getState().vaultStatus;
+
+    if (currentRagStatus !== 'ok' || currentVaultStatus !== 'ok') {
+      setShowWarnings(true);
+      return;
+    }
 
     if (onClose) onClose();
   };
@@ -439,6 +493,98 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
                 </div>
               </div>
 
+              {/* Corporate Panel */}
+              {groupType === 'corporate' && (
+                <div className="flex flex-col gap-4 p-4 rounded-xl border border-primary/30 bg-primary/5 col-span-full">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="material-symbols-outlined text-primary text-lg">work</span>
+                    <h4 className="m-0 text-sm font-semibold text-on-surface">Corporate Details</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs text-on-surface-variant">Company Name</label>
+                      <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)}
+                        className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface" placeholder="e.g. Acme Corp" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs text-on-surface-variant">GSTIN</label>
+                      <input type="text" value={gstin} onChange={e => setGstin(e.target.value)}
+                        className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface" placeholder="22AAAAA0000A1Z5" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5 mt-2">
+                    <label className="text-xs text-on-surface-variant">Room Arrangement</label>
+                    <div className="flex gap-2">
+                      {['single', 'double', 'twin'].map(r => (
+                        <button key={r} type="button" onClick={() => setRoomPreference(r)}
+                          className={`px-3 py-1.5 text-xs rounded-lg transition-colors border ${roomPreference === r ? 'bg-primary text-on-primary border-primary' : 'bg-transparent text-on-surface-variant border-outline-variant'}`}>
+                          {r.charAt(0).toUpperCase() + r.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {[
+                      { key: 'requiresGstInvoice', label: 'GST Invoice', val: requiresGstInvoice, set: setRequiresGstInvoice },
+                      { key: 'singleRoomSupplement', label: 'Single Supplement', val: singleRoomSupplement, set: setSingleRoomSupplement },
+                      { key: 'meetingRoomRequired', label: 'Meeting Room', val: meetingRoomRequired, set: setMeetingRoomRequired },
+                      { key: 'earlyCheckinRequired', label: 'Early Check-in', val: earlyCheckinRequired, set: setEarlyCheckinRequired },
+                      { key: 'lateCheckoutRequired', label: 'Late Checkout', val: lateCheckoutRequired, set: setLateCheckoutRequired },
+                      { key: 'corporateCancellationTerms', label: 'Strict Cancellation', val: corporateCancellationTerms, set: setCorporateCancellationTerms },
+                    ].map(({ key, label, val, set }) => (
+                      <label key={key} className="flex items-center gap-2 cursor-pointer text-xs text-on-surface-variant hover:text-on-surface">
+                        <input type="checkbox" checked={val} onChange={e => set(e.target.checked)} className="rounded border-outline-variant text-primary focus:ring-primary" />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Group Composition Row */}
+              <div className="col-span-full grid grid-cols-1 md:grid-cols-2 gap-4 bg-surface p-4 rounded-xl border border-outline-variant">
+                <div>
+                  <span className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-3">Group Vibe</span>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { v: 'friends', l: 'Friends', i: 'group' },
+                      { v: 'couple', l: 'Couple', i: 'favorite' },
+                      { v: 'family', l: 'Family', i: 'family_restroom' },
+                      { v: 'corporate', l: 'Corporate', i: 'work' },
+                      { v: 'solo', l: 'Solo', i: 'person' },
+                    ].map(g => (
+                      <button
+                        key={g.v} type="button"
+                        onClick={() => setGroupType(g.v)}
+                        className={`px-3 py-1.5 rounded-lg border text-sm font-semibold flex items-center gap-1.5 transition-colors ${groupType === g.v ? 'bg-primary/10 border-primary text-primary' : 'bg-surface-container border-outline-variant text-on-surface-variant'}`}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">{g.i}</span>
+                        {g.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <span className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-3">Pace</span>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { v: 'fast', l: 'Fast', i: 'bolt' },
+                      { v: 'medium', l: 'Balanced', i: 'balance' },
+                      { v: 'slow', l: 'Relaxed', i: 'self_improvement' },
+                    ].map(p => (
+                      <button
+                        key={p.v} type="button"
+                        onClick={() => setPace(p.v)}
+                        className={`px-3 py-1.5 rounded-lg border text-sm font-semibold flex items-center gap-1.5 transition-colors ${pace === p.v ? 'bg-primary/10 border-primary text-primary' : 'bg-surface-container border-outline-variant text-on-surface-variant'}`}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">{p.i}</span>
+                        {p.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1.5">
                   Theme (Drives Block Ranking)
@@ -535,7 +681,7 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
               >
                 {status === 'loading' ? (
                   <>
-                    <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                    <FlyingLoader size="text-[18px]" />
                     Assembling 1-Shot...
                   </>
                 ) : (
@@ -546,6 +692,128 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
                 )}
               </button>
             </div>
+            {/* Advanced Preferences */}
+            <div className="col-span-full mt-2">
+              <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center gap-2 text-sm text-primary font-semibold bg-transparent border-none p-0 cursor-pointer w-fit">
+                <span className="material-symbols-outlined text-[18px] transition-transform" style={{ transform: showAdvanced ? 'rotate(90deg)' : 'rotate(0)' }}>chevron_right</span>
+                {showAdvanced ? 'Hide Advanced Preferences' : 'Show Advanced Preferences'}
+              </button>
+
+              {showAdvanced && (
+                <div className="flex flex-col gap-5 p-5 mt-3 rounded-xl border border-outline-variant bg-surface-container/50">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs text-on-surface-variant">Start Date</label>
+                      <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                        className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs text-on-surface-variant">End Date</label>
+                      <input type="date" value={endDate} min={startDate || undefined} onChange={e => {
+                        setEndDate(e.target.value);
+                        if (startDate && e.target.value) {
+                          const d1 = new Date(startDate);
+                          const d2 = new Date(e.target.value);
+                          if (!isNaN(d1) && !isNaN(d2)) {
+                            const diff = Math.max(1, Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)));
+                            setDurationDays(diff);
+                          }
+                        }
+                      }} className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface" />
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs text-on-surface-variant">Hotel Category</label>
+                    <div className="flex flex-wrap gap-2">
+                      {['1_star', '2_star', '3_star', '4_star', '5_star', 'boutique'].map(c => (
+                        <button key={c} type="button" onClick={() => setHotelCategory(c)}
+                          className={`px-3 py-1.5 text-xs rounded-lg transition-colors border ${hotelCategory === c ? 'bg-primary text-on-primary border-primary' : 'bg-transparent text-on-surface-variant border-outline-variant'}`}>
+                          {c.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs text-on-surface-variant">Flight Class</label>
+                    <div className="flex gap-2">
+                      {['economy', 'business', 'first'].map(c => (
+                        <button key={c} type="button" onClick={() => setFlightClass(c)}
+                          className={`px-3 py-1.5 text-xs rounded-lg transition-colors border ${flightClass === c ? 'bg-primary text-on-primary border-primary' : 'bg-transparent text-on-surface-variant border-outline-variant'}`}>
+                          {c.charAt(0).toUpperCase() + c.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs text-on-surface-variant">Transport Type</label>
+                    <div className="flex gap-2">
+                      {['private_car', 'shared_transfer', 'self_drive'].map(c => (
+                        <button key={c} type="button" onClick={() => setTransportType(c)}
+                          className={`px-3 py-1.5 text-xs rounded-lg transition-colors border ${transportType === c ? 'bg-primary text-on-primary border-primary' : 'bg-transparent text-on-surface-variant border-outline-variant'}`}>
+                          {c.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs text-on-surface-variant">Margin (%)</label>
+                      <input type="number" min="0" max="100" value={marginValue} onChange={e => setMarginValue(e.target.value)}
+                        className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs text-on-surface-variant">Tax (%)</label>
+                      <input type="number" min="0" max="100" value={taxValue} onChange={e => setTaxValue(e.target.value)}
+                        className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs text-on-surface-variant">Dietary Needs</label>
+                      <select value={dietary} onChange={e => setDietary(e.target.value)} className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface">
+                        <option value="">No Restrictions</option>
+                        <option value="vegetarian">Vegetarian</option>
+                        <option value="vegan">Vegan</option>
+                        <option value="jain">Jain</option>
+                        <option value="non_veg">Non-Veg</option>
+                        <option value="local">Local Authentic</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs text-on-surface-variant">Budget Flexibility</label>
+                      <select value={budgetFlexibility} onChange={e => setBudgetFlexibility(e.target.value)} className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface">
+                        <option value="strict">Strict - Do not exceed</option>
+                        <option value="flexible">Flexible for experiences</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {numChildren > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs text-on-surface-variant">Child Ages</label>
+                      <div className="flex flex-wrap gap-2">
+                        {Array.from({ length: numChildren }).map((_, i) => (
+                          <input key={i} type="number" min="0" max="17" placeholder="Age"
+                            value={childAges[i] || ''}
+                            onChange={e => {
+                              const newAges = [...childAges];
+                              newAges[i] = parseInt(e.target.value, 10);
+                              setChildAges(newAges);
+                            }}
+                            className="w-16 px-2 py-1.5 text-xs border border-outline-variant rounded-lg text-center bg-surface text-on-surface" />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
           </form>
         </motion.div>
       </div>

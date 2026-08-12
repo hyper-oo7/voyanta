@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Sparkles,
   Loader2,
@@ -13,6 +14,8 @@ import { useProposalStore } from '../store/proposalStore.js';
 import { assembleProposal } from '../services/assemblyService.js';
 import { executeRAGQuery } from '../services/api.js';
 import { matchVaultResources } from '../services/resourceMatchingService.js';
+import { createProposal } from '../services/proposalService.js';
+import { getAgencyId } from '../lib/supabaseClient.js';
 
 const PIPELINE_STEPS = [
   { key: 'brief', label: 'Analyzing client brief', icon: '👤' },
@@ -25,6 +28,7 @@ const PIPELINE_STEPS = [
 
 export default function OneClickGenerateButton() {
   const { client, costingPrefs, setProposal, setClient } = useProposalStore();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(-1);
   const [error, setError] = useState(null);
@@ -37,6 +41,13 @@ export default function OneClickGenerateButton() {
     setIsOpen(true);
     setStepIndex(0);
     setError(null);
+    
+    const aid = getAgencyId();
+    if (!aid) {
+      toast.error('Agency ID is missing. Please log in again.');
+      setIsOpen(false);
+      return;
+    }
 
     try {
       // ── Step 1: Brief (instant) ──
@@ -82,7 +93,7 @@ export default function OneClickGenerateButton() {
           departure_city: client.departure_city,
           arrival_airport: client.arrival_airport,
           departure_airport: client.departure_airport,
-          agency_id: 'demo-agency',
+          agency_id: aid,
         },
         ragRes?.data || { chunks: [], query: '' },
         vaultMatches,
@@ -93,21 +104,76 @@ export default function OneClickGenerateButton() {
 
       // Hydrate store
       setProposal(proposal);
-      setClient({
+      const nextClient = {
         customer_name: client.customer_name || proposal.name,
         destination: proposal.destination,
+        duration_days: proposal.duration_days || client.duration_days,
+        num_adults: client.num_adults || 2,
+        num_children: client.num_children || 0,
         start_date: client.start_date,
         end_date: client.end_date,
-      });
+        pace: client.pace,
+        special_notes: client.special_notes,
+        tour_type: client.tour_type,
+      };
+      setClient(nextClient);
 
-      // Let user admire the "Done" state for a moment
-      await new Promise((r) => setTimeout(r, 1200));
+      // ── Persist: save to localStorage for canvas hydration ──
+      try {
+        localStorage.setItem('voyanta_ai_generated_proposal', JSON.stringify({
+          proposal,
+          form: {
+            client_name: nextClient.customer_name,
+            destination: nextClient.destination,
+            duration_days: nextClient.duration_days,
+            budget_per_head: client.budget,
+            group_type: nextClient.tour_type,
+            pace: nextClient.pace,
+            num_travelers: (nextClient.num_adults || 0) + (nextClient.num_children || 0),
+            preferences_text: nextClient.special_notes,
+          },
+          generated_at: new Date().toISOString(),
+        }));
+      } catch {}
+
+      // ── Persist: save draft to database ──
+      let createdProposalId = '';
+      try {
+        const numTravelers = (client.num_adults || 0) + (client.num_children || 0);
+        const saved = await createProposal({
+          name: `${client.customer_name || 'AI Draft'} - ${proposal.destination || client.destination} Trip`,
+          client_name: client.customer_name || 'Valued Traveler',
+          destination: proposal.destination || client.destination,
+          travelers: numTravelers || 2,
+          status: 'Draft',
+          trip_details: proposal,
+          currency: proposal.currency || 'INR',
+          budget_min: (client.budget || 0) * numTravelers,
+          budget_max: (client.budget || 0) * numTravelers,
+          start_date: client.start_date || null,
+          end_date: client.end_date || null,
+          arrival_city: client.arrival_city || null,
+          departure_city: client.departure_city || null,
+        });
+        if (saved?.id) createdProposalId = saved.id;
+      } catch (dbErr) {
+        console.warn('[OneClickGenerate] DB save failed, continuing with localStorage fallback.', dbErr);
+      }
+
+      // ── Navigate to wizard ──
+      setStepIndex(5);
+      await new Promise((r) => setTimeout(r, 900));
       setIsOpen(false);
+
+      const navUrl = createdProposalId
+        ? `/proposals/wizard?step=4&ai_generated=1&id=${createdProposalId}`
+        : `/proposals/wizard?step=4&ai_generated=1&destination=${encodeURIComponent(proposal.destination || client.destination)}`;
+      navigate(navUrl);
     } catch (err) {
       setError(err.message || 'Generation failed');
       setStepIndex(5);
     }
-  }, [canGenerate, client, costingPrefs, setProposal, setClient]);
+  }, [canGenerate, client, costingPrefs, setProposal, setClient, navigate]);
 
   return (
     <>
