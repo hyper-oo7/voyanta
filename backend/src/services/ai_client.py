@@ -55,6 +55,137 @@ def _is_model_specific_error(exc: Exception, err_str: str) -> bool:
     return any(code in status_prefix for code in _MODEL_SPECIFIC_STATUSES)
 
 
+# Gemini's `responseSchema` accepts an OpenAPI 3.0 subset, not full JSON Schema:
+# `$defs`/`$ref`, `allOf`, `title`, `default` and `additionalProperties` are all
+# rejected with a 400. Pydantic's `model_json_schema()` emits every one of them,
+# so nested models have to be inlined before the payload goes out.
+_GEMINI_FORMATS = {
+    "STRING": ("date-time", "enum"),
+    "INTEGER": ("int32", "int64"),
+    "NUMBER": ("float", "double"),
+}
+
+
+def _convert_schema_node(node: Any, defs: Dict[str, Any], seen: frozenset) -> Optional[dict]:
+    """Translate one JSON-Schema node into Gemini's Schema shape, inlining `$ref`s."""
+    if not isinstance(node, dict):
+        return None
+
+    if "$ref" in node:
+        name = str(node["$ref"]).rsplit("/", 1)[-1]
+        if name not in defs or name in seen:
+            # Unknown or self-referencing model: Gemini cannot express recursion.
+            return {"type": "STRING", "description": f"Unresolved reference: {name}"}
+        return _convert_schema_node(defs[name], defs, seen | {name})
+
+    if isinstance(node.get("allOf"), list):
+        merged: Dict[str, Any] = {}
+        for sub in node["allOf"]:
+            converted = _convert_schema_node(sub, defs, seen) or {}
+            props = converted.pop("properties", None)
+            required = converted.pop("required", None)
+            converted.pop("propertyOrdering", None)
+            if props:
+                merged.setdefault("properties", {}).update(props)
+            if required:
+                merged["required"] = list(dict.fromkeys(merged.get("required", []) + list(required)))
+            for key, value in converted.items():
+                merged.setdefault(key, value)
+        if merged.get("properties"):
+            merged["propertyOrdering"] = list(merged["properties"])
+        if node.get("description"):
+            merged["description"] = node["description"]
+        return merged or None
+
+    union_key = "anyOf" if "anyOf" in node else ("oneOf" if "oneOf" in node else None)
+    if union_key:
+        nullable = False
+        variants = []
+        for sub in node.get(union_key) or []:
+            if isinstance(sub, dict) and sub.get("type") == "null":
+                nullable = True
+                continue
+            converted = _convert_schema_node(sub, defs, seen)
+            if converted:
+                variants.append(converted)
+        if not variants:
+            result: Dict[str, Any] = {"type": "STRING"}
+        elif len(variants) == 1:
+            # `Optional[X]` collapses to X plus `nullable`, which Gemini understands.
+            result = variants[0]
+        else:
+            result = {"anyOf": variants}
+        if nullable:
+            result["nullable"] = True
+        if node.get("description"):
+            result["description"] = node["description"]
+        return result
+
+    out: Dict[str, Any] = {}
+    node_type = node.get("type")
+    if isinstance(node_type, list):
+        concrete = [t for t in node_type if t != "null"]
+        if len(concrete) != len(node_type):
+            out["nullable"] = True
+        node_type = concrete[0] if concrete else None
+    if isinstance(node_type, str):
+        out["type"] = node_type.upper()
+
+    if node.get("description"):
+        out["description"] = node["description"]
+    if node.get("enum"):
+        out["type"] = "STRING"
+        out["enum"] = [str(v) for v in node["enum"]]
+    if node.get("format") in _GEMINI_FORMATS.get(out.get("type", ""), ()):
+        out["format"] = node["format"]
+
+    if out.get("type") == "ARRAY" or "items" in node:
+        out["type"] = "ARRAY"
+        out["items"] = _convert_schema_node(node.get("items"), defs, seen) or {"type": "STRING"}
+        for bound in ("minItems", "maxItems"):
+            if isinstance(node.get(bound), int):
+                out[bound] = node[bound]
+
+    if out.get("type") == "OBJECT" or "properties" in node:
+        out["type"] = "OBJECT"
+        properties = {}
+        for name, sub in (node.get("properties") or {}).items():
+            converted = _convert_schema_node(sub, defs, seen)
+            if converted:
+                properties[name] = converted
+        if properties:
+            out["properties"] = properties
+            out["propertyOrdering"] = list(properties)
+            # Gemini only reliably emits properties named in `required`, and every
+            # Pydantic field carrying a default lands outside JSON Schema's
+            # `required` — which is how whole itineraries came back with `days`
+            # missing. Ask for all of them; optionality still rides on `nullable`,
+            # and Pydantic re-applies the real defaults when it validates.
+            out["required"] = list(properties)
+
+    if not out.get("type"):
+        out["type"] = "OBJECT" if out.get("properties") else "STRING"
+    return out
+
+
+def to_gemini_response_schema(schema: Optional[dict]) -> Optional[dict]:
+    """
+    Flatten a Pydantic/JSON-Schema dict into the subset Gemini's
+    `generationConfig.responseSchema` accepts. Returns None when the result
+    carries no properties, so the caller can fall back to plain JSON mode.
+    """
+    if not isinstance(schema, dict):
+        return None
+    defs: Dict[str, Any] = {}
+    for key in ("$defs", "definitions"):
+        if isinstance(schema.get(key), dict):
+            defs.update(schema[key])
+    converted = _convert_schema_node(schema, defs, frozenset())
+    if not converted or not converted.get("properties"):
+        return None
+    return converted
+
+
 def _extract_openai_text(res: dict) -> str:
     """Safely unwrap an OpenAI chat.completions response."""
     choices = (res or {}).get("choices") or []
@@ -236,8 +367,9 @@ async def call_llm(
                     payload["generationConfig"]["maxOutputTokens"] = min(max_tokens, GEMINI_MAX_OUTPUT_TOKENS)
                 if response_schema:
                     payload["generationConfig"]["responseMimeType"] = "application/json"
-                    if response_schema.get("properties"):
-                        payload["generationConfig"]["responseSchema"] = response_schema
+                    gemini_schema = to_gemini_response_schema(response_schema)
+                    if gemini_schema:
+                        payload["generationConfig"]["responseSchema"] = gemini_schema
 
                 if system_prompt:
                     payload["systemInstruction"] = {

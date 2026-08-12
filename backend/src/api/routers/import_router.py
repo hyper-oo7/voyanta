@@ -28,8 +28,15 @@ from src.services.import_service import PdfExtractor, XlsxExtractor, CsvExtracto
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/import")
 
-JOB_TTL_SECONDS = 60 * 60 
+JOB_TTL_SECONDS = 60 * 60
 MAX_TRACKED_JOBS = 500
+
+# The extraction result is cached in the browser's localStorage by vaultStore, so
+# the raw text echoed back on the payload has to stay well inside that quota.
+RAW_TEXT_PAYLOAD_LIMIT = 100_000
+
+# Matches the cap the previous PdfEngine-based path enforced.
+MAX_PDF_PAGES = 200
 
 EXTRACTION_JOBS: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
 
@@ -46,6 +53,28 @@ def _prune_extraction_jobs() -> None:
 
     while len(EXTRACTION_JOBS) > MAX_TRACKED_JOBS:
         EXTRACTION_JOBS.popitem(last=False)
+
+
+def _assert_pdf_within_page_limit(file_bytes: bytes) -> None:
+    """
+    Reject absurdly long PDFs before extraction.
+
+    `PdfExtractor` runs three extraction strategies plus per-page table
+    detection, so an inflated page count is the expensive input to guard.
+    """
+    try:
+        import fitz
+        with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+            page_count = doc.page_count
+    except Exception as e:
+        logger.warning(f"[ImportProcess] Could not pre-read page count: {e}")
+        return
+
+    if page_count > MAX_PDF_PAGES:
+        raise ValueError(
+            f"PDF has {page_count} pages (max allowed: {MAX_PDF_PAGES}). "
+            "Split the file or remove unnecessary pages."
+        )
 
 
 def _set_job(job_id: str, **fields: Any) -> None:
@@ -124,39 +153,35 @@ def _run_extraction_bg(
         _set_job(job_id, progress={"stage": "Extracting Text & Structured Content", "current": 2, "total": 4})
 
         if ext == "pdf":
-            from src.services.pdf_engine import extract_pdf_safe
-            from src.services.structured_parser import StructuredItineraryParser
-
-            # CPU-bound PDF extraction runs synchronously in this background thread
-            extracted = extract_pdf_safe(file_bytes)
-            raw_text = extracted["full_text"]
-            _set_job(job_id, raw_text=raw_text[:50000])
-
-            parser = StructuredItineraryParser()
-            normalized = asyncio.run(parser.parse(raw_text))
-            
-            # Enrich metadata
-            normalized["agency_id"] = agency_id
-            normalized["file_hash"] = extracted["file_hash"]
-            normalized["file_size_mb"] = extracted["file_size_mb"]
+            _assert_pdf_within_page_limit(file_bytes)
+            extractor = PdfExtractor()
+        elif ext in ("xlsx", "xls"):
+            extractor = XlsxExtractor()
         else:
-            if ext in ("xlsx", "xls"):
-                extractor = XlsxExtractor()
-            else:
-                extractor = CsvExtractor()
-                
-            normalized = asyncio.run(extractor.extract(
-                file_bytes=file_bytes,
-                filename=filename,
-                destination_hint=destination,
-                budget_hint=budget,
-                duration_hint=duration,
-                currency_hint=currency,
-                agency_id=agency_id,
-                user_id=user_id
-            ))
-            raw_text = normalized.pop("_raw_text", "")
-            _set_job(job_id, raw_text=raw_text)
+            extractor = CsvExtractor()
+
+        normalized = asyncio.run(extractor.extract(
+            file_bytes=file_bytes,
+            filename=filename,
+            destination_hint=destination,
+            budget_hint=budget,
+            duration_hint=duration,
+            currency_hint=currency,
+            agency_id=agency_id,
+            user_id=user_id
+        ))
+
+        # `_raw_text` is echoed back by the review modal on /import/confirm and
+        # from there uploaded to R2, so it stays on the payload — but capped, as
+        # the whole result is cached in the browser's localStorage.
+        raw_text = normalized.pop("_raw_text", "") or ""
+        normalized.pop("_storage_meta", None)
+        normalized["_raw_text"] = raw_text[:RAW_TEXT_PAYLOAD_LIMIT]
+        _set_job(job_id, raw_text=raw_text[:50000])
+
+        normalized["agency_id"] = agency_id
+        normalized["file_hash"] = hashlib.sha256(file_bytes).hexdigest()[:16]
+        normalized["file_size_mb"] = round(len(file_bytes) / 1_048_576, 2)
 
         _set_job(job_id, progress={"stage": "Indexing Entities & Vector Knowledge", "current": 3, "total": 4})
 

@@ -1,4 +1,5 @@
 import logging
+import uuid as uuid_lib
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import JSONResponse
@@ -200,6 +201,21 @@ async def get_best_rate(
     """
     Returns the lowest currently-valid rate across suppliers for a knowledge object.
     """
+    # supplier_rates.knowledge_object_id is a uuid column. Callers pass the id of
+    # whatever row they are rendering (BestRateChip uses `item.id`), which is not
+    # always a knowledge-object uuid — a numeric id made PostgREST raise
+    # "invalid input syntax for type uuid" and that escaped as a 500 on the
+    # library pages. "No rate for this object" is already a supported answer, so
+    # degrade to it rather than failing the request.
+    try:
+        uuid_lib.UUID(str(obj_id))
+    except (ValueError, AttributeError, TypeError):
+        logger.warning(
+            "[BestRate] Ignoring non-uuid knowledge object id %r; returning no rate.",
+            obj_id,
+        )
+        return JSONResponse(content={"status": "success", "best_rate": None})
+
     sb = _get_db_client(token)
     if not sb:
         raise HTTPException(status_code=500, detail="Supabase not configured")
@@ -219,7 +235,12 @@ async def get_best_rate(
     else:
         query = query.is_("agency_id", "null")
 
-    res = query.execute()
+    try:
+        res = query.execute()
+    except Exception as e:
+        # A rate lookup is decorative UI; never let a storage error take the page down.
+        logger.warning("[BestRate] Rate lookup failed for %s: %s", obj_id, e)
+        return JSONResponse(content={"status": "success", "best_rate": None})
     rates = res.data or []
 
     # Filter currently valid: valid_from <= today <= valid_to

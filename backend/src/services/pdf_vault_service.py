@@ -681,6 +681,7 @@ def deterministic_pre_parse_and_compress(text: str) -> Tuple[str, Dict[str, Any]
         for m in matches:
             match_text = cleaned[m.start():m.end()].lower()
             if any(kw in match_text for kw in PROTECTED_KEYWORDS):
+                preview = cleaned[m.start():m.start() + 120].replace("\n", " ")
                 logger.warning(
                     f"[Token Compression] SKIPPED strip match: pattern contains protected keyword. "
                     f"Preview: '{preview}...'"

@@ -1,7 +1,15 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabaseClient.js';
 import { fetchProposalsFlat as fetchProposals, createProposal, deleteProposal, deleteAllProposals, duplicateProposal } from '../services/proposalService.js';
+
+const EMPTY_PROPOSALS = Object.freeze([]);
+
+export function normalizeProposalsData(rawData) {
+  if (Array.isArray(rawData)) return rawData;
+  if (rawData && Array.isArray(rawData.data)) return rawData.data;
+  return EMPTY_PROPOSALS;
+}
 
 export function useProposals() {
   const queryClient = useQueryClient();
@@ -71,7 +79,17 @@ export function useProposals() {
   });
 
   const rawData = proposalsQuery.data;
-  const safeProposals = Array.isArray(rawData) ? rawData : (rawData && Array.isArray(rawData.data) ? rawData.data : []);
+
+  // Memoised so the identity only changes when the underlying query data does.
+  //
+  // Previously this ran on every render and produced a brand-new [] whenever
+  // `data` was not an array — which is the whole window between mount and the
+  // first successful fetch, i.e. exactly what happens right after login/signup
+  // when there is no cached list in localStorage. Consumers with
+  // `useEffect(..., [proposals])` then re-ran on every render, and because
+  // those effects call setState, each pass scheduled another render. The result
+  // was hundreds of duplicate API calls per second until the query settled.
+  const safeProposals = useMemo(() => normalizeProposalsData(rawData), [rawData]);
 
   return {
     proposals: safeProposals,

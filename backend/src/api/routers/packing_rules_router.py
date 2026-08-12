@@ -8,7 +8,9 @@ from src.services.supabase_client import get_user_supabase_client
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/packing-rules", tags=["Agency Packing Memory"])
+# Same double-prefix issue as billing_router: mounted under an "/api" router,
+# so this must not repeat the segment. MyVaultPage calls /api/packing-rules/upsert.
+router = APIRouter(prefix="/packing-rules", tags=["Agency Packing Memory"])
 
 class PackingRuleUpsertRequest(BaseModel):
     destination_keyword: str

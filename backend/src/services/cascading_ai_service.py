@@ -353,14 +353,54 @@ async def extract_vault_package_from_text(
                 day_hotels.append(h)
         d["hotels"] = day_hotels
 
-    pure_hotels = _extract_hotels_pure_code(full_text)
     existing_h_names = {str(x.get("name") or "").strip().lower() for x in expanded_hotels if isinstance(x, dict)}
+
+    # Roll per-day hotels up to the top level. Documents that describe stays only
+    # inside the day narrative would otherwise leave the Hotels tab empty even
+    # though the data was extracted.
+    for d in (parsed.get("days") or []):
+        if not isinstance(d, dict):
+            continue
+        for h in (d.get("hotels") or []):
+            if not isinstance(h, dict):
+                continue
+            h_name = str(h.get("name") or "").strip()
+            if not h_name or h_name.lower() in existing_h_names:
+                continue
+            rolled = dict(h)
+            rolled.setdefault("location", d.get("sub_destination") or parsed.get("destination"))
+            expanded_hotels.append(rolled)
+            existing_h_names.add(h_name.lower())
+
+    pure_hotels = _extract_hotels_pure_code(full_text)
     for ph in pure_hotels:
         ph_name = str(ph.get("name") or "").strip().lower()
         if ph_name and ph_name not in existing_h_names:
             expanded_hotels.append(ph)
             existing_h_names.add(ph_name)
     parsed["hotels"] = expanded_hotels
+
+    # Back-fill nightly rates the model left null but the document states.
+    rate_by_name = {
+        str(h.get("name") or "").strip().lower(): h.get("price_per_night")
+        for h in pure_hotels
+        if h.get("price_per_night") is not None
+    }
+    if rate_by_name:
+        for bucket in [parsed["hotels"]] + [d.get("hotels") or [] for d in (parsed.get("days") or []) if isinstance(d, dict)]:
+            for h in bucket:
+                if isinstance(h, dict) and h.get("price_per_night") is None:
+                    recovered = rate_by_name.get(str(h.get("name") or "").strip().lower())
+                    if recovered is not None:
+                        h["price_per_night"] = recovered
+
+    # Recover the headline price when the model returned null but the document
+    # states it explicitly (this reads stated figures only — it never sums items).
+    pure_pricing = _extract_pricing_pure_code(full_text)
+    for price_key in ("total_price", "price_per_person"):
+        if parsed.get(price_key) in (None, 0) and pure_pricing.get(price_key) is not None:
+            parsed[price_key] = pure_pricing[price_key]
+            logger.info(f"[VaultExtract] Recovered {price_key}={parsed[price_key]} via deterministic pass.")
 
     logger.info(
         f"[VaultExtract] Extraction complete — destination={parsed.get('destination')}, "
@@ -472,12 +512,227 @@ def _extract_days_pure_code(text: str) -> List[Dict[str, Any]]:
     return days
 
 
+# `_HOTEL_TOKEN` is deliberately narrow: a line only counts as a hotel when it
+# names an accommodation type. Matching on price alone would sweep up transfer
+# and activity rows from the same tables.
+_HOTEL_TOKEN = re.compile(
+    r"(?i)\b(hotel|resort|lodge|villa|homestay|guest\s*house|cottage|camp|inn|"
+    r"residency|palace|retreat|suites?|regency|grand)\b"
+)
+_MEAL_PLAN_TOKEN = re.compile(r"(?i)(?<![A-Za-z])(CP|MAP|AP|EP|BB|HB|FB)(?![A-Za-z])")
+_STAR_TOKEN = re.compile(r"(?i)\b([1-7])\s*[-\s]?\s*star\b|\b(deluxe|premium|luxury|standard|budget)\b")
+_MONEY_TOKEN = re.compile(r"(?:₹|Rs\.?|INR|\$|USD|€|EUR|£|GBP|AED)\s*([\d,]+(?:\.\d{1,2})?)", re.IGNORECASE)
+_BARE_MONEY_TOKEN = re.compile(r"\b(\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?)\b")
+
+# Column headers that identify the hotel-summary table many supplier PDFs carry.
+_HOTEL_TABLE_HEADER = re.compile(r"(?i)\b(hotel|accommodation|property|stay)\b")
+
+
+def _to_number(raw: str) -> Optional[float]:
+    """Parse '41,000' / '4500.00' into a float; returns None when unusable."""
+    try:
+        value = float(str(raw).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _clean_hotel_name(fragment: str) -> str:
+    """Trim table pipes, bullets, and trailing separators off a candidate name."""
+    name = re.sub(r"[|•·\t]+", " ", fragment or "")
+    name = re.sub(r"^\s*(?:\d+\s*[.)-]\s*)", "", name)          # leading "1." / "2)"
+    name = re.sub(r"(?i)\b(night|nights|pax|adults?)\b.*$", "", name)
+    name = re.sub(r"[\s\-–—:@,]+$", "", name)
+    name = re.sub(r"^[\s\-–—:@,]+", "", name)
+    return re.sub(r"\s{2,}", " ", name).strip()
+
+
+def _hotel_from_line(line: str, current_location: str) -> Optional[Dict[str, Any]]:
+    """Build a hotel dict from a single text or markdown-table line, or None."""
+    if not _HOTEL_TOKEN.search(line):
+        return None
+
+    cells = [c.strip() for c in line.split("|") if c.strip()] if "|" in line else []
+    meal = _MEAL_PLAN_TOKEN.search(line)
+    money = _MONEY_TOKEN.search(line)
+
+    # Outside a table, only rate-card lines qualify. Prose like "Stay at Hotel
+    # Green Valley on twin sharing basis." is the LLM's job; this pass exists to
+    # recover the structured rate rows it skips, and matching prose here would
+    # turn whole sentences into hotel names.
+    if not cells and not money and not meal:
+        return None
+    price = _to_number(money.group(1)) if money else None
+    if price is None:
+        bare = _BARE_MONEY_TOKEN.search(line)
+        # A bare number is only a rate when the row carries no currency symbol at
+        # all; otherwise the symbol match above already won.
+        price = _to_number(bare.group(1)) if bare else None
+    # Nightly rates below this are almost always a night count or a room number.
+    if price is not None and price < 300:
+        price = None
+
+    if cells:
+        named = next((c for c in cells if _HOTEL_TOKEN.search(c)), cells[0])
+        name = _clean_hotel_name(named)
+    else:
+        # Cut the name at the first price / meal-plan / star-rating marker, so
+        # "Hotel Apple Country - 4 Star - MAP @ Rs 4,500" yields just the name.
+        cut = len(line)
+        for marker in (money, _MEAL_PLAN_TOKEN.search(line), _STAR_TOKEN.search(line)):
+            if marker:
+                cut = min(cut, marker.start())
+        name = _clean_hotel_name(line[:cut])
+
+    if not (3 <= len(name) <= 80) or not _HOTEL_TOKEN.search(name):
+        return None
+
+    star = _STAR_TOKEN.search(line)
+    location = current_location
+    if cells and len(cells) > 1:
+        # In a summary table the destination is usually the column before the hotel.
+        for cell in cells:
+            if cell is not name and not _HOTEL_TOKEN.search(cell) and 2 < len(cell) <= 30 \
+                    and not _MONEY_TOKEN.search(cell) and not re.search(r"\d", cell):
+                location = cell
+                break
+
+    return {
+        "name": name,
+        "category": (star.group(0).strip() if star else None),
+        "price_per_night": price,
+        "location": location or None,
+        "meal_plan": (meal.group(1).upper() if meal else None),
+        "inclusions": [],
+        "image_url": "",
+    }
+
+
 def _extract_hotels_pure_code(text: str) -> List[Dict[str, Any]]:
     """
-    Deterministic pure-code hotel extraction fallback.
-    Currently returns an empty list, can be expanded to regex for 'Hotel X'.
+    Deterministic hotel recovery from raw document text.
+
+    Covers the two shapes suppliers actually use: the markdown-rendered hotel
+    summary table (Destination | Hotel | Nights | Meal Plan) that
+    `extract_text_from_pdf` appends per page, and free-text rate lines such as
+    "Hotel Snow Valley - MAP - Rs 4,500". Runs after the LLM and only
+    contributes names the model did not already return, so a good AI pass is
+    never degraded by it.
     """
-    return []
+    if not text:
+        return []
+
+    results: List[Dict[str, Any]] = []
+    seen: set = set()
+    current_location = ""
+    in_hotel_table = False
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # Track "HOTELS IN SHILLONG" / "Destination: Manali" style location headers.
+        if len(stripped) < 60:
+            loc_match = re.match(
+                r"(?i)^\s*(?:hotels?\s+in|location|destination|region|city)\s*[:\-–]?\s*(.+)$",
+                stripped,
+            )
+            if loc_match:
+                candidate = _clean_hotel_name(loc_match.group(1))
+                if candidate and len(candidate) <= 40:
+                    current_location = candidate
+                continue
+
+        if "|" in stripped:
+            # Markdown separator rows (|---|---|) carry no data.
+            if re.fullmatch(r"[|\s:\-]+", stripped):
+                continue
+            if _HOTEL_TABLE_HEADER.search(stripped) and not _MONEY_TOKEN.search(stripped):
+                in_hotel_table = True
+        elif in_hotel_table:
+            in_hotel_table = False
+
+        hotel = _hotel_from_line(stripped, current_location)
+        if not hotel:
+            continue
+
+        key = hotel["name"].lower()
+        if key in seen:
+            # Prefer the occurrence that carries a rate.
+            if hotel["price_per_night"] is not None:
+                for existing in results:
+                    if existing["name"].lower() == key and existing["price_per_night"] is None:
+                        existing.update(hotel)
+            continue
+
+        seen.add(key)
+        results.append(hotel)
+
+    if results:
+        logger.info(f"[VaultExtract] Pure-code hotel recovery found {len(results)} candidate(s).")
+    return results
+
+
+# Labels suppliers use for the headline figure, most specific first so that
+# "Total Package Cost" is not shadowed by a bare "Cost".
+_TOTAL_PRICE_LABELS = (
+    r"grand\s+total",
+    r"total\s+package\s+(?:cost|price|amount)",
+    r"package\s+(?:cost|price)",
+    r"total\s+(?:cost|price|amount|payable)",
+    r"net\s+(?:total|payable|cost)",
+    r"tour\s+(?:cost|price)",
+)
+_PER_PERSON_LABELS = (
+    r"per\s+person",
+    r"per\s+pax",
+    r"per\s+head",
+    r"pp\b",
+)
+
+
+def _find_labelled_amount(text: str, labels: tuple) -> Optional[float]:
+    """
+    Find the amount attached to any of `labels`, in either word order.
+
+    Matching is confined to a single line — `\\s*` would let "Total Cost:
+    Rs 1,24,000\\nPer Person: 31,000" bind the total to the per-person label.
+    """
+    h = r"[^\S\n]"  # horizontal whitespace only
+    for label in labels:
+        # "Total Package Cost: ₹ 41,000" and "₹41,000 per person" both occur.
+        for pattern in (
+            rf"(?i){label}[^\d₹$€£\n]{{0,40}}(?:₹|Rs\.?|INR|\$|USD|€|EUR|£|GBP|AED)?{h}*([\d,]+(?:\.\d{{1,2}})?)",
+            rf"(?i)(?:₹|Rs\.?|INR|\$|USD|€|EUR|£|GBP|AED)?{h}*([\d,]+(?:\.\d{{1,2}})?){h}*(?:/-)?{h}*{label}",
+        ):
+            for match in re.finditer(pattern, text):
+                raw = match.group(1)
+                value = _to_number(raw)
+                if value is None or value < 500:
+                    continue
+                # An ungrouped four-digit number in calendar range is a season/year
+                # ("Total cost 2024 season"), not a package price.
+                if "," not in raw and re.fullmatch(r"(?:19|20)\d{2}", raw.strip()):
+                    continue
+                return value
+    return None
+
+
+def _extract_pricing_pure_code(text: str) -> Dict[str, Optional[float]]:
+    """
+    Deterministic recovery of the headline package price.
+
+    This reads figures the document states explicitly — it never sums line items
+    or derives a total, so Rule 4/5 of the extraction prompt still holds.
+    """
+    if not text:
+        return {"total_price": None, "price_per_person": None}
+
+    return {
+        "total_price": _find_labelled_amount(text, _TOTAL_PRICE_LABELS),
+        "price_per_person": _find_labelled_amount(text, _PER_PERSON_LABELS),
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

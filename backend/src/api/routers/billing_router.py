@@ -19,7 +19,11 @@ from ...core.entitlements import get_agency_entitlements_data
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/billing", tags=["Billing & Entitlements"])
+# Prefix is "/billing", not "/api/billing": this router is included on an
+# APIRouter that already carries the "/api" prefix, so the duplicated segment
+# served every endpoint at /api/api/billing/* and the frontend's calls to
+# /api/billing/* returned 404.
+router = APIRouter(prefix="/billing", tags=["Billing & Entitlements"])
 
 class CreateSubscriptionRequest(BaseModel):
     plan_slug: str

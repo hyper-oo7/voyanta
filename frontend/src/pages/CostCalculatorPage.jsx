@@ -47,7 +47,8 @@ export default function CostCalculatorPage() {
 
   const [mountNode, setMountNode] = useState(null);
 
-  // Mutate dashboard chrome
+  
+  const exportJsonRef = useRef(null);
   useEffect(() => {
     const canvas = document.querySelector('main .max-w-7xl'); if (!canvas) return;
     document.querySelectorAll('aside a').forEach((a) => {
@@ -60,12 +61,12 @@ export default function CostCalculatorPage() {
     const h2 = canvas.querySelector('h2'); if (h2) h2.textContent = 'Cost Calculator';
     const p  = h2?.parentElement?.querySelector('p'); if (p) p.textContent = 'Live totals — items added from Hotels / Flights / Itinerary appear here.';
     const cta = canvas.querySelector('button.bg-primary');
-    if (cta) { cta.style.display = 'inline-flex'; cta.innerHTML = '<span class="material-symbols-outlined">download</span> Export JSON'; cta.onclick = onExportJson; }
+    if (cta) { cta.style.display = 'inline-flex'; cta.innerHTML = '<span class="material-symbols-outlined">download</span> Export JSON'; cta.onclick = (e) => exportJsonRef.current?.(e); }
     canvas.querySelectorAll(':scope > div.grid, :scope > .bento-grid').forEach((n) => n.remove());
     let mount = canvas.querySelector('#cost-mount');
     if (!mount) { mount = document.createElement('div'); mount.id = 'cost-mount'; canvas.appendChild(mount); }
     setMountNode(mount);
-  });
+  }, []);
   // Sign-out wiring
   useEffect(() => {
     const card = document.querySelector('aside .px-lg.pt-xl div.flex.items-center.gap-md'); if (!card) return;
@@ -90,6 +91,9 @@ export default function CostCalculatorPage() {
       toast.success('Proposal JSON exported');
     } catch (e) { toast.error(e.message); }
   };
+
+  // Keep the CTA wired to the current closure without re-running the chrome effect.
+  exportJsonRef.current = onExportJson;
 
   const totals = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
   const proposalCurrency = proposal?.currency || 'INR';

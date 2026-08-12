@@ -274,6 +274,23 @@ export default function AuthenticationPage() {
               </button>
             </form>
 
+            {/* Dev-only entry into demo mode.
+                Guarded by import.meta.env.DEV so Vite strips it from production
+                builds entirely — it is a local testing affordance, not a
+                shipped feature. handleDemoBypass was already implemented but
+                had no caller, leaving demo mode unreachable even though the
+                services still branch on isDemoSession(). */}
+            {import.meta.env.DEV && (
+              <button
+                type="button"
+                onClick={handleDemoBypass}
+                data-testid="demo-bypass"
+                className="w-full mt-2 py-2 px-4 rounded-xl border border-dashed border-outline text-on-surface-variant font-semibold text-xs hover:bg-surface-container-low transition-all cursor-pointer bg-transparent"
+              >
+                Explore Demo Mode (dev only)
+              </button>
+            )}
+
             <p className="mt-4 text-center text-xs text-on-surface-variant">
               {isSignUp ? 'Already have an account? ' : 'New to Voyanta? '}
               <button 

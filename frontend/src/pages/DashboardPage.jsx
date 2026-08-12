@@ -19,6 +19,11 @@ export default function DashboardPage() {
   
   const { proposals, isLoading: loadingProposals } = useProposals();
 
+  const proposalsKey = useMemo(
+    () => (Array.isArray(proposals) ? proposals.map((p) => p?.id ?? '').join('|') : ''),
+    [proposals]
+  );
+
   const [proposalsCollapsed, setProposalsCollapsed] = useState(false);
   const [proposalsEnlarged, setProposalsEnlarged] = useState(false);
   const [showDestModal, setShowDestModal] = useState(false);
@@ -62,7 +67,7 @@ export default function DashboardPage() {
         console.error('Failed to load outcome insights:', err);
       }
     })();
-  }, [proposals]);
+  }, [proposalsKey]);
 
   // Fetch server-side stats on mount and analytics updates
   useEffect(() => {
@@ -79,7 +84,7 @@ export default function DashboardPage() {
     fetchClients().then(res => {
       setCrmClientsCount(res?.count || (res?.data || []).length || 0);
     }).catch(() => {});
-  }, [analyticsVersion, proposals]);
+  }, [analyticsVersion, proposalsKey]);
 
   useEffect(() => {
     const handler = () => setAnalyticsVersion(v => v + 1);

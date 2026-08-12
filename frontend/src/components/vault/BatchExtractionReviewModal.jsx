@@ -129,6 +129,55 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
     );
   };
 
+  // Per-day inventory pulled out of the PDF (hotels, activities, transfers, meals).
+  // Read-only: the Hotels tab stays the place to correct rates, this just makes it
+  // visible that the day actually carries the extracted items and their prices.
+  const renderDayInventory = (day) => {
+    const money = (val) => {
+      const num = Number(val);
+      if (!Number.isFinite(num) || num <= 0) return null;
+      return `${currentPkg.currency || 'INR'} ${num.toLocaleString('en-IN')}`;
+    };
+
+    const groups = [
+      { key: 'hotels', icon: 'hotel', tone: 'text-indigo-500', items: day.hotels, price: h => h.price_per_night, label: h => h.name, extra: h => [h.category, h.meal_plan, h.location].filter(Boolean).join(' · ') },
+      { key: 'activities', icon: 'hiking', tone: 'text-emerald-500', items: day.activities, price: a => a.price, label: a => a.name, extra: a => [a.timing, a.duration].filter(Boolean).join(' · ') },
+      { key: 'transfers', icon: 'directions_car', tone: 'text-amber-500', items: day.transfers, price: t => t.price, label: t => t.type || t.vehicle || 'Transfer', extra: t => [t.vehicle, [t.from, t.to].filter(Boolean).join(' → '), t.timing].filter(Boolean).join(' · ') },
+      { key: 'meals', icon: 'restaurant', tone: 'text-rose-500', items: day.meals, price: m => m.price, label: m => (typeof m === 'string' ? m : m.type || m.venue || 'Meal'), extra: m => (typeof m === 'string' ? '' : [m.venue, m.cuisine].filter(Boolean).join(' · ')) },
+    ].filter(g => Array.isArray(g.items) && g.items.length > 0);
+
+    if (groups.length === 0) {
+      return (
+        <p className="text-[11px] text-tertiary italic">
+          No hotels, activities, transfers or meals itemized for this day in the document.
+        </p>
+      );
+    }
+
+    return (
+      <div className="flex flex-wrap gap-1.5 pt-1">
+        {groups.flatMap(g =>
+          g.items.map((item, i) => {
+            const amount = money(g.price(item));
+            const detail = g.extra(item);
+            return (
+              <span
+                key={`${g.key}_${i}`}
+                title={detail || undefined}
+                className="inline-flex items-center gap-1.5 max-w-full px-2 py-1 rounded-lg border border-subtle bg-surface text-[11px] text-secondary"
+              >
+                <span className={`material-symbols-outlined text-[13px] ${g.tone}`}>{g.icon}</span>
+                <span className="truncate font-medium text-primary">{g.label(item) || '—'}</span>
+                {detail && <span className="truncate text-tertiary hidden sm:inline">{detail}</span>}
+                {amount && <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{amount}</span>}
+              </span>
+            );
+          })
+        )}
+      </div>
+    );
+  };
+
   const syncSingleToLocal = (pkg) => {
     try {
       // 1. Save to voyanta_vault_items
@@ -558,6 +607,7 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
                         placeholder="Day schedule and detailed activities..."
                         className="w-full px-3 py-2 rounded-xl border border-subtle bg-surface text-xs text-secondary focus:outline-none focus:border-primary leading-relaxed"
                       />
+                      {renderDayInventory(day)}
                     </div>
                   ))
                 )}
