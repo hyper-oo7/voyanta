@@ -239,6 +239,8 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
 
       // Use global assemble1Shot to get RAG/Vault context and track statuses
       const proposal = await assemble1Shot(payload);
+      // Use global assemble1Shot to get RAG/Vault context and track statuses
+      const proposal = await assemble1Shot(payload);
       clearInterval(stepInterval);
       setProgressStep(PROGRESS_STEPS.length - 1);
 
@@ -471,6 +473,7 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
         )}
 
         {/* Form */}
+        {!generating && !done && (
         {!generating && !done && (
           <div className="px-8 py-7 flex flex-col gap-6">
 

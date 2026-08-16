@@ -376,6 +376,9 @@ async def confirm_file_import(
         from src.services.supabase_client import get_user_supabase_client
         sb = get_user_supabase_client(token, agency_id)
 
+        from src.services.supabase_client import get_user_supabase_client
+        sb = get_user_supabase_client(token, agency_id)
+
         filename = payload.pop("_pdf_filename", payload.get("pdf_filename", "confirmed_package.pdf"))
         file_hash = payload.pop("_pdf_hash", payload.get("pdf_hash", hashlib.md5(str(payload).encode()).hexdigest()))
         file_url = payload.pop("_pdf_url", payload.get("pdf_url", ""))

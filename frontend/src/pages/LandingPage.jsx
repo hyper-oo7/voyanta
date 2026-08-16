@@ -1,68 +1,89 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useToast } from '../context/ToastContext.jsx';
 import DpdpConsentBanner from '../components/DpdpConsentBanner.jsx';
 
+// ─── useCountUp hook ────────────────────────────────────────────────
+function useCountUp(target, duration = 1800, isVisible = false) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!isVisible) return;
+    let start = 0;
+    const step = target / (duration / 16);
+    const timer = setInterval(() => {
+      start += step;
+      if (start >= target) {
+        setCount(target);
+        clearInterval(timer);
+      } else {
+        setCount(Math.floor(start));
+      }
+    }, 16);
+    return () => clearInterval(timer);
+  }, [target, duration, isVisible]);
+  return count;
+}
+
 const INDIAN_LANDSCAPE_HEROES = [
   {
     url: 'https://images.unsplash.com/photo-1598091383021-15ddea10925d?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Dal Lake Shikara & Himalayan Peaks, Srinagar'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1506461883276-594a12b11cf3?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Turquoise Waters of Ladakh Himalayas'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1706030113693-0104871e2efd?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Shri Ram Mandir Grand Architecture, Ayodhya'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1603258597554-71be68b5774e?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Kailash Temple Architecture, Ellora Caves'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1605649487212-47bdab064df7?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Statue of Unity Monument, Gujarat'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1616428612140-523c9a623709?auto=format&fit=crop&w=2000&q=85',
-    caption: 'White Salt Desert, Rann of Kutch'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1618175550881-2292f7d93465?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Double Decker Living Root Bridge, Cherrapunji'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1626583223726-d278a2fcddad?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Misty Waterfalls of Cherrapunji, Meghalaya'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1526481280693-3bfa7568e0f3?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Sikkim Himalayan Ranges, Northeast India'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Alleppey Backwater Houseboats, Kerala'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Pangong Tso Crystal Waters, Ladakh'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Holy Ghats along the Ganges, Varanasi'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Misty Green Tea Hills, Munnar'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1514222134-b57cbb8ce073?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Lake Palace Twilight Reflection, Udaipur'
+
   },
   {
     url: 'https://images.unsplash.com/photo-1589182373726-e4f658ab50f0?auto=format&fit=crop&w=2000&q=85',
-    caption: 'Snow-Capped Spiti Valley & Monasteries, Himachal'
+
   }
 ];
 
@@ -73,7 +94,11 @@ export default function LandingPage() {
   const [billingCycle, setBillingCycle] = useState('monthly');
   const [heroImage] = useState(() => INDIAN_LANDSCAPE_HEROES[Math.floor(Math.random() * INDIAN_LANDSCAPE_HEROES.length)]);
   const [scrolled, setScrolled] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [heroStatsVisible, setHeroStatsVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const heroStatsRef = useRef(null);
   const [contactData, setContactData] = useState({
     name: '',
     agencyName: '',
@@ -82,6 +107,11 @@ export default function LandingPage() {
     subject: 'General Inquiry',
     message: ''
   });
+  // Count-up numbers (activated when hero card scrolls into view)
+  const supplierCost = useCountUp(240000, 1600, heroStatsVisible);
+  const margin = useCountUp(48000, 1600, heroStatsVisible);
+  const clientQuote = useCountUp(288000, 1600, heroStatsVisible);
+  const marginPct = useCountUp(20, 1600, heroStatsVisible);
 
   const handleContactChange = (e) => {
     setContactData(prev => ({
@@ -116,10 +146,44 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 30);
-    window.addEventListener('scroll', handleScroll);
+    const handleScroll = () => {
+      const y = window.scrollY;
+      setScrolled(y > 30);
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      setScrollProgress(docHeight > 0 ? Math.min((y / docHeight) * 100, 100) : 0);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // IntersectionObserver for scroll-triggered reveal animations
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('revealed');
+          }
+        });
+      },
+      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
+    );
+    const revealEls = document.querySelectorAll('.reveal-on-scroll, .reveal-slide-left, .reveal-scale');
+    revealEls.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
+  // Hero stats counter observer
+  useEffect(() => {
+    if (!heroStatsRef.current) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setHeroStatsVisible(true); },
+      { threshold: 0.5 }
+    );
+    obs.observe(heroStatsRef.current);
+    return () => obs.disconnect();
+  }, []);
+
 
   const handleStartDemo = () => {
     navigate('/login?signup=true');
@@ -233,7 +297,7 @@ export default function LandingPage() {
                 </span>
                 <span className="text-[8px] text-emerald-500 font-extrabold font-mono bg-emerald-500/10 px-1 rounded animate-pulse">MATCH</span>
               </div>
-              
+
               <div className="p-2 border border-emerald-500/35 bg-emerald-500/5 rounded-xl flex flex-col gap-1 shadow-sm transition-all duration-300 transform translate-x-0">
                 <div className="flex justify-between items-center">
                   <span className="text-[8px] font-bold uppercase tracking-widest bg-blue-50 text-blue-600 border border-blue-200 px-1 rounded">Hotel</span>
@@ -266,132 +330,270 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-surface font-body text-on-surface overflow-x-hidden selection:bg-primary/30">
-      
-      {/* Navigation */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 px-6 py-4 transition-all duration-300 ${scrolled ? 'bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-outline-variant shadow-sm' : 'bg-transparent border-b border-transparent'}`}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary flex items-center justify-center rounded-xl shadow-lg shadow-primary/20">
-              <span className="material-symbols-outlined text-white text-[24px]">travel_explore</span>
+
+      {/* ── Scroll Progress Bar ── */}
+      <div
+        className="scroll-progress-bar"
+        style={{ width: `${scrollProgress}%` }}
+        aria-hidden="true"
+      />
+
+      {/* ── Navigation ── */}
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'glass-nav-scrolled' : 'bg-transparent'
+        }`}>
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 py-3.5 flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center gap-3 z-10">
+            <div className="w-9 h-9 bg-primary flex items-center justify-center rounded-xl shadow-lg shadow-primary/25">
+              <span className="material-symbols-outlined text-white text-[22px]">travel_explore</span>
             </div>
-            <span className="font-display font-bold text-2xl tracking-tight text-primary">Voyanta</span>
+            <span className="font-display font-bold text-xl tracking-tight text-primary">Voyanta</span>
           </div>
-          
-          <div className="hidden md:flex items-center gap-8">
-            <a href="#features" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>Features</a>
-            <a href="#how-it-works" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>How It Works</a>
-            <a href="#pricing" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>Pricing</a>
-            <Link to="/how-to-use" className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}>How to Use</Link>
+
+          {/* Desktop nav links */}
+          <div className="hidden md:flex items-center gap-7">
+            {[
+              ['Features', '#features'],
+              ['How It Works', '#how-it-works'],
+              ['Pricing', '#pricing'],
+            ].map(([label, href]) => (
+              <a
+                key={label}
+                href={href}
+                className={`text-sm font-medium transition-colors ${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-white/90 hover:text-white'
+                  }`}
+              >
+                {label}
+              </a>
+            ))}
+            <Link
+              to="/how-to-use"
+              className={`text-sm font-medium transition-colors ${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-white/90 hover:text-white'
+                }`}
+            >
+              How to Use
+            </Link>
             <button
-              onClick={() => {
-                const el = document.getElementById('contact');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className={`${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors bg-transparent border-none p-0 cursor-pointer`}
+              onClick={() => { const el = document.getElementById('contact'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }}
+              className={`text-sm font-medium transition-colors bg-transparent border-none p-0 cursor-pointer ${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-white/90 hover:text-white'
+                }`}
             >
               Contact Us
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => navigate('/login')} 
-              className={`px-4 py-2 ${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-slate-900 dark:text-white/90 hover:text-primary dark:hover:text-white'} text-sm font-medium transition-colors`}
+          {/* Desktop CTA */}
+          <div className="hidden md:flex items-center gap-3">
+            <button
+              onClick={() => navigate('/login')}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${scrolled ? 'text-on-surface-variant hover:text-primary' : 'text-white/90 hover:text-white'
+                }`}
             >
               Sign In
             </button>
-            <button 
+            <button
               onClick={handleStartDemo}
-              className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-white font-medium text-sm rounded-xl shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all"
+              className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-white font-semibold text-sm rounded-xl shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 active:scale-[0.97] transition-all"
             >
               Start Free Trial
             </button>
+          </div>
+
+          {/* Mobile hamburger */}
+          <button
+            id="mobile-menu-toggle"
+            aria-label="Toggle navigation menu"
+            onClick={() => setMobileMenuOpen(o => !o)}
+            className="md:hidden flex flex-col justify-center items-center w-9 h-9 gap-1.5 z-10"
+          >
+            <span
+              className={`block h-0.5 w-6 rounded-full transition-all duration-300 origin-center ${mobileMenuOpen
+                ? 'rotate-45 translate-y-[7px] bg-primary'
+                : scrolled ? 'bg-on-surface' : 'bg-white'
+                }`}
+            />
+            <span
+              className={`block h-0.5 rounded-full transition-all duration-300 ${mobileMenuOpen
+                ? 'w-0 opacity-0'
+                : 'w-5 ' + (scrolled ? 'bg-on-surface' : 'bg-white')
+                }`}
+            />
+            <span
+              className={`block h-0.5 rounded-full transition-all duration-300 origin-center ${mobileMenuOpen
+                ? 'w-6 -rotate-45 -translate-y-[7px] bg-primary'
+                : 'w-6 ' + (scrolled ? 'bg-on-surface' : 'bg-white')
+                }`}
+            />
+          </button>
+        </div>
+
+        {/* Mobile drawer */}
+        <div
+          id="mobile-nav-drawer"
+          className={`mobile-nav-drawer md:hidden glass-nav-scrolled border-t border-white/10 ${mobileMenuOpen ? 'open' : 'closed'
+            }`}
+        >
+          <div className="px-5 py-4 space-y-1">
+            {[
+              ['Features', '#features'],
+              ['How It Works', '#how-it-works'],
+              ['Pricing', '#pricing'],
+            ].map(([label, href]) => (
+              <a
+                key={label}
+                href={href}
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-2.5 px-3 rounded-xl text-sm font-medium text-on-surface hover:bg-primary/8 hover:text-primary transition-colors"
+              >
+                {label}
+              </a>
+            ))}
+            <Link
+              to="/how-to-use"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block py-2.5 px-3 rounded-xl text-sm font-medium text-on-surface hover:bg-primary/8 hover:text-primary transition-colors"
+            >
+              How to Use
+            </Link>
+            <button
+              onClick={() => { setMobileMenuOpen(false); const el = document.getElementById('contact'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }}
+              className="block w-full text-left py-2.5 px-3 rounded-xl text-sm font-medium text-on-surface hover:bg-primary/8 hover:text-primary transition-colors bg-transparent border-none cursor-pointer"
+            >
+              Contact Us
+            </button>
+            <div className="pt-3 pb-1 flex flex-col gap-2">
+              <button
+                onClick={() => { setMobileMenuOpen(false); navigate('/login'); }}
+                className="w-full py-2.5 px-4 rounded-xl text-sm font-medium text-on-surface-variant border border-outline hover:border-primary/40 transition-all"
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => { setMobileMenuOpen(false); handleStartDemo(); }}
+                className="w-full py-2.5 px-4 bg-primary hover:bg-primary/90 text-white font-semibold text-sm rounded-xl shadow-lg shadow-primary/30 transition-all"
+              >
+                Start Free Trial
+              </button>
+            </div>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative min-h-[88vh] flex items-center justify-center pt-32 pb-20 overflow-hidden bg-slate-950">
+      {/* ── Hero Section ── */}
+      <section className="relative min-h-[92vh] flex items-center justify-center pt-28 pb-16 overflow-hidden bg-slate-950 noise-overlay">
+        {/* Ambient Orbs */}
+        <div className="orb orb-indigo absolute -top-20 -left-20 w-[500px] h-[500px] z-0" aria-hidden="true" />
+        <div className="orb orb-violet absolute bottom-0 right-0 w-[420px] h-[420px] z-0" aria-hidden="true" />
+        <div className="orb orb-emerald absolute top-1/2 left-1/2 w-[320px] h-[320px] -translate-x-1/2 -translate-y-1/2 z-0 opacity-25" aria-hidden="true" />
+
+        {/* Background image */}
         <div className="absolute inset-0 z-0">
-          <img 
-            src={heroImage?.url || 'https://images.unsplash.com/photo-1598091383021-15ddea10925d?auto=format&fit=crop&w=2000&q=85'} 
-            alt={heroImage?.caption || 'Indian Landscape'} 
-            onError={(e) => {
-              e.currentTarget.src = 'https://images.unsplash.com/photo-1598091383021-15ddea10925d?auto=format&fit=crop&w=2000&q=85';
-            }}
-            className="w-full h-full object-cover scale-105 transition-all duration-1000 brightness-95" 
+          <img
+            src={heroImage?.url || 'https://images.unsplash.com/photo-1598091383021-15ddea10925d?auto=format&fit=crop&w=2000&q=85'}
+            alt={heroImage?.caption || 'Indian Landscape'}
+            onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1598091383021-15ddea10925d?auto=format&fit=crop&w=2000&q=85'; }}
+            className="w-full h-full object-cover scale-[1.04] transition-transform duration-[8000ms] ease-out will-change-transform brightness-90"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-surface/95 dark:from-black/80 dark:via-black/50 dark:to-surface/95"></div>
-          {heroImage?.caption && (
-            <div className="absolute bottom-6 right-6 hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white/90 text-xs font-semibold shadow-lg z-10">
-              <span className="material-symbols-outlined text-[14px] text-emerald-400">pin_drop</span>
-              {heroImage.caption}
-            </div>
-          )}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/45 to-slate-950/98" />
         </div>
 
-        <div className="relative z-10 max-w-5xl mx-auto px-6 text-center flex flex-col items-center">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-xs font-bold uppercase tracking-widest mb-6 shadow-lg">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        {/* Location badge */}
+        {heroImage?.caption && (
+          <div className="absolute bottom-6 right-5 hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full glass-badge text-white/90 text-xs font-semibold shadow-lg z-10 animate-fade-in delay-600">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-pulse-ring absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-55" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+            </span>
+            <span className="material-symbols-outlined text-[14px] text-emerald-400">pin_drop</span>
+            {heroImage.caption}
+          </div>
+        )}
+
+        {/* Hero content */}
+        <div className="relative z-10 max-w-5xl mx-auto px-5 sm:px-6 text-center flex flex-col items-center">
+          {/* Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-badge text-white text-xs font-bold uppercase tracking-widest mb-6 shadow-lg animate-fade-up delay-0">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-pulse-ring absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+            </span>
             Built for India&apos;s Premium Travel Agencies
           </div>
-          
-          <h1 className="font-display text-5xl md:text-7xl font-bold text-white mb-6 leading-[1.1] drop-shadow-2xl">
+
+          {/* H1 with fluid sizing & animated gradient */}
+          <h1
+            className="font-display font-bold text-white mb-6 leading-[1.08] drop-shadow-2xl animate-fade-up delay-75"
+            style={{ fontSize: 'clamp(2.5rem, 7.5vw, 5rem)' }}
+          >
             Your Agency&apos;s Memory, <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-200 via-white to-blue-100">
+            <span className="gradient-text-hero">
               Not Just Your Storage
             </span>
           </h1>
-          
-          <p className="text-lg md:text-xl text-white/90 max-w-2xl mb-10 drop-shadow-md font-medium leading-relaxed">
-            Stop starting proposals from scratch. Every hotel contract, itinerary, and flight you upload becomes searchable, reusable VI knowledge (Voyanta Intelligence) tailored in your agency’s exact voice.
+
+          <p
+            className="text-white/80 max-w-2xl mb-10 drop-shadow-md font-medium leading-relaxed animate-fade-up delay-150"
+            style={{ fontSize: 'clamp(1rem, 2.2vw, 1.2rem)' }}
+          >
+            Stop starting proposals from scratch. Every hotel contract, itinerary, and flight you upload becomes searchable, reusable VI knowledge (Voyanta Intelligence) tailored in your agency&apos;s exact voice.
           </p>
-          
-          <div className="flex flex-col sm:flex-row items-center gap-4 mb-14">
-            <button 
+
+          {/* CTA Buttons */}
+          <div className="flex flex-col sm:flex-row items-center gap-4 mb-12 animate-fade-up delay-225 w-full sm:w-auto">
+            <button
               onClick={handleStartDemo}
-              className="px-8 py-4 bg-white text-primary hover:bg-surface-container-lowest font-bold text-base rounded-2xl shadow-[0_8px_30px_rgba(255,255,255,0.3)] hover:shadow-[0_15px_40px_rgba(255,255,255,0.4)] hover:-translate-y-1 transition-all flex items-center gap-2"
+              className="w-full sm:w-auto px-8 py-4 bg-white text-primary hover:bg-surface-container-lowest font-bold text-base rounded-2xl shadow-[0_8px_30px_rgba(255,255,255,0.28)] hover:shadow-[0_15px_40px_rgba(255,255,255,0.38)] hover:-translate-y-1 active:scale-[0.97] transition-all flex items-center justify-center gap-2"
             >
               Start Free Trial
               <span className="material-symbols-outlined">arrow_forward</span>
             </button>
-            <a 
+            <a
               href="#pricing"
-              className="px-8 py-4 bg-black/40 backdrop-blur-md border border-white/30 text-white hover:bg-black/50 font-bold text-base rounded-2xl transition-all shadow-lg flex items-center gap-2"
+              className="w-full sm:w-auto px-8 py-4 glass-badge text-white hover:bg-black/50 font-bold text-base rounded-2xl transition-all shadow-lg flex items-center justify-center gap-2"
             >
               <span className="material-symbols-outlined">payments</span>
               View Indian Pricing
             </a>
           </div>
 
-          {/* Hero Live Rupee Proposal Preview Card */}
-          <div className="w-full max-w-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-2xl p-4 sm:p-6 border border-white/20 shadow-2xl text-left">
-            <div className="flex items-center justify-between border-b border-outline-variant pb-3 mb-4">
+          {/* Hero Live Proposal Card — true glassmorphism */}
+          <div
+            ref={heroStatsRef}
+            className="w-full max-w-2xl glass-hero rounded-2xl p-4 sm:p-6 text-left animate-scale-in delay-300"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
+                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center text-white font-bold text-sm">
                   VK
                 </div>
                 <div>
-                  <div className="font-bold text-sm text-on-surface">Luxury Kashmir • 6 Days / 5 Nights</div>
-                  <div className="text-xs text-on-surface-variant">Srinagar • Gulmarg • Pahalgam</div>
+                  <div className="font-bold text-sm text-white">Luxury Kashmir • 6 Days / 5 Nights</div>
+                  <div className="text-xs text-white/55">Srinagar • Gulmarg • Pahalgam</div>
                 </div>
               </div>
-              <span className="px-3 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-xs rounded-full">
+              <span className="relative overflow-hidden px-3 py-1 bg-emerald-500/20 text-emerald-300 font-bold text-xs rounded-full border border-emerald-500/30">
+                <span className="shimmer-badge absolute inset-0 rounded-full" />
                 VI OPTIMIZED
               </span>
             </div>
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="p-3 rounded-xl bg-surface-container-low border border-outline-variant">
-                <div className="text-xs text-on-surface-variant">Supplier Cost</div>
-                <div className="font-bold text-sm text-on-surface">₹2,40,000</div>
+              <div className="p-3 rounded-xl bg-white/8 border border-white/10">
+                <div className="text-xs text-white/50 mb-0.5">Supplier Cost</div>
+                <div className="font-bold text-sm text-white">
+                  ₹{heroStatsVisible ? supplierCost.toLocaleString('en-IN') : '2,40,000'}
+                </div>
               </div>
-              <div className="p-3 rounded-xl bg-surface-container-low border border-outline-variant">
-                <div className="text-xs text-on-surface-variant">Protected Margin</div>
-                <div className="font-bold text-sm text-emerald-600 dark:text-emerald-400">+₹48,000 (20%)</div>
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <div className="text-xs text-emerald-300/80 mb-0.5">Protected Margin</div>
+                <div className="font-bold text-sm text-emerald-300">
+                  +₹{heroStatsVisible ? margin.toLocaleString('en-IN') : '48,000'} ({heroStatsVisible ? marginPct : '20'}%)
+                </div>
               </div>
-              <div className="p-3 rounded-xl bg-primary/5 border border-primary/20">
-                <div className="text-xs text-primary font-medium">Final Client Quote</div>
-                <div className="font-bold text-sm text-primary">₹2,88,000</div>
+              <div className="p-3 rounded-xl bg-indigo-500/15 border border-indigo-400/25">
+                <div className="text-xs text-indigo-300/80 mb-0.5">Final Client Quote</div>
+                <div className="font-bold text-sm text-indigo-200">
+                  ₹{heroStatsVisible ? clientQuote.toLocaleString('en-IN') : '2,88,000'}
+                </div>
               </div>
             </div>
           </div>
@@ -399,17 +601,17 @@ export default function LandingPage() {
       </section>
 
       {/* Trust Row Section */}
-      <section className="py-12 px-6 bg-surface-container-lowest border-y border-outline-variant">
+      <section className="py-12 px-5 sm:px-6 bg-surface-container-lowest border-y border-outline-variant">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-8">
+          <div className="text-center mb-8 reveal-on-scroll">
             <span className="text-xs font-bold uppercase tracking-widest text-primary">
-              Trusted Across India & Beyond
+              Trusted Across India &amp; Beyond
             </span>
-            <h2 className="font-display text-2xl md:text-3xl font-bold text-on-surface mt-1">
+            <h2 className="font-display font-bold text-on-surface mt-1" style={{ fontSize: 'clamp(1.5rem, 4vw, 2rem)' }}>
               Built for Travel Agencies Across India
             </h2>
           </div>
-          
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               {
@@ -437,13 +639,13 @@ export default function LandingPage() {
                 tag: '₹3,40,000 Avg Quote'
               }
             ].map((dest, idx) => (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 className="group relative h-48 rounded-2xl overflow-hidden border border-outline-variant shadow-md hover:shadow-xl transition-all duration-300"
               >
-                <img 
-                  src={dest.image} 
-                  alt={dest.name} 
+                <img
+                  src={dest.image}
+                  alt={dest.name}
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-4 flex flex-col justify-end">
@@ -476,14 +678,17 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Outcome-Focused VI Features Bento Grid */}
-      <section id="features" className="py-24 px-6 bg-surface">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
+      {/* Features Section */}
+      <section id="features" className="py-24 px-5 sm:px-6 bg-surface relative overflow-hidden">
+        {/* Orb backgrounds */}
+        <div className="orb orb-indigo absolute top-20 right-0 w-[380px] h-[380px] opacity-40" aria-hidden="true" />
+        <div className="orb orb-violet absolute bottom-20 left-0 w-[320px] h-[320px] opacity-35" aria-hidden="true" />
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="text-center mb-16 reveal-on-scroll">
             <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider">
               Outcome-Focused VI Intelligence (Voyanta Intelligence)
             </span>
-            <h2 className="font-display text-4xl md:text-5xl font-bold text-on-surface mt-3 mb-4">
+            <h2 className="font-display font-bold text-on-surface mt-3 mb-4" style={{ fontSize: 'clamp(2rem, 5vw, 3.2rem)' }}>
               Real Mechanisms, Not SaaS Filler
             </h2>
             <p className="text-lg text-on-surface-variant max-w-2xl mx-auto">
@@ -493,36 +698,31 @@ export default function LandingPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* VI Vault */}
-            <div className="md:col-span-2 bg-gradient-to-br from-primary/5 to-surface-container-lowest border border-outline-variant rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all duration-300">
+            <div className="md:col-span-2 glass-feature-card rounded-3xl p-8 flex flex-col reveal-on-scroll delay-0">
               <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
                 <span className="material-symbols-outlined text-primary text-2xl">storage</span>
               </div>
               <div className="text-xs font-bold text-primary uppercase tracking-wider mb-1">VI Vault</div>
               <h3 className="font-display text-2xl md:text-3xl font-bold text-on-surface mb-3">
-                Save and reuse successful proposals, itineraries, hotels & rates
+                Save and reuse successful proposals, itineraries, hotels &amp; rates
               </h3>
               <p className="text-on-surface-variant text-base mb-6 max-w-xl">
                 Every hotel contract and supplier PDF you upload becomes searchable, reusable knowledge—not a PDF sitting in a folder. Suggestions appear before you even ask.
               </p>
-              
-              <div className="mt-auto bg-white dark:bg-slate-900 rounded-2xl p-4 border border-outline-variant shadow-md flex items-center justify-between">
+              <div className="mt-auto bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm rounded-2xl p-4 border border-outline-variant/60 shadow-sm flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 font-bold text-xs">
-                    R2
-                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 font-bold text-xs">R2</div>
                   <div>
                     <div className="font-bold text-sm text-on-surface">Verified Hotel Rates Library</div>
                     <div className="text-xs text-on-surface-variant">Instant one-click auto-fill into proposals</div>
                   </div>
                 </div>
-                <span className="px-3 py-1 bg-primary/10 text-primary font-bold text-xs rounded-full">
-                  Live Sync
-                </span>
+                <span className="px-3 py-1 bg-primary/10 text-primary font-bold text-xs rounded-full">Live Sync</span>
               </div>
             </div>
 
             {/* VI Rewrite */}
-            <div className="bg-gradient-to-br from-surface-container-low to-surface-container-lowest border border-outline-variant rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all duration-300">
+            <div className="glass-feature-card rounded-3xl p-8 flex flex-col reveal-on-scroll delay-75">
               <div className="w-12 h-12 bg-secondary/10 rounded-2xl flex items-center justify-center mb-6">
                 <span className="material-symbols-outlined text-secondary text-2xl">edit_note</span>
               </div>
@@ -536,42 +736,36 @@ export default function LandingPage() {
             </div>
 
             {/* VI Proposal Review */}
-            <div className="bg-gradient-to-br from-surface-container-low to-surface-container-lowest border border-outline-variant rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all duration-300">
+            <div className="glass-feature-card rounded-3xl p-8 flex flex-col reveal-on-scroll delay-150">
               <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center mb-6">
                 <span className="material-symbols-outlined text-amber-600 text-2xl">fact_check</span>
               </div>
               <div className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">VI Proposal Review</div>
-              <h3 className="font-display text-2xl font-bold text-on-surface mb-3">
-                Built-in sanity checks
-              </h3>
+              <h3 className="font-display text-2xl font-bold text-on-surface mb-3">Built-in sanity checks</h3>
               <p className="text-on-surface-variant text-sm leading-relaxed">
                 Checks for missing flights, hotel mismatches, incorrect dates, pricing inconsistencies, visa gaps, and formatting issues before you send to a client.
               </p>
             </div>
 
             {/* VI Curated Itinerary */}
-            <div className="bg-gradient-to-br from-surface-container-low to-surface-container-lowest border border-outline-variant rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all duration-300">
+            <div className="glass-feature-card rounded-3xl p-8 flex flex-col reveal-on-scroll delay-225">
               <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-6">
                 <span className="material-symbols-outlined text-blue-600 text-2xl">map</span>
               </div>
               <div className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">VI Curated Itinerary</div>
-              <h3 className="font-display text-2xl font-bold text-on-surface mb-3">
-                Learns what you hate, automatically
-              </h3>
+              <h3 className="font-display text-2xl font-bold text-on-surface mb-3">Learns what you hate, automatically</h3>
               <p className="text-on-surface-variant text-sm leading-relaxed">
                 Generates destination-specific itineraries based on budget, duration, traveler type, and season. Reject an activity enough times and Voyanta stops suggesting it.
               </p>
             </div>
 
             {/* VI Cost Optimizer */}
-            <div className="bg-gradient-to-br from-surface-container-low to-surface-container-lowest border border-outline-variant rounded-3xl p-8 flex flex-col hover:shadow-xl transition-all duration-300">
+            <div className="glass-feature-card rounded-3xl p-8 flex flex-col reveal-on-scroll delay-300">
               <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-6">
                 <span className="material-symbols-outlined text-emerald-600 text-2xl">trending_up</span>
               </div>
               <div className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">VI Cost Optimizer</div>
-              <h3 className="font-display text-2xl font-bold text-on-surface mb-3">
-                Always the cheapest verified supplier
-              </h3>
+              <h3 className="font-display text-2xl font-bold text-on-surface mb-3">Always the cheapest verified supplier</h3>
               <p className="text-on-surface-variant text-sm leading-relaxed">
                 When three suppliers quote the same hotel, Voyanta knows which one is cheapest right now. Suggests alternatives to improve margins while keeping customer value.
               </p>
@@ -581,562 +775,553 @@ export default function LandingPage() {
       </section>
 
       {/* Interactive How It Works Section */}
-      <section id="how-it-works" className="py-24 px-6 bg-surface-container-lowest border-t border-outline-variant">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider">
-              Interactive Workflow
-            </span>
-            <h2 className="font-display text-4xl md:text-5xl font-bold text-on-surface mt-3 mb-4">
-              How Voyanta Works in 3 Steps
-            </h2>
-            <p className="text-lg text-on-surface-variant max-w-2xl mx-auto">
-              See how your documents turn into polished, highly profitable client proposals in seconds.
-            </p>
-          </div>
-
-          {/* Interactive Step Selector */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            <div className="lg:col-span-5 space-y-4">
-              {workflowDemoSteps.map((step, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => setActiveWorkflowStep(idx)}
-                  className={`p-6 rounded-2xl border cursor-pointer transition-all duration-300 ${
-                    activeWorkflowStep === idx
-                      ? 'bg-primary/10 border-primary shadow-md'
-                      : 'bg-surface border-outline-variant hover:border-primary/40'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold uppercase tracking-widest text-primary">
-                      Step {step.stepNumber}
-                    </span>
-                    {activeWorkflowStep === idx && (
-                      <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse"></span>
-                    )}
-                  </div>
-                  <h3 className="font-display text-xl font-bold text-on-surface mb-1">
-                    {step.title}
-                  </h3>
-                  <p className="text-sm text-on-surface-variant leading-relaxed">
-                    {step.description}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {/* Interactive Live Screen Simulation */}
-            <div className="lg:col-span-7 bg-surface p-6 sm:p-8 rounded-3xl border border-outline-variant shadow-2xl min-h-[340px] flex flex-col justify-center">
-              <div className="flex items-center justify-between border-b border-outline-variant pb-4 mb-6">
-                <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full bg-red-400"></span>
-                  <span className="w-3 h-3 rounded-full bg-amber-400"></span>
-                  <span className="w-3 h-3 rounded-full bg-emerald-400"></span>
-                  <span className="ml-2 text-xs font-mono text-on-surface-variant">voyanta.in/vault-intelligence</span>
-                </div>
-                <span className="text-xs text-primary font-bold">LIVE SIMULATION</span>
-              </div>
-
-              {workflowDemoSteps[activeWorkflowStep].visual}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Section (Rupees ₹) */}
-      <section id="pricing" className="py-24 px-6 bg-surface">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider">
-              Transparent Indian Pricing
-            </span>
-            <h2 className="font-display text-4xl md:text-5xl font-bold text-on-surface mt-3 mb-4">
-              Simple, Predictable Plans in ₹
-            </h2>
-            <p className="text-lg text-on-surface-variant max-w-2xl mx-auto mb-8">
-              Every plan includes a 14-Day Free Trial with full access. No credit card required upfront.
-            </p>
-
-            {/* Monthly / Yearly Switch Toggle */}
-            <div className="inline-flex items-center p-1.5 bg-surface-container-low border border-outline-variant rounded-2xl shadow-sm">
-              <button
-                onClick={() => setBillingCycle('monthly')}
-                className={`px-5 py-2 rounded-xl text-xs font-extrabold transition-all border-none cursor-pointer ${
-                  billingCycle === 'monthly'
-                    ? 'bg-primary text-white shadow-md'
-                    : 'bg-transparent text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                Monthly Billing
-              </button>
-              <button
-                onClick={() => setBillingCycle('yearly')}
-                className={`px-5 py-2 rounded-xl text-xs font-extrabold transition-all border-none cursor-pointer flex items-center gap-1.5 ${
-                  billingCycle === 'yearly'
-                    ? 'bg-primary text-white shadow-md'
-                    : 'bg-transparent text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                <span>Yearly Billing</span>
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-black uppercase tracking-wider">
-                  Save 20% 🔥
+          <section id="how-it-works" className="py-24 px-5 sm:px-6 bg-surface-container-lowest border-t border-outline-variant">
+            <div className="max-w-7xl mx-auto">
+              <div className="text-center mb-16 reveal-on-scroll">
+                <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider">
+                  Interactive Workflow
                 </span>
-              </button>
-            </div>
-          </div>
-
-          {/* 4 Standing Checklist Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
-            
-            {/* Starter */}
-            <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
-              <div>
-                <span className="inline-block px-3 py-1 bg-surface-container text-on-surface-variant text-xs font-bold rounded-full mb-4">
-                  Starter Plan
-                </span>
-                <div className="flex items-baseline gap-1 mb-1">
-                  <span className="font-display text-4xl font-bold text-on-surface">
-                    {billingCycle === 'yearly' ? '₹799' : '₹999'}
-                  </span>
-                  <span className="text-xs text-on-surface-variant">/ month</span>
-                </div>
-                <p className="text-xs font-medium text-on-surface-variant mb-4">
-                  {billingCycle === 'yearly' ? 'Billed ₹9,588 annually (20% OFF)' : 'Billed monthly'}
-                </p>
-                <p className="text-xs font-medium text-primary mb-5">
-                  New & solo travel agents
-                </p>
-              </div>
-
-              <div className="h-px bg-outline-variant mb-5"></div>
-
-              <ul className="space-y-3 text-xs text-on-surface-variant mb-8 flex-1">
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span>50 proposals / month</span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span>CRM & Invoicing</span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span>Payment reminders</span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span>VI Vault document storage</span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span>16 Basic templates</span>
-                </li>
-              </ul>
-
-              <div className="space-y-2 mt-auto">
-                <button
-                  onClick={() => navigate('/login?signup=true&plan=starter')}
-                  className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-[16px]">credit_card</span>
-                  Subscribe & Start Trial
-                </button>
-                <button
-                  onClick={handleStartDemo}
-                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
-                >
-                  Start 14-Day Free Trial (No Card)
-                </button>
-              </div>
-            </div>
-
-            {/* Professional ⭐ Most Popular */}
-            <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col shadow-xl relative scale-105 z-10">
-              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary text-white text-xs font-bold uppercase tracking-wider rounded-full shadow-md">
-                ⭐ Most Popular
-              </div>
-
-              <div>
-                <span className="inline-block px-3 py-1 bg-primary/10 text-primary text-xs font-bold rounded-full mb-4">
-                  Professional Plan
-                </span>
-                <div className="flex items-baseline gap-1 mb-1">
-                  <span className="font-display text-4xl font-bold text-on-surface">
-                    {billingCycle === 'yearly' ? '₹2,399' : '₹2,999'}
-                  </span>
-                  <span className="text-xs text-on-surface-variant">/ month</span>
-                </div>
-                <p className="text-xs font-medium text-on-surface-variant mb-4">
-                  {billingCycle === 'yearly' ? 'Billed ₹28,788 annually (20% OFF)' : 'Billed monthly'}
-                </p>
-                <p className="text-xs font-medium text-primary mb-5">
-                  Growing agencies
-                </p>
-              </div>
-
-              <div className="h-px bg-outline-variant mb-5"></div>
-
-              <ul className="space-y-3 text-xs text-on-surface-variant mb-8 flex-1">
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-primary text-base">check_circle</span>
-                  <span><strong>200 proposals / month</strong></span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-primary text-base">check_circle</span>
-                  <span>Everything in Starter Plan</span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-primary text-base">check_circle</span>
-                  <span><strong>VI Proposal Rewrite</strong></span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-primary text-base">check_circle</span>
-                  <span><strong>VI Proposal Review</strong> (missing details & quality checks)</span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-primary text-base">check_circle</span>
-                  <span>All 80+ Premium templates</span>
-                </li>
-              </ul>
-
-              <div className="space-y-2 mt-auto">
-                <button
-                  onClick={() => navigate('/login?signup=true&plan=professional')}
-                  className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-[16px]">credit_card</span>
-                  Subscribe & Start Trial
-                </button>
-                <button
-                  onClick={handleStartDemo}
-                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
-                >
-                  Start 14-Day Free Trial (No Card)
-                </button>
-              </div>
-            </div>
-
-            {/* Professional Plus */}
-            <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
-              <div>
-                <span className="inline-block px-3 py-1 bg-surface-container text-on-surface-variant text-xs font-bold rounded-full mb-4">
-                  Professional Plus Plan
-                </span>
-                <div className="flex items-baseline gap-1 mb-1">
-                  <span className="font-display text-4xl font-bold text-on-surface">
-                    {billingCycle === 'yearly' ? '₹3,199' : '₹3,999'}
-                  </span>
-                  <span className="text-xs text-on-surface-variant">/ month</span>
-                </div>
-                <p className="text-xs font-medium text-on-surface-variant mb-4">
-                  {billingCycle === 'yearly' ? 'Billed ₹38,388 annually (20% OFF)' : 'Billed monthly'}
-                </p>
-                <p className="text-xs font-medium text-primary mb-5">
-                  High-volume agencies
-                </p>
-              </div>
-
-              <div className="h-px bg-outline-variant mb-5"></div>
-
-              <ul className="space-y-3 text-xs text-on-surface-variant mb-8 flex-1">
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span><strong>Unlimited proposals</strong></span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span>Everything in Professional Plan</span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span><strong>VI Curated Itinerary</strong> generation</span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span><strong>VI Cost Optimizer</strong></span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span>Priority onboarding & support</span>
-                </li>
-              </ul>
-
-              <div className="space-y-2 mt-auto">
-                <button
-                  onClick={() => navigate('/login?signup=true&plan=professional_plus')}
-                  className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-[16px]">credit_card</span>
-                  Subscribe & Start Trial
-                </button>
-                <button
-                  onClick={handleStartDemo}
-                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
-                >
-                  Start 14-Day Free Trial (No Card)
-                </button>
-              </div>
-            </div>
-
-            {/* Enterprise Standing Checklist Card */}
-            <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
-              <div>
-                <span className="inline-block px-3 py-1 bg-primary/10 text-primary text-xs font-bold rounded-full mb-4">
-                  Enterprise Plan
-                </span>
-                <div className="flex items-baseline gap-1 mb-1">
-                  <span className="font-display text-4xl font-bold text-on-surface">
-                    {billingCycle === 'yearly' ? '₹6,399' : '₹7,999'}
-                  </span>
-                  <span className="text-xs text-on-surface-variant">/ month</span>
-                </div>
-                <p className="text-xs font-medium text-on-surface-variant mb-4">
-                  {billingCycle === 'yearly' ? 'Billed ₹76,788 annually (20% OFF)' : 'Billed monthly'}
-                </p>
-                <p className="text-xs font-medium text-primary mb-5">
-                  Multi-agent travel agencies
-                </p>
-              </div>
-
-              <div className="h-px bg-outline-variant mb-5"></div>
-
-              <ul className="space-y-3 text-xs text-on-surface-variant mb-8 flex-1">
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span><strong>Everything in Professional Plus</strong></span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span><strong>Up to 5 multi-agent sub-accounts</strong></span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span>Role-based access control</span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span>Shared agency CRM & vault</span>
-                </li>
-                <li className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
-                  <span>Dedicated concierge & analytics</span>
-                </li>
-              </ul>
-
-              <div className="space-y-2 mt-auto">
-                <button
-                  onClick={() => navigate('/login?signup=true&plan=enterprise')}
-                  className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-[16px]">credit_card</span>
-                  Subscribe & Start Trial
-                </button>
-                <button
-                  onClick={handleStartDemo}
-                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
-                >
-                  Start 14-Day Free Trial (No Card)
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 px-6 bg-primary text-white text-center relative overflow-hidden my-12 max-w-7xl mx-auto rounded-[40px] shadow-2xl">
-        <div className="relative z-10 max-w-3xl mx-auto">
-          <h2 className="font-display text-4xl md:text-5xl font-bold mb-6">
-            Ready to scale your travel business?
-          </h2>
-          <p className="text-lg text-white/85 mb-10">
-            Join modern travel agencies across India using Voyanta to create stunning, highly profitable itineraries.
-          </p>
-          <button 
-            onClick={handleStartDemo}
-            className="px-8 py-4 bg-white text-primary hover:bg-surface-container-lowest font-bold text-base rounded-2xl shadow-xl hover:-translate-y-1 transition-all"
-          >
-            Start Your 14-Day Free Trial
-          </button>
-        </div>
-      </section>
-
-      {/* Contact Section */}
-      <section id="contact" className="py-24 px-6 bg-surface-container-low/40 border-y border-outline-variant scroll-mt-20">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start text-left">
-            
-            {/* Left Side: Contact Information */}
-            <div className="lg:col-span-5 space-y-8">
-              <div>
-                <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-4">
-                  📞 Get In Touch
-                </span>
-                <h2 className="font-display text-4xl sm:text-5xl font-bold text-on-surface leading-tight mb-4">
-                  We&apos;d love to hear from you.
+                <h2 className="font-display font-bold text-on-surface mt-3 mb-4" style={{ fontSize: 'clamp(2rem, 5vw, 3.2rem)' }}>
+                  How Voyanta Works in 3 Steps
                 </h2>
-                <p className="text-base text-on-surface-variant leading-relaxed">
-                  Whether you need help onboarding your agency&apos;s supplier contracts, want a tailored team demo, or need technical support, our team is always ready to assist.
+                <p className="text-lg text-on-surface-variant max-w-2xl mx-auto">
+                  See how your documents turn into polished, highly profitable client proposals in seconds.
                 </p>
               </div>
 
-              <div className="space-y-6">
-                {/* Email */}
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-xl">mail</span>
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-on-surface font-headline-sm">Email Us</h4>
-                    <a href="mailto:support@voyanta.com" className="text-sm text-primary hover:underline font-semibold block mt-0.5">
-                      support@voyanta.com
-                    </a>
-                    <span className="text-xs text-on-surface-variant">Response within 12 hours</span>
-                  </div>
+              {/* Interactive Step Selector */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                <div className="lg:col-span-5 space-y-4">
+                  {workflowDemoSteps.map((step, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => setActiveWorkflowStep(idx)}
+                      className={`p-6 rounded-2xl border cursor-pointer transition-all duration-300 reveal-slide-left ${activeWorkflowStep === idx
+                        ? 'bg-primary/10 border-primary shadow-md'
+                        : 'bg-surface border-outline-variant hover:border-primary/40'
+                        }`}
+                      style={{ transitionDelay: `${idx * 80}ms` }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold uppercase tracking-widest text-primary">Step {step.stepNumber}</span>
+                        {activeWorkflowStep === idx && (
+                          <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+                        )}
+                      </div>
+                      <h3 className="font-display text-xl font-bold text-on-surface mb-1">{step.title}</h3>
+                      <p className="text-sm text-on-surface-variant leading-relaxed">{step.description}</p>
+                    </div>
+                  ))}
                 </div>
 
-                {/* Call */}
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-xl">call</span>
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-on-surface font-headline-sm">Concierge Hotline</h4>
-                    <a href="tel:+1800VOYANTA" className="text-sm text-primary hover:underline font-semibold block mt-0.5">
-                      +1-800-VOYANTA
-                    </a>
-                    <span className="text-xs text-on-surface-variant">Mon-Sat, 9:00 AM - 7:00 PM IST</span>
-                  </div>
-                </div>
-
-                {/* Offices */}
-                <div className="flex items-start gap-4 border-t border-outline-variant/60 pt-6">
-                  <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-xl">apartment</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 flex-1">
-                    <div>
-                      <h4 className="font-bold text-sm text-on-surface font-headline-sm">Headquarters (Bangalore)</h4>
-                      <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">
-                        Voyanta Technologies Pvt. Ltd.<br />
-                        100 Feet Road, Indiranagar,<br />
-                        Bengaluru, Karnataka 560038
-                      </p>
+                {/* Interactive Live Screen Simulation */}
+                <div className="lg:col-span-7 glass-feature-card p-6 sm:p-8 rounded-3xl min-h-[340px] flex flex-col justify-center reveal-scale">
+                  <div className="flex items-center justify-between border-b border-outline-variant pb-4 mb-6">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-red-400" />
+                      <span className="w-3 h-3 rounded-full bg-amber-400" />
+                      <span className="w-3 h-3 rounded-full bg-emerald-400" />
+                      <span className="ml-2 text-xs font-mono text-on-surface-variant">voyanta.in/vault-intelligence</span>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-sm text-on-surface font-headline-sm">Regional Office (Srinagar)</h4>
-                      <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">
-                        Boulevard Road, Dal Lake,<br />
-                        Srinagar, Jammu & Kashmir 190001
-                      </p>
-                    </div>
+                    <span className="text-xs text-primary font-bold">LIVE SIMULATION</span>
                   </div>
+                  {workflowDemoSteps[activeWorkflowStep].visual}
                 </div>
               </div>
             </div>
+          </section>
 
-            {/* Right Side: Contact Form Card */}
-            <div className="lg:col-span-7 bg-surface-container-lowest p-8 sm:p-10 rounded-[32px] border border-outline-variant shadow-xl">
-              <h3 className="font-display text-2xl font-bold text-on-surface mb-6">Send us a Message</h3>
-              <form onSubmit={handleContactSubmit} className="space-y-5">
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Full Name</label>
-                    <input
-                      type="text"
-                      name="name"
-                      required
-                      value={contactData.name}
-                      onChange={handleContactChange}
-                      className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
-                      placeholder="Alex Sterling"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Agency Name</label>
-                    <input
-                      type="text"
-                      name="agencyName"
-                      required
-                      value={contactData.agencyName}
-                      onChange={handleContactChange}
-                      className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
-                      placeholder="Sterling Luxury Travel"
-                    />
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Email Address</label>
-                    <input
-                      type="email"
-                      name="email"
-                      required
-                      value={contactData.email}
-                      onChange={handleContactChange}
-                      className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
-                      placeholder="alex@sterling.com"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Phone Number</label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={contactData.phone}
-                      onChange={handleContactChange}
-                      className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
-                      placeholder="+91 98765 43210"
-                    />
-                  </div>
-                </div>
+          {/* Pricing Section (Rupees ₹) */}
+          <section id="pricing" className="py-24 px-6 bg-surface">
+            <div className="max-w-7xl mx-auto">
+              <div className="text-center mb-12">
+                <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider">
+                  Transparent Indian Pricing
+                </span>
+                <h2 className="font-display text-4xl md:text-5xl font-bold text-on-surface mt-3 mb-4">
+                  Simple, Predictable Plans in ₹
+                </h2>
+                <p className="text-lg text-on-surface-variant max-w-2xl mx-auto mb-8">
+                  Every plan includes a 14-Day Free Trial with full access. No credit card required upfront.
+                </p>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Subject</label>
-                  <select
-                    name="subject"
-                    value={contactData.subject}
-                    onChange={handleContactChange}
-                    className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
+                {/* Monthly / Yearly Switch Toggle */}
+                <div className="inline-flex items-center p-1.5 bg-surface-container-low border border-outline-variant rounded-2xl shadow-sm">
+                  <button
+                    onClick={() => setBillingCycle('monthly')}
+                    className={`px-5 py-2 rounded-xl text-xs font-extrabold transition-all border-none cursor-pointer ${billingCycle === 'monthly'
+                      ? 'bg-primary text-white shadow-md'
+                      : 'bg-transparent text-on-surface-variant hover:text-on-surface'
+                      }`}
                   >
-                    <option value="General Inquiry">General Inquiry</option>
-                    <option value="Supplier Onboarding Support">Supplier Onboarding Support</option>
-                    <option value="Custom Demo Request">Custom Demo Request</option>
-                    <option value="Billing & Pricing Inquiry">Billing & Pricing Inquiry</option>
-                    <option value="Partnerships">Partnerships</option>
-                  </select>
+                    Monthly Billing
+                  </button>
+                  <button
+                    onClick={() => setBillingCycle('yearly')}
+                    className={`px-5 py-2 rounded-xl text-xs font-extrabold transition-all border-none cursor-pointer flex items-center gap-1.5 ${billingCycle === 'yearly'
+                      ? 'bg-primary text-white shadow-md'
+                      : 'bg-transparent text-on-surface-variant hover:text-on-surface'
+                      }`}
+                  >
+                    <span>Yearly Billing</span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-black uppercase tracking-wider">
+                      Save 20% 🔥
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 4 Standing Checklist Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
+
+                {/* Starter */}
+                <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
+                  <div>
+                    <span className="inline-block px-3 py-1 bg-surface-container text-on-surface-variant text-xs font-bold rounded-full mb-4">
+                      Starter Plan
+                    </span>
+                    <div className="flex items-baseline gap-1 mb-1">
+                      <span className="font-display text-4xl font-bold text-on-surface">
+                        {billingCycle === 'yearly' ? '₹799' : '₹999'}
+                      </span>
+                      <span className="text-xs text-on-surface-variant">/ month</span>
+                    </div>
+                    <p className="text-xs font-medium text-on-surface-variant mb-4">
+                      {billingCycle === 'yearly' ? 'Billed ₹9,588 annually (20% OFF)' : 'Billed monthly'}
+                    </p>
+                    <p className="text-xs font-medium text-primary mb-5">
+                      New & solo travel agents
+                    </p>
+                  </div>
+
+                  <div className="h-px bg-outline-variant mb-5"></div>
+
+                  <ul className="space-y-3 text-xs text-on-surface-variant mb-8 flex-1">
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span>50 proposals / month</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span>CRM & Invoicing</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span>Payment reminders</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span>VI Vault document storage</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span>16 Basic templates</span>
+                    </li>
+                  </ul>
+
+                  <div className="space-y-2 mt-auto">
+                    <button
+                      onClick={() => navigate('/login?signup=true&plan=starter')}
+                      className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">credit_card</span>
+                      Subscribe & Start Trial
+                    </button>
+                    <button
+                      onClick={handleStartDemo}
+                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      Start 14-Day Free Trial (No Card)
+                    </button>
+                  </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Message</label>
-                  <textarea
-                    name="message"
-                    required
-                    rows={4}
-                    value={contactData.message}
-                    onChange={handleContactChange}
-                    className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm resize-none text-on-surface"
-                    placeholder="How can we help you?"
-                  />
+                {/* Professional ⭐ Most Popular */}
+                <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col shadow-xl relative scale-105 z-10">
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary text-white text-xs font-bold uppercase tracking-wider rounded-full shadow-md">
+                    ⭐ Most Popular
+                  </div>
+
+                  <div>
+                    <span className="inline-block px-3 py-1 bg-primary/10 text-primary text-xs font-bold rounded-full mb-4">
+                      Professional Plan
+                    </span>
+                    <div className="flex items-baseline gap-1 mb-1">
+                      <span className="font-display text-4xl font-bold text-on-surface">
+                        {billingCycle === 'yearly' ? '₹2,399' : '₹2,999'}
+                      </span>
+                      <span className="text-xs text-on-surface-variant">/ month</span>
+                    </div>
+                    <p className="text-xs font-medium text-on-surface-variant mb-4">
+                      {billingCycle === 'yearly' ? 'Billed ₹28,788 annually (20% OFF)' : 'Billed monthly'}
+                    </p>
+                    <p className="text-xs font-medium text-primary mb-5">
+                      Growing agencies
+                    </p>
+                  </div>
+
+                  <div className="h-px bg-outline-variant mb-5"></div>
+
+                  <ul className="space-y-3 text-xs text-on-surface-variant mb-8 flex-1">
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-primary text-base">check_circle</span>
+                      <span><strong>200 proposals / month</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-primary text-base">check_circle</span>
+                      <span>Everything in Starter Plan</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-primary text-base">check_circle</span>
+                      <span><strong>VI Proposal Rewrite</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-primary text-base">check_circle</span>
+                      <span><strong>VI Proposal Review</strong> (missing details & quality checks)</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-primary text-base">check_circle</span>
+                      <span>All 80+ Premium templates</span>
+                    </li>
+                  </ul>
+
+                  <div className="space-y-2 mt-auto">
+                    <button
+                      onClick={() => navigate('/login?signup=true&plan=professional')}
+                      className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">credit_card</span>
+                      Subscribe & Start Trial
+                    </button>
+                    <button
+                      onClick={handleStartDemo}
+                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      Start 14-Day Free Trial (No Card)
+                    </button>
+                  </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-primary/25 hover:shadow-xl transition-all disabled:opacity-50 mt-2 border-none cursor-pointer text-sm"
-                >
-                  {submitting ? 'Sending Message...' : 'Send Message'}
-                </button>
-              </form>
+                {/* Professional Plus */}
+                <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
+                  <div>
+                    <span className="inline-block px-3 py-1 bg-surface-container text-on-surface-variant text-xs font-bold rounded-full mb-4">
+                      Professional Plus Plan
+                    </span>
+                    <div className="flex items-baseline gap-1 mb-1">
+                      <span className="font-display text-4xl font-bold text-on-surface">
+                        {billingCycle === 'yearly' ? '₹3,199' : '₹3,999'}
+                      </span>
+                      <span className="text-xs text-on-surface-variant">/ month</span>
+                    </div>
+                    <p className="text-xs font-medium text-on-surface-variant mb-4">
+                      {billingCycle === 'yearly' ? 'Billed ₹38,388 annually (20% OFF)' : 'Billed monthly'}
+                    </p>
+                    <p className="text-xs font-medium text-primary mb-5">
+                      High-volume agencies
+                    </p>
+                  </div>
+
+                  <div className="h-px bg-outline-variant mb-5"></div>
+
+                  <ul className="space-y-3 text-xs text-on-surface-variant mb-8 flex-1">
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span><strong>Unlimited proposals</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span>Everything in Professional Plan</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span><strong>VI Curated Itinerary</strong> generation</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span><strong>VI Cost Optimizer</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span>Priority onboarding & support</span>
+                    </li>
+                  </ul>
+
+                  <div className="space-y-2 mt-auto">
+                    <button
+                      onClick={() => navigate('/login?signup=true&plan=professional_plus')}
+                      className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">credit_card</span>
+                      Subscribe & Start Trial
+                    </button>
+                    <button
+                      onClick={handleStartDemo}
+                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      Start 14-Day Free Trial (No Card)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Enterprise Standing Checklist Card */}
+                <div className="pricing-plan-card rounded-3xl p-6 sm:p-8 flex flex-col hover:shadow-xl transition-all duration-300">
+                  <div>
+                    <span className="inline-block px-3 py-1 bg-primary/10 text-primary text-xs font-bold rounded-full mb-4">
+                      Enterprise Plan
+                    </span>
+                    <div className="flex items-baseline gap-1 mb-1">
+                      <span className="font-display text-4xl font-bold text-on-surface">
+                        {billingCycle === 'yearly' ? '₹6,399' : '₹7,999'}
+                      </span>
+                      <span className="text-xs text-on-surface-variant">/ month</span>
+                    </div>
+                    <p className="text-xs font-medium text-on-surface-variant mb-4">
+                      {billingCycle === 'yearly' ? 'Billed ₹76,788 annually (20% OFF)' : 'Billed monthly'}
+                    </p>
+                    <p className="text-xs font-medium text-primary mb-5">
+                      Multi-agent travel agencies
+                    </p>
+                  </div>
+
+                  <div className="h-px bg-outline-variant mb-5"></div>
+
+                  <ul className="space-y-3 text-xs text-on-surface-variant mb-8 flex-1">
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span><strong>Everything in Professional Plus</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span><strong>Up to 5 multi-agent sub-accounts</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span>Role-based access control</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span>Shared agency CRM & vault</span>
+                    </li>
+                    <li className="flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-emerald-600 text-base">check</span>
+                      <span>Dedicated concierge & analytics</span>
+                    </li>
+                  </ul>
+
+                  <div className="space-y-2 mt-auto">
+                    <button
+                      onClick={() => navigate('/login?signup=true&plan=enterprise')}
+                      className="w-full py-3 px-4 rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:-translate-y-0.5 transition-all border-none cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">credit_card</span>
+                      Subscribe & Start Trial
+                    </button>
+                    <button
+                      onClick={handleStartDemo}
+                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-surface-container-high hover:bg-surface-container-highest text-on-surface transition-all border-none cursor-pointer flex items-center justify-center gap-1"
+                    >
+                      Start 14-Day Free Trial (No Card)
+                    </button>
+                  </div>
+                </div>
+
+              </div>
             </div>
+          </section>
 
-          </div>
-        </div>
-      </section>
+          {/* CTA Section */}
+          <section className="py-20 px-6 bg-primary text-white text-center relative overflow-hidden my-12 max-w-7xl mx-auto rounded-[40px] shadow-2xl">
+            <div className="relative z-10 max-w-3xl mx-auto">
+              <h2 className="font-display text-4xl md:text-5xl font-bold mb-6">
+                Ready to scale your travel business?
+              </h2>
+              <p className="text-lg text-white/85 mb-10">
+                Join modern travel agencies across India using Voyanta to create stunning, highly profitable itineraries.
+              </p>
+              <button
+                onClick={handleStartDemo}
+                className="px-8 py-4 bg-white text-primary hover:bg-surface-container-lowest font-bold text-base rounded-2xl shadow-xl hover:-translate-y-1 transition-all"
+              >
+                Start Your 14-Day Free Trial
+              </button>
+            </div>
+          </section>
+
+          {/* Contact Section */}
+          <section id="contact" className="py-24 px-6 bg-surface-container-low/40 border-y border-outline-variant scroll-mt-20">
+            <div className="max-w-7xl mx-auto">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start text-left">
+
+                {/* Left Side: Contact Information */}
+                <div className="lg:col-span-5 space-y-8">
+                  <div>
+                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-4">
+                      📞 Get In Touch
+                    </span>
+                    <h2 className="font-display text-4xl sm:text-5xl font-bold text-on-surface leading-tight mb-4">
+                      We&apos;d love to hear from you.
+                    </h2>
+                    <p className="text-base text-on-surface-variant leading-relaxed">
+                      Whether you need help onboarding your agency&apos;s supplier contracts, want a tailored team demo, or need technical support, our team is always ready to assist.
+                    </p>
+                  </div>
+
+                  <div className="space-y-6">
+                    {/* Email */}
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-xl">mail</span>
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-on-surface font-headline-sm">Email Us</h4>
+                        <a href="mailto:support@voyanta.com" className="text-sm text-primary hover:underline font-semibold block mt-0.5">
+                          support@voyanta.com
+                        </a>
+                        <span className="text-xs text-on-surface-variant">Response within 12 hours</span>
+                      </div>
+                    </div>
+
+                    {/* Call */}
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-xl">call</span>
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-on-surface font-headline-sm">Concierge Hotline</h4>
+                        <a href="tel:+1800VOYANTA" className="text-sm text-primary hover:underline font-semibold block mt-0.5">
+                          +1-800-VOYANTA
+                        </a>
+                        <span className="text-xs text-on-surface-variant">Mon-Sat, 9:00 AM - 7:00 PM IST</span>
+                      </div>
+                    </div>
+
+                    {/* Offices */}
+                    <div className="flex items-start gap-4 border-t border-outline-variant/60 pt-6">
+                      <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-xl">apartment</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 flex-1">
+                        <div>
+                          <h4 className="font-bold text-sm text-on-surface font-headline-sm">Headquarters (Bangalore)</h4>
+                          <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">
+                            Voyanta Technologies Pvt. Ltd.<br />
+                            100 Feet Road, Indiranagar,<br />
+                            Bengaluru, Karnataka 560038
+                          </p>
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-sm text-on-surface font-headline-sm">Regional Office (Srinagar)</h4>
+                          <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">
+                            Boulevard Road, Dal Lake,<br />
+                            Srinagar, Jammu & Kashmir 190001
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Side: Contact Form Card */}
+                <div className="lg:col-span-7 bg-surface-container-lowest p-8 sm:p-10 rounded-[32px] border border-outline-variant shadow-xl">
+                  <h3 className="font-display text-2xl font-bold text-on-surface mb-6">Send us a Message</h3>
+                  <form onSubmit={handleContactSubmit} className="space-y-5">
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Full Name</label>
+                        <input
+                          type="text"
+                          name="name"
+                          required
+                          value={contactData.name}
+                          onChange={handleContactChange}
+                          className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
+                          placeholder="Alex Sterling"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Agency Name</label>
+                        <input
+                          type="text"
+                          name="agencyName"
+                          required
+                          value={contactData.agencyName}
+                          onChange={handleContactChange}
+                          className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
+                          placeholder="Sterling Luxury Travel"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Email Address</label>
+                        <input
+                          type="email"
+                          name="email"
+                          required
+                          value={contactData.email}
+                          onChange={handleContactChange}
+                          className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
+                          placeholder="alex@sterling.com"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Phone Number</label>
+                        <input
+                          type="tel"
+                          name="phone"
+                          value={contactData.phone}
+                          onChange={handleContactChange}
+                          className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
+                          placeholder="+91 98765 43210"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Subject</label>
+                      <select
+                        name="subject"
+                        value={contactData.subject}
+                        onChange={handleContactChange}
+                        className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm text-on-surface"
+                      >
+                        <option value="General Inquiry">General Inquiry</option>
+                        <option value="Supplier Onboarding Support">Supplier Onboarding Support</option>
+                        <option value="Custom Demo Request">Custom Demo Request</option>
+                        <option value="Billing & Pricing Inquiry">Billing & Pricing Inquiry</option>
+                        <option value="Partnerships">Partnerships</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Message</label>
+                      <textarea
+                        name="message"
+                        required
+                        rows={4}
+                        value={contactData.message}
+                        onChange={handleContactChange}
+                        className="w-full px-4 py-3 bg-surface border border-outline rounded-xl focus:ring-2 focus:ring-primary/20 outline-none transition-all text-sm resize-none text-on-surface"
+                        placeholder="How can we help you?"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-primary/25 hover:shadow-xl transition-all disabled:opacity-50 mt-2 border-none cursor-pointer text-sm"
+                    >
+                      {submitting ? 'Sending Message...' : 'Send Message'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </section>
 
       {/* DPDP Act Compliant Consent Banner */}
       <DpdpConsentBanner />
