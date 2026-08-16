@@ -39,7 +39,7 @@ export const useVaultStore = create((set, get) => ({
           }
         });
 
-        const cacheKey = `voyanta_vault_cache_v3_${currentF.name.toLowerCase().replace(/[^a-z0-9]/g, '')}_${currentF.size}`;
+        const cacheKey = `voyanta_vault_cache_v5_${currentF.name.toLowerCase().replace(/[^a-z0-9]/g, '')}_${currentF.size}`;
         let resultData = null;
         try {
           const cachedStr = localStorage.getItem(cacheKey);

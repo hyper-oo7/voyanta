@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../services/api.js';
 import { logger } from '../utils/logger.js';
 
@@ -11,6 +11,7 @@ const BackendHealthContext = createContext({
 export function BackendHealthProvider({ children }) {
   const [isHealthy, setIsHealthy] = useState(true); // Assume healthy initially
   const [lastChecked, setLastChecked] = useState(null);
+  const consecutiveFailuresRef = useRef(0);
 
   const checkHealth = useCallback(async () => {
     try {
@@ -23,12 +24,25 @@ export function BackendHealthProvider({ children }) {
       clearTimeout(timeoutId);
       const data = res.ok ? await res.json().catch(() => ({})) : {};
       const healthy = res.ok && (data.status === 'ok' || res.ok);
-      setIsHealthy(healthy);
+
+      if (healthy) {
+        consecutiveFailuresRef.current = 0;
+        setIsHealthy(true);
+      } else {
+        consecutiveFailuresRef.current += 1;
+        if (consecutiveFailuresRef.current >= 3) {
+          setIsHealthy(false);
+        }
+      }
+
       setLastChecked(new Date());
       return healthy;
     } catch (err) {
       logger.error('Backend health check failed:', err);
-      setIsHealthy(false);
+      consecutiveFailuresRef.current += 1;
+      if (consecutiveFailuresRef.current >= 3) {
+        setIsHealthy(false);
+      }
       setLastChecked(new Date());
       return false;
     }

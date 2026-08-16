@@ -78,9 +78,9 @@ CRITICAL RULES — VIOLATING THESE IS UNACCEPTABLE:
 5. If a price is not mentioned for an item, set it to null — NEVER make up a number.
 6. If a timing is mentioned (e.g. "09:00 AM Transfer"), preserve it in the "timing" field.
 7. Extract the FULL overview/introduction text from the first page verbatim.
-8. Extract every day exactly as described — day number, title, full description text, sub-destination.
+8. Extract every day exactly as described — day number, title, FULL multi-paragraph description text verbatim (do NOT summarize or truncate any paragraph of the day), sub-destination.
 9. For each day extract: every hotel (name, category, exact price, location), every activity (name, timing, price, duration, full description), every transfer (type, vehicle, from, to, timing, price), every meal (type, venue name, cuisine, price).
-10. Extract ALL sections at the end of the document — Inclusions, Exclusions, What to Pack, Visa Guidelines, Important Notes, Do's and Don'ts, Cancellation Policy, Damages, Terms & Conditions. Whatever sections exist, extract them all.
+10. Extract ALL sections at the end of the document — Inclusions, Exclusions, What to Pack, Visa Guidelines, Important Notes, Do's and Don'ts, Cancellation Policy, Damages, Terms & Conditions. Populate both the top-level 'inclusions'/'exclusions' arrays AND the 'extra_sections' object.
 11. Detect currency from the document — look for ₹, Rs, INR, $, USD, €, EUR, £, GBP, AED, etc. Return ISO 4217 code.
 12. If something is not mentioned, set it to null — never fabricate.
 13. HOTEL DETAILS TABLE (CRITICAL): Many supplier PDFs contain a summary table near the end listing hotels, total nights, and meal plans (e.g. Destination | Hotels | Total Nights | Meal Plan). You MUST extract this table into the top-level "hotels" array AND map each row to the correct day's hotels in the "days" array based on destination/location. Map fields: destination -> location, hotel name/options -> name, nights/total nights -> price_per_night / notes context, meal plan -> meal_plan.
@@ -163,6 +163,8 @@ Return ONLY a valid JSON object with this exact schema — no markdown, no code 
   "inclusions": ["exact list of inclusions verbatim from document"],
   "exclusions": ["exact list of exclusions verbatim from document"],
   "extra_sections": {{
+    "inclusions": "exact list or formatted string of inclusions verbatim if present, else null",
+    "exclusions": "exact list or formatted string of exclusions verbatim if present, else null",
     "what_to_pack": "verbatim content or essentials if present, else null",
     "visa_guidelines": "verbatim content if present, else null",
     "important_notes": "verbatim content if present, else null",
@@ -298,14 +300,36 @@ async def extract_vault_package_from_text(
     else:
         parsed["extra_sections"] = {}
 
-    # Pure-code multi-reader pipeline enhancement (Rule 5 compliance)
+    # Bidirectional sync between top-level inclusions/exclusions & extra_sections
+    inc_list = parsed.get("inclusions") or []
+    exc_list = parsed.get("exclusions") or []
+
+    if inc_list and isinstance(inc_list, list) and not parsed["extra_sections"].get("inclusions"):
+        parsed["extra_sections"]["inclusions"] = "\n".join([f"• {x}" if not str(x).strip().startswith("•") else str(x) for x in inc_list])
+    elif parsed["extra_sections"].get("inclusions") and not inc_list:
+        parsed["inclusions"] = [line.strip().lstrip("•").strip() for line in parsed["extra_sections"]["inclusions"].split("\n") if line.strip()]
+
+    if exc_list and isinstance(exc_list, list) and not parsed["extra_sections"].get("exclusions"):
+        parsed["extra_sections"]["exclusions"] = "\n".join([f"• {x}" if not str(x).strip().startswith("•") else str(x) for x in exc_list])
+    elif parsed["extra_sections"].get("exclusions") and not exc_list:
+        parsed["exclusions"] = [line.strip().lstrip("•").strip() for line in parsed["extra_sections"]["exclusions"].split("\n") if line.strip()]
+
+    # Pure-code multi-reader pipeline enhancement
     pure_extra = _extract_sections_pure_code(full_text)
     for k, v in pure_extra.items():
         if not parsed["extra_sections"].get(k):
             parsed["extra_sections"][k] = v
+            if k == "inclusions" and not parsed.get("inclusions"):
+                parsed["inclusions"] = [line.strip().lstrip("•").strip() for line in v.split("\n") if line.strip()]
+            elif k == "exclusions" and not parsed.get("exclusions"):
+                parsed["exclusions"] = [line.strip().lstrip("•").strip() for line in v.split("\n") if line.strip()]
 
     pure_days = _extract_days_pure_code(full_text)
     current_days = parsed.get("days", []) or []
+
+    # Map pure_days by day_number for comparison
+    pure_days_by_num = {d.get("day_number"): d for d in pure_days if isinstance(d, dict) and d.get("day_number") is not None}
+
     if len(pure_days) > len(current_days):
         if len(current_days) == 0:
             parsed["days"] = pure_days
@@ -317,6 +341,18 @@ async def extract_vault_package_from_text(
                     existing_nums.add(pd.get("day_number"))
             current_days.sort(key=lambda x: x.get("day_number", 0) if isinstance(x, dict) else 0)
             parsed["days"] = current_days
+
+    # Ensure Day descriptions preserve ALL text paragraphs without truncation
+    for d in (parsed.get("days") or []):
+        if not isinstance(d, dict):
+            continue
+        d_num = d.get("day_number")
+        if d_num in pure_days_by_num:
+            pure_desc = pure_days_by_num[d_num].get("description") or ""
+            curr_desc = d.get("description") or ""
+            if len(pure_desc) > len(curr_desc) + 20 or (curr_desc and not curr_desc.strip().endswith((".", "!", "?", "\"")) and len(pure_desc) > len(curr_desc)):
+                d["description"] = pure_desc
+
     if parsed.get("days") and len(parsed["days"]) > 0:
         parsed["duration_days"] = max(parsed.get("duration_days", 1), len(parsed["days"]))
 
@@ -421,6 +457,9 @@ def _extract_sections_pure_code(text: str) -> Dict[str, str]:
         return {}
 
     headings = [
+        (r"(?i)\b(?:inclusions?|included|includes|price\s+includes|cost\s+includes)\b", "inclusions"),
+        (r"(?i)\b(?:exclusions?|excluded|excludes|price\s+excludes|cost\s+excludes)\b", "exclusions"),
+        (r"(?i)\b(?:package\s+costing|costing\s+details|price\s+details|rates|tariff)\b", "package_costing"),
         (r"(?i)\b(?:payment\s+terms|terms\s+of\s+payment|advance\s+deposit|bank\s+details|account\s+details|payment\s+policy)\b", "payment"),
         (r"(?i)\b(?:cancellation\s+policy|cancellation\s+charges|cancellation\s+terms)\b", "cancellation_policy"),
         (r"(?i)\b(?:what\s+to\s+pack|things\s+to\s+carry|packing\s+list|packing\s+essentials)\b", "what_to_pack"),
