@@ -85,6 +85,7 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
   const [generating, setGenerating] = useState(false);
   const [progressStep, setProgressStep] = useState(0);
   const [done, setDone] = useState(false);
+  const [pendingResult, setPendingResult] = useState(null);
   const [vaultConfidence, setVaultConfidence] = useState(null);
   const [confidenceLoading, setConfidenceLoading] = useState(false);
   const destRef = useRef(null);
@@ -128,6 +129,7 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
       setGenerating(false);
       setProgressStep(0);
       setDone(false);
+      setPendingResult(null);
       setDestQuery(form.destination || '');
     }
   }, [isOpen]);
@@ -151,6 +153,39 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
   ).slice(0, 10);
 
   const updateForm = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
+  const finalizeAndNavigate = (proposal, createdProposalId, mergedPreferences) => {
+    try {
+      localStorage.setItem('voyanta_ai_generated_proposal', JSON.stringify({
+        proposal,
+        form,
+        model_used: proposal.model_used || '1-Shot Assembly',
+        generated_at: new Date().toISOString(),
+      }));
+    } catch {}
+
+    if (typeof setClient === 'function') {
+      setClient({
+        customer_name: form.client_name || 'Valued Traveler',
+        destination: proposal.destination || form.destination,
+        duration_days: proposal.duration_days || form.duration_days,
+        num_adults: Number(form.num_travelers),
+        num_children: 0,
+        special_notes: mergedPreferences,
+        tour_type: form.group_type,
+        pace: form.pace,
+      });
+    }
+
+    const isRagAugmented = (proposal.model_used || '').includes('RAG');
+    toast.success(`✨ Proposal generated!${isRagAugmented ? ' Powered by your vault.' : ''}`);
+    onClose();
+
+    const navUrl = createdProposalId
+      ? `/proposals/wizard?step=4&ai_generated=1&id=${createdProposalId}`
+      : `/proposals/wizard?step=4&ai_generated=1&destination=${encodeURIComponent(proposal.destination || form.destination)}`;
+    navigate(navUrl);
+  };
 
   const handleGenerate = async () => {
     if (!form.destination.trim()) {
@@ -233,51 +268,18 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
       }
 
       setDone(true);
-      
+
       const currentRagStatus = useProposalStore.getState().ragStatus;
       const currentVaultStatus = useProposalStore.getState().vaultStatus;
-      
-      // If there are partial failures, stay on the modal so the user sees the banners.
+
       if (currentRagStatus !== 'ok' || currentVaultStatus !== 'ok') {
+        setPendingResult({ proposal, createdProposalId, mergedPreferences });
         setGenerating(false);
-        setForm(f => ({ ...f, createdProposalId }));
-        return; 
+        return;
       }
 
       await new Promise(r => setTimeout(r, 900));
-
-      // Store generated proposal for wizard hydration
-      try {
-        localStorage.setItem('voyanta_ai_generated_proposal', JSON.stringify({
-          proposal,
-          form,
-          model_used: proposal.model_used || '1-Shot Assembly',
-          generated_at: new Date().toISOString(),
-        }));
-      } catch {}
-
-      // Pre-fill proposal store client data
-      if (typeof setClient === 'function') {
-        setClient({
-          customer_name: form.client_name || 'Valued Traveler',
-          destination: proposal.destination || form.destination,
-          duration_days: proposal.duration_days || form.duration_days,
-          num_adults: Number(form.num_travelers),
-          num_children: 0,
-          special_notes: mergedPreferences,
-          tour_type: form.group_type,
-          pace: form.pace,
-        });
-      }
-
-      const isRagAugmented = (proposal.model_used || '').includes('RAG');
-      toast.success(`✨ Proposal generated!${isRagAugmented ? ' Powered by your vault.' : ''}`);
-      onClose();
-      
-      const navUrl = createdProposalId 
-        ? `/proposals/wizard?step=4&ai_generated=1&id=${createdProposalId}`
-        : `/proposals/wizard?step=4&ai_generated=1&destination=${encodeURIComponent(proposal.destination || form.destination)}`;
-      navigate(navUrl);
+      finalizeAndNavigate(proposal, createdProposalId, mergedPreferences);
 
     } catch (err) {
       clearInterval(stepInterval);
@@ -362,8 +364,7 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
           </div>
         </div>
 
-        {/* Generating state */}
-        {generating && (
+        {(generating || done) && (
           <div className="px-8 py-14 flex flex-col items-center gap-8">
             <div className="relative">
               <div
@@ -421,10 +422,50 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
               ))}
             </div>
 
-            {done && (
+            {done && !pendingResult && (
               <p className="text-green-400 font-semibold text-center m-0" style={{ animation: 'qgPulse 1s ease infinite' }}>
                 ✨ Proposal ready! Redirecting to wizard…
               </p>
+            )}
+
+            {done && pendingResult && (
+              <div className="w-full flex flex-col gap-3">
+                <p className="text-green-400 font-semibold text-center m-0">
+                  ✨ Proposal ready — with a few caveats
+                </p>
+
+                {vaultStatus !== 'ok' && (
+                  <div className="flex items-start gap-3 px-4 py-3 rounded-xl"
+                    style={{ background: 'rgba(234,179,8,0.09)', border: '1px solid rgba(234,179,8,0.22)' }}>
+                    <span className="material-symbols-outlined text-[20px] flex-shrink-0 mt-0.5 text-yellow-400">inventory_2</span>
+                    <p className="text-[11px] m-0 flex-1 leading-relaxed text-yellow-200/80">
+                      <strong className="text-yellow-300">No vault inventory matched {form.destination}.</strong> This draft uses curated baseline rates instead of your supplier pricing. Upload a supplier PDF for this destination to ground future drafts.
+                    </p>
+                  </div>
+                )}
+
+                {ragStatus !== 'ok' && (
+                  <div className="flex items-start gap-3 px-4 py-3 rounded-xl"
+                    style={{ background: 'rgba(234,179,8,0.09)', border: '1px solid rgba(234,179,8,0.22)' }}>
+                    <span className="material-symbols-outlined text-[20px] flex-shrink-0 mt-0.5 text-yellow-400">
+                      {ragStatus === 'degraded' ? 'cloud_off' : 'description'}
+                    </span>
+                    <p className="text-[11px] m-0 flex-1 leading-relaxed text-yellow-200/80">
+                      {ragStatus === 'degraded'
+                        ? <><strong className="text-yellow-300">Document search was unavailable.</strong> The draft was built without context from your uploaded documents.</>
+                        : <><strong className="text-yellow-300">No matching documents found.</strong> Descriptions are generated rather than sourced from your uploaded documents.</>}
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => finalizeAndNavigate(pendingResult.proposal, pendingResult.createdProposalId, pendingResult.mergedPreferences)}
+                  className="qg-btn w-full py-3.5 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 border-none cursor-pointer"
+                >
+                  Continue to wizard
+                  <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+                </button>
+              </div>
             )}
           </div>
         )}

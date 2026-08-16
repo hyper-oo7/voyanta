@@ -170,7 +170,7 @@ class ItineraryDayOut(BaseModel):
     activities: List[DayActivityOut] = []
     flights: List[DayFlightOut] = []
     transfers: List[Dict[str, Any]] = []
-    meals: List[str] = []
+    meals: List[Dict[str, Any]] = []
     day_total: float = 0
 
 

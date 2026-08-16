@@ -9,6 +9,7 @@ from src.models.assembly_schemas import (
     CostingPrefs,
     AssembledProposalOut,
 )
+from src.services.assembly_engine import _build_meals, _build_transfers
 
 logger = logging.getLogger(__name__)
 
@@ -296,8 +297,35 @@ def _validate_and_price(
             })
         day["flights"] = validated_flights
 
-        day.setdefault("transfers", [])
-        day.setdefault("meals", [])
+        # The LLM is not reliable for these two sections — the prompt templates
+        # transfers as an empty array, and returns meals as bare strings that the UI
+        # cannot render. Derive both deterministically so they are always populated
+        # and always in the shape the frontend expects.
+        day_number = int(day.get("day_number") or 0) or (days.index(day) + 1)
+        day_sub_dest = day.get("sub_destination") or req.destination
+        previous_sub_dest = days[days.index(day) - 1].get("sub_destination") if days.index(day) > 0 else None
+        is_departure_day = len(days) > 1 and day_number == len(days)
+
+        meal_hotels = validated_hotels
+        if not meal_hotels and is_departure_day and days.index(day) > 0:
+            meal_hotels = days[days.index(day) - 1].get("hotels") or []
+
+        day["meals"] = [
+            m.model_dump(by_alias=True)
+            for m in _build_meals(meal_hotels, req.special_notes or "", breakfast_only=is_departure_day)
+        ]
+        if not day.get("transfers"):
+            day["transfers"] = [
+                t.model_dump(by_alias=True)
+                for t in _build_transfers(
+                    day_number=day_number,
+                    duration_days=len(days),
+                    sub_destination=day_sub_dest,
+                    previous_sub_destination=previous_sub_dest,
+                    transit_hours=2,
+                    num_travelers=max(1, travelers),
+                )
+            ]
         day["day_total"] = round(day_base, 2)
         total_base += day_base
 

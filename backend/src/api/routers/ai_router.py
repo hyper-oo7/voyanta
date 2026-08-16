@@ -349,14 +349,31 @@ def _deterministic_assembly(req: AssembleRequest):
         discount_amount=req.costing_prefs.discount,
         visibility_mode=req.costing_prefs.visibility_mode,
     )
+    vault = req.vault_matches
+    rag_hotels = [h.model_dump() for h in vault.hotels] if vault and vault.hotels else []
+    rag_activities = [a.model_dump() for a in vault.activities] if vault and vault.activities else []
+
+    travel_month = 7
+    if req.start_date:
+        try:
+            travel_month = int(str(req.start_date)[5:7])
+        except (ValueError, TypeError):
+            travel_month = 7
+
     return assemble_1shot_proposal(
         destination=req.destination,
         duration_days=req.duration_days,
         client_name=req.client_name,
+        group_type=req.group_type or "friends",
         num_travelers=req.num_travelers,
         budget_per_head=req.budget_per_head or 25000.0,
         pace=req.pace or "medium",
+        preferences_text=req.special_notes or "",
         margin_config=margin_cfg,
+        agency_id=req.agency_id or "global",
+        travel_month=travel_month,
+        rag_hotels=rag_hotels,
+        rag_activities=rag_activities,
     )
 
 
@@ -373,14 +390,14 @@ async def assemble_1shot_route(
     try:
         from src.services.agentic_assembly_service import assemble_itinerary
         proposal = await assemble_itinerary(req)
-        return AssembleResponse(status="success", proposal=proposal.model_dump())
+        return AssembleResponse(status="success", proposal=proposal.model_dump(by_alias=True))
     except Exception as e:
         logger.warning(f"[1-Shot Agentic] Agentic assembly failed, falling back: {e}")
         try:
             fallback_prop = _deterministic_assembly(req)
             return AssembleResponse(
                 status="success",
-                proposal=fallback_prop.model_dump(mode="json"),
+                proposal=fallback_prop.model_dump(mode="json", by_alias=True),
                 used_fallback=True,
             )
         except Exception:

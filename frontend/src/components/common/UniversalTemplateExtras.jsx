@@ -199,7 +199,9 @@ export function DayInventorySections({ day, theme = {}, accentColor = '#e11d48',
   if (Array.isArray(day.transfers)) {
     day.transfers.forEach(t => {
       if (typeof t === 'string') transItems.push({ id: Math.random(), type: 'transfer', label: t, data: { name: t } });
-      else if (t && typeof t === 'object') transItems.push({ id: t.id || Math.random(), type: 'transfer', label: t.name || t.label, data: t });
+      // `type` / `vehicle` is the canonical transfer shape (see the extraction schema);
+      // without them the row falls through to a generic "Included Item".
+      else if (t && typeof t === 'object') transItems.push({ id: t.id || Math.random(), type: 'transfer', label: t.name || t.label || t.type || t.vehicle, data: t });
     });
   }
 
@@ -207,7 +209,8 @@ export function DayInventorySections({ day, theme = {}, accentColor = '#e11d48',
   if (Array.isArray(day.meals)) {
     day.meals.forEach(m => {
       if (typeof m === 'string') mealItems.push({ id: Math.random(), type: 'meal', label: m, data: { name: m } });
-      else if (m && typeof m === 'object') mealItems.push({ id: m.id || Math.random(), type: 'meal', label: m.name || m.label, data: m });
+      // `type` (Breakfast/Dinner) / `venue` is the canonical meal shape.
+      else if (m && typeof m === 'object') mealItems.push({ id: m.id || Math.random(), type: 'meal', label: m.name || m.label || m.type || m.venue, data: m });
     });
   }
 
@@ -243,8 +246,9 @@ export function DayInventorySections({ day, theme = {}, accentColor = '#e11d48',
         <div className="space-y-3 pl-6 border-l-2" style={{ borderColor: accentColor + '30' }}>
           {itemsList.map((it, idx) => {
             const name = it.label || it.name || it.data?.name || it.data?.title || 'Included Item';
-            const details = it.details || it.description || it.data?.details || it.data?.description || '';
-            const venue = it.venue || it.data?.venue || it.data?.location || '';
+            const details = it.details || it.description || it.data?.details || it.data?.description || it.data?.notes || '';
+            const route = it.data?.from && it.data?.to ? `${it.data.from} → ${it.data.to}` : '';
+            const venue = it.venue || it.data?.venue || it.data?.location || route || '';
             const priceVal = Number(it.price || it.data?.price || 0);
             return (
               <div key={idx} className="text-sm">

@@ -129,6 +129,272 @@ BASELINE_DAY_MODULES: List[Dict[str, Any]] = [
     }
 ]
 
+# Well-known excursion hubs, used to give generic day plans a real sub-destination
+# name instead of repeating the primary destination for every single day.
+DESTINATION_SUB_HUBS: Dict[str, List[str]] = {
+    "ladakh": ["Leh", "Nubra Valley", "Pangong Tso", "Leh"],
+    "leh": ["Leh", "Nubra Valley", "Pangong Tso", "Leh"],
+    "kashmir": ["Srinagar", "Gulmarg", "Pahalgam", "Srinagar"],
+    "srinagar": ["Srinagar", "Gulmarg", "Pahalgam", "Srinagar"],
+    "rajasthan": ["Jaipur", "Jodhpur", "Udaipur", "Jaisalmer"],
+    "jaipur": ["Jaipur", "Amer", "Jaipur"],
+    "kerala": ["Kochi", "Munnar", "Thekkady", "Alleppey"],
+    "munnar": ["Munnar", "Thekkady", "Alleppey"],
+    "goa": ["North Goa", "South Goa", "Panaji"],
+    "himachal": ["Manali", "Solang Valley", "Kasol"],
+    "meghalaya": ["Shillong", "Cherrapunji", "Dawki"],
+    "andaman": ["Port Blair", "Havelock Island", "Neil Island"],
+    "sikkim": ["Gangtok", "Tsomgo Lake", "Pelling"],
+    "dubai": ["Dubai City", "Desert Safari Camp", "Abu Dhabi"],
+    "bali": ["Kuta", "Ubud", "Nusa Penida"],
+    "thailand": ["Bangkok", "Pattaya", "Phuket"],
+    "singapore": ["Singapore City", "Sentosa Island"],
+}
+
+# Rotating day themes for destinations with no seeded module. Correct-but-generic
+# beats specific-but-wrong (a Ladakh trip must never describe Hadimba Temple).
+_GENERIC_DAY_THEMES: List[Dict[str, Any]] = [
+    {
+        "title": "Arrival in {place} & Leisure Evening",
+        "description": "Arrive in {place} and transfer to your hotel. After check-in and some time to freshen up, step out for a relaxed evening exploring the local markets, cafés and neighbourhood landmarks at your own pace.",
+        "activities": [
+            {"name": "Hotel Check-in & Welcome Briefing", "timing": "01:00 PM", "duration": "1 hr", "description": "Meet your travel representative for a short briefing on the days ahead."},
+            {"name": "Local Market & Neighbourhood Walk", "timing": "05:00 PM", "duration": "2 hrs", "description": "An easy introductory stroll through the most popular local streets and markets."},
+        ],
+        "transit": 1.5,
+    },
+    {
+        "title": "{place} Signature Sightseeing",
+        "description": "A full day covering the most iconic sights of {place} with a private vehicle and driver at your disposal throughout the day.",
+        "activities": [
+            {"name": "Guided City Highlights Tour", "timing": "09:30 AM", "duration": "4 hrs", "description": "Cover the landmark monuments, viewpoints and photo stops that define the region."},
+            {"name": "Popular Viewpoint & Sunset Stop", "timing": "04:30 PM", "duration": "2 hrs", "description": "Wind down at a celebrated viewpoint for golden-hour photographs."},
+        ],
+        "transit": 2.0,
+    },
+    {
+        "title": "{place} Excursion & Local Culture",
+        "description": "Head out on a scenic excursion around {place}, taking in the natural attractions and cultural landmarks that the area is best known for.",
+        "activities": [
+            {"name": "Scenic Excursion Drive", "timing": "09:00 AM", "duration": "4 hrs", "description": "A picturesque drive with planned halts at the finest vantage points en route."},
+            {"name": "Heritage & Craft Experience", "timing": "03:00 PM", "duration": "2 hrs", "description": "Visit a heritage site or local craft cluster for a taste of regional culture."},
+        ],
+        "transit": 3.0,
+    },
+    {
+        "title": "Leisure Day & Optional Activities in {place}",
+        "description": "A deliberately relaxed day in {place}. Choose from optional adventure or wellness activities, or simply unwind at the property.",
+        "activities": [
+            {"name": "Optional Activities (On Request)", "timing": "10:00 AM", "duration": "3 hrs", "description": "Curated optional experiences can be arranged on request at additional cost."},
+            {"name": "Leisure Time at Hotel", "timing": "03:00 PM", "duration": "3 hrs", "description": "Time at leisure to enjoy the hotel facilities or explore independently."},
+        ],
+        "transit": 1.0,
+    },
+]
+
+_DEPARTURE_THEME: Dict[str, Any] = {
+    "title": "Departure from {place}",
+    "description": "After breakfast, check out from the hotel and transfer to the airport / railway station for your onward journey, carrying back memories of {place}.",
+    "activities": [
+        {"name": "Breakfast & Hotel Check-out", "timing": "08:30 AM", "duration": "1.5 hrs", "description": "Enjoy a relaxed breakfast before completing check-out formalities."},
+        {"name": "Departure Transfer", "timing": "11:00 AM", "duration": "2 hrs", "description": "Assisted transfer to the airport or railway station for your onward journey."},
+    ],
+    "transit": 2.0,
+}
+
+
+# Hotel meal-plan codes -> the meals actually included in the tariff.
+_MEAL_PLAN_INCLUSIONS: Dict[str, List[str]] = {
+    "EP": [],
+    "CP": ["Breakfast"],
+    "AP": ["Breakfast", "Lunch", "Dinner"],
+    "MAP": ["Breakfast", "Dinner"],
+    "APAI": ["Breakfast", "Lunch", "Dinner"],
+}
+
+
+def _format_duration(value: Any) -> str:
+    """
+    Normalises a duration to a display string. Vault activities carry a numeric
+    `duration_hours`, but ProposalActivity.duration is a string — passing the raw
+    float through fails validation.
+    """
+    if value in (None, ""):
+        return "2 hrs"
+    if isinstance(value, (int, float)):
+        hours = float(value)
+        if hours <= 0:
+            return "2 hrs"
+        return f"{hours:g} hr" if hours == 1 else f"{hours:g} hrs"
+    return str(value)
+
+
+def _vehicle_for(num_travelers: int) -> str:
+    """Picks a sensible vehicle class for the group size."""
+    if num_travelers <= 3:
+        return "Sedan (Swift Dzire or similar)"
+    if num_travelers <= 6:
+        return "SUV (Innova Crysta or similar)"
+    if num_travelers <= 12:
+        return "Tempo Traveller"
+    return "Luxury Coach"
+
+
+def _build_meals(
+    hotels: List[ProposalHotel],
+    preferences_text: str,
+    breakfast_only: bool = False,
+) -> List[ProposalMeal]:
+    """
+    Derives the day's included meals from the hotel meal plan. Without this the
+    meals section renders empty on every generated proposal.
+
+    `breakfast_only` covers the departure day: the guest checks out in the morning,
+    so only the breakfast from the previous night's stay applies.
+    """
+    if not hotels:
+        return []
+
+    # Accepts either ProposalHotel models (deterministic engine) or plain dicts
+    # (agentic path), so both assembly routes can share this logic.
+    hotel = hotels[0]
+    if isinstance(hotel, dict):
+        hotel_name = hotel.get("name") or "Hotel"
+        raw_plan = hotel.get("meal_plan") or hotel.get("meal_type")
+    else:
+        hotel_name = hotel.name
+        raw_plan = hotel.meal_plan
+
+    plan = (raw_plan or "MAP").upper().strip()
+    included = _MEAL_PLAN_INCLUSIONS.get(plan, ["Breakfast", "Dinner"])
+    if breakfast_only:
+        included = [m for m in included if m == "Breakfast"]
+
+    prefs = (preferences_text or "").lower()
+    if "vegan" in prefs:
+        cuisine = "Vegan"
+    elif "veg" in prefs or "jain" in prefs:
+        cuisine = "Pure Vegetarian"
+    else:
+        cuisine = "Multi-cuisine"
+
+    notes = f"Included in the {plan} meal plan."
+    return [
+        ProposalMeal(
+            meal_type=meal,
+            venue=hotel_name,
+            cuisine=cuisine,
+            notes=notes,
+        )
+        for meal in included
+    ]
+
+
+def _build_transfers(
+    day_number: int,
+    duration_days: int,
+    sub_destination: str,
+    previous_sub_destination: Optional[str],
+    transit_hours: float,
+    num_travelers: int,
+) -> List[ProposalTransfer]:
+    """
+    Derives the day's transfer segments from the itinerary shape. Without this the
+    transfers section renders empty on every generated proposal.
+    """
+    vehicle = _vehicle_for(num_travelers)
+    transfers: List[ProposalTransfer] = []
+
+    if day_number == 1:
+        transfers.append(ProposalTransfer(
+            transfer_type="Arrival Transfer",
+            vehicle=vehicle,
+            from_location="Airport / Railway Station",
+            to=sub_destination,
+            timing="On arrival",
+            notes="Assisted meet-and-greet on arrival, followed by transfer to the hotel.",
+        ))
+    elif previous_sub_destination and previous_sub_destination != sub_destination:
+        cached = get_cached_distance(previous_sub_destination, sub_destination)
+        if cached:
+            distance_note = f"Approx. {cached.get('distance_km')} km · {cached.get('transit_hours')} hrs by road."
+        else:
+            distance_note = f"Approx. {transit_hours} hrs by road."
+        transfers.append(ProposalTransfer(
+            transfer_type="Inter-city Transfer",
+            vehicle=vehicle,
+            from_location=previous_sub_destination,
+            to=sub_destination,
+            timing="09:00 AM",
+            notes=distance_note,
+        ))
+    elif not (duration_days > 1 and day_number == duration_days):
+        # Skipped on the departure day, where the departure transfer below is the
+        # only movement that actually happens.
+        transfers.append(ProposalTransfer(
+            transfer_type="Sightseeing Transfer",
+            vehicle=vehicle,
+            from_location=sub_destination,
+            to=sub_destination,
+            timing="09:00 AM",
+            notes=f"Vehicle at disposal for the day's sightseeing (approx. {transit_hours} hrs running).",
+        ))
+
+    if duration_days > 1 and day_number == duration_days:
+        transfers.append(ProposalTransfer(
+            transfer_type="Departure Transfer",
+            vehicle=vehicle,
+            from_location=sub_destination,
+            to="Airport / Railway Station",
+            timing="As per flight schedule",
+            notes="Timed to your onward flight or train departure.",
+        ))
+
+    return transfers
+
+
+def _sub_hubs_for(destination: str) -> List[str]:
+    """Known excursion bases for a destination, falling back to the destination itself."""
+    key = destination.strip().lower()
+    for hub_key, hubs in DESTINATION_SUB_HUBS.items():
+        if hub_key in key or key in hub_key:
+            return hubs
+    return [destination]
+
+
+def _build_generic_module(destination: str, day_number: int, duration_days: int) -> Dict[str, Any]:
+    """
+    Builds a destination-correct generic day plan. Used when no seeded or cached
+    day module exists for the requested destination — emitting another region's
+    modules would produce factually wrong itineraries.
+    """
+    hubs = _sub_hubs_for(destination)
+    is_last_day = duration_days > 1 and day_number == duration_days
+    # Depart from the gateway hub (first in the list) — that is where the airport or
+    # railhead is; departing from a remote excursion base is not realistic.
+    place = hubs[0] if is_last_day else hubs[(day_number - 1) % len(hubs)]
+    theme = _DEPARTURE_THEME if is_last_day else _GENERIC_DAY_THEMES[(day_number - 1) % len(_GENERIC_DAY_THEMES)]
+
+    return {
+        "id": f"generic_{destination.lower().replace(' ', '_')}_{day_number}",
+        "destination": destination,
+        "sub_destination": place,
+        "title": theme["title"].format(place=place),
+        "description": theme["description"].format(place=place),
+        "activities": [
+            {**a, "location": place, "name": a["name"]} for a in theme["activities"]
+        ],
+        "hotels": [] if is_last_day else [{
+            "name": f"Handpicked 4 Star Hotel in {place}",
+            "category": "4 Star",
+            "location": place,
+            "meal_plan": "MAP",
+            "price_per_night": 4500.0,
+        }],
+        "estimated_transit_hours": theme["transit"],
+        "estimated_cost": 3500.0 if is_last_day else 4500.0,
+    }
+
 
 def assemble_1shot_proposal(
     destination: str,
@@ -166,15 +432,43 @@ def assemble_1shot_proposal(
 
     # 2. Filter candidate Day Modules from cache or baseline seed
     cached_mods = get_cached_day_modules(agency_id, dest_clean, group_type, pace)
-    raw_candidates = cached_mods if cached_mods else [
-        m for m in BASELINE_DAY_MODULES
-        if dest_clean.lower() in m["destination"].lower() or m["destination"].lower() in dest_clean.lower()
-    ]
-    if not raw_candidates:
-        raw_candidates = BASELINE_DAY_MODULES  # Fallback to general baseline
+    dest_key = dest_clean.lower()
+    if cached_mods:
+        raw_candidates = cached_mods
+    else:
+        # Match on sub_destination too — a "Manali" request must find the Manali
+        # module even though the module's destination is "Himachal".
+        raw_candidates = [
+            m for m in BASELINE_DAY_MODULES
+            if dest_key in m["destination"].lower()
+            or m["destination"].lower() in dest_key
+            or dest_key in (m.get("sub_destination") or "").lower()
+            or (m.get("sub_destination") or "").lower() in dest_key
+        ]
+        # A sub-destination match (e.g. "Manali") would otherwise yield a single module
+        # and repeat it every day. Widen to the sibling modules of the same region —
+        # they are the standard excursions for that base.
+        if raw_candidates:
+            parent_destinations = {m["destination"].lower() for m in raw_candidates}
+            raw_candidates = [
+                m for m in BASELINE_DAY_MODULES
+                if m["destination"].lower() in parent_destinations
+            ]
 
-    # Apply soft & hard preference filtering (e.g. 'no_trekking', 'veg_only', 'beach')
-    candidate_mods = filter_by_preferences(raw_candidates, preferences_text)
+    # No module actually covers this destination. Generate destination-correct generic
+    # days rather than serving another region's content under the wrong heading.
+    use_generic_days = not raw_candidates
+    if use_generic_days:
+        logger.info(f"[AssemblyEngine] No seeded modules for '{dest_clean}' — building generic destination-correct days.")
+        raw_candidates = [
+            _build_generic_module(dest_clean, d, duration_days)
+            for d in range(1, max(duration_days, 1) + 1)
+        ]
+
+    # Apply soft & hard preference filtering (e.g. 'no_trekking', 'veg_only', 'beach').
+    # Generic days are already ordered arrival -> departure, and the filter re-sorts by
+    # preference score, so it is skipped for them to keep the day sequence coherent.
+    candidate_mods = raw_candidates if use_generic_days else filter_by_preferences(raw_candidates, preferences_text)
 
     # 3. Assemble sequence up to duration_days
     all_packing_items: List[str] = []
@@ -201,14 +495,10 @@ def assemble_1shot_proposal(
             if matching_mods:
                 mod = matching_mods[(d_num - 1) % len(matching_mods)]
             else:
-                mod = candidate_mods[(d_num - 1) % len(candidate_mods)]
-                # Override title/description if no matching module is found
-                mod = mod.copy()
-                mod["sub_destination"] = requested_sub
-                mod["title"] = f"Explore {requested_sub}"
-                mod["description"] = f"Enjoy a curated day of sightseeing and experiences in {requested_sub}."
+                mod = _build_generic_module(requested_sub, d_num, duration_days)
         else:
-            mod = candidate_mods[(d_num - 1) % len(candidate_mods)]
+            idx = d_num - 1
+            mod = candidate_mods[idx] if idx < len(candidate_mods) else _build_generic_module(dest_clean, d_num, duration_days)
 
         raw_acts = mod.get("activities", [])
         
@@ -230,10 +520,12 @@ def assemble_1shot_proposal(
         activities = [
             ProposalActivity(
                 name=a.get("name", "Sightseeing"),
-                duration=a.get("duration") or a.get("duration_hours", "2 hrs"),
+                duration=_format_duration(a.get("duration") or a.get("duration_hours")),
                 timing=a.get("timing", "10:00 AM"),
-                location=a.get("location", mod.get("sub_destination")),
-                description=a.get("description", "")
+                location=a.get("location") or mod.get("sub_destination"),
+                description=a.get("description", ""),
+                price=a.get("price"),
+                image_url=a.get("image_url") or "",
             )
             for a in adjusted_acts
         ]
@@ -245,10 +537,11 @@ def assemble_1shot_proposal(
             hotels = [
                 ProposalHotel(
                     name=rag_hotel.get("name", "Deluxe Resort"),
-                    category=rag_hotel.get("category") or rag_hotel.get("star", "4 Star"),
-                    location=rag_hotel.get("location", dest_clean),
-                    meal_plan=rag_hotel.get("meal_plan") or rag_hotel.get("meal_type", "MAP"),
-                    price_per_night=float(rag_hotel.get("price_per_night") or rag_hotel.get("price_min") or 4000.0)
+                    category=rag_hotel.get("category") or rag_hotel.get("star") or "4 Star",
+                    location=rag_hotel.get("location") or dest_clean,
+                    meal_plan=rag_hotel.get("meal_plan") or rag_hotel.get("meal_type") or "MAP",
+                    price_per_night=float(rag_hotel.get("price_per_night") or rag_hotel.get("price_min") or 4000.0),
+                    image_url=rag_hotel.get("image_url") or "",
                 )
             ]
             logger.info(f"[AssemblyEngine] Day {d_num}: Using RAG-sourced hotel: {rag_hotel.get('name')}")
@@ -264,14 +557,35 @@ def assemble_1shot_proposal(
                 for h in mod.get("hotels", [])
             ]
 
+        day_sub_dest = mod.get("sub_destination") or dest_clean
+        transit_hours = mod.get("estimated_transit_hours", 2)
+        is_departure_day = duration_days > 1 and d_num == duration_days
+
         day_obj = ProposalDay(
             day_number=d_num,
             title=f"Day {d_num}: {mod.get('title', 'Exploration & Sightseeing')}",
             description=mod.get("description", "Enjoy a curated day of sightseeing, leisure, and regional culinary delights."),
-            sub_destination=mod.get("sub_destination", dest_clean),
-            schedule=f"{pace.title()} pace · {mod.get('estimated_transit_hours', 2)} hrs transit",
+            sub_destination=day_sub_dest,
+            schedule=f"{pace.title()} pace · {transit_hours} hrs transit",
             hotels=hotels,
-            activities=activities
+            activities=activities,
+            meals=_build_meals(
+                # Some modules are day trips that carry no hotel of their own (and the
+                # departure day has none by design). The guest is still staying at the
+                # previous night's property, so derive meals from that rather than
+                # rendering an empty meals section.
+                hotels or (days_list[-1].hotels if days_list else []),
+                preferences_text,
+                breakfast_only=is_departure_day,
+            ),
+            transfers=_build_transfers(
+                day_number=d_num,
+                duration_days=duration_days,
+                sub_destination=day_sub_dest,
+                previous_sub_destination=days_list[-1].sub_destination if days_list else None,
+                transit_hours=transit_hours,
+                num_travelers=num_travelers,
+            ),
         )
         days_list.append(day_obj)
         total_net_cost += mod.get("estimated_cost", 3500.0)
@@ -296,9 +610,23 @@ def assemble_1shot_proposal(
         dos_and_donts="Do respect local cultural sites. Don't litter or carry single-use plastic in eco-sensitive zones."
     )
 
+    # Top-level hotel summary table — deduped across days, preserving itinerary order.
+    summary_hotels: List[ProposalHotel] = []
+    seen_hotels = set()
+    for day in days_list:
+        for hotel in day.hotels:
+            key = (hotel.name or "").strip().lower()
+            if key and key not in seen_hotels:
+                seen_hotels.add(key)
+                summary_hotels.append(hotel)
+
+    # Preserve itinerary order for sub-destinations; set() scrambled them.
+    ordered_sub_dests = list(dict.fromkeys(d.sub_destination for d in days_list if d.sub_destination))
+
     proposal = FinalProposalSchema(
         destination=dest_clean,
-        sub_destinations=list(set(d.sub_destination for d in days_list if d.sub_destination)),
+        sub_destinations=ordered_sub_dests,
+        hotels=summary_hotels,
         overview=f"Exclusive {duration_days}-Day curated trip to {dest_clean} customized for {client_name}." + (
             f" Built from your agency's vault knowledge." if rag_hotels or rag_activities else ""
         ),
