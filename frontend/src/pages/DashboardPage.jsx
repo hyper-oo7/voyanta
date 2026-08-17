@@ -450,7 +450,7 @@ export default function DashboardPage() {
 
       {/* Enlarge Proposals View Modal */}
       {proposalsEnlarged && createPortal(
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-md sm:p-xl animate-fade-in" onClick={() => setProposalsEnlarged(false)}>
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-md sm:p-xl animate-fade-in" onClick={() => setProposalsEnlarged(false)}>
           <div className="bg-surface border border-outline-variant w-full max-w-5xl h-[85vh] rounded-[32px] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="px-xl py-lg bg-surface-container-lowest border-b border-outline-variant flex items-center justify-between gap-md shrink-0">

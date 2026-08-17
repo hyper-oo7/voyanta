@@ -87,7 +87,7 @@ export default function ImportModal({ resource, onClose, onImported, agencyId = 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 m-4">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">

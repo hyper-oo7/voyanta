@@ -739,7 +739,7 @@ function DestinationDetailModal({ destination, items, onClose, onEditItem, onDel
   const coverImage = items.find(i => i.image_url)?.image_url || 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=1000';
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-md text-on-surface">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-md text-on-surface">
       <div className="absolute inset-0 bg-on-surface/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-surface-container-lowest w-full max-w-4xl rounded-2xl shadow-2xl border border-outline-variant max-h-[90vh] flex flex-col z-10 overflow-hidden">
         {/* Banner Header */}

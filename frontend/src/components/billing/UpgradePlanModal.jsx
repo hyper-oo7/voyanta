@@ -53,7 +53,7 @@ export default function UpgradePlanModal({ isOpen, onClose, lockedItemName, onUp
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-outline-variant shadow-2xl overflow-hidden">
         
         {/* Header */}

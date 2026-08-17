@@ -239,7 +239,7 @@ export default function EditItemDrawer({ item: record, resource, service, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex text-on-surface" data-testid="edit-item-drawer">
+    <div className="fixed inset-0 z-[100] flex text-on-surface" data-testid="edit-item-drawer">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-on-surface/30 backdrop-blur-sm" onClick={onClose} />
       <div className="flex-1" />
       <motion.aside 

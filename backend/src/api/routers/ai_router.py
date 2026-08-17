@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from pydantic import BaseModel
 import logging
 
@@ -414,6 +414,11 @@ async def assemble_1shot_route(
 class GenerateDayModuleInput(BaseModel):
     sub_destination: str
     agency_id: Optional[str] = "global"
+    day_number: int = 1
+    selected_hotels: Optional[List[Dict[str, Any]]] = None
+    selected_activities: Optional[List[Dict[str, Any]]] = None
+    selected_sub_destinations: Optional[List[str]] = None
+    notes: Optional[str] = None
 
 @router.post("/generate-day-module")
 async def generate_day_module(
@@ -421,7 +426,7 @@ async def generate_day_module(
     user: Any = Depends(verify_token_optional)
 ):
     """
-    Generate a dynamic ProposalDay block using RAG data for a specific sub-destination.
+    Generate a dynamic ProposalDay block using RAG data and curated selections for a specific sub-destination.
     """
     agency_id = "global"
     if isinstance(user, dict):
@@ -442,20 +447,33 @@ async def generate_day_module(
         travel_style="standard",
     )
     
+    overrides_text = ""
+    if input.selected_sub_destinations and len(input.selected_sub_destinations) > 0:
+        overrides_text += f"\nSelected Sub-Destinations for this day: {', '.join(input.selected_sub_destinations)}"
+    if input.selected_hotels and len(input.selected_hotels) > 0:
+        hotel_names = [h.get("name") or str(h) for h in input.selected_hotels if h]
+        overrides_text += f"\nSelected Accommodations: {', '.join(hotel_names)}"
+    if input.selected_activities and len(input.selected_activities) > 0:
+        act_names = [a.get("name") or str(a) for a in input.selected_activities if a]
+        overrides_text += f"\nSelected Activities/Attractions: {', '.join(act_names)}"
+    if input.notes:
+        overrides_text += f"\nCurator Special Notes: {input.notes}"
+
     prompt = f"""
-    Based on the following retrieved knowledge from our past proposals/PDFs, generate a single Day itinerary block for the sub-destination: {input.sub_destination}.
-    Do NOT invent attractions or hotels that are not present in the context. If the context is empty, provide a generic but realistic day for {input.sub_destination}.
+    Based on the following retrieved knowledge from our past proposals/PDFs and curator selections, generate a single Day itinerary block for the sub-destination: {input.sub_destination}.
+    This day will be Day {input.day_number} of the itinerary. Ensure the title explicitly starts with 'Day {input.day_number}:'.
+    {overrides_text}
     
     CONTEXT:
     {rag_result['context']}
     
     Respond strictly in JSON format matching this schema:
     {{
-        "title": "Day X: Title here",
-        "description": "Narrative description of the day",
+        "title": "Day {input.day_number}: Title here",
+        "description": "Narrative description of the day incorporating the selected sights and accommodations",
         "sub_destination": "{input.sub_destination}",
         "activities": [
-            {{"name": "Activity Name", "timing": "10:00 AM"}}
+            {{"name": "Activity Name", "timing": "10:00 AM", "details": "Optional details"}}
         ],
         "hotels": [
             {{"name": "Hotel Name", "category": "4 Star", "meal_plan": "MAP"}}
@@ -479,6 +497,16 @@ async def generate_day_module(
             clean_json = clean_json[3:-3].strip()
             
         day_module = json.loads(clean_json)
+        if isinstance(day_module, dict):
+            import re
+            raw_title = day_module.get("title") or f"Exploring {input.sub_destination}"
+            # Strip any leading Day X:, Day 1:, Day 2:, Day ?: etc.
+            cleaned_title = re.sub(r'^(Day\s*([0-9]+|[a-zA-Z]+|\?)\s*:\s*)', '', str(raw_title), flags=re.IGNORECASE).strip()
+            if not cleaned_title:
+                cleaned_title = f"Exploring {input.sub_destination}"
+            day_module["title"] = f"Day {input.day_number}: {cleaned_title}"
+            day_module["day"] = input.day_number
+
         return {"status": "success", "day_module": day_module}
     except Exception as e:
         logger.error(f"[AI GenerateDay] Failed: {e}")

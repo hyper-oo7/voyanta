@@ -221,22 +221,44 @@ export default function WebViewPage() {
       })
       .catch(() => {
         if (mounted) {
-          // Check local proposal cache (by id or token)
+          // Check local proposal cache (by draft_preview, id, or token)
           let cachedLocalProp = null;
           try {
-            const listCache = JSON.parse(localStorage.getItem('voyanta_proposals_list_cache') || '[]');
-            cachedLocalProp = listCache.find(p => String(p.id) === String(token) || String(p.share_token) === String(token));
+            if (token === 'draft_preview' || token === 'demo') {
+              const draftStr = localStorage.getItem('voyanta_draft_preview');
+              if (draftStr) cachedLocalProp = JSON.parse(draftStr);
+            }
             if (!cachedLocalProp && token) {
               const singleCache = localStorage.getItem(`voyanta_proposal_${token}`);
               if (singleCache) cachedLocalProp = JSON.parse(singleCache);
             }
+            if (!cachedLocalProp) {
+              const listCache = JSON.parse(localStorage.getItem('voyanta_proposals_list_cache') || '[]');
+              cachedLocalProp = listCache.find(p => String(p.id) === String(token) || String(p.share_token) === String(token));
+            }
+            if (!cachedLocalProp) {
+              const draftStr = localStorage.getItem('voyanta_draft_preview');
+              if (draftStr) cachedLocalProp = JSON.parse(draftStr);
+            }
           } catch {}
 
           if (cachedLocalProp) {
+            const rawItems = cachedLocalProp.items || [];
+            const grouped = {};
+            for (const it of rawItems) {
+              const k = (it.kind || 'custom').toLowerCase();
+              (grouped[k] ||= []).push(it);
+            }
+            const total = rawItems.reduce((s, it) => s + (Number(it.qty) || 1) * (Number(it.unit_price || it.price) || 0), 0);
+
             setData({
               proposal: cachedLocalProp,
-              items: cachedLocalProp.items || [],
-              totals: { subtotal: cachedLocalProp.total_amount || 0, currency: cachedLocalProp.currency || 'INR' },
+              items: rawItems,
+              items_by_kind: grouped,
+              totals: {
+                subtotal: cachedLocalProp.total_price || cachedLocalProp.total_amount || total || 0,
+                currency: cachedLocalProp.currency || 'INR'
+              },
             });
             setIsDemo(false);
             setLoading(false);
@@ -270,9 +292,11 @@ export default function WebViewPage() {
   const branding = p.preferences?.branding || {};
   const daysList = (p.days && Array.isArray(p.days) && p.days.length > 0)
     ? p.days
-    : (p.trip_details && Array.isArray(p.trip_details.days) && p.trip_details.days.length > 0
-      ? p.trip_details.days
-      : []);
+    : (p.itinerary?.days && Array.isArray(p.itinerary.days) && p.itinerary.days.length > 0
+      ? p.itinerary.days
+      : (p.trip_details && Array.isArray(p.trip_details.days) && p.trip_details.days.length > 0
+        ? p.trip_details.days
+        : []));
 
   const include = p.preferences?.include_sections || ALL_SECTIONS;
   const sectionOrder = p.preferences?.section_order || SECTIONS;
@@ -1353,7 +1377,7 @@ export default function WebViewPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 no-print"
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 no-print"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -1434,7 +1458,7 @@ export default function WebViewPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 no-print"
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 no-print"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -1552,7 +1576,7 @@ export default function WebViewPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 no-print"
+            className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 no-print"
             onClick={() => setSelectedActivityBlock(null)}
           >
             <motion.div

@@ -162,9 +162,10 @@ async def delete_package(pkg_id: str, user: Any = Depends(verify_token_optional)
 
 
 @router.get("/sub-destinations")
-async def get_agency_sub_destinations(user: Any = Depends(verify_token_optional)):
+async def get_agency_sub_destinations(selected: Optional[str] = Query(None, description="Comma separated selected sub-destinations to filter co-occurring destinations"), user: Any = Depends(verify_token_optional)):
     """
     Get all unique sub-destinations extracted from the agency's vault packages.
+    If 'selected' is provided, only return sub-destinations from packages that contain ALL the selected sub-destinations.
     """
     agency_id, _ = _extract_user_context(user)
     from src.services.supabase_client import get_supabase_client
@@ -181,8 +182,10 @@ async def get_agency_sub_destinations(user: Any = Depends(verify_token_optional)
         res = query.execute()
         packages = res.data or []
         
-        # Aggregate and deduplicate sub-destinations
-        unique_subs = set()
+        # Filter by selected sub-destinations if provided
+        selected_set = set([s.strip().title() for s in selected.split(',') if s.strip()]) if selected else set()
+        
+        filtered_packages = []
         for pkg in packages:
             subs = pkg.get("sub_destinations") or []
             if isinstance(subs, str):
@@ -191,10 +194,26 @@ async def get_agency_sub_destinations(user: Any = Depends(verify_token_optional)
                     subs = json.loads(subs)
                 except:
                     subs = []
+            
+            pkg_subs_set = set()
             if isinstance(subs, list):
                 for s in subs:
                     if isinstance(s, str) and s.strip():
-                        unique_subs.add(s.strip().title())
+                        pkg_subs_set.add(s.strip().title())
+            
+            if selected_set:
+                if selected_set.issubset(pkg_subs_set):
+                    filtered_packages.append(pkg_subs_set)
+            else:
+                filtered_packages.append(pkg_subs_set)
+                
+        # Aggregate and deduplicate remaining sub-destinations
+        unique_subs = set()
+        for pkg_subs in filtered_packages:
+            for s in pkg_subs:
+                # Optionally exclude already selected ones from candidates list
+                if not selected_set or s not in selected_set:
+                    unique_subs.add(s)
                         
         return JSONResponse(content={"status": "success", "sub_destinations": sorted(list(unique_subs))})
     except Exception as e:

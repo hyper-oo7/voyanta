@@ -158,7 +158,7 @@ export function ReceiptShareModal({ invoice, receiptNumber, paidAmount, datePaid
   };
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+    <div className="fixed inset-0 z-[140] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
       <div className="bg-surface-container-lowest w-full max-w-xl rounded-3xl shadow-2xl border border-outline-variant flex flex-col overflow-hidden">
         
         {/* Header */}

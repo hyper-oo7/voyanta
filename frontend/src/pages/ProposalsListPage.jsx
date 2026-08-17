@@ -546,7 +546,7 @@ function ProposalDrawer({ proposal, onClose, onSave }) {
   const upd = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   return (
-    <div className="fixed inset-0 z-[80] flex" data-testid="proposal-drawer">
+    <div className="fixed inset-0 z-[100] flex" data-testid="proposal-drawer">
       <div className="flex-1 bg-on-surface/30 backdrop-blur-sm" onClick={onClose} />
       <aside className="w-full max-w-[480px] bg-surface-container-lowest h-full overflow-y-auto border-l border-outline-variant shadow-2xl p-xl">
         <div className="flex items-center justify-between mb-lg">

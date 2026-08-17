@@ -290,7 +290,7 @@ export default function AppLayout() {
   return (
     <div className="flex h-screen overflow-hidden bg-surface text-on-surface">
       {/* Sidebar Navigation */}
-      <aside className="w-64 flex-shrink-0 flex flex-col py-lg space-y-xs overflow-y-auto bg-surface border-r border-outline-variant z-50">
+      <aside className="w-64 flex-shrink-0 flex flex-col py-lg space-y-xs overflow-y-auto bg-surface border-r border-outline-variant z-20">
         <div className="px-lg mb-xl">
           <div className="flex items-center gap-md">
             <div className="w-10 h-10 bg-primary flex items-center justify-center rounded-lg">
@@ -333,13 +333,13 @@ export default function AppLayout() {
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Dynamic Top Banner */}
         {upiReminder && (
-          <div className="flex-shrink-0 bg-amber-600 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-50 text-xs font-semibold">
+          <div className="flex-shrink-0 bg-amber-600 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-20 text-xs font-semibold">
             <span>🔔 Upcoming UPI / Bank Renewal: Your subscription renews in 4 days. Make payment now to ensure continuous access.</span>
             <button onClick={() => setUpgradeModalOpen(true)} className="px-3 py-1 bg-white text-amber-900 font-bold rounded-lg border-none cursor-pointer">Pay Now</button>
           </div>
         )}
         {!upiReminder && (
-          <div className={`flex-shrink-0 bg-gradient-to-r from-primary/90 via-emerald-600 to-primary text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-50 text-xs`}>
+          <div className={`flex-shrink-0 bg-gradient-to-r from-primary/90 via-emerald-600 to-primary text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-20 text-xs`}>
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded-full bg-white/20 text-white font-extrabold uppercase text-[10px] tracking-wider">
                 Full Access
@@ -359,7 +359,7 @@ export default function AppLayout() {
 
         {/* Top Navigation Bar */}
         {isDashboard && (
-          <header className="flex-shrink-0 flex justify-between items-center w-full px-lg py-md bg-surface shadow-sm z-40">
+          <header className="flex-shrink-0 flex justify-between items-center w-full px-lg py-md bg-surface shadow-sm z-20">
             <div className="flex items-center gap-sm">
               <span className="material-symbols-outlined text-primary text-[24px]">dashboard</span>
               <h2 className="font-headline-md text-lg font-bold text-on-surface m-0 tracking-tight">Agent Dashboard</h2>

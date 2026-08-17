@@ -106,21 +106,6 @@ CLIENT BRIEF:
   - Departure: {req.departure_city or 'TBD'} ({req.departure_airport or ''})
   - Special Requests: {req.special_notes or 'None'}
 {corporate_str}
-  - Client: {req.client_name}
-  - Destination: {req.destination}
-  - Group Type: {req.group_type.upper()}
-  - Duration: {req.duration_days} days ({req.start_date or 'TBD'} to {req.end_date or 'TBD'})
-  - Adults: {req.num_travelers}
-{child_str}  - Budget per head: ₹{req.budget_per_head or 'Not specified'} ({req.budget_flexibility} — {'Do NOT exceed budget' if req.budget_flexibility == 'strict' else 'Can go 10-15% over for exceptional experiences'})
-  - Hotel Category: {req.hotel_category.replace('_', ' ').title()} — select hotels matching this category ONLY
-  - Flight Class: {req.flight_class.title()} — use this class for all flights in the itinerary
-  - Transport: {req.transport_type.replace('_', ' ').title()}
-  - Dietary: {req.dietary or 'No restrictions'}
-  - Travel Style / Pace: {req.pace or 'balanced'}
-  - Arrival: {req.arrival_city or 'TBD'} ({req.arrival_airport or ''})
-  - Departure: {req.departure_city or 'TBD'} ({req.departure_airport or ''})
-  - Special Requests: {req.special_notes or 'None'}
-{corporate_str}
 
 {"RAG Query: " + query if query else ""}
 
@@ -225,7 +210,6 @@ def _validate_and_price(
     costing: CostingPrefs,
     travelers: int,
     req: AssembleRequest,
-    req: AssembleRequest,
 ) -> Dict[str, Any]:
     """Ensure every ID exists in vault and recalculate all math exactly."""
 
@@ -259,7 +243,6 @@ def _validate_and_price(
             validated_hotels.append({
                 "id": vault_h.id,
                 "name": vault_h.name,
-                "category": vault_h.category or req.hotel_category.replace('_', ' ').title(),
                 "category": vault_h.category or req.hotel_category.replace('_', ' ').title(),
                 "meal_plan": vault_h.meal_type or "CP",
                 "price_per_night": price,
@@ -310,7 +293,6 @@ def _validate_and_price(
                 "origin": vault_f.origin or "",
                 "destination": vault_f.destination or "",
                 "cost": price,
-                "class": vault_f.class_ or req.flight_class.title(),
                 "class": vault_f.class_ or req.flight_class.title(),
             })
         day["flights"] = validated_flights
@@ -409,7 +391,6 @@ async def assemble_itinerary(req: AssembleRequest) -> AssembledProposalOut:
         vault=req.vault_matches,
         costing=req.costing_prefs,
         travelers=max(1, req.num_travelers),
-        req=req,
         req=req,
     )
 
