@@ -3,6 +3,7 @@ import json
 import logging
 import httpx
 import re
+import time
 from typing import Any, Dict, List, Optional
 import tenacity
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -329,7 +330,23 @@ async def call_llm(
         cached = await get_cached_extraction(agency_id, model, prompt_version, schema_version, input_text)
         if cached is not None:
             logger.info(f"[AICache] Cache HIT for entity_type={entity_type}")
+            try:
+                from src.services.ai_telemetry_service import emit_llm_call
+                emit_llm_call(
+                    provider="cache",
+                    model=model,
+                    latency_ms=0,
+                    tokens_in=len(prompt) // 4,
+                    tokens_out=len(json.dumps(cached)) // 4 if isinstance(cached, (dict, list)) else len(str(cached)) // 4,
+                    cache_hit=True,
+                    agency_id=agency_id,
+                    entity_type=entity_type,
+                )
+            except Exception:
+                pass
             return json.dumps(cached) if isinstance(cached, (dict, list)) else str(cached)
+
+    start_time = time.monotonic()
 
     # Helper function to perform the actual call based on the resolved provider
     async def execute_call(active_provider: str) -> str:
@@ -387,7 +404,7 @@ async def call_llm(
                     if not is_model_specific or g_model == models_to_try[-1]:
                         raise e
                     logger.warning(f"Gemini model {g_model} failed with model-specific error ({err_str}). Trying next Gemini model.")
-            raise last_err or AIServiceError("All Gemini model endpoints failed.")
+                raise last_err or AIServiceError("All Gemini model endpoints failed.")
             
         else:  # openai
             url = "https://api.openai.com/v1/chat/completions"
@@ -456,9 +473,55 @@ async def call_llm(
                     cache_meta["model_used"] = GEMINI_MODEL if provider == "gemini" else OPENAI_MODEL
             except Exception as fe:
                 logger.error(f"Fallback AI call to {fallback_provider} also failed: {fe}")
+                try:
+                    from src.services.ai_telemetry_service import emit_llm_call
+                    emit_llm_call(
+                        provider=provider,
+                        model=GEMINI_MODEL if provider == "gemini" else OPENAI_MODEL,
+                        latency_ms=int((time.monotonic() - start_time) * 1000),
+                        tokens_in=len(prompt) // 4,
+                        tokens_out=0,
+                        cache_hit=False,
+                        agency_id=cache_meta.get("agency_id") if cache_meta else None,
+                        entity_type=cache_meta.get("entity_type") if cache_meta else None,
+                        error=str(fe),
+                    )
+                except Exception:
+                    pass
                 raise fe
         else:
+            try:
+                from src.services.ai_telemetry_service import emit_llm_call
+                emit_llm_call(
+                    provider=provider,
+                    model=GEMINI_MODEL if provider == "gemini" else OPENAI_MODEL,
+                    latency_ms=int((time.monotonic() - start_time) * 1000),
+                    tokens_in=len(prompt) // 4,
+                    tokens_out=0,
+                    cache_hit=False,
+                    agency_id=cache_meta.get("agency_id") if cache_meta else None,
+                    entity_type=cache_meta.get("entity_type") if cache_meta else None,
+                    error=str(e),
+                )
+            except Exception:
+                pass
             raise e
+
+    # Emit telemetry for successful live LLM execution
+    try:
+        from src.services.ai_telemetry_service import emit_llm_call
+        emit_llm_call(
+            provider=provider,
+            model=GEMINI_MODEL if provider == "gemini" else OPENAI_MODEL,
+            latency_ms=int((time.monotonic() - start_time) * 1000),
+            tokens_in=len(prompt) // 4,
+            tokens_out=len(text_result) // 4 if text_result else 0,
+            cache_hit=False,
+            agency_id=cache_meta.get("agency_id") if cache_meta else None,
+            entity_type=cache_meta.get("entity_type") if cache_meta else None,
+        )
+    except Exception as tel_err:
+        logger.debug(f"[AIClient] Telemetry emission skipped: {tel_err}")
 
     # 3. Cache the result if cache metadata is provided
     if cache_meta and text_result:

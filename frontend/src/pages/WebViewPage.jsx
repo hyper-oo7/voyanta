@@ -27,13 +27,50 @@ const INDIAN_LANGUAGES = [
   { code: 'hi', label: 'Hindi', native: 'हिंदी' },
   { code: 'bn', label: 'Bengali', native: 'বাংলা' },
   { code: 'te', label: 'Telugu', native: 'తెలుగు' },
-  { code: 'mr', label: 'Marathi', native: 'मਰਾਠी' },
+  { code: 'mr', label: 'Marathi', native: 'मરાਠी' },
   { code: 'ta', label: 'Tamil', native: 'தமிழ்' },
   { code: 'gu', label: 'Gujarati', native: 'ગુજરાતી' },
   { code: 'kn', label: 'Kannada', native: 'ಕನ್ನಡ' },
   { code: 'pa', label: 'Punjabi', native: 'ਪੰਜਾਬੀ' },
   { code: 'ml', label: 'Malayalam', native: 'മലയാളം' }
 ];
+
+const safeList = (raw) => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map(item => {
+      if (item == null) return '';
+      if (typeof item === 'string') return item;
+      if (typeof item === 'number' || typeof item === 'boolean') return String(item);
+      return item.text || item.content || item.name || item.title || item.label || JSON.stringify(item);
+    }).filter(Boolean);
+  }
+  if (typeof raw === 'string') {
+    return raw.split('\n').map(s => s.trim()).filter(Boolean);
+  }
+  if (typeof raw === 'object') {
+    if (raw.content) return safeList(raw.content);
+    if (raw.items) return safeList(raw.items);
+    if (raw.inclusions) return safeList(raw.inclusions);
+    if (raw.exclusions) return safeList(raw.exclusions);
+    return Object.values(raw).map(v => typeof v === 'string' ? v : JSON.stringify(v)).filter(Boolean);
+  }
+  return [String(raw)];
+};
+
+const safeRenderText = (val) => {
+  if (val == null) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  if (Array.isArray(val)) return val.map(safeRenderText).join('\n');
+  if (typeof val === 'object') {
+    if (val.content !== undefined) return safeRenderText(val.content);
+    if (val.text !== undefined) return safeRenderText(val.text);
+    if (val.value !== undefined) return safeRenderText(val.value);
+    return Object.values(val).map(safeRenderText).join('\n');
+  }
+  return String(val);
+};
 
 export default function WebViewPage() {
   const { token } = useParams();
@@ -897,17 +934,17 @@ export default function WebViewPage() {
           )}
 
           {/* Inclusions & Exclusions */}
-          {((include.inclusions && p.inclusions) || (include.exclusions && p.exclusions)) && (
+          {((include.inclusions && (p.inclusions || p.included_items)) || (include.exclusions && (p.exclusions || p.excluded_items))) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-              {include.inclusions && p.inclusions && (
+              {include.inclusions && (p.inclusions || p.included_items) && (
                 <div id="inclusions-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
                   <h3 className="text-lg font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
                     <span className="material-symbols-outlined">check_circle</span>
                     Inclusions
                   </h3>
                   <ul className="space-y-2.5 text-sm text-on-surface-variant">
-                    {p.inclusions.split('\n').map((item, i) => {
-                      const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                    {safeList(p.inclusions || p.included_items).map((item, i) => {
+                      const clean = String(item).replace(/^[-•*+]\s*/, '').trim();
                       return clean ? (
                         <li key={i} className="flex items-start gap-2.5">
                           <span className="material-symbols-outlined text-emerald-500 text-base mt-0.5 shrink-0">check_circle</span>
@@ -918,15 +955,15 @@ export default function WebViewPage() {
                   </ul>
                 </div>
               )}
-              {include.exclusions && p.exclusions && (
+              {include.exclusions && (p.exclusions || p.excluded_items) && (
                 <div id="exclusions-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
                   <h3 className="text-lg font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
                     <span className="material-symbols-outlined">cancel</span>
                     Exclusions
                   </h3>
                   <ul className="space-y-2.5 text-sm text-on-surface-variant">
-                    {p.exclusions.split('\n').map((item, i) => {
-                      const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                    {safeList(p.exclusions || p.excluded_items).map((item, i) => {
+                      const clean = String(item).replace(/^[-•*+]\s*/, '').trim();
                       return clean ? (
                         <li key={i} className="flex items-start gap-2.5">
                           <span className="material-symbols-outlined text-rose-500 text-base mt-0.5 shrink-0">cancel</span>
@@ -948,9 +985,7 @@ export default function WebViewPage() {
                 What to Pack & Packing Guidelines
               </h3>
               <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
-                {typeof (p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines) === 'string'
-                  ? (p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines)
-                  : JSON.stringify(p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines, null, 2)}
+                {safeRenderText(p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines)}
               </div>
             </div>
           )}
@@ -963,9 +998,7 @@ export default function WebViewPage() {
                 Important Notes & Advisories
               </h3>
               <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
-                {typeof (p.important_notes || p.preferences?.important_notes) === 'string'
-                  ? (p.important_notes || p.preferences?.important_notes)
-                  : JSON.stringify(p.important_notes || p.preferences?.important_notes, null, 2)}
+                {safeRenderText(p.important_notes || p.preferences?.important_notes)}
               </div>
             </div>
           )}
@@ -978,9 +1011,7 @@ export default function WebViewPage() {
                 Visa & Travel Documentation
               </h3>
               <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
-                {typeof (p.visa_guidelines || p.preferences?.visa_guidelines) === 'string'
-                  ? (p.visa_guidelines || p.preferences?.visa_guidelines)
-                  : JSON.stringify(p.visa_guidelines || p.preferences?.visa_guidelines, null, 2)}
+                {safeRenderText(p.visa_guidelines || p.preferences?.visa_guidelines)}
               </div>
             </div>
           )}
@@ -1012,13 +1043,16 @@ export default function WebViewPage() {
                   <div key={cb.id} id={cb.id} className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
                     <h3 className="text-xl font-display font-bold text-on-surface">{cb.label}</h3>
                     {cb.type === 'text' ? (
-                      <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">{contentVal}</div>
+                      <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">{safeRenderText(contentVal)}</div>
                     ) : cb.type === 'list' ? (
                       <ul className="space-y-2 text-sm text-on-surface-variant pl-4 list-disc">
-                        {contentVal.split('\n').map((item, i) => item.trim() && <li key={i}>{item}</li>)}
+                        {safeList(contentVal).map((item, i) => {
+                          const clean = String(item).trim();
+                          return clean ? <li key={i}>{clean}</li> : null;
+                        })}
                       </ul>
                     ) : cb.type === 'image' && contentVal ? (
-                      <img src={contentVal} className="w-full max-h-96 object-cover rounded-xl" alt={cb.label} />
+                      <img src={typeof contentVal === 'string' ? contentVal : contentVal?.url} className="w-full max-h-96 object-cover rounded-xl" alt={cb.label} />
                     ) : null}
                   </div>
                 );
@@ -1034,8 +1068,8 @@ export default function WebViewPage() {
                 Terms of Payment
               </h3>
               <ul className="space-y-2.5 text-sm text-on-surface-variant">
-                {(p.terms_of_payment || p.preferences?.branding?.terms_of_payment || branding?.terms_of_payment).split('\n').map((item, i) => {
-                  const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                {safeList(p.terms_of_payment || p.preferences?.branding?.terms_of_payment || branding?.terms_of_payment).map((item, i) => {
+                  const clean = String(item).replace(/^[-•*+]\s*/, '').trim();
                   return clean ? (
                     <li key={i} className="flex items-start gap-2.5">
                       <span className="material-symbols-outlined text-primary text-base mt-0.5 shrink-0">check_circle</span>
@@ -1048,15 +1082,15 @@ export default function WebViewPage() {
           )}
 
           {/* Terms & Conditions */}
-          {include.terms && p.terms && (
+          {include.terms && (p.terms || p.terms_conditions) && (
             <div id="terms-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4 pt-4">
               <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">gavel</span>
                 Terms & Conditions
               </h3>
               <ul className="space-y-2.5 text-sm text-on-surface-variant">
-                {p.terms.split('\n').map((item, i) => {
-                  const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                {safeList(p.terms || p.terms_conditions).map((item, i) => {
+                  const clean = String(item).replace(/^[-•*+]\s*/, '').trim();
                   return clean ? (
                     <li key={i} className="flex items-start gap-2.5">
                       <span className="material-symbols-outlined text-primary/70 text-base mt-0.5 shrink-0">arrow_right</span>
@@ -1766,7 +1800,7 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
                       return <img key={block.id} src={block.data.url} alt="" className="rounded-xl w-full max-h-72 object-cover my-2 shadow-xs border border-outline-variant/30" />;
                     }
                     if (block.type === 'gallery' && block.data?.urls) {
-                      const urls = block.data.urls.split('\n').map(u => u.trim()).filter(Boolean);
+                      const urls = safeList(block.data.urls);
                       if (urls.length === 0) return null;
                       return (
                         <div key={block.id} className="grid grid-cols-2 sm:grid-cols-3 gap-2 my-2">

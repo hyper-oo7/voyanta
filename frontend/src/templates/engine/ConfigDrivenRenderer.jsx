@@ -155,12 +155,15 @@ const ConfigDrivenRenderer = memo(function ConfigDrivenRenderer(props) {
                 </div>
               ) : cb.type === 'list' || cb.type === 'checklist' ? (
                 <ul className="space-y-3 mt-4" style={{ color: textSec, fontFamily: theme.typography?.body || 'sans-serif' }}>
-                  {(Array.isArray(contentVal) ? contentVal : contentVal.split('\n')).map((item, i) => item.trim() && (
-                    <li key={i} className="flex items-start gap-3 text-base">
-                      <span className="material-symbols-outlined text-sm mt-1 flex-shrink-0" style={{ color: accentColor }}>check_circle</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
+                  {(Array.isArray(contentVal) ? contentVal : (typeof contentVal === 'string' ? contentVal.split('\n') : [String(contentVal)])).map((item, i) => {
+                    const clean = String(item || '').trim();
+                    return clean ? (
+                      <li key={i} className="flex items-start gap-3 text-base">
+                        <span className="material-symbols-outlined text-sm mt-1 flex-shrink-0" style={{ color: accentColor }}>check_circle</span>
+                        <span>{clean}</span>
+                      </li>
+                    ) : null;
+                  })}
                 </ul>
               ) : cb.type === 'image' ? (
                 contentVal ? (

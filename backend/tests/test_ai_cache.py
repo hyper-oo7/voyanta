@@ -3,12 +3,26 @@ import pytest
 from unittest.mock import MagicMock, patch
 from src.services.ai_cache_service import (
     compute_cache_key,
+    compute_prompt_hash,
     get_cached_extraction,
     save_cached_extraction,
     get_cache_stats,
     invalidate_cache,
 )
 from src.services.ai_service import call_gemini_with_retry, call_openai_with_retry
+
+def test_compute_prompt_hash():
+    prompt_a = "You are a travel assistant. Extract destinations."
+    prompt_b = "You are a travel assistant. Extract destinations."
+    prompt_c = "You are a travel assistant. Extract destinations and prices."
+
+    hash_a = compute_prompt_hash(prompt_a)
+    hash_b = compute_prompt_hash(prompt_b)
+    hash_c = compute_prompt_hash(prompt_c)
+
+    assert hash_a == hash_b
+    assert len(hash_a) == 12
+    assert hash_a != hash_c
 
 @pytest.mark.anyio
 async def test_compute_cache_key_deterministic():

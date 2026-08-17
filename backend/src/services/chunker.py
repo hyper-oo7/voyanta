@@ -44,14 +44,22 @@ class TravelDocumentChunker:
         chunks = []
         for section in sections:
             section_chunks = self._chunk_section(section["text"], section["header"])
-            for chunk_text in section_chunks:
+            for chunk_item in section_chunks:
+                if isinstance(chunk_item, dict):
+                    chunk_text_val = chunk_item.get("content", "").strip()
+                    context_win = chunk_item.get("context_window", chunk_text_val).strip()
+                else:
+                    chunk_text_val = str(chunk_item).strip()
+                    context_win = chunk_text_val
+
                 chunk_meta = {
                     **metadata,
                     "section_title": section["header"],
-                    "chunk_type": self._detect_chunk_type(section["header"], chunk_text),
+                    "chunk_type": self._detect_chunk_type(section["header"], chunk_text_val),
+                    "context_window": context_win,
                 }
                 chunks.append({
-                    "content": chunk_text.strip(),
+                    "content": chunk_text_val,
                     "metadata": chunk_meta,
                 })
         logger.info(f"[Chunker] Document chunked: total_chunks={len(chunks)}, doc_name={metadata.get('document_name')}")
@@ -70,52 +78,88 @@ class TravelDocumentChunker:
             sections.append({"header": header, "text": section_text})
         return sections
     
-    def _chunk_section(self, text: str, header: str) -> List[str]:
+    def _chunk_section(self, text: str, header: str) -> List[Dict[str, str]]:
         if len(text) <= self.chunk_size:
-            return [text]
+            return [{"content": text, "context_window": text}]
         if self._detect_chunk_type(header, text) == "pricing":
             return self._chunk_pricing(text)
         return self._chunk_by_sentences(text)
     
-    def _chunk_by_sentences(self, text: str) -> List[str]:
-        sentences = re.split(r"(?<=[.!?])\s+", text)
+    def _chunk_by_sentences(self, text: str, window_size: int = 2) -> List[Dict[str, str]]:
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+        if not sentences:
+            return [{"content": text, "context_window": text}]
+
         chunks = []
-        current_chunk = []
+        current_chunk_sentences = []
+        current_chunk_indices = []
         current_len = 0
-        for sentence in sentences:
+
+        for idx, sentence in enumerate(sentences):
             sent_len = len(sentence)
-            if current_len + sent_len > self.chunk_size and current_chunk:
-                chunks.append(" ".join(current_chunk))
+            if current_len + sent_len > self.chunk_size and current_chunk_sentences:
+                content = " ".join(current_chunk_sentences)
+                min_idx = current_chunk_indices[0]
+                max_idx = current_chunk_indices[-1]
+                win_start = max(0, min_idx - window_size)
+                win_end = min(len(sentences), max_idx + window_size + 1)
+                context_window = " ".join(sentences[win_start:win_end])
+
+                chunks.append({
+                    "content": content,
+                    "context_window": context_window
+                })
+
                 overlap_sentences = []
+                overlap_indices = []
                 overlap_len = 0
-                for s in reversed(current_chunk):
+                for s, i in zip(reversed(current_chunk_sentences), reversed(current_chunk_indices)):
                     if overlap_len + len(s) > self.overlap:
                         break
                     overlap_sentences.insert(0, s)
+                    overlap_indices.insert(0, i)
                     overlap_len += len(s)
-                current_chunk = overlap_sentences
+                current_chunk_sentences = overlap_sentences
+                current_chunk_indices = overlap_indices
                 current_len = overlap_len
-            current_chunk.append(sentence)
+
+            current_chunk_sentences.append(sentence)
+            current_chunk_indices.append(idx)
             current_len += sent_len
-        if current_chunk:
-            chunks.append(" ".join(current_chunk))
+
+        if current_chunk_sentences:
+            content = " ".join(current_chunk_sentences)
+            min_idx = current_chunk_indices[0]
+            max_idx = current_chunk_indices[-1]
+            win_start = max(0, min_idx - window_size)
+            win_end = min(len(sentences), max_idx + window_size + 1)
+            context_window = " ".join(sentences[win_start:win_end])
+            chunks.append({
+                "content": content,
+                "context_window": context_window
+            })
         return chunks
     
-    def _chunk_pricing(self, text: str) -> List[str]:
-        lines = text.split("\n")
+    def _chunk_pricing(self, text: str) -> List[Dict[str, str]]:
+        lines = [l for l in text.split("\n") if l.strip()]
+        if not lines:
+            return [{"content": text, "context_window": text}]
+
         chunks = []
         current = []
         current_len = 0
         for line in lines:
             line_len = len(line)
             if current_len + line_len > self.chunk_size and current:
-                chunks.append("\n".join(current))
+                content = "\n".join(current)
+                chunks.append({"content": content, "context_window": content})
                 current = []
                 current_len = 0
             current.append(line)
             current_len += line_len
         if current:
-            chunks.append("\n".join(current))
+            content = "\n".join(current)
+            chunks.append({"content": content, "context_window": content})
         return chunks
     
     def _detect_chunk_type(self, header: str, text: str) -> str:

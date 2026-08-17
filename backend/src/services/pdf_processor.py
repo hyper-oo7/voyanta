@@ -69,7 +69,22 @@ class PDFProcessor:
             chunks=chunks,
             embeddings=embeddings,
         )
-        
+
+        # Schedule Document Summary generation in background for Document Summary Index routing
+        if raw_text and len(raw_text) > 30:
+            try:
+                import asyncio
+                from src.services.vault_knowledge_service import _generate_and_store_doc_summary
+                loop = asyncio.get_running_loop()
+                loop.create_task(_generate_and_store_doc_summary(
+                    document_id=document_id,
+                    agency_id=agency_id,
+                    document_text=raw_text,
+                    table_name="documents",
+                ))
+            except Exception as e:
+                logger.debug(f"[PDFProcessor] Background summary generation schedule skipped: {e}")
+
         logger.info(f"[PDFProcessor] Complete: document_id={document_id}, chunks={chunks_stored}")
         
         return {
