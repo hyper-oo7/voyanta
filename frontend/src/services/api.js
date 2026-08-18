@@ -5,8 +5,8 @@ import { supabase } from '../lib/supabaseClient.js';
 export function normalizeStorageUrl(url) {
   if (!url || typeof url !== 'string') return url;
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    if (url.startsWith('http://127.0.0.1:8000/api/') || url.startsWith('http://localhost:8000/api/')) {
-      const path = url.replace(/http:\/\/(127\.0\.0\.1|localhost):8000/, '');
+    if (url.startsWith('http://127.0.0.1:8001/api/') || url.startsWith('http://localhost:8001/api/')) {
+      const path = url.replace(/http:\/\/(127\.0\.0\.1|localhost):8001/, '');
       return getBackendUrl(path);
     }
   }
@@ -14,8 +14,8 @@ export function normalizeStorageUrl(url) {
 }
 
 export function getBackendUrl(path = '') {
-  if (path && typeof path === 'string' && (path.startsWith('http://127.0.0.1:8000/api') || path.startsWith('http://localhost:8000/api'))) {
-    path = path.replace(/http:\/\/(127\.0\.0\.1|localhost):8000/, '');
+  if (path && typeof path === 'string' && (path.startsWith('http://127.0.0.1:8001/api') || path.startsWith('http://localhost:8001/api'))) {
+    path = path.replace(/http:\/\/(127\.0\.0\.1|localhost):8001/, '');
   }
   let base = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {

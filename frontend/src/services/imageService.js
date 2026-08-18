@@ -130,12 +130,8 @@ export async function fetchSimilarImages(query = '', limit = 6) {
   if (!query) return CURATED_IMAGES.fallbacks.map((url, i) => ({ id: `sim_${i}`, url, thumb: url }));
 
   const qLower = query.toLowerCase().trim();
-  const destMatch = Object.keys(CURATED_IMAGES.destinations).find(k => qLower.includes(k) || k.includes(qLower));
 
-  if (destMatch) {
-    return CURATED_IMAGES.destinations[destMatch].slice(0, limit).map((url, i) => ({ id: `${destMatch}_${i}`, url, thumb: url }));
-  }
-
+  // Try live API first
   try {
     const res = await fetch(`/api/public/images/search?query=${encodeURIComponent(query)}`);
     if (res.ok) {
@@ -146,6 +142,12 @@ export async function fetchSimilarImages(query = '', limit = 6) {
     }
   } catch (e) {
     console.warn('Failed to fetch similar images from API:', e);
+  }
+
+  // Fallback to curated destinations if API fails or returns empty
+  const destMatch = Object.keys(CURATED_IMAGES.destinations).find(k => qLower.includes(k) || k.includes(qLower));
+  if (destMatch) {
+    return CURATED_IMAGES.destinations[destMatch].slice(0, limit).map((url, i) => ({ id: `${destMatch}_${i}`, url, thumb: url }));
   }
 
   return CURATED_IMAGES.fallbacks.slice(0, limit).map((url, i) => ({ id: `fb_sim_${i}`, url, thumb: url }));

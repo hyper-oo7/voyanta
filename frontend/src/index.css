@@ -581,7 +581,7 @@ html.dark .pricing-plan-card:hover {
   .no-print {
     display: none !important;
   }
-  .editorial-section, section, .glass-card, .rounded-xl, .rounded-2xl, .rounded-3xl, .border, table, tr, th, td, blockquote, figure, img, .day-block, .itinerary-day, .attached-service, .card, li {
+  .glass-card, .rounded-xl, .rounded-2xl, .rounded-3xl, .border, table, tr, th, td, blockquote, figure, img, .day-block, .itinerary-day, .attached-service, .card, li {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
     -webkit-column-break-inside: avoid !important;
@@ -592,5 +592,42 @@ html.dark .pricing-plan-card:hover {
   }
   a, a * {
     pointer-events: auto !important;
+  }
+
+  /* Reset specific layouts that prevent pagination */
+  html, body, #root, .print-reset-wrapper {
+    display: block !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  /* Reset layout constraints on main wrappers but leave flexbox intact */
+  main, .overflow-y-auto, .overflow-hidden {
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  /* Reset the canvas wrapper styling */
+  .print-region {
+    padding: 0 !important;
+    margin: 0 !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Hide explicit layout elements */
+  aside, 
+  header, 
+  nav:not(.print-nav), 
+  .no-print,
+  .fixed.bottom-6.right-6 {
+    display: none !important;
   }
 }

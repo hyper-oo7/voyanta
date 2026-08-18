@@ -201,13 +201,9 @@ export const useProposalStore = create((set, get) => ({
       // Get the real agency_id from Auth store instead of hardcoded demo-agency
       const agencyId = useAuthStore.getState().user?.agency_id || 'demo-agency';
 
-      // Get the real agency_id from Auth store instead of hardcoded demo-agency
-      const agencyId = useAuthStore.getState().user?.agency_id || 'demo-agency';
-
       // 1. Parallel retrieval: RAG context + Vault resources
       const [ragRes, vaultMatches] = await Promise.all([
         executeRAGQuery({
-          agency_id: intakeData.agency_id || agencyId,
           agency_id: intakeData.agency_id || agencyId,
           destination: intakeData.destination,
           duration_days: intakeData.duration_days,
@@ -230,17 +226,11 @@ export const useProposalStore = create((set, get) => ({
         }).catch((err) => {
           console.warn('[1-Shot] Vault matching failed:', err);
           return { hotels: [], activities: [], flights: [], templates: [], isError: true };
-          return { hotels: [], activities: [], flights: [], templates: [], isError: true };
         }),
       ]);
 
       const ragChunks = ragRes?.data?.chunks || [];
       const ragQuery = ragRes?.data?.query || '';
-      
-      const newRagStatus = ragRes?.isError ? 'degraded' : (ragChunks.length === 0 ? 'empty' : 'ok');
-      const newVaultStatus = vaultMatches?.isError || (vaultMatches?.hotels?.length === 0 && vaultMatches?.activities?.length === 0) ? 'empty' : 'ok';
-      
-      set({ ragStatus: newRagStatus, vaultStatus: newVaultStatus });
       
       const newRagStatus = ragRes?.isError ? 'degraded' : (ragChunks.length === 0 ? 'empty' : 'ok');
       const newVaultStatus = vaultMatches?.isError || (vaultMatches?.hotels?.length === 0 && vaultMatches?.activities?.length === 0) ? 'empty' : 'ok';
@@ -252,7 +242,6 @@ export const useProposalStore = create((set, get) => ({
         intakeData,
         { chunks: ragChunks, assembled_query: ragQuery },
         vaultMatches,
-        intakeData.costing_prefs || get().costingPrefs
         intakeData.costing_prefs || get().costingPrefs
       );
 

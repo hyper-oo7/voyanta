@@ -1,4 +1,4 @@
-import { useState, memo } from 'react';
+import { useState, memo, useEffect } from 'react';
 import { 
   DndContext, 
   closestCenter,
@@ -19,6 +19,7 @@ import { api } from '../../services/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import ImageSearchPicker from '../common/ImageSearchPicker.jsx';
 import { uploadOrEmbed } from '../LogoUploader.jsx';
+import { fetchSimilarImages } from '../../services/imageService.js';
 
 export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, removeDay, items = [], onRemoveItem, onAddResourceItem, proposalDestination, tourType }) {
   const toast = useToast();
@@ -41,8 +42,39 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
 
   const removeDayImage = (imgIdx) => {
     const next = dayImages.filter((_, i) => i !== imgIdx);
-    updateDay(index, { images: next, photos: next, image_url: next[0] || null });
+    updateDay(index, { images: next, photos: next, image_url: next[0] || null, _hasAutoFetched: true });
   };
+  
+  // Auto-fill day image based on title/destination and activities
+  useEffect(() => {
+    if (!dayData._hasAutoFetched && dayImages.length === 0 && (dayData.title || proposalDestination)) {
+      let query = dayData.title || proposalDestination || '';
+      if (query.toLowerCase().includes('day')) {
+        query = query.replace(/Day \d+:?/i, '').trim();
+      }
+      
+      // Enhance query with activity/place names to get specific landmark images (e.g., temples, cafes)
+      const contentKeywords = (dayData.content || [])
+        .filter(b => b.data && b.data.name)
+        .map(b => b.data.name)
+        .join(' ');
+      
+      if (contentKeywords) {
+        query = `${query} ${contentKeywords}`.trim().substring(0, 100); // limit query length
+      } else if (!query) {
+        query = proposalDestination;
+      }
+      
+      if (query && query.length > 2) {
+        updateDay(index, { _hasAutoFetched: true });
+        fetchSimilarImages(query, 1).then(res => {
+          if (res && res.length > 0 && res[0].url) {
+            updateDay(index, { image_url: res[0].url, _hasAutoFetched: true });
+          }
+        }).catch(() => {});
+      }
+    }
+  }, [dayData.title, dayData._hasAutoFetched, dayImages.length, proposalDestination, updateDay, index, dayData.content]);
   
   // AI Expansion states
   const [showAIPanel, setShowAIPanel] = useState(false);

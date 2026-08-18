@@ -42,8 +42,12 @@ export default function ItinerarySection({ proposal = {}, items = [], theme = {}
           const layoutId = sequence[idx % sequence.length] || 'alternating-layout';
           
           // Determine image for this day
-          const imgUrl = (Array.isArray(day.images) && day.images[0]) || (Array.isArray(day.photos) && day.photos[0]) || day.image_url || day.url || day.photo || dayImages[idx] || 
-            `https://images.unsplash.com/photo-${1500000000000 + (idx * 1234567)}?auto=format&fit=crop&w=800&q=80`;
+          const fallbacks = [
+            'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80',
+            'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&w=800&q=80',
+            'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80'
+          ];
+          const imgUrl = (Array.isArray(day.images) && day.images[0]) || (Array.isArray(day.photos) && day.photos[0]) || day.image_url || day.url || day.photo || dayImages[idx] || fallbacks[idx % fallbacks.length];
           
           // Find any items (flights, activities, hotels) assigned specifically to this day
           const dayItems = (items || []).filter(it => Number(it.day || it.day_number || it.dayNum) === num);

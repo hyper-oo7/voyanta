@@ -16,6 +16,10 @@ export default function CTASection({ proposal = {}, theme = {}, variant = 'gradi
   const primaryColor = theme.colors?.primary || '#1a1a2e';
   const accentColor = theme.colors?.accent || '#c41e3a';
   const textSec = theme.colors?.textSecondary || '#64748b';
+  const token = proposal.share_token || proposal.id || 'demo';
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://voyanta.com';
+  const approveLink = `${baseUrl}/view/${token}?action=approve`;
+  const modifyLink = `${baseUrl}/view/${token}?action=request_changes`;
 
   // ─── 1. Luxury CTA Variant ─────────────────────────────────────────────
   if (variant === 'luxury-cta') {
@@ -30,19 +34,33 @@ export default function CTASection({ proposal = {}, theme = {}, variant = 'gradi
             We invite you to review and approve this itinerary. Our dedicated concierge team is ready to secure your reservations and finalize every detail.
           </p>
 
-          <div className="no-print mb-12 flex justify-center gap-4">
-            <button 
-              className="px-8 py-4 bg-amber-500 hover:bg-amber-600 text-black font-semibold uppercase tracking-widest text-xs transition-colors duration-300 shadow-lg"
-              onClick={() => alert('Proposal Approved! Redirecting to payment schedule...')}
+          <div className="mb-12 flex justify-center gap-4">
+            <a 
+              href={approveLink}
+              target="_blank" rel="noopener noreferrer"
+              className="inline-block px-8 py-4 bg-amber-500 hover:bg-amber-600 text-black font-semibold uppercase tracking-widest text-xs transition-colors duration-300 shadow-lg no-underline"
+              onClick={(e) => {
+                if (window.location.pathname.includes('/proposals/wizard')) {
+                  e.preventDefault();
+                  alert('Proposal Approved! Redirecting to payment schedule...');
+                }
+              }}
             >
               Approve Itinerary
-            </button>
-            <button 
-              className="px-8 py-4 border border-white/30 hover:bg-white/10 text-white font-semibold uppercase tracking-widest text-xs transition-colors duration-300"
-              onClick={() => alert('Requesting modifications from your travel designer...')}
+            </a>
+            <a 
+              href={modifyLink}
+              target="_blank" rel="noopener noreferrer"
+              className="inline-block px-8 py-4 border border-white/30 hover:bg-white/10 text-white font-semibold uppercase tracking-widest text-xs transition-colors duration-300 no-underline"
+              onClick={(e) => {
+                if (window.location.pathname.includes('/proposals/wizard')) {
+                  e.preventDefault();
+                  alert('Requesting modifications from your travel designer...');
+                }
+              }}
             >
               Request Changes
-            </button>
+            </a>
           </div>
 
           <div className="pt-8 border-t border-white/10 text-xs text-gray-500 flex flex-col md:flex-row justify-between items-center">
@@ -76,13 +94,20 @@ export default function CTASection({ proposal = {}, theme = {}, variant = 'gradi
             Your travel designer has put this itinerary on tentative hold. Approve now to lock in rates and room availability.
           </p>
 
-          <div className="no-print mb-8 flex flex-wrap justify-center gap-4">
-            <button 
-              className="px-8 py-3.5 bg-white text-gray-900 hover:bg-gray-100 font-bold rounded-full shadow-lg transition-transform hover:scale-105 text-sm"
-              onClick={() => alert('Proposal Approved!')}
+          <div className="mb-8 flex flex-wrap justify-center gap-4">
+            <a 
+              href={approveLink}
+              target="_blank" rel="noopener noreferrer"
+              className="inline-block px-8 py-3.5 bg-white text-gray-900 hover:bg-gray-100 font-bold rounded-full shadow-lg transition-transform hover:scale-105 text-sm no-underline"
+              onClick={(e) => {
+                if (window.location.pathname.includes('/proposals/wizard')) {
+                  e.preventDefault();
+                  alert('Proposal Approved!');
+                }
+              }}
             >
               ✓ Approve & Book Now
-            </button>
+            </a>
           </div>
 
           <div className="text-xs text-white/70 pt-6 border-t border-white/20 flex flex-col md:flex-row justify-center gap-4">

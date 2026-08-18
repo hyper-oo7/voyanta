@@ -21,6 +21,7 @@ import ImageSearchPicker from '../components/common/ImageSearchPicker.jsx';
 import GoogleTranslateWidget from '../components/GoogleTranslateWidget.jsx';
 import { createInvoiceFromProposal } from '../services/invoiceService.js';
 import { logActivity } from '../services/activityLogService.js';
+import { fetchSimilarImages } from '../services/imageService.js';
 
 const INDIAN_LANGUAGES = [
   { code: 'en', label: 'English', native: 'English' },
@@ -80,12 +81,33 @@ export default function WebViewPage() {
   // Confetti trigger
   const [showConfetti, setShowConfetti] = useState(false);
 
+  // Auto-fetched hero images if none are provided
+  const [autoHeroImages, setAutoHeroImages] = useState([]);
+
   const toast = useToast();
 
   // Activity click, details modal, and stock photo picker states
   const [selectedActivityBlock, setSelectedActivityBlock] = useState(null);
   const [selectedActivityDayIdx, setSelectedActivityDayIdx] = useState(null);
   const [showStockPicker, setShowStockPicker] = useState(false);
+
+  // Auto-fetch hero images if missing
+  useEffect(() => {
+    if (!data || isDemo) return;
+    const p = data.proposal || {};
+    const branding = p.preferences?.branding || {};
+    const explicitImages = (Array.isArray(p.heroImages) && p.heroImages.length > 0 ? p.heroImages : null) ||
+                           (branding.cover_image_url ? [branding.cover_image_url] : null) ||
+                           (p.cover_image_url ? [p.cover_image_url] : null);
+    
+    if (!explicitImages && p.destination && autoHeroImages.length === 0) {
+      fetchSimilarImages(p.destination, 2).then(res => {
+        if (res && res.length > 0) {
+          setAutoHeroImages(res.filter(r => r && r.url).map(r => r.url));
+        }
+      }).catch(() => {});
+    }
+  }, [data, isDemo, autoHeroImages.length]);
 
   const markProposalSent = () => {
     try {
@@ -229,6 +251,15 @@ export default function WebViewPage() {
             if (!cachedLocalProp && token) {
               const singleCache = localStorage.getItem(`voyanta_proposal_${token}`);
               if (singleCache) cachedLocalProp = JSON.parse(singleCache);
+            }
+            if (!cachedLocalProp && token) {
+              const draftCache = localStorage.getItem(`voyanta_proposal_draft_${token}`);
+              if (draftCache) {
+                const draftData = JSON.parse(draftCache);
+                if (draftData.proposal) {
+                  cachedLocalProp = draftData.proposal;
+                }
+              }
             }
           } catch {}
 
@@ -743,7 +774,8 @@ export default function WebViewPage() {
             (Array.isArray(p.heroImages) && p.heroImages.length > 0 ? p.heroImages : null) ||
             (branding.cover_image_url ? [branding.cover_image_url] : null) ||
             (p.cover_image_url ? [p.cover_image_url] : null) ||
-            (daysList.length > 0 && (daysList[0].images?.[0] || daysList[0].image_url) ? [daysList[0].images?.[0] || daysList[0].image_url] : null) || [
+            (daysList.length > 0 && (daysList[0].images?.[0] || daysList[0].image_url) ? [daysList[0].images?.[0] || daysList[0].image_url] : null) ||
+            (autoHeroImages.length > 0 ? autoHeroImages : null) || [
               'https://images.unsplash.com/photo-1599661046289-e31897846e41?w=1200&q=80',
               'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=1200&q=80',
             ]
@@ -1669,6 +1701,42 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
     setOpen(defaultExpanded);
   }, [defaultExpanded]);
 
+  const initialDayImages = Array.isArray(day.images) && day.images.length > 0
+    ? day.images
+    : (Array.isArray(day.photos) && day.photos.length > 0
+      ? day.photos
+      : (day.image_url ? [day.image_url] : []));
+
+  const [fetchedImages, setFetchedImages] = useState([]);
+
+  useEffect(() => {
+    if (initialDayImages.length === 0 && day.title) {
+      let query = day.title || '';
+      if (query.toLowerCase().includes('day')) {
+        query = query.replace(/Day \d+:?/i, '').trim();
+      }
+      
+      const contentKeywords = (day.content || [])
+        .filter(b => b.data && b.data.name)
+        .map(b => b.data.name)
+        .join(' ');
+      
+      if (contentKeywords) {
+        query = `${query} ${contentKeywords}`.trim().substring(0, 100);
+      }
+      
+      if (query && query.length > 2) {
+        fetchSimilarImages(query, 1).then(res => {
+          if (res && res.length > 0 && res[0].url) {
+            setFetchedImages([res[0].url]);
+          }
+        }).catch(() => {});
+      }
+    }
+  }, [day.title, initialDayImages.length, day.content]);
+
+  const finalDayImages = initialDayImages.length > 0 ? initialDayImages : fetchedImages;
+
   return (
     <div className="border border-outline-variant rounded-2xl overflow-hidden bg-surface transition-all shadow-xs hover:shadow-sm">
       {/* Accordion Header (Always visible) */}
@@ -1709,24 +1777,16 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
               <p>{day.description || 'No description provided.'}</p>
 
               {/* Day Block Image Carousel */}
-              {(() => {
-                const dayImages = Array.isArray(day.images) && day.images.length > 0
-                  ? day.images
-                  : (Array.isArray(day.photos) && day.photos.length > 0
-                    ? day.photos
-                    : (day.image_url ? [day.image_url] : []));
-                if (dayImages.length === 0) return null;
-                return (
-                  <div className="h-52 md:h-64 rounded-xl overflow-hidden border border-outline-variant/60 shadow-xs">
-                    <MediaCarousel
-                      images={dayImages}
-                      autoPlay={dayImages.length > 1}
-                      interval={4500}
-                      className="w-full h-full"
-                    />
-                  </div>
-                );
-              })()}
+              {finalDayImages.length > 0 && (
+                <div className="h-52 md:h-64 rounded-xl overflow-hidden border border-outline-variant/60 shadow-xs">
+                  <MediaCarousel
+                    images={finalDayImages}
+                    autoPlay={finalDayImages.length > 1}
+                    interval={4500}
+                    className="w-full h-full"
+                  />
+                </div>
+              )}
 
               {/* Render Day Content Blocks */}
               {Array.isArray(day.content) && day.content.length > 0 && (

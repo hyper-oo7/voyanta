@@ -316,7 +316,23 @@ export default function UnifiedItineraryCanvas() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
-              const token = p.share_token || p.id || 'demo';
+              const storeState = useProposalStore.getState();
+              let token = p?.share_token || p?.id || storeState.activeId;
+              if (!token || token === 'demo') {
+                token = crypto.randomUUID();
+                useProposalStore.getState().setActiveId(token);
+              }
+              try {
+                const currentData = {
+                  ...p,
+                  id: token,
+                  preferences: { ...(p?.preferences || {}), branding: branding || storeState.branding }
+                };
+                localStorage.setItem(`voyanta_proposal_${token}`, JSON.stringify(currentData));
+              } catch(e) {
+                console.error('Failed to sync draft to local cache before opening web view', e);
+                alert('Warning: Failed to sync your live draft to the Web View. If you uploaded large images, they may exceed your browser\'s local storage limits. Please save your draft to the database first.');
+              }
               window.open(`/view/${token}`, '_blank');
             }}
             className="px-3 py-1.5 bg-purple-100 dark:bg-purple-900/50 text-purple-900 dark:text-purple-100 hover:bg-purple-200 dark:hover:bg-purple-900 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
@@ -327,7 +343,23 @@ export default function UnifiedItineraryCanvas() {
 
           <button
             onClick={() => {
-              const token = p.share_token || p.id || 'demo';
+              const storeState = useProposalStore.getState();
+              let token = p?.share_token || p?.id || storeState.activeId;
+              if (!token || token === 'demo') {
+                token = crypto.randomUUID();
+                useProposalStore.getState().setActiveId(token);
+              }
+              try {
+                const currentData = {
+                  ...p,
+                  id: token,
+                  preferences: { ...(p?.preferences || {}), branding: branding || storeState.branding }
+                };
+                localStorage.setItem(`voyanta_proposal_${token}`, JSON.stringify(currentData));
+              } catch(e) {
+                console.error('Failed to sync draft to local cache before opening web view', e);
+                alert('Warning: Failed to sync your live draft to the Web View. If you uploaded large images, they may exceed your browser\'s local storage limits. Please save your draft to the database first.');
+              }
               const clientUrl = `${window.location.origin}/view/${token}?mode=client`;
               navigator.clipboard.writeText(clientUrl);
               alert('Copied Client Web Link to clipboard!\nSend this link to your client: ' + clientUrl);
@@ -601,8 +633,8 @@ export default function UnifiedItineraryCanvas() {
               transition={{ duration: 0.2 }}
               className="max-w-6xl mx-auto w-full"
             >
-              <div className="bg-surface border border-outline-variant rounded-2xl shadow-xl overflow-hidden flex flex-col min-h-[calc(100vh-140px)]">
-                <div className="px-5 py-3 bg-surface-container-high border-b border-outline-variant flex items-center justify-between text-xs">
+              <div className="bg-surface border border-outline-variant rounded-2xl shadow-xl overflow-hidden flex flex-col min-h-[calc(100vh-140px)] print-reset-wrapper print:border-none print:shadow-none print:bg-transparent">
+                <div className="px-5 py-3 bg-surface-container-high border-b border-outline-variant flex items-center justify-between text-xs no-print">
                   <span className="font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
                     <span className="material-symbols-outlined text-[18px] text-primary">description</span>
                     Layout Preview: <strong className="text-on-surface">{(activeTemplateSlug || 'classic').toUpperCase()}</strong>
@@ -610,7 +642,28 @@ export default function UnifiedItineraryCanvas() {
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => {
-                        const token = p.share_token || p.id || 'demo';
+                        const storeState = useProposalStore.getState();
+                        let token = p?.share_token || p?.id || storeState.activeId;
+                        if (!token || token === 'demo') {
+                          token = crypto.randomUUID();
+                          useProposalStore.getState().setActiveId(token);
+                        }
+                        
+                        // Force save current live preview to local cache so the web view picks it up exactly as is
+                        try {
+                          const currentData = {
+                            ...p,
+                            id: token,
+                            preferences: {
+                              ...(p?.preferences || {}),
+                              branding: branding || storeState.branding
+                            }
+                          };
+                          localStorage.setItem(`voyanta_proposal_${token}`, JSON.stringify(currentData));
+                        } catch(e) {
+                          console.error('Failed to sync draft to local cache before opening web view', e);
+                          alert('Warning: Failed to sync your live draft to the Web View. If you uploaded large images, they may exceed your browser\'s local storage limits. Please save your draft to the database first.');
+                        }
                         window.open(`/view/${token}`, '_blank');
                       }}
                       className="text-primary hover:underline font-bold text-xs flex items-center gap-1.5"
@@ -621,7 +674,7 @@ export default function UnifiedItineraryCanvas() {
                   </div>
                 </div>
 
-                <div className="flex-1 p-6 bg-surface-container-lowest overflow-y-auto">
+                <div className="flex-1 p-6 bg-surface-container-lowest overflow-y-auto print-region">
                   <TemplateRenderer 
                     style={activeTemplateSlug || 'classic'}
                     data={{
