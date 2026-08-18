@@ -36,6 +36,10 @@ async def get_cached_recommendation(hash_key: str, supabase_client=None, agency_
             redis_key = f"semantic_cache:{mem_key}"
             cached_str = await redis_client.get(redis_key)
             if cached_str:
+                try:
+                    await redis_client.expire(redis_key, 2592000)
+                except Exception:
+                    pass
                 logger.info(f"[Semantic Cache] HIT in Upstash Redis for hash {hash_key[:8]}... ($0 cost)")
                 parsed = json.loads(cached_str) if isinstance(cached_str, str) else cached_str
                 _MEMORY_CACHE[mem_key] = parsed

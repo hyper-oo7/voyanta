@@ -57,3 +57,30 @@ async def test_verify_token_fallback_network(mock_verify_network):
         decoded = await verify_token(credentials)
         assert decoded["sub"] == "network-user"
         mock_verify_network.assert_called_once_with("not-a-valid-jwt")
+
+@pytest.mark.anyio
+async def test_admin_token_with_configured_secret(mock_jwt_secret):
+    payload = {"sub": "admin-1", "role": "owner", "exp": int(time.time()) + 3600}
+    token = jwt.encode(payload, mock_jwt_secret, algorithm="HS256")
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    
+    with patch.dict("os.environ", {"SUPABASE_JWT_SECRET": mock_jwt_secret}):
+        decoded = await verify_token(credentials)
+        assert decoded["role"] == "owner"
+        assert decoded["sub"] == "admin-1"
+
+@pytest.mark.anyio
+@patch("src.core.security._verify_token_network")
+async def test_admin_token_rejected_when_secret_unset(mock_verify_network):
+    """Ensure hardcoded default secret is NOT accepted when SUPABASE_JWT_SECRET is unset."""
+    payload = {"sub": "fake-admin", "role": "owner", "exp": int(time.time()) + 3600}
+    # Token signed with the old hardcoded string
+    token = jwt.encode(payload, "voyanta_admin_super_secret_key_2026", algorithm="HS256")
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    
+    mock_verify_network.side_effect = HTTPException(status_code=401, detail="Invalid auth token")
+    with patch.dict("os.environ", {"SUPABASE_JWT_SECRET": "", "JWT_SECRET": ""}):
+        with pytest.raises(HTTPException) as exc_info:
+            await verify_token(credentials)
+        assert exc_info.value.status_code == 401
+

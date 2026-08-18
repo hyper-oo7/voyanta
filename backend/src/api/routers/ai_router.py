@@ -1,16 +1,25 @@
+import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from typing import Any, Dict, Optional, List
 from pydantic import BaseModel
-import logging
 
 from src.models.api_models import ParseItineraryInput
-from src.core.security import verify_token, verify_token_optional, get_request_token
+from src.core.security import verify_token, verify_token_optional, get_request_token, CurrentUser, OptionalUser
 from src.services.supabase_client import get_user_supabase_client
-
+from src.services.ai_client import stream_llm
 from src.services.ai_service import extract_itinerary, translate_proposal_content, generate_luxury_title, enhance_luxury_text
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(tags=["AI"])
+
+class StreamGenerateInput(BaseModel):
+    prompt: str
+    system_prompt: Optional[str] = None
+    provider: Optional[str] = None
+    temperature: float = 0.0
+    max_tokens: Optional[int] = None
 
 class TranslateProposalInput(BaseModel):
     proposal: Dict[str, Any]
@@ -32,16 +41,59 @@ class EnhanceTextInput(BaseModel):
     format: Optional[str] = None
     tier: Optional[str] = None
 
-@router.post("/parse-itinerary")
-async def parse_itinerary(input: ParseItineraryInput, user: Any = Depends(verify_token_optional)):
+@router.post("/ai/stream-generate", summary="Stream LLM generation via Server-Sent Events (SSE)")
+@router.post("/stream-generate", summary="Stream LLM generation via Server-Sent Events (SSE)")
+async def stream_generate(input: StreamGenerateInput, user: OptionalUser):
+    """
+    Streams LLM text generation in real-time token-by-token using SSE (text/event-stream).
+    Eliminates long waiting times for generative AI responses.
+    """
+    async def event_generator():
+        try:
+            async for token in stream_llm(
+                prompt=input.prompt,
+                system_prompt=input.system_prompt,
+                provider=input.provider,
+                temperature=input.temperature,
+                max_tokens=input.max_tokens,
+            ):
+                yield f"data: {json.dumps({'token': token})}\n\n"
+            yield f"data: [DONE]\n\n"
+        except Exception as e:
+            logger.error(f"[StreamRoute] Error during generation streaming: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+@router.post("/parse-itinerary", summary="Extract structured itinerary from raw text")
+async def parse_itinerary(input: ParseItineraryInput, user: OptionalUser):
     try:
         return await extract_itinerary(input.text)
     except Exception as e:
         logger.exception("AI itinerary parsing failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/translate-proposal")
-async def translate_proposal(input: TranslateProposalInput, user: Any = Depends(verify_token_optional)):
+from src.models.api_models import (
+    ParseItineraryInput,
+    TranslateProposalInput,
+    TranslateProposalResponse,
+    GenerateTitleInput,
+    GenerateTitleResponse,
+    EnhanceTextInput,
+    EnhanceTextResponse
+)
+
+@router.post("/translate-proposal", response_model=TranslateProposalResponse, summary="Translate proposal content into target language")
+async def translate_proposal(input: TranslateProposalInput, user: OptionalUser = None):
     try:
         translated = await translate_proposal_content(input.proposal, input.target_lang, input.glossary)
         return {"success": True, "translated_proposal": translated}
@@ -49,8 +101,8 @@ async def translate_proposal(input: TranslateProposalInput, user: Any = Depends(
         logger.exception("AI proposal translation failed")
         return {"success": False, "translated_proposal": input.proposal, "error": str(e)}
 
-@router.post("/generate-title")
-async def generate_title(input: GenerateTitleInput, user: Any = Depends(verify_token_optional)):
+@router.post("/generate-title", response_model=GenerateTitleResponse, summary="Generate luxury marketing title for itinerary")
+async def generate_title(input: GenerateTitleInput, user: OptionalUser = None):
     try:
         title = await generate_luxury_title(
             input.destination, 
@@ -64,8 +116,8 @@ async def generate_title(input: GenerateTitleInput, user: Any = Depends(verify_t
         logger.exception("AI generate-title failed")
         return {"success": False, "title": f"{input.destination or 'Luxury'} Collection: A Curated {input.duration}-Day {input.tour_type or 'Journey'}", "error": str(e)}
 
-@router.post("/enhance-text")
-async def enhance_text(input: EnhanceTextInput, user: Any = Depends(verify_token_optional)):
+@router.post("/enhance-text", response_model=EnhanceTextResponse, summary="Sensory text enhancement and tone enrichment")
+async def enhance_text(input: EnhanceTextInput, user: OptionalUser = None):
     try:
         model = "gemini"
         prompt_version = "v1.1.0"

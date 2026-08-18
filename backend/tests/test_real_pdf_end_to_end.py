@@ -10,9 +10,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("RealPdfTest")
 
+import pytest
 from src.services.pdf_vault_service import extract_text_from_pdf
 from src.services.cascading_ai_service import extract_vault_package_from_text
 
+@pytest.mark.anyio
 async def test_real_pdf_pipeline():
     pdf_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "temp_supplier_pdfs"))
     if not os.path.exists(pdf_dir):

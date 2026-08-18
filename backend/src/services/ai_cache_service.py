@@ -50,6 +50,11 @@ async def get_cached_extraction(
         if redis_client:
             redis_data = await redis_client.get(f"ai_cache:{cache_key}")
             if redis_data:
+                # Refresh TTL on hit (sliding expiry)
+                try:
+                    await redis_client.expire(f"ai_cache:{cache_key}", 2592000)
+                except Exception:
+                    pass
                 parsed_out = json.loads(redis_data) if isinstance(redis_data, str) else redis_data
                 saved_tokens = (len(normalized_input) + len(json.dumps(parsed_out))) // 4
                 await increment_hits(saved_tokens)
@@ -164,11 +169,20 @@ async def increment_hits(saved_tokens: int):
         from src.core.redis_client import get_redis_client
         rc = get_redis_client()
         if rc:
-            await rc.incr("stats:cache_hits")
-            if hasattr(rc, "incrby"):
-                await rc.incrby("stats:saved_tokens", saved_tokens)
+            if hasattr(rc, "pipeline"):
+                pipe = rc.pipeline(transaction=False)
+                pipe.incr("stats:cache_hits")
+                if hasattr(pipe, "incrby"):
+                    pipe.incrby("stats:saved_tokens", saved_tokens)
+                else:
+                    pipe.incr("stats:saved_tokens")
+                await pipe.execute()
             else:
-                await rc.incr("stats:saved_tokens")
+                await rc.incr("stats:cache_hits")
+                if hasattr(rc, "incrby"):
+                    await rc.incrby("stats:saved_tokens", saved_tokens)
+                else:
+                    await rc.incr("stats:saved_tokens")
     except Exception as re_err:
         logger.debug(f"[AICache] Redis hit increment error: {re_err}")
 

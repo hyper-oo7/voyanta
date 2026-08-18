@@ -7,12 +7,21 @@ from fastapi import APIRouter, HTTPException, Query, Header
 from pydantic import BaseModel
 import logging
 
+from src.models.api_models import BaseResponse
 from src.services.rag_engine import rag_engine
 from src.services.vector_store import vector_store
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/rag", tags=["rag"])
+router = APIRouter(prefix="/rag", tags=["RAG & Search"])
+
+class RAGQueryResponse(BaseResponse):
+    status: str = "success"
+    data: dict
+
+class RAGStatsResponse(BaseResponse):
+    status: str = "success"
+    data: dict
 
 class RAGQueryRequest(BaseModel):
     destination: str
@@ -23,7 +32,7 @@ class RAGQueryRequest(BaseModel):
     special_requests: Optional[str] = None
     agency_id: Optional[str] = "global"
 
-@router.post("/query")
+@router.post("/query", response_model=RAGQueryResponse, summary="Execute RAG query against travel knowledge vector store")
 async def execute_rag_query(
     payload: RAGQueryRequest,
     x_agency_id: Optional[str] = Header(None, alias="X-Agency-ID")
@@ -44,7 +53,7 @@ async def execute_rag_query(
         logger.error(f"[RAGRouter] Error executing RAG query: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/stats")
+@router.get("/stats", response_model=RAGStatsResponse, summary="Get vector store index statistics")
 async def get_vector_stats(
     agency_id: str = Query("global")
 ):

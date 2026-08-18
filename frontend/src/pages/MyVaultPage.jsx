@@ -210,11 +210,24 @@ export default function MyVaultPage() {
         }
       });
 
-      setVaultItems(combined);
-      try {
-        localStorage.setItem('voyanta_vault_items', JSON.stringify(combined));
-      } catch {}
-      syncVaultItemsToLibrary(combined);
+      // Save FULL combined list to localStorage ONLY if no filters are active!
+      if (!filterDest && !filterBudget) {
+        try {
+          localStorage.setItem('voyanta_vault_items', JSON.stringify(combined));
+        } catch {}
+      }
+
+      // Filter local items for display
+      const displayItems = combined.filter(item => {
+        if (filterDest) {
+           const d = (item.destination || item.parsed_data?.destination || '').toLowerCase();
+           if (!d.includes(filterDest.toLowerCase()) && !filterDest.toLowerCase().includes(d)) return false;
+        }
+        return true;
+      });
+
+      setVaultItems(displayItems);
+      syncVaultItemsToLibrary(displayItems);
     } catch (err) {
       console.error('[MyVault] Failed to load vault items:', err);
       setVaultItems(localItems);
@@ -343,9 +356,19 @@ export default function MyVaultPage() {
 
     // Save backup of current state for rollback if server request fails
     const backupItems = [...vaultItems];
+    const backupLocal = [];
+    try {
+      const raw = localStorage.getItem('voyanta_vault_items');
+      if (raw) backupLocal.push(...JSON.parse(raw));
+    } catch {}
 
     // Optimistic UI Update: remove from local state immediately (instant UI response)
     setVaultItems(prev => prev.filter(i => i.id !== itemId));
+    
+    // Also remove from localStorage so it doesn't come back!
+    const newLocal = backupLocal.filter(i => i.id !== itemId);
+    localStorage.setItem('voyanta_vault_items', JSON.stringify(newLocal));
+    
     toast.success('Package removed from Vault');
 
     try {
@@ -358,17 +381,25 @@ export default function MyVaultPage() {
       const headers = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`/api/vault/packages/${itemId}`, { method: 'DELETE', headers });
-      if (!res.ok) {
-        console.error('Failed to delete package from server');
-        // Rollback optimistic update
-        setVaultItems(backupItems);
-        toast.error('Failed to remove package from server. Item restored.');
+      // Only attempt server delete if it's a real server UUID (not a local timestamp or fake ID)
+      // Supabase UUID throws PostgreSQL type error if not a valid UUID string, causing 500 error
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(itemId));
+      
+      if (isUUID) {
+        const res = await fetch(`/api/vault/packages/${itemId}`, { method: 'DELETE', headers });
+        if (!res.ok) {
+          console.error('Failed to delete package from server');
+          // Rollback optimistic update
+          setVaultItems(backupItems);
+          localStorage.setItem('voyanta_vault_items', JSON.stringify(backupLocal));
+          toast.error('Failed to remove package from server. Item restored.');
+        }
       }
     } catch (err) {
       console.error('Error deleting package:', err);
       // Rollback optimistic update
       setVaultItems(backupItems);
+      localStorage.setItem('voyanta_vault_items', JSON.stringify(backupLocal));
       toast.error('Error removing package. Item restored.');
     }
   };

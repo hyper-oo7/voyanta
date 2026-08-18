@@ -205,8 +205,16 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
     const hasAdults = Number(numAdults) >= 1;
     const hasDuration = Number(durationDays) >= 1;
     const hasBudget = Number(budgetPerHead) > 0;
-    return hasName && hasDest && hasAdults && hasDuration && hasBudget;
-  }, [clientName, selectedDestinations, destinationInput, numAdults, durationDays, budgetPerHead]);
+    const hasDates = Boolean(startDate && endDate);
+    return hasName && hasDest && hasAdults && hasDuration && hasBudget && hasDates;
+  }, [clientName, selectedDestinations, destinationInput, numAdults, durationDays, budgetPerHead, startDate, endDate]);
+
+  const getTomorrow = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  };
+  const tomorrowStr = getTomorrow();
 
   const handleCraftManually = () => {
     if (!isFormComplete) {
@@ -703,7 +711,21 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
                 <input
                   type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  min={tomorrowStr}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    if (endDate && e.target.value) {
+                      const d1 = new Date(e.target.value);
+                      const d2 = new Date(endDate);
+                      if (!isNaN(d1) && !isNaN(d2)) {
+                        if (d1 > d2) setEndDate('');
+                        else {
+                          const diff = Math.max(1, Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)));
+                          setDurationDays(diff);
+                        }
+                      }
+                    }
+                  }}
                   className="w-full px-3.5 py-2 bg-surface border border-outline-variant rounded-xl text-on-surface text-sm font-semibold"
                 />
               </div>
@@ -712,7 +734,18 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
                 <input
                   type="date"
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  min={startDate || tomorrowStr}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    if (startDate && e.target.value) {
+                      const d1 = new Date(startDate);
+                      const d2 = new Date(e.target.value);
+                      if (!isNaN(d1) && !isNaN(d2)) {
+                        const diff = Math.max(1, Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)));
+                        setDurationDays(diff);
+                      }
+                    }
+                  }}
                   className="w-full px-3.5 py-2 bg-surface border border-outline-variant rounded-xl text-on-surface text-sm font-semibold"
                 />
               </div>
@@ -750,7 +783,7 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
                 {!isFormComplete && (
                   <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">info</span>
-                    Required: Name, Destination, Travelers & Budget
+                    Required: Name, Destination, Dates, Travelers & Budget
                   </span>
                 )}
               </div>
@@ -799,28 +832,6 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
 
               {showAdvanced && (
                 <div className="flex flex-col gap-5 p-5 mt-3 rounded-xl border border-outline-variant bg-surface-container/50">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs text-on-surface-variant">Start Date</label>
-                      <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                        className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface" />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs text-on-surface-variant">End Date</label>
-                      <input type="date" value={endDate} min={startDate || undefined} onChange={e => {
-                        setEndDate(e.target.value);
-                        if (startDate && e.target.value) {
-                          const d1 = new Date(startDate);
-                          const d2 = new Date(e.target.value);
-                          if (!isNaN(d1) && !isNaN(d2)) {
-                            const diff = Math.max(1, Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)));
-                            setDurationDays(diff);
-                          }
-                        }
-                      }} className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface" />
-                    </div>
-                  </div>
-                  
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs text-on-surface-variant">Hotel Category</label>
                     <div className="flex flex-wrap gap-2">

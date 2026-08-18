@@ -237,7 +237,17 @@ def _validate_and_price(
                 if matched:
                     vault_h = matched
                 else:
-                    raise ValueError(f"LLM hallucinated hotel ID/name: {h.get('id')} ({h.get('name')})")
+                    # RAG fallback: accept extracted hotel as a custom entry
+                    import uuid
+                    class StubHotel: pass
+                    vault_h = StubHotel()
+                    vault_h.id = h.get("id") or str(uuid.uuid4())
+                    vault_h.name = h.get("name") or "Custom Hotel"
+                    vault_h.category = h.get("category")
+                    vault_h.meal_type = h.get("meal_plan") or "CP"
+                    vault_h.price_per_night = h.get("price_per_night") or 0.0
+                    vault_h.location = h.get("location") or ""
+                    vault_h.image_url = h.get("image_url")
             price = float(vault_h.price_per_night or 0)
             day_base += price
             validated_hotels.append({
@@ -260,7 +270,16 @@ def _validate_and_price(
                 if matched:
                     vault_a = matched
                 else:
-                    raise ValueError(f"LLM hallucinated activity ID/name: {a.get('id')} ({a.get('name')})")
+                    # RAG fallback: accept extracted activity
+                    import uuid
+                    class StubActivity: pass
+                    vault_a = StubActivity()
+                    vault_a.id = a.get("id") or str(uuid.uuid4())
+                    vault_a.name = a.get("name") or "Custom Activity"
+                    vault_a.price = a.get("price") or 0.0
+                    vault_a.duration_hours = None
+                    vault_a.location = a.get("location") or ""
+                    vault_a.description = a.get("description") or ""
             price = float(vault_a.price or 0)
             day_base += price * max(1, travelers)
             validated_activities.append({
@@ -283,7 +302,17 @@ def _validate_and_price(
                 if matched:
                     vault_f = matched
                 else:
-                    raise ValueError(f"LLM hallucinated flight ID: {f.get('id')}")
+                    # RAG fallback: accept extracted flight
+                    import uuid
+                    class StubFlight: pass
+                    vault_f = StubFlight()
+                    vault_f.id = f.get("id") or str(uuid.uuid4())
+                    vault_f.airline = f.get("airline") or "Custom Airline"
+                    vault_f.flight_no = f.get("flight_no") or ""
+                    vault_f.origin = f.get("origin") or ""
+                    vault_f.destination = f.get("destination") or ""
+                    vault_f.cost = f.get("cost") or 0.0
+                    vault_f.class_ = f.get("class") or "Economy"
             price = float(vault_f.cost or 0)
             day_base += price * max(1, travelers)
             validated_flights.append({
@@ -366,7 +395,7 @@ async def assemble_itinerary(req: AssembleRequest) -> AssembledProposalOut:
     """Full pipeline: prompt → LLM → validate → price → return."""
 
     vm = req.vault_matches
-    has_inventory = bool(vm.hotels or vm.activities or vm.flights)
+    has_inventory = bool(vm.hotels or vm.activities or vm.flights or req.rag_context.chunks)
     if not has_inventory:
         logger.warning(f"[AgenticAssembly] No vault inventory found for {req.destination}. Falling back to deterministic engine.")
         # We raise ValueError here so the router can catch it and route to the fallback engine.

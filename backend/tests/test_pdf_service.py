@@ -73,7 +73,10 @@ def test_vault_process_unauthenticated_blocked():
         r = client.post("/api/pdf/vault-process", files={"file": ("test.pdf", b"pdf content")})
         assert r.status_code == 401
     finally:
-        app.dependency_overrides[verify_token] = old_override
+        if old_override is not None:
+            app.dependency_overrides[verify_token] = old_override
+        else:
+            app.dependency_overrides.pop(verify_token, None)
 
 
 def test_vault_process_size_limit_exceeded():

@@ -10,6 +10,7 @@ import PDFUploader from '../components/PDFUploader.jsx';
 import RAGContextPanel from '../components/RAGContextPanel.jsx';
 import { executeRAGQuery } from '../services/api.js';
 import AIProposalChatDrawer from '../components/canvas/AIProposalChatDrawer.jsx';
+import ExtraSectionsEditor from '../components/canvas/ExtraSectionsEditor.jsx';
 import { getAgencyId } from '../lib/supabaseClient.js';
 
 export default function UnifiedItineraryCanvas() {
@@ -655,6 +656,12 @@ export default function UnifiedItineraryCanvas() {
                   </div>
                 )}
               </div>
+
+              {/* Section 3: Extra Sections & Trip Policies Editor (What to Pack, Visa, Guidelines) */}
+              <ExtraSectionsEditor
+                proposal={p}
+                updateProposal={updateProposal}
+              />
             </motion.div>
           ) : (
             <motion.div

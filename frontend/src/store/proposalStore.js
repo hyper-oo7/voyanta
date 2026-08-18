@@ -190,8 +190,9 @@ export const useProposalStore = create((set, get) => ({
   }),
 
   /* ── ONE-SHOT ASSEMBLY (RAG + Vault integrated) ───────────────── */
-  assemble1Shot: async (intakeData) => {
+  assemble1Shot: async (intakeData, onProgress) => {
     set({ status: 'loading' });
+    if (onProgress) onProgress(0); // 0: Searching your vault...
 
     try {
       // Get the real agency_id from Auth store instead of hardcoded demo-agency
@@ -224,13 +225,22 @@ export const useProposalStore = create((set, get) => ({
         }),
       ]);
 
+      if (onProgress) onProgress(1); // 1: Selecting best hotels...
+
       const ragChunks = ragRes?.data?.chunks || [];
       const ragQuery = ragRes?.data?.query || '';
       
       const newRagStatus = ragRes?.isError ? 'degraded' : (ragChunks.length === 0 ? 'empty' : 'ok');
-      const newVaultStatus = vaultMatches?.isError || (vaultMatches?.hotels?.length === 0 && vaultMatches?.activities?.length === 0) ? 'empty' : 'ok';
+      // vaultStatus: consider RAG chunks as valid inventory (PDF uploads = vault content)
+      const hasStructuredInventory = vaultMatches?.hotels?.length > 0 || vaultMatches?.activities?.length > 0;
+      const hasPDFInventory = ragChunks.length > 0;
+      const newVaultStatus = (vaultMatches?.isError && !hasPDFInventory) ? 'empty'
+        : (hasStructuredInventory || hasPDFInventory) ? 'ok'
+        : 'empty';
       
       set({ ragStatus: newRagStatus, vaultStatus: newVaultStatus });
+
+      if (onProgress) onProgress(2); // 2: Building day-by-day itinerary...
 
       // 2. Call assembly API with full grounding context via assembleProposal service
       const p = await assembleProposal(
@@ -239,6 +249,8 @@ export const useProposalStore = create((set, get) => ({
         vaultMatches,
         intakeData.costing_prefs || get().costingPrefs
       );
+
+      if (onProgress) onProgress(3); // 3: Calculating pricing & margins...
 
       if (p) {
 
@@ -253,6 +265,7 @@ export const useProposalStore = create((set, get) => ({
           end_date: intakeData.end_date || '',
         };
 
+        if (onProgress) onProgress(4); // 4: Finalizing your proposal...
         set({
           proposal: p,
           client: nextClient,
