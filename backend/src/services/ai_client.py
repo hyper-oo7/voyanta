@@ -404,7 +404,7 @@ async def call_llm(
                     if not is_model_specific or g_model == models_to_try[-1]:
                         raise e
                     logger.warning(f"Gemini model {g_model} failed with model-specific error ({err_str}). Trying next Gemini model.")
-                raise last_err or AIServiceError("All Gemini model endpoints failed.")
+            raise last_err or AIServiceError("All Gemini model endpoints failed.")
             
         else:  # openai
             url = "https://api.openai.com/v1/chat/completions"

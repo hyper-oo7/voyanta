@@ -126,7 +126,20 @@ def _set_job(job_id: str, **fields: Any) -> None:
 
 
 async def _get_job(job_id: str) -> Optional[Dict[str, Any]]:
-    """Retrieve job from distributed Redis Hash, falling back to in-memory dict."""
+    """Retrieve job state, preferring the in-process record over the Redis mirror.
+
+    `_run_extraction_bg` is a sync function, so FastAPI runs it in a worker
+    thread with no event loop. The Redis mirror written from there is therefore
+    best-effort and can lag behind (or never arrive), while the in-memory dict is
+    always up to date inside the process that owns the job. Reading Redis first
+    would pin the poller to the stale "queued" snapshot written at request time
+    and the extraction would never appear to finish. Redis is still consulted as
+    a fallback so a poll that lands on a different worker can find the job.
+    """
+    local = EXTRACTION_JOBS.get(job_id)
+    if local:
+        return local
+
     try:
         from src.core.redis_client import get_redis_client
         rc = get_redis_client()
@@ -142,8 +155,8 @@ async def _get_job(job_id: str) -> Optional[Dict[str, Any]]:
                         deserialized[k] = v
                 return deserialized
     except Exception as e:
-        logger.debug(f"[JobStore] Redis hgetall error ({e}), checking memory fallback")
-    return EXTRACTION_JOBS.get(job_id)
+        logger.debug(f"[JobStore] Redis hgetall error ({e}), no memory fallback available")
+    return None
 
 def accumulate_agency_packing_rules(
     destination: str,
