@@ -77,7 +77,6 @@ function buildProposalFromVault(intakeData, vault) {
               id: hotel.id,
               name: hotel.name,
               category: hotel.category || (intakeData.hotel_category ? intakeData.hotel_category.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : '4 Star'),
-              category: hotel.category || (intakeData.hotel_category ? intakeData.hotel_category.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : '4 Star'),
               meal_plan: hotel.meal_type || 'CP (Breakfast)',
               price_per_night: hotel.price_per_night || 0,
               location: hotel.location,
@@ -101,7 +100,6 @@ function buildProposalFromVault(intakeData, vault) {
         origin: f.origin,
         destination: f.destination,
         cost: f.cost || 0,
-        class: f.class || (intakeData.flight_class ? intakeData.flight_class.charAt(0).toUpperCase() + intakeData.flight_class.slice(1) : 'Economy'),
         class: f.class || (intakeData.flight_class ? intakeData.flight_class.charAt(0).toUpperCase() + intakeData.flight_class.slice(1) : 'Economy'),
       })),
       day_total: dayPrice,
@@ -179,8 +177,6 @@ export const useProposalStore = create((set, get) => ({
   status: 'idle',
   ragStatus: 'ok', // 'ok' | 'degraded' | 'empty'
   vaultStatus: 'ok', // 'ok' | 'empty'
-  ragStatus: 'ok', // 'ok' | 'degraded' | 'empty'
-  vaultStatus: 'ok', // 'ok' | 'empty'
 
   // Canvas Actions
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -201,13 +197,9 @@ export const useProposalStore = create((set, get) => ({
       // Get the real agency_id from Auth store instead of hardcoded demo-agency
       const agencyId = useAuthStore.getState().user?.agency_id || 'demo-agency';
 
-      // Get the real agency_id from Auth store instead of hardcoded demo-agency
-      const agencyId = useAuthStore.getState().user?.agency_id || 'demo-agency';
-
       // 1. Parallel retrieval: RAG context + Vault resources
       const [ragRes, vaultMatches] = await Promise.all([
         executeRAGQuery({
-          agency_id: intakeData.agency_id || agencyId,
           agency_id: intakeData.agency_id || agencyId,
           destination: intakeData.destination,
           duration_days: intakeData.duration_days,
@@ -217,7 +209,6 @@ export const useProposalStore = create((set, get) => ({
           special_requests: intakeData.special_notes || '',
         }).catch((err) => {
           console.warn('[1-Shot] RAG query failed, continuing without doc context:', err);
-          return { data: { chunks: [], query: '' }, isError: true };
           return { data: { chunks: [], query: '' }, isError: true };
         }),
 
@@ -230,17 +221,11 @@ export const useProposalStore = create((set, get) => ({
         }).catch((err) => {
           console.warn('[1-Shot] Vault matching failed:', err);
           return { hotels: [], activities: [], flights: [], templates: [], isError: true };
-          return { hotels: [], activities: [], flights: [], templates: [], isError: true };
         }),
       ]);
 
       const ragChunks = ragRes?.data?.chunks || [];
       const ragQuery = ragRes?.data?.query || '';
-      
-      const newRagStatus = ragRes?.isError ? 'degraded' : (ragChunks.length === 0 ? 'empty' : 'ok');
-      const newVaultStatus = vaultMatches?.isError || (vaultMatches?.hotels?.length === 0 && vaultMatches?.activities?.length === 0) ? 'empty' : 'ok';
-      
-      set({ ragStatus: newRagStatus, vaultStatus: newVaultStatus });
       
       const newRagStatus = ragRes?.isError ? 'degraded' : (ragChunks.length === 0 ? 'empty' : 'ok');
       const newVaultStatus = vaultMatches?.isError || (vaultMatches?.hotels?.length === 0 && vaultMatches?.activities?.length === 0) ? 'empty' : 'ok';
@@ -252,7 +237,6 @@ export const useProposalStore = create((set, get) => ({
         intakeData,
         { chunks: ragChunks, assembled_query: ragQuery },
         vaultMatches,
-        intakeData.costing_prefs || get().costingPrefs
         intakeData.costing_prefs || get().costingPrefs
       );
 
