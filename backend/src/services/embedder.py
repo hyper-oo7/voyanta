@@ -64,6 +64,54 @@ class Embedder:
         return [x / norm for x in vec] if norm > 0 else vec
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
+        if not texts:
+            return []
+        
+        # 1. Batch Gemini embedding
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if api_key and len(texts) > 1:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=api_key)
+                result = genai.embed_content(
+                    model=self.model,
+                    content=texts,
+                    task_type="retrieval_document",
+                )
+                embeddings = result.get("embedding", [])
+                if embeddings and len(embeddings) == len(texts):
+                    processed = []
+                    for emb in embeddings:
+                        if len(emb) == self.dimension:
+                            processed.append(emb)
+                        else:
+                            processed.append(emb[:self.dimension] + [0.0] * max(0, self.dimension - len(emb)))
+                    logger.info(f"[Embedder] Batch embedded {len(processed)} texts via Gemini.")
+                    return processed
+            except Exception as e:
+                logger.warning(f"[Embedder] Gemini batch embedding failed ({e}); falling back.")
+
+        # 2. Batch OpenAI embedding
+        openai_key = os.environ.get("OPENAI_API_KEY")
+        if openai_key and len(texts) > 1:
+            try:
+                import httpx
+                resp = httpx.post(
+                    "https://api.openai.com/v1/embeddings",
+                    headers={"Authorization": f"Bearer {openai_key}"},
+                    json={"input": texts, "model": "text-embedding-3-small", "dimensions": self.dimension},
+                    timeout=20.0
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    embs = [item["embedding"] for item in data.get("data", [])]
+                    if len(embs) == len(texts):
+                        logger.info(f"[Embedder] Batch embedded {len(embs)} texts via OpenAI.")
+                        return embs
+            except Exception as e:
+                logger.warning(f"[Embedder] OpenAI batch embedding failed ({e}); falling back.")
+
+        # 3. Serial fallback loop
         return [self.embed_text(t) for t in texts]
 
     def embed_query(self, query: str) -> List[float]:

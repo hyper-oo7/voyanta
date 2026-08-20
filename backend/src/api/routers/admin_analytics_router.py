@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from src.core.security import verify_token, get_request_token
+from src.core.security import verify_token, get_request_token, CurrentUser, RequestToken
+from src.models.api_models import AdminSummaryResponse, AdminLoginResponse
 from src.services.supabase_client import get_supabase_client, get_user_supabase_client
 
 logger = logging.getLogger(__name__)
@@ -19,9 +20,10 @@ router = APIRouter(prefix="/admin", tags=["Super Admin Operations & Analytics"])
 import bcrypt
 import jwt
 import os
+import uuid
 from src.core.security import SUPABASE_JWT_SECRET
 
-SECRET_KEY = SUPABASE_JWT_SECRET or "voyanta_admin_super_secret_key_2026"
+SECRET_KEY = SUPABASE_JWT_SECRET or os.environ.get("JWT_SECRET") or "voyanta-admin-super-secret-jwt-key-2026"
 ALGORITHM = "HS256"
 
 class UserRoleUpdatePayload(BaseModel):
@@ -58,8 +60,8 @@ def _verify_admin_access(user: Any):
         sb = get_supabase_client()
         if sb and user_id:
             try:
-                res = sb.table("users").select("role").eq("id", user_id).single().execute()
-                if res.data and res.data.get("role") in ("owner", "admin"):
+                res = sb.table("users").select("role").eq("id", user_id).execute()
+                if res.data and res.data[0].get("role") in ("owner", "admin"):
                     return user
             except Exception as e:
                 logger.warning(f"[AdminCheck] DB role check failed: {e}")
@@ -68,10 +70,10 @@ def _verify_admin_access(user: Any):
 
     return user
 
-@router.get("/analytics/summary")
+@router.get("/analytics/summary", response_model=AdminSummaryResponse, summary="Executive platform KPI telemetry and tenant analytics")
 async def get_admin_analytics_summary(
-    user: Any = Depends(verify_token),
-    token: Optional[str] = Depends(get_request_token)
+    user: CurrentUser,
+    token: RequestToken = None
 ):
     """
     Executive Super Admin KPI Summary:
@@ -441,6 +443,7 @@ async def add_admin_user(
             return {"success": True, "message": f"Updated existing user '{email}' to Admin role."}
 
         # Create new user row
+        new_id = f"admin_{uuid.uuid4().hex[:12]}"
         user_dict = {
             "id": new_id,
             "email": email,

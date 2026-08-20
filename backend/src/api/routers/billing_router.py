@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import logging
 
+from src.models.api_models import BaseResponse
 from ...services.billing_service import (
     PLAN_CONFIG,
     create_subscription_order,
@@ -19,11 +20,10 @@ from ...core.entitlements import get_agency_entitlements_data
 
 logger = logging.getLogger(__name__)
 
-# Prefix is "/billing", not "/api/billing": this router is included on an
-# APIRouter that already carries the "/api" prefix, so the duplicated segment
-# served every endpoint at /api/api/billing/* and the frontend's calls to
-# /api/billing/* returned 404.
 router = APIRouter(prefix="/billing", tags=["Billing & Entitlements"])
+
+class PlanListResponse(BaseResponse):
+    plans: Dict[str, Any]
 
 class CreateSubscriptionRequest(BaseModel):
     plan_slug: str
@@ -43,16 +43,15 @@ class RecordConsentRequest(BaseModel):
     consent_type: str
     consent_payload: Dict[str, Any]
 
-@router.get("/plans")
+@router.get("/plans", response_model=PlanListResponse, summary="Get list of available subscription plans and limits")
 async def get_plans():
     return {"plans": PLAN_CONFIG}
 
-@router.get("/entitlements")
+@router.get("/entitlements", summary="Get current agency feature tier and usage entitlements")
 async def get_entitlements(agency_id: str = "demo-agency-id"):
-    # In full production this reads db session; returns defaults if db uninitialized
     return await get_agency_entitlements_data(db=None, agency_id=agency_id)
 
-@router.post("/create-subscription")
+@router.post("/create-subscription", summary="Create Razorpay recurring subscription order")
 async def create_subscription(payload: CreateSubscriptionRequest):
     order = create_subscription_order(payload.agency_id or "demo-agency-id", payload.plan_slug)
     await record_payment_log(

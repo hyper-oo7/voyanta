@@ -184,6 +184,10 @@ Return ONLY a valid JSON object with this exact schema — no markdown, no code 
 DOCUMENT TEXT TO PARSE:
 {document_text}"""
 
+# Derive stable cache version from prompt content hash
+from src.services.ai_cache_service import compute_prompt_hash
+EXTRACTION_PROMPT_VERSION = f"extraction_v3_{compute_prompt_hash(EXTRACTION_PROMPT_TEMPLATE)}"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN EXTRACTION FUNCTION
@@ -230,7 +234,7 @@ async def extract_vault_package_from_text(
         cache_meta = {
             "agency_id": agency_id,
             "entity_type": "vault_package",
-            "prompt_version": "extraction_v2.0.0",
+            "prompt_version": EXTRACTION_PROMPT_VERSION,
             "schema_version": "schema_v2.0.0",
             "model": "gemini-2.5-flash",
             "input_text": full_text

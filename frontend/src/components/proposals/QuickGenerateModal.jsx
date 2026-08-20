@@ -78,6 +78,15 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
     num_travelers: 2,
     preferences_text: '',
     client_preferences: [],
+    company_name: '',
+    gstin: '',
+    room_preference: 'single',
+    requires_gst_invoice: false,
+    single_room_supplement: false,
+    meeting_room_required: false,
+    early_checkin_required: false,
+    late_checkout_required: false,
+    corporate_cancellation_terms: false,
   });
 
   const [destQuery, setDestQuery] = useState('');
@@ -195,13 +204,6 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
     setGenerating(true);
     setProgressStep(0);
 
-    const stepInterval = setInterval(() => {
-      setProgressStep(p => {
-        if (p >= PROGRESS_STEPS.length - 1) { clearInterval(stepInterval); return p; }
-        return p + 1;
-      });
-    }, 1400);
-
     try {
       let agencyId = 'global';
       try {
@@ -225,6 +227,15 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
         num_adults: Number(form.num_travelers),
         preferences_text: mergedPreferences,
         special_notes: mergedPreferences,
+        company_name: form.company_name,
+        gstin: form.gstin,
+        room_preference: form.room_preference,
+        requires_gst_invoice: form.requires_gst_invoice,
+        single_room_supplement: form.single_room_supplement,
+        meeting_room_required: form.meeting_room_required,
+        early_checkin_required: form.early_checkin_required,
+        late_checkout_required: form.late_checkout_required,
+        corporate_cancellation_terms: form.corporate_cancellation_terms,
         agency_id: agencyId,
         costing_prefs: {
           fixed_markup: 0,
@@ -238,8 +249,9 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
       };
 
       // Use global assemble1Shot to get RAG/Vault context and track statuses
-      const proposal = await assemble1Shot(payload);
-      clearInterval(stepInterval);
+      const proposal = await assemble1Shot(payload, (stepIdx) => {
+        setProgressStep(stepIdx);
+      });
       setProgressStep(PROGRESS_STEPS.length - 1);
 
       if (!proposal) throw new Error('No proposal returned from server');
@@ -282,7 +294,6 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
       finalizeAndNavigate(proposal, createdProposalId, mergedPreferences);
 
     } catch (err) {
-      clearInterval(stepInterval);
       console.error('[QuickGenerate]', err);
       toast.error(err?.response?.data?.detail || err?.message || 'Generation failed. Please try again.');
       setGenerating(false);
@@ -569,6 +580,56 @@ export default function QuickGenerateModal({ isOpen, onClose }) {
                 ))}
               </div>
             </div>
+
+            {/* Corporate Panel */}
+            {form.group_type === 'corporate' && (
+              <div className="flex flex-col gap-4 p-4 rounded-xl border col-span-full"
+                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(124,58,237,0.3)' }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="material-symbols-outlined text-purple-400 text-lg">work</span>
+                  <h4 className="m-0 text-sm font-semibold text-white">Corporate Details</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-purple-300/80">Company Name</label>
+                    <input type="text" value={form.company_name} onChange={e => updateForm('company_name', e.target.value)}
+                      className="px-3 py-2 text-sm rounded-lg qg-input" placeholder="e.g. Acme Corp" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-purple-300/80">GSTIN</label>
+                    <input type="text" value={form.gstin} onChange={e => updateForm('gstin', e.target.value)}
+                      className="px-3 py-2 text-sm rounded-lg qg-input" placeholder="22AAAAA0000A1Z5" />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5 mt-2">
+                  <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-purple-300/80">Room Arrangement</label>
+                  <div className="flex gap-2">
+                    {['single', 'double', 'twin'].map(r => (
+                      <button key={r} type="button" onClick={() => updateForm('room_preference', r)}
+                        className={`px-3 py-1.5 text-xs rounded-lg transition-colors border cursor-pointer ${form.room_preference === r ? 'qg-chip-on' : 'qg-chip-off'}`}>
+                        {r.charAt(0).toUpperCase() + r.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {[
+                    { key: 'requires_gst_invoice', label: 'GST Invoice' },
+                    { key: 'single_room_supplement', label: 'Single Supplement' },
+                    { key: 'meeting_room_required', label: 'Meeting Room' },
+                    { key: 'early_checkin_required', label: 'Early Check-in' },
+                    { key: 'late_checkout_required', label: 'Late Checkout' },
+                    { key: 'corporate_cancellation_terms', label: 'Strict Cancellation' },
+                  ].map(opt => (
+                    <label key={opt.key} className="flex items-center gap-2 text-xs text-white/80 cursor-pointer">
+                      <input type="checkbox" checked={form[opt.key]} onChange={e => updateForm(opt.key, e.target.checked)}
+                        className="rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500/30" />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Client Name */}
             <div className="flex flex-col gap-2">

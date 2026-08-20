@@ -14,73 +14,93 @@ export default function ResourcePickerModal({ type, onSelect, onClose, destinati
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(() => {
+    // 1. Instant local load (sub-second response)
+    let localData = [];
     try {
-      let data = [];
-      if (type === 'hotel') {
-        data = await hotelsService.list();
-      } else if (type === 'activity') {
-        data = await activitiesService.list();
-      } else if (type === 'flight') {
-        data = await flightsService.list();
+      const stored = localStorage.getItem('voyanta_unified_library');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const targetType = type === 'hotel' ? 'hotel' : type === 'activity' ? 'activity' : 'flight';
+        localData = parsed.filter(item => item.type === targetType).map(item => ({
+          ...item,
+          image_url: item.cover_image || item.image_url || '',
+          cover_image: item.cover_image || item.image_url || ''
+        }));
       }
+    } catch (err) {}
 
-      // Query knowledge objects from Supabase to merge from vault dynamically
-      if ((destination || subDestination) && (type === 'hotel' || type === 'activity')) {
-        try {
-          const supa = (await import('../../lib/supabaseClient.js')).supabase;
-          const { data: dbObjects } = await supa
-            .from('knowledge_objects')
-            .select('*')
-            .eq('object_type', type)
-            .eq('is_active', true)
-            .limit(100);
-
-          if (dbObjects && dbObjects.length > 0) {
-            const mappedObjects = dbObjects.map(obj => {
-              const attrs = obj.attributes || {};
-              return {
-                id: obj.id,
-                name: obj.name,
-                location: obj.area || obj.destination || '',
-                destination: obj.destination || '',
-                area: obj.area || '',
-                image_url: attrs.photos?.[0] || attrs.image_url || '',
-                cover_image: attrs.photos?.[0] || attrs.image_url || '',
-                category: attrs.star_rating || '',
-                duration_hours: attrs.duration || '',
-                price: cleanPrice(attrs.price || attrs.price_per_night || attrs.cost || 0),
-                price_per_night: cleanPrice(attrs.price_per_night || attrs.price || 0),
-                is_from_vault: true
-              };
-            });
-            // Merge and de-duplicate by name
-            const seenNames = new Set(data.map(i => (i.name || '').toLowerCase().trim()));
-            mappedObjects.forEach(mo => {
-              const nameKey = mo.name.toLowerCase().trim();
-              if (!seenNames.has(nameKey)) {
-                data.push(mo);
-                seenNames.add(nameKey);
-              }
-            });
-          }
-        } catch (dbErr) {
-          console.error("Failed to query knowledge_objects in picker:", dbErr);
-        }
-      }
-
-      // Filter dynamically by destination and sub-destination (area) using dynamic hierarchy engine
-      if (destination || subDestination) {
-        data = data.filter(item => isLocationMatch(item, destination, subDestination));
-      }
-
-      setItems(data);
-    } catch (e) {
-      console.error('Failed to load resources', e);
-    } finally {
-      setLoading(false);
+    let initialFiltered = localData;
+    if (destination || subDestination) {
+      initialFiltered = initialFiltered.filter(item => isLocationMatch(item, destination, subDestination));
     }
+    setItems(initialFiltered);
+    setLoading(false);
+
+    // 2. Async background sync to fetch from DB and merge
+    const syncData = async () => {
+      try {
+        let dbData = [];
+        if (type === 'hotel') dbData = await hotelsService.list();
+        else if (type === 'activity') dbData = await activitiesService.list();
+        else if (type === 'flight') dbData = await flightsService.list();
+
+        // Also query knowledge_objects
+        if ((destination || subDestination) && (type === 'hotel' || type === 'activity')) {
+          try {
+            const supa = (await import('../../lib/supabaseClient.js')).supabase;
+            if (supa) {
+              const { data: dbObjects } = await supa
+                .from('knowledge_objects')
+                .select('*')
+                .eq('object_type', type)
+                .eq('is_active', true)
+                .limit(100);
+
+              if (dbObjects && dbObjects.length > 0) {
+                const mappedObjects = dbObjects.map(obj => {
+                  const attrs = obj.attributes || {};
+                  return {
+                    id: obj.id,
+                    name: obj.name,
+                    location: obj.area || obj.destination || '',
+                    destination: obj.destination || '',
+                    area: obj.area || '',
+                    image_url: attrs.photos?.[0] || attrs.image_url || '',
+                    cover_image: attrs.photos?.[0] || attrs.image_url || '',
+                    category: attrs.star_rating || '',
+                    duration_hours: attrs.duration || '',
+                    price: cleanPrice(attrs.price || attrs.price_per_night || attrs.cost || 0),
+                    price_per_night: cleanPrice(attrs.price_per_night || attrs.price || 0),
+                    is_from_vault: true
+                  };
+                });
+                dbData = [...dbData, ...mappedObjects];
+              }
+            }
+          } catch (e) {}
+        }
+
+        if (dbData.length > 0) {
+          // Merge with localData
+          const seen = new Set(localData.map(i => String(i.id)));
+          const merged = [...localData];
+          dbData.forEach(item => {
+            if (!seen.has(String(item.id))) {
+              merged.push(item);
+              seen.add(String(item.id));
+            }
+          });
+          
+          let finalFiltered = merged;
+          if (destination || subDestination) {
+            finalFiltered = finalFiltered.filter(item => isLocationMatch(item, destination, subDestination));
+          }
+          setItems(finalFiltered);
+        }
+      } catch (err) {}
+    };
+    syncData();
   }, [type, destination, subDestination]);
 
   useEffect(() => {

@@ -2,15 +2,24 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 import logging
 from src.services.affinity_aggregation_service import run_activity_logs_retention
 from src.core.security import verify_internal_api_key
+from src.models.api_models import BaseResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/maintenance", tags=["maintenance"])
+router = APIRouter(prefix="/maintenance", tags=["Super Admin Operations & Analytics"])
 
-@router.post("/retention")
+class RetentionResponse(BaseResponse):
+    status: str = "success"
+    message: str
+    aggregated_records: int = 0
+    deleted_records: int = 0
+
+from typing import Any
+
+@router.post("/retention", response_model=RetentionResponse, summary="Trigger activity logs retention cleanup and affinity aggregation")
 async def trigger_activity_logs_retention(
     retention_days: int = Query(60, ge=1, le=365),
-    _ = Depends(verify_internal_api_key)
+    _: Any = Depends(verify_internal_api_key)
 ):
     """
     Manually or programmatically trigger activity_logs retention cleanup.

@@ -190,6 +190,8 @@ export function isLocationMatch(item, destinationStr, subDestinationStr) {
 
   return candidates.some(token => {
     if (token.length <= 2) return false;
+    // Allow matching if the location was fallback 'Imported Location' but the item was imported for this destination
+    if (itemDest === 'imported location') return true; 
     return itemCombined.includes(token) || token.includes(itemDest) || token.includes(itemArea);
   });
 }

@@ -3,12 +3,26 @@ vault_router.py — REST API for Vault V2
 Endpoints for managing vault packages and destination knowledge.
 """
 import logging
-from typing import Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Any, Optional, Dict, List
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
-from src.core.security import verify_token, verify_token_optional
+from src.core.security import verify_token, verify_token_optional, CurrentUser, OptionalUser
+from src.models.api_models import (
+    BaseResponse,
+    ActionSuccessResponse,
+    VaultPackageListResponse,
+    DestinationConfidenceResponse,
+    VaultPackageDetailResponse,
+    VaultPackageDeleteResponse,
+    SubDestinationsResponse,
+    DestinationKnowledgeResponse,
+    KnowledgeUpsertResponse,
+    SectionTypesResponse,
+    RateConflictResponse,
+    RateConflictItem
+)
 from src.services.vault_knowledge_service import (
     list_vault_packages,
     get_vault_package,
@@ -20,7 +34,7 @@ from src.services.vault_knowledge_service import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/vault", tags=["Vault V2"])
+router = APIRouter(prefix="/vault", tags=["Knowledge Vault"])
 
 
 def _extract_user_context(user: Any):
@@ -48,11 +62,11 @@ class KnowledgeUpsertRequest(BaseModel):
 # VAULT PACKAGES
 # ─────────────────────────────────────────────────────────────────────────────
 
-@router.get("/packages")
+@router.get("/packages", response_model=VaultPackageListResponse, summary="List and filter knowledge vault packages")
 async def list_packages(
     destination: str = Query("", description="Filter by destination name"),
     budget: float = Query(0, description="Budget for ±30% match filtering"),
-    user: Any = Depends(verify_token_optional),
+    user: OptionalUser = None,
 ):
     """
     List vault packages for the authenticated agent.
@@ -66,13 +80,13 @@ async def list_packages(
         destination_filter=destination or None,
         budget=budget if budget > 0 else None,
     )
-    return JSONResponse(content={"status": "success", "packages": packages, "count": len(packages)})
+    return {"status": "success", "packages": packages, "count": len(packages)}
 
 
-@router.get("/destination-confidence")
+@router.get("/destination-confidence", response_model=DestinationConfidenceResponse, summary="Destination Confidence Scoring")
 async def get_destination_confidence(
     destination: str = Query(..., description="Destination name to score"),
-    user: Any = Depends(verify_token_optional)
+    user: OptionalUser = None
 ):
     """
     4B: Destination Confidence Scoring
@@ -83,7 +97,7 @@ async def get_destination_confidence(
     sb = get_supabase_client()
     
     if not sb:
-        return JSONResponse(content={"status": "success", "confidence_score": 0, "pdfs": 0, "proposals": 0})
+        return {"status": "success", "destination": destination, "confidence_score": 0, "pdfs": 0, "proposals": 0, "message": "Supabase not configured"}
         
     try:
         # Count PDFs in vault_packages for this destination
@@ -97,29 +111,32 @@ async def get_destination_confidence(
         # Calculate confidence score (e.g. max 100%, 10% per PDF, 5% per proposal)
         score = min(100, (pdf_count * 10) + (proposal_count * 5))
         
-        return JSONResponse(content={
+        return {
             "status": "success",
             "destination": destination,
             "confidence_score": score,
             "pdfs": pdf_count,
             "proposals": proposal_count,
             "message": f"{score}% confidence ({pdf_count} PDFs + {proposal_count} proposals)"
-        })
+        }
     except Exception as e:
         logger.error(f"[VaultRouter] Error calculating destination confidence: {e}")
-        return JSONResponse(content={"status": "error", "confidence_score": 0, "pdfs": 0, "proposals": 0})
+        return {"status": "error", "destination": destination, "confidence_score": 0, "pdfs": 0, "proposals": 0, "message": str(e)}
 
-@router.get("/packages/{pkg_id}")
-async def get_package(pkg_id: str, user: Any = Depends(verify_token_optional)):
+
+@router.get("/packages/{pkg_id}", response_model=VaultPackageDetailResponse, summary="Get single vault package by ID")
+async def get_package(pkg_id: str, user: OptionalUser = None):
     """Get a single vault package by ID."""
     agency_id, _ = _extract_user_context(user)
     pkg = get_vault_package(pkg_id, agency_id=agency_id)
     if not pkg:
         raise HTTPException(status_code=404, detail="Vault package not found")
-    return JSONResponse(content={"status": "success", "package": pkg})
+    return {"status": "success", "package": pkg}
 
 
 class VaultPackageUpdatePayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     destination: Optional[str] = None
     total_price: Optional[float] = None
     currency: Optional[str] = None
@@ -136,44 +153,41 @@ class VaultPackageUpdatePayload(BaseModel):
     hotels: Optional[list] = None
     activities: Optional[list] = None
 
-    class Config:
-        extra = "allow"
 
-
-@router.put("/packages/{pkg_id}")
-async def update_package(pkg_id: str, payload: VaultPackageUpdatePayload, user: Any = Depends(verify_token_optional)):
+@router.put("/packages/{pkg_id}", response_model=VaultPackageDetailResponse, summary="Update an existing vault package")
+async def update_package(pkg_id: str, payload: VaultPackageUpdatePayload, user: OptionalUser = None):
     """Update an existing vault package."""
     agency_id, _ = _extract_user_context(user)
-    data = payload.dict(exclude_unset=True)
+    data = payload.model_dump(exclude_unset=True)
     pkg = update_vault_package(pkg_id, data, agency_id=agency_id)
     if not pkg:
         raise HTTPException(status_code=500, detail="Failed to update vault package")
-    return JSONResponse(content={"status": "success", "package": pkg})
+    return {"status": "success", "package": pkg}
 
 
-@router.delete("/packages/{pkg_id}")
-async def delete_package(pkg_id: str, user: Any = Depends(verify_token_optional)):
+@router.delete("/packages/{pkg_id}", response_model=VaultPackageDeleteResponse, summary="Soft-delete a vault package")
+async def delete_package(pkg_id: str, user: OptionalUser = None):
     """Soft-delete a vault package (status → 'deleted')."""
     agency_id, _ = _extract_user_context(user)
     ok = delete_vault_package(pkg_id, agency_id=agency_id)
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to delete vault package")
-    return JSONResponse(content={"status": "success", "message": "Package deleted"})
+    return {"status": "success", "message": "Package deleted"}
 
 
-@router.get("/sub-destinations")
-async def get_agency_sub_destinations(user: Any = Depends(verify_token_optional)):
+@router.get("/sub-destinations", response_model=SubDestinationsResponse, summary="Get unique sub-destinations for agency")
+async def get_agency_sub_destinations(selected: Optional[str] = Query(None, description="Comma separated selected sub-destinations to filter co-occurring destinations"), user: OptionalUser = None):
     """
     Get all unique sub-destinations extracted from the agency's vault packages.
+    If 'selected' is provided, only return sub-destinations from packages that contain ALL the selected sub-destinations.
     """
     agency_id, _ = _extract_user_context(user)
     from src.services.supabase_client import get_supabase_client
     sb = get_supabase_client()
     if not sb:
-        return JSONResponse(content={"status": "success", "sub_destinations": []})
+        return {"status": "success", "sub_destinations": []}
 
     try:
-        # Fetch all active packages for this agency
         query = sb.table("vault_packages").select("sub_destinations").eq("status", "active")
         if agency_id:
             query = query.eq("agency_id", agency_id)
@@ -181,8 +195,9 @@ async def get_agency_sub_destinations(user: Any = Depends(verify_token_optional)
         res = query.execute()
         packages = res.data or []
         
-        # Aggregate and deduplicate sub-destinations
-        unique_subs = set()
+        selected_set = set([s.strip().title() for s in selected.split(',') if s.strip()]) if selected else set()
+        
+        filtered_packages = []
         for pkg in packages:
             subs = pkg.get("sub_destinations") or []
             if isinstance(subs, str):
@@ -191,26 +206,40 @@ async def get_agency_sub_destinations(user: Any = Depends(verify_token_optional)
                     subs = json.loads(subs)
                 except:
                     subs = []
+            
+            pkg_subs_set = set()
             if isinstance(subs, list):
                 for s in subs:
                     if isinstance(s, str) and s.strip():
-                        unique_subs.add(s.strip().title())
+                        pkg_subs_set.add(s.strip().title())
+            
+            if selected_set:
+                if selected_set.issubset(pkg_subs_set):
+                    filtered_packages.append(pkg_subs_set)
+            else:
+                filtered_packages.append(pkg_subs_set)
+                
+        unique_subs = set()
+        for pkg_subs in filtered_packages:
+            for s in pkg_subs:
+                if not selected_set or s not in selected_set:
+                    unique_subs.add(s)
                         
-        return JSONResponse(content={"status": "success", "sub_destinations": sorted(list(unique_subs))})
+        return {"status": "success", "sub_destinations": sorted(list(unique_subs))}
     except Exception as e:
         logger.error(f"[VaultRouter] Error fetching sub-destinations: {e}")
-        return JSONResponse(content={"status": "error", "sub_destinations": []}, status_code=500)
+        return {"status": "error", "sub_destinations": []}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DESTINATION KNOWLEDGE
 # ─────────────────────────────────────────────────────────────────────────────
 
-@router.get("/knowledge")
-@router.get("/match-rules")
+@router.get("/knowledge", response_model=DestinationKnowledgeResponse, summary="Get accumulated knowledge for destination")
+@router.get("/match-rules", response_model=DestinationKnowledgeResponse, summary="Match rules for destination")
 async def get_knowledge(
     destination: str = Query(..., description="Destination name e.g. Ladakh"),
-    user: Any = Depends(verify_token_optional),
+    user: OptionalUser = None,
 ):
     """
     Get accumulated knowledge sections for a destination.
@@ -219,18 +248,18 @@ async def get_knowledge(
     """
     agency_id, user_id = _extract_user_context(user)
     knowledge = get_destination_knowledge(destination, agency_id=agency_id, user_id=user_id)
-    return JSONResponse(content={
+    return {
         "status": "success",
         "destination": destination,
         "knowledge": knowledge,
         "sections_available": list(knowledge.keys()),
-    })
+    }
 
 
-@router.post("/knowledge")
+@router.post("/knowledge", response_model=KnowledgeUpsertResponse, summary="Upsert custom knowledge section for destination")
 async def upsert_knowledge(
     payload: KnowledgeUpsertRequest,
-    user: Any = Depends(verify_token),
+    user: CurrentUser = None,
 ):
     """
     Manually add or update a knowledge section for a destination.
@@ -243,25 +272,23 @@ async def upsert_knowledge(
         agency_id=agency_id,
         user_id=user_id,
     )
-    return JSONResponse(content={"status": "success" if ok else "partial", "saved": ok})
+    return {"status": "success" if ok else "partial", "saved": ok}
 
 
-@router.get("/knowledge/section-types")
+@router.get("/knowledge/section-types", response_model=SectionTypesResponse, summary="List available knowledge section types")
 async def list_section_types():
     """Returns available section type keys and their human-readable titles."""
-    return JSONResponse(content={"section_types": SECTION_TITLES})
+    return {"section_types": SECTION_TITLES}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PHASE 1 PDF EXTRACTION PIPELINE
 # ─────────────────────────────────────────────────────────────────────────────
 
-from fastapi import UploadFile, File
-
-@router.post("/pipeline/extract")
+@router.post("/pipeline/extract", summary="Extract raw PDF into structured itinerary blocks")
 async def extract_pdf_to_blocks(
     file: UploadFile = File(...),
-    user: Any = Depends(verify_token_optional),
+    user: OptionalUser = None,
 ):
     """
     Phase 1 Pipeline: Process raw PDF into Itinerary Blocks, Attraction Master Records,
@@ -279,24 +306,26 @@ async def extract_pdf_to_blocks(
 
     return JSONResponse(content=result)
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PHASE 5: RATE CONFLICT RESOLUTION
 # ─────────────────────────────────────────────────────────────────────────────
 
-@router.get("/rate-conflicts")
-async def get_rate_conflicts(user: Any = Depends(verify_token_optional)):
+@router.get("/rate-conflicts", response_model=RateConflictResponse, summary="Scan for rate conflicts across vault packages")
+async def get_rate_conflicts(user: OptionalUser = None):
     """
     Scans vault_packages for hotels with identical names but differing rates.
     """
     agency_id, _ = _extract_user_context(user)
     if not agency_id:
-        return JSONResponse(content={"status": "error", "message": "No agency context"}, status_code=400)
+        raise HTTPException(status_code=400, detail="No agency context")
 
     try:
+        from src.services.supabase_client import get_user_supabase_client
         supabase = get_user_supabase_client()
         res = supabase.table("vault_packages").select("id, filename, parsed_data").eq("agency_id", agency_id).execute()
         
-        hotel_rates = {} # name -> [{rate, pkg_id, filename}]
+        hotel_rates: Dict[str, List[Dict[str, Any]]] = {}
         
         for pkg in res.data:
             parsed = pkg.get("parsed_data", {})
@@ -315,7 +344,7 @@ async def get_rate_conflicts(user: Any = Depends(verify_token_optional)):
                             "filename": pkg.get("filename", "Unknown PDF"),
                             "display_name": h.get("name")
                         })
-                    except:
+                    except Exception:
                         pass
         
         conflicts = []
@@ -327,24 +356,27 @@ async def get_rate_conflicts(user: Any = Depends(verify_token_optional)):
                     "variations": entries
                 })
                 
-        return JSONResponse(content={"status": "success", "conflicts": conflicts})
+        return {"status": "success", "conflicts": conflicts}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[Vault RateConflicts] {e}")
-        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 class ResolveRateConflictInput(BaseModel):
     hotel_name: str
     resolved_rate: int
 
-@router.post("/resolve-rate-conflict")
-async def resolve_rate_conflict(input: ResolveRateConflictInput, user: Any = Depends(verify_token_optional)):
+
+@router.post("/resolve-rate-conflict", response_model=ActionSuccessResponse, summary="Resolve hotel rate conflict")
+async def resolve_rate_conflict(input: ResolveRateConflictInput, user: OptionalUser = None):
     """
-    Saves the resolved rate. For simplicity in Phase 5, we create a specialized table entry
-    or we just overwrite the vault packages to normalize the rate. 
-    Here, we normalize the vault_packages JSON directly.
+    Saves the resolved rate and normalizes the vault_packages JSON directly.
     """
     agency_id, _ = _extract_user_context(user)
     try:
+        from src.services.supabase_client import get_user_supabase_client
         supabase = get_user_supabase_client()
         res = supabase.table("vault_packages").select("id, parsed_data").eq("agency_id", agency_id).execute()
         
@@ -365,8 +397,7 @@ async def resolve_rate_conflict(input: ResolveRateConflictInput, user: Any = Dep
                 supabase.table("vault_packages").update({"parsed_data": parsed}).eq("id", pkg["id"]).execute()
                 updates_made += 1
                 
-        return JSONResponse(content={"status": "success", "message": f"Resolved rate applied to {updates_made} vault packages."})
+        return {"success": True, "message": f"Resolved rate applied to {updates_made} vault packages."}
     except Exception as e:
         logger.error(f"[Vault ResolveConflict] {e}")
-        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
-
+        raise HTTPException(status_code=500, detail=str(e))

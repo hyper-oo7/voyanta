@@ -3,7 +3,8 @@ import json
 import logging
 import httpx
 import re
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, AsyncGenerator
 import tenacity
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -329,7 +330,23 @@ async def call_llm(
         cached = await get_cached_extraction(agency_id, model, prompt_version, schema_version, input_text)
         if cached is not None:
             logger.info(f"[AICache] Cache HIT for entity_type={entity_type}")
+            try:
+                from src.services.ai_telemetry_service import emit_llm_call
+                emit_llm_call(
+                    provider="cache",
+                    model=model,
+                    latency_ms=0,
+                    tokens_in=len(prompt) // 4,
+                    tokens_out=len(json.dumps(cached)) // 4 if isinstance(cached, (dict, list)) else len(str(cached)) // 4,
+                    cache_hit=True,
+                    agency_id=agency_id,
+                    entity_type=entity_type,
+                )
+            except Exception:
+                pass
             return json.dumps(cached) if isinstance(cached, (dict, list)) else str(cached)
+
+    start_time = time.monotonic()
 
     # Helper function to perform the actual call based on the resolved provider
     async def execute_call(active_provider: str) -> str:
@@ -456,9 +473,55 @@ async def call_llm(
                     cache_meta["model_used"] = GEMINI_MODEL if provider == "gemini" else OPENAI_MODEL
             except Exception as fe:
                 logger.error(f"Fallback AI call to {fallback_provider} also failed: {fe}")
+                try:
+                    from src.services.ai_telemetry_service import emit_llm_call
+                    emit_llm_call(
+                        provider=provider,
+                        model=GEMINI_MODEL if provider == "gemini" else OPENAI_MODEL,
+                        latency_ms=int((time.monotonic() - start_time) * 1000),
+                        tokens_in=len(prompt) // 4,
+                        tokens_out=0,
+                        cache_hit=False,
+                        agency_id=cache_meta.get("agency_id") if cache_meta else None,
+                        entity_type=cache_meta.get("entity_type") if cache_meta else None,
+                        error=str(fe),
+                    )
+                except Exception:
+                    pass
                 raise fe
         else:
+            try:
+                from src.services.ai_telemetry_service import emit_llm_call
+                emit_llm_call(
+                    provider=provider,
+                    model=GEMINI_MODEL if provider == "gemini" else OPENAI_MODEL,
+                    latency_ms=int((time.monotonic() - start_time) * 1000),
+                    tokens_in=len(prompt) // 4,
+                    tokens_out=0,
+                    cache_hit=False,
+                    agency_id=cache_meta.get("agency_id") if cache_meta else None,
+                    entity_type=cache_meta.get("entity_type") if cache_meta else None,
+                    error=str(e),
+                )
+            except Exception:
+                pass
             raise e
+
+    # Emit telemetry for successful live LLM execution
+    try:
+        from src.services.ai_telemetry_service import emit_llm_call
+        emit_llm_call(
+            provider=provider,
+            model=GEMINI_MODEL if provider == "gemini" else OPENAI_MODEL,
+            latency_ms=int((time.monotonic() - start_time) * 1000),
+            tokens_in=len(prompt) // 4,
+            tokens_out=len(text_result) // 4 if text_result else 0,
+            cache_hit=False,
+            agency_id=cache_meta.get("agency_id") if cache_meta else None,
+            entity_type=cache_meta.get("entity_type") if cache_meta else None,
+        )
+    except Exception as tel_err:
+        logger.debug(f"[AIClient] Telemetry emission skipped: {tel_err}")
 
     # 3. Cache the result if cache metadata is provided
     if cache_meta and text_result:
@@ -489,3 +552,129 @@ async def call_llm(
             logger.warning(f"[AICache] Failed to save cache: {ce}")
 
     return text_result
+
+
+async def stream_llm(
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    provider: Optional[str] = None,
+    temperature: float = 0.0,
+    max_tokens: Optional[int] = None
+) -> AsyncGenerator[str, None]:
+    """
+    Asynchronously streams token chunks from Gemini or OpenAI via SSE.
+    Provides immediate first-token feedback to clients, reducing perceived latency.
+    """
+    api_key_gemini = os.environ.get("GEMINI_API_KEY")
+    api_key_openai = os.environ.get("OPENAI_API_KEY")
+
+    if not provider:
+        provider = "gemini" if api_key_gemini else "openai"
+
+    if provider == "gemini" and not api_key_gemini:
+        if api_key_openai:
+            provider = "openai"
+        else:
+            raise RuntimeError("Neither GEMINI_API_KEY nor OPENAI_API_KEY is configured.")
+    elif provider == "openai" and not api_key_openai:
+        if api_key_gemini:
+            provider = "gemini"
+        else:
+            raise RuntimeError("Neither GEMINI_API_KEY nor OPENAI_API_KEY is configured.")
+
+    if provider == "gemini":
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:streamGenerateContent?alt=sse"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key_gemini,
+        }
+        payload: Dict[str, Any] = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": temperature}
+        }
+        if max_tokens:
+            payload["generationConfig"]["maxOutputTokens"] = min(max_tokens, GEMINI_MAX_OUTPUT_TOKENS)
+        if system_prompt:
+            payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+
+        try:
+            async with httpx.AsyncClient(timeout=90.0) as client:
+                async with client.stream("POST", url, json=payload, headers=headers) as response:
+                    if response.status_code != 200:
+                        err_body = await response.aread()
+                        logger.warning(f"[StreamLLM] Gemini stream returned status {response.status_code}: {err_body.decode('utf-8', 'ignore')}")
+                        full_res = await call_llm(prompt, system_prompt=system_prompt, provider=provider, temperature=temperature, max_tokens=max_tokens)
+                        yield full_res
+                        return
+
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            raw_data = line[6:].strip()
+                            if raw_data:
+                                try:
+                                    chunk_obj = json.loads(raw_data)
+                                    candidates = chunk_obj.get("candidates") or []
+                                    if candidates:
+                                        parts = (candidates[0].get("content") or {}).get("parts") or []
+                                        for part in parts:
+                                            text_piece = part.get("text", "")
+                                            if text_piece:
+                                                yield text_piece
+                                except Exception:
+                                    continue
+        except Exception as e:
+            logger.warning(f"[StreamLLM] Gemini streaming encountered error: {e}. Falling back to standard LLM call.")
+            full_res = await call_llm(prompt, system_prompt=system_prompt, provider=provider, temperature=temperature, max_tokens=max_tokens)
+            yield full_res
+
+    else:  # openai
+        url = "https://api.openai.com/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key_openai}",
+            "Content-Type": "application/json"
+        }
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload_openai: Dict[str, Any] = {
+            "model": OPENAI_MODEL,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True
+        }
+        if max_tokens:
+            payload_openai["max_tokens"] = min(max_tokens, OPENAI_MAX_OUTPUT_TOKENS)
+
+        try:
+            async with httpx.AsyncClient(timeout=90.0) as client:
+                async with client.stream("POST", url, json=payload_openai, headers=headers) as response:
+                    if response.status_code != 200:
+                        err_body = await response.aread()
+                        logger.warning(f"[StreamLLM] OpenAI stream returned status {response.status_code}: {err_body.decode('utf-8', 'ignore')}")
+                        full_res = await call_llm(prompt, system_prompt=system_prompt, provider=provider, temperature=temperature, max_tokens=max_tokens)
+                        yield full_res
+                        return
+
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            raw_data = line[6:].strip()
+                            if raw_data == "[DONE]":
+                                break
+                            if raw_data:
+                                try:
+                                    chunk_obj = json.loads(raw_data)
+                                    choices = chunk_obj.get("choices") or []
+                                    if choices:
+                                        delta = choices[0].get("delta") or {}
+                                        content_piece = delta.get("content") or ""
+                                        if content_piece:
+                                            yield content_piece
+                                except Exception:
+                                    continue
+        except Exception as e:
+            logger.warning(f"[StreamLLM] OpenAI streaming encountered error: {e}. Falling back to standard LLM call.")
+            full_res = await call_llm(prompt, system_prompt=system_prompt, provider=provider, temperature=temperature, max_tokens=max_tokens)
+            yield full_res
+

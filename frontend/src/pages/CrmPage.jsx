@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useToast } from '../context/ToastContext.jsx';
 import { fetchClients, createClient, updateClient, deleteClient, TRIP_STATUSES } from '../services/crmService.js';
 import { fetchInvoices, updateInvoice } from '../services/invoiceService.js';
@@ -485,8 +486,8 @@ export default function CrmPage() {
       </div>
 
       {/* Modal for Add / Edit Client */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      {isModalOpen && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="glass-card w-full max-w-lg rounded-3xl border border-outline-variant shadow-2xl overflow-hidden bg-surface-container-lowest/95 animate-scale-up">
             <div className="px-6 py-5 border-b border-outline-variant flex items-center justify-between bg-surface-container-low">
               <div className="flex items-center gap-3">
@@ -664,7 +665,8 @@ export default function CrmPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Client 360 Drawer / Modal */}

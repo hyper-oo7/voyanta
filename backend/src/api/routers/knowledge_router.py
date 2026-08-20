@@ -3,12 +3,13 @@ import uuid as uuid_lib
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import JSONResponse
-from src.core.security import verify_token_optional, get_request_token
+from src.core.security import verify_token_optional, get_request_token, CurrentUser, OptionalUser, RequestToken
+from src.models.api_models import BaseResponse
 from src.services.supabase_client import get_supabase_client, get_user_supabase_client
 
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["Knowledge Objects"])
+router = APIRouter(tags=["Knowledge Vault"])
 
 
 def _get_db_client(token: Optional[str] = None):
@@ -23,10 +24,10 @@ def _get_db_client(token: Optional[str] = None):
     return get_user_supabase_client(token)
 
 
-@router.get("/knowledge-objects")
+@router.get("/knowledge-objects", summary="Query indexed knowledge objects with taxonomy and audience tags")
 async def get_knowledge_objects(
-    object_type: Optional[str] = Query(None, description="Filter by object type (e.g. hotel, activity)"),
     destination: Optional[str] = Query(None, description="Filter by destination"),
+    object_type: Optional[str] = Query(None, description="Filter by object type (e.g. hotel, activity)"),
     audience: Optional[str] = Query(None, description="Filter by audience tag (e.g. couple, family)"),
     pace: Optional[str] = Query(None, description="Filter by pace tag (e.g. relaxed, moderate)"),
     setting: Optional[str] = Query(None, description="Filter by setting tag (e.g. indoor, outdoor)"),
@@ -35,8 +36,8 @@ async def get_knowledge_objects(
     duration: Optional[str] = Query(None, description="Filter by duration tag (e.g. half-day, full-day)"),
     page: int = Query(1, ge=1, description="Page number for pagination"),
     page_size: int = Query(20, ge=1, le=100, description="Number of items per page"),
-    user: Any = Depends(verify_token_optional),
-    token: Optional[str] = Depends(get_request_token)
+    user: OptionalUser = None,
+    token: RequestToken = None
 ):
     """
     Paginated list of knowledge objects filtered by agency_id, object_type, destination, and taxonomy tags.

@@ -2,8 +2,8 @@ import os
 import httpx
 import logging
 import jwt
-from typing import Optional, Dict, Any
-from fastapi import HTTPException, Security, Header, status
+from typing import Optional, Dict, Any, Annotated
+from fastapi import HTTPException, Security, Header, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ async def _resolve_user_agency(payload: Optional[dict], token: str) -> Optional[
 
     return payload
 
-async def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
+async def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)) -> Dict[str, Any]:
     """
     Verifies incoming Authorization Bearer JWT using:
     1. Supabase ES256/JWKS public key verification via PyJWKClient (O(1) cached local cryptographic verification)
@@ -111,16 +111,17 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Security(secu
     payload = None
 
     # 0. Check for Platform Admin Token issued by /api/admin/login
-    admin_secret = os.environ.get('SUPABASE_JWT_SECRET') or "voyanta_admin_super_secret_key_2026"
-    try:
-        admin_payload = jwt.decode(token, admin_secret, algorithms=["HS256"], options={"verify_aud": False})
-        if admin_payload and admin_payload.get("role") in ("owner", "admin"):
-            return admin_payload
-    except jwt.ExpiredSignatureError:
-        logger.error("[Security] Admin token has expired")
-        raise HTTPException(status_code=401, detail="Token has expired")
-    except Exception:
-        pass
+    admin_secret = os.environ.get('SUPABASE_JWT_SECRET') or os.environ.get('JWT_SECRET')
+    if admin_secret:
+        try:
+            admin_payload = jwt.decode(token, admin_secret, algorithms=["HS256"], options={"verify_aud": False})
+            if admin_payload and admin_payload.get("role") in ("owner", "admin"):
+                return admin_payload
+        except jwt.ExpiredSignatureError:
+            logger.error("[Security] Admin token has expired")
+            raise HTTPException(status_code=401, detail="Token has expired")
+        except Exception:
+            pass
 
     # 1. Primary: ES256 / JWKS public key verification
     if supabase_url:
@@ -165,12 +166,13 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Security(secu
             logger.error(f"[Security] Failed to verify token via network: {e}")
             raise HTTPException(status_code=401, detail="Invalid auth token")
 
-    if payload:
-        payload = await _resolve_user_agency(payload, token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid auth token")
 
-    return payload
+    resolved_payload = await _resolve_user_agency(payload, token)
+    return resolved_payload or payload
 
-async def verify_token_optional(credentials: HTTPAuthorizationCredentials = Security(security_optional)):
+async def verify_token_optional(credentials: HTTPAuthorizationCredentials = Security(security_optional)) -> Optional[Dict[str, Any]]:
     if not credentials or not credentials.credentials:
         return None
     token = credentials.credentials
@@ -180,13 +182,14 @@ async def verify_token_optional(credentials: HTTPAuthorizationCredentials = Secu
     payload = None
 
     # 0. Check for Platform Admin Token
-    admin_secret = os.environ.get('SUPABASE_JWT_SECRET') or "voyanta_admin_super_secret_key_2026"
-    try:
-        admin_payload = jwt.decode(token, admin_secret, algorithms=["HS256"], options={"verify_aud": False})
-        if admin_payload and admin_payload.get("role") in ("owner", "admin"):
-            return admin_payload
-    except Exception:
-        pass
+    admin_secret = os.environ.get('SUPABASE_JWT_SECRET') or os.environ.get('JWT_SECRET')
+    if admin_secret:
+        try:
+            admin_payload = jwt.decode(token, admin_secret, algorithms=["HS256"], options={"verify_aud": False})
+            if admin_payload and admin_payload.get("role") in ("owner", "admin"):
+                return admin_payload
+        except Exception:
+            pass
 
     # 1. Primary: ES256 / JWKS public key verification
     if supabase_url:
@@ -231,6 +234,18 @@ async def get_request_token(credentials: HTTPAuthorizationCredentials = Security
     if credentials and credentials.credentials:
         return credentials.credentials
     return None
+
+from fastapi import Request
+
+async def get_redis_from_state(request: Request) -> Optional[Any]:
+    """FastAPI dependency to retrieve shared Redis client from app.state."""
+    return getattr(request.app.state, "redis", None)
+
+# Modern Annotated dependency type aliases for clean injection across routers
+CurrentUser = Annotated[Dict[str, Any], Depends(verify_token)]
+OptionalUser = Annotated[Optional[Dict[str, Any]], Depends(verify_token_optional)]
+RequestToken = Annotated[Optional[str], Depends(get_request_token)]
+AppRedis = Annotated[Optional[Any], Depends(get_redis_from_state)]
 
 async def verify_internal_api_key(x_internal_api_key: str = Header(..., alias="x-internal-api-key")):
     """

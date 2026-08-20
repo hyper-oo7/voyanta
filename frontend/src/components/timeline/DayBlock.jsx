@@ -15,17 +15,46 @@ import {
 } from '@dnd-kit/sortable';
 import SortableContentBlock from '../itinerary/SortableContentBlock.jsx';
 import ResourcePickerModal from '../itinerary/ResourcePickerModal.jsx';
+import DayAssemblerPanel from '../itinerary/DayAssemblerPanel.jsx';
 import { api } from '../../services/api.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import ImageSearchPicker from '../common/ImageSearchPicker.jsx';
 import { uploadOrEmbed } from '../LogoUploader.jsx';
 
-export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, removeDay, items = [], onRemoveItem, onAddResourceItem, proposalDestination, tourType }) {
+export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, removeDay, items = [], onRemoveItem, onAddResourceItem, proposalDestination, tourType, client, onOpenIntake }) {
   const toast = useToast();
   const upd = (key) => (e) => updateDay(index, { [key]: e.target.value });
   const [showBlockMenu, setShowBlockMenu] = useState(false);
   const [pickerType, setPickerType] = useState(null);
   const [showDayImagePicker, setShowDayImagePicker] = useState(false);
+  const [showAssembler, setShowAssembler] = useState(false);
+
+  const checkIntake = () => {
+    const name = client?.customer_name?.trim();
+    if (!name || name.toLowerCase() === 'valued traveler') {
+      toast.info('Please fill in the Client Intake Form first to personalize and cost your itinerary.');
+      if (onOpenIntake) onOpenIntake();
+      return false;
+    }
+    return true;
+  };
+
+  const handleDayAssembled = (assembledDayData, selectedItems = []) => {
+    const currentContent = Array.isArray(dayData.content) ? [...dayData.content] : [];
+    const newBlocks = [...currentContent, ...(assembledDayData.content || [])];
+    updateDay(index, {
+      title: assembledDayData.title || dayData.title,
+      description: assembledDayData.description || dayData.description,
+      sub_destination: assembledDayData.sub_destination || dayData.sub_destination,
+      content: newBlocks
+    });
+
+    if (onAddResourceItem && selectedItems.length > 0) {
+      selectedItems.forEach(({ item, kind }) => {
+        onAddResourceItem(item, kind, index);
+      });
+    }
+  };
 
   const dayImages = Array.isArray(dayData.images) && dayData.images.length > 0
     ? dayData.images
@@ -56,6 +85,8 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
   );
 
   const addContentBlock = (type, presetData = {}) => {
+    if (!checkIntake()) return;
+
     let defaultData = { ...presetData };
     if (type === 'heading') defaultData = { text: 'New Heading', ...presetData };
     if (type === 'text') defaultData = { text: '', ...presetData };
@@ -115,7 +146,21 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
       <div className="glass-card rounded-2xl p-lg space-y-md border border-outline-variant/50 bg-white/80 backdrop-blur-xl shadow-sm transition-all hover:shadow-md">
         <div className="flex justify-between items-start gap-md">
           <div className="flex-1 space-y-xs">
-            <span className="font-label-sm text-primary font-bold tracking-widest uppercase block">Day {dayData.day || index + 1}</span>
+            <div className="flex items-center gap-2">
+              <span className="font-label-sm text-primary font-bold tracking-widest uppercase block">Day {dayData.day || index + 1}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!checkIntake()) return;
+                  setShowAssembler(true);
+                }}
+                className="px-2.5 py-0.5 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-bold flex items-center gap-1 transition-all border border-primary/20 cursor-pointer shadow-2xs"
+                title="Open Guided Day Checklist & AI Assembly"
+              >
+                <span className="material-symbols-outlined text-[13px]">auto_awesome</span>
+                <span>Assemble Day</span>
+              </button>
+            </div>
             <input 
               value={dayData.title || ''} 
               onChange={upd('title')} 
@@ -279,7 +324,10 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
             <h5 className="font-label-sm text-on-surface-variant uppercase tracking-widest">Rich Content Blocks</h5>
             <div className="relative">
               <button 
-                onClick={() => setShowBlockMenu(!showBlockMenu)}
+                onClick={() => {
+                  if (!checkIntake()) return;
+                  setShowBlockMenu(!showBlockMenu);
+                }}
                 className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-lg transition-colors font-semibold"
               >
                 <span className="material-symbols-outlined text-[16px]">add</span> Add Block
@@ -296,9 +344,9 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
                   </div>
                   <div className="p-2 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider bg-surface-container-lowest border-b border-t border-outline-variant/50">Travel Elements</div>
                   <div className="p-1">
-                    <BlockMenuItem icon="hotel" label="Hotel" onClick={() => { setPickerType('hotel'); setShowBlockMenu(false); }} />
-                    <BlockMenuItem icon="local_activity" label="Activity" onClick={() => { setPickerType('activity'); setShowBlockMenu(false); }} />
-                    <BlockMenuItem icon="flight" label="Flight" onClick={() => { setPickerType('flight'); setShowBlockMenu(false); }} />
+                    <BlockMenuItem icon="hotel" label="Hotel" onClick={() => { if (checkIntake()) { setPickerType('hotel'); setShowBlockMenu(false); } }} />
+                    <BlockMenuItem icon="local_activity" label="Activity" onClick={() => { if (checkIntake()) { setPickerType('activity'); setShowBlockMenu(false); } }} />
+                    <BlockMenuItem icon="flight" label="Flight" onClick={() => { if (checkIntake()) { setPickerType('flight'); setShowBlockMenu(false); } }} />
                     <BlockMenuItem icon="directions_car" label="Transfer" onClick={() => addContentBlock('transfer')} />
                     <BlockMenuItem icon="restaurant" label="Meals" onClick={() => addContentBlock('meals')} />
                     <BlockMenuItem icon="directions_boat" label="Cruise / Ferry" onClick={() => addContentBlock('cruise')} />
@@ -379,6 +427,16 @@ export const DayBlock = memo(function DayBlock({ dayData, index, updateDay, remo
           }}
           onClose={() => setShowDayImagePicker(false)}
           defaultQuery={dayData.title || proposalDestination || ''}
+        />
+      )}
+
+      {showAssembler && (
+        <DayAssemblerPanel
+          isOpen={showAssembler}
+          onClose={() => setShowAssembler(false)}
+          dayNumber={dayData.day || index + 1}
+          proposalDestination={proposalDestination || dayData.sub_destination || ''}
+          onAssemble={handleDayAssembled}
         />
       )}
     </div>

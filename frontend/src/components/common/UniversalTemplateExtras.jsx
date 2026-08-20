@@ -50,12 +50,15 @@ export default function UniversalTemplateExtras({ proposal = {}, branding = {}, 
               </div>
             ) : cb.type === 'list' || cb.type === 'checklist' ? (
               <ul className="space-y-3 mt-4" style={{ color: textSec, fontFamily: fontBody }}>
-                {(Array.isArray(contentVal) ? contentVal : contentVal.split('\n')).map((item, i) => item.trim() && (
-                  <li key={i} className="flex items-start gap-3 text-base">
-                    <span className="material-symbols-outlined text-sm mt-1 flex-shrink-0" style={{ color: accentColor }}>check_circle</span>
-                    <span>{item}</span>
-                  </li>
-                ))}
+                {(Array.isArray(contentVal) ? contentVal : (typeof contentVal === 'string' ? contentVal.split('\n') : [String(contentVal)])).map((item, i) => {
+                  const clean = String(item || '').trim();
+                  return clean ? (
+                    <li key={i} className="flex items-start gap-3 text-base">
+                      <span className="material-symbols-outlined text-sm mt-1 flex-shrink-0" style={{ color: accentColor }}>check_circle</span>
+                      <span>{clean}</span>
+                    </li>
+                  ) : null;
+                })}
               </ul>
             ) : cb.type === 'image' ? (
               contentVal ? (
@@ -66,6 +69,50 @@ export default function UniversalTemplateExtras({ proposal = {}, branding = {}, 
             ) : (
               <div className="whitespace-pre-wrap text-base leading-relaxed" style={{ color: textSec, fontFamily: fontBody }}>
                 {contentVal || '—'}
+              </div>
+            )}
+          </section>
+        );
+      })}
+
+      {/* 1b. Dynamic Extra Sections from Proposal (What to Pack, Visa Info, Important Notes, etc.) */}
+      {proposal?.extra_sections && typeof proposal.extra_sections === 'object' && Object.entries(proposal.extra_sections).map(([secKey, secVal]) => {
+        if (!secVal) return null;
+        if (include[secKey] === false) return null;
+        if ((secKey === 'what_to_pack' || secKey.toLowerCase().includes('packing')) && include.what_to_pack === false) return null;
+        
+        const formattedTitle = secKey
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, l => l.toUpperCase());
+
+        const itemsList = Array.isArray(secVal) 
+          ? secVal 
+          : typeof secVal === 'string' 
+            ? (secVal.includes('\n') ? secVal.split('\n').map(s => s.trim()).filter(Boolean) : [secVal])
+            : [safeRenderText(secVal)];
+
+        const isListLike = itemsList.length > 1 || (itemsList.length === 1 && String(itemsList[0]).startsWith('•'));
+
+        return (
+          <section key={`extra_${secKey}`} className="py-12 px-8 md:px-16 max-w-7xl mx-auto editorial-section break-inside-avoid my-8 border-t border-outline-variant/30">
+            <h2 className="text-3xl md:text-4xl font-bold mb-6 border-b pb-3" style={{ color: primaryColor, fontFamily: fontHeadline, borderColor: accentColor }}>
+              {formattedTitle}
+            </h2>
+            {isListLike ? (
+              <ul className="space-y-3 mt-4" style={{ color: textSec, fontFamily: fontBody }}>
+                {itemsList.map((item, i) => {
+                  const clean = String(item || '').replace(/^[•\-*]\s*/, '').trim();
+                  return clean ? (
+                    <li key={i} className="flex items-start gap-3 text-base">
+                      <span className="material-symbols-outlined text-sm mt-1 flex-shrink-0" style={{ color: accentColor }}>check_circle</span>
+                      <span>{clean}</span>
+                    </li>
+                  ) : null;
+                })}
+              </ul>
+            ) : (
+              <div className="whitespace-pre-wrap text-base leading-relaxed" style={{ color: textSec, fontFamily: fontBody }}>
+                {safeRenderText(secVal) || '—'}
               </div>
             )}
           </section>
