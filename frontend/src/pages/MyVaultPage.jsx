@@ -106,7 +106,6 @@ function syncVaultItemsToLibrary(items) {
 export default function MyVaultPage() {
   const navigate = useNavigate();
   const toast = useToast();
-  const setProposalField = useProposalStore(state => state.setField);
   const addRecommendationOption = useProposalStore(state => state.addRecommendationOption);
 
   // Upload form state
@@ -288,14 +287,6 @@ export default function MyVaultPage() {
     const data = item.parsed_data || item;
     const extraSections = item.extra_sections || data.extra_sections || {};
 
-    // Set proposal fields from faithfully extracted data
-    setProposalField('destination', data.destination || item.destination || '');
-    setProposalField('subDestinations', data.sub_destinations || item.sub_destinations || []);
-    setProposalField('duration', data.duration_days || item.duration_days || 7);
-    setProposalField('currency', data.currency || item.currency || 'INR');
-    setProposalField('budget', data.total_price || item.total_price || data.price_per_person);
-    setProposalField('days', data.days || []);
-    setProposalField('overview', data.overview || '');
     const safeSecText = (val) => {
       if (val == null) return '';
       if (typeof val === 'string' || typeof val === 'number') return String(val);
@@ -306,11 +297,47 @@ export default function MyVaultPage() {
       }
       return String(val);
     };
-    setProposalField('inclusions', Array.isArray(data.inclusions) ? data.inclusions.join('\n') : safeSecText(data.inclusions));
-    setProposalField('exclusions', Array.isArray(data.exclusions) ? data.exclusions.join('\n') : safeSecText(data.exclusions));
-    setProposalField('what_to_pack', safeSecText(extraSections.what_to_pack));
-    setProposalField('extra_sections', extraSections);
-    setProposalField('recommendationStatus', 'From Vault');
+
+    const destination = data.destination || item.destination || '';
+    const days = data.days || [];
+    const durationDays = data.duration_days || item.duration_days || days.length || 7;
+    const totalPrice = data.total_price ?? item.total_price ?? data.price_per_person ?? 0;
+
+    // The canvas renders off `proposal`, so the package has to be committed as a
+    // whole proposal object. `setField` alone cannot do it: it only merges into
+    // `proposal` when one already exists, and `proposal` starts out null — which
+    // is why applying a package used to land on an empty canvas.
+    const nextProposal = {
+      ...data,
+      destination,
+      sub_destinations: data.sub_destinations || item.sub_destinations || [],
+      duration_days: durationDays,
+      currency: data.currency || item.currency || 'INR',
+      total_price: totalPrice,
+      days,
+      overview: data.overview || item.overview || '',
+      // Inclusions/exclusions are passed through untouched — the section
+      // renderers already accept either an array or a newline-joined string.
+      inclusions: data.inclusions ?? [],
+      exclusions: data.exclusions ?? [],
+      extra_sections: extraSections,
+      cover_image_url: item.cover_image_url || data.cover_image_url || '',
+    };
+
+    const prevClient = useProposalStore.getState().client || {};
+    useProposalStore.setState({
+      proposal: nextProposal,
+      items: [],
+      client: {
+        ...prevClient,
+        destination,
+        duration_days: durationDays,
+        duration_nights: Math.max(0, durationDays - 1),
+        budget: totalPrice,
+        what_to_pack: safeSecText(extraSections.what_to_pack),
+        recommendationStatus: 'From Vault',
+      },
+    });
 
     // Add as recommendation option to store
     if (addRecommendationOption) {
@@ -334,7 +361,7 @@ export default function MyVaultPage() {
 
     toast.success(`Applied "${data.destination || item.destination}" vault package to Proposal Wizard!`);
     navigate('/proposals/wizard');
-  }, [setProposalField, addRecommendationOption, navigate, toast]);
+  }, [addRecommendationOption, navigate, toast]);
 
   // ── Delete vault item ─────────────────────────────────────────────────────
   const handleDeleteItem = async (itemId, e) => {
