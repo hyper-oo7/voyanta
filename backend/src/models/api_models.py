@@ -107,6 +107,11 @@ class PDFGenerateRequest(BaseResponse):
     html: Optional[str] = None
     name: Optional[str] = None
     style: Optional[str] = None
+    # The renderer loads /proposals/:id/print in a browser with no Supabase
+    # session, so it falls back to the caller's cached copy of the proposal.
+    # BaseResponse ignores unknown fields, so omitting this here silently
+    # discarded that cache and every render answered "Proposal ... not found".
+    local_storage: Optional[Dict[str, Any]] = None
 
 
 class PDFGenerateResponse(BaseResponse):
