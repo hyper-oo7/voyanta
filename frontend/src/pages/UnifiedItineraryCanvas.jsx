@@ -12,6 +12,7 @@ import { executeRAGQuery } from '../services/api.js';
 import AIProposalChatDrawer from '../components/canvas/AIProposalChatDrawer.jsx';
 import ExtraSectionsEditor from '../components/canvas/ExtraSectionsEditor.jsx';
 import { getAgencyId } from '../lib/supabaseClient.js';
+import { downloadProposalPdf } from '../services/pdfService.js';
 
 export default function UnifiedItineraryCanvas() {
   const navigate = useNavigate();
@@ -26,6 +27,7 @@ export default function UnifiedItineraryCanvas() {
   } = useProposalStore();
 
   const [activeTab, setActiveTab] = useState('proposal');
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [showRAGDrawer, setShowRAGDrawer] = useState(false);
   const [showAIChat, setShowAIChat] = useState(false);
   const [ragActiveTab, setRagActiveTab] = useState('query');
@@ -412,11 +414,24 @@ export default function UnifiedItineraryCanvas() {
           </button>
 
           <button
-            onClick={() => window.print()}
-            className="p-2 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-xl border border-outline-variant transition-colors"
-            title="Download / Print PDF"
+            onClick={async () => {
+              if (exportingPdf) return;
+              setExportingPdf(true);
+              try {
+                await downloadProposalPdf(p, { style: activeTemplateSlug });
+              } catch (err) {
+                window.alert(err?.message || 'PDF export failed. Please try again.');
+              } finally {
+                setExportingPdf(false);
+              }
+            }}
+            disabled={exportingPdf}
+            className="p-2 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-xl border border-outline-variant transition-colors disabled:opacity-60 disabled:cursor-wait"
+            title="Download PDF"
           >
-            <span className="material-symbols-outlined text-[18px]">download</span>
+            <span className="material-symbols-outlined text-[18px]">
+              {exportingPdf ? 'hourglass_top' : 'download'}
+            </span>
           </button>
         </div>
       </header>
