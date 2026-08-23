@@ -289,7 +289,20 @@ def _run_extraction_bg(
                     )
                     normalized["chunks_indexed"] = stored_count
             except Exception as embed_err:
-                logger.error(f"[ImportProcess] Background RAG embedding error: {embed_err}")
+                # A failure here used to vanish into the log: the job still
+                # reported "completed", so a document could look imported while
+                # contributing nothing to RAG. Record it on the result instead.
+                detail = str(embed_err)
+                logger.error(f"[ImportProcess] Background RAG embedding error: {detail}")
+                if "permission denied" in detail or "42501" in detail:
+                    logger.error(
+                        "[ImportProcess] The vector store rejected the write. The backend is "
+                        "using the public Supabase key, which has no INSERT privilege on "
+                        "document_chunks. Set SUPABASE_SERVICE_ROLE_KEY so ingestion runs with "
+                        "the service role."
+                    )
+                normalized["chunks_indexed"] = 0
+                normalized["rag_index_error"] = detail
 
         _set_job(
             job_id,

@@ -21,11 +21,11 @@ def get_supabase_client():
         return _sb_client
 
     url = os.environ.get("SUPABASE_URL")
-    key = (
+    service_key = (
         os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
         or os.environ.get("SUPABASE_SERVICE_KEY")
-        or os.environ.get("SUPABASE_KEY")
     )
+    key = service_key or os.environ.get("SUPABASE_KEY")
 
     if not url or not key:
         logger.warning("[Supabase] SUPABASE_URL or SUPABASE_KEY not set — Supabase features disabled.")
@@ -34,7 +34,18 @@ def get_supabase_client():
     try:
         from supabase import create_client, Client
         _sb_client = create_client(url, key)
-        logger.info("[Supabase] Client initialised successfully.")
+        if service_key:
+            logger.info("[Supabase] Client initialised with the service role key.")
+        else:
+            # The public key has no INSERT privilege on document_chunks, so PDF
+            # ingestion silently indexes nothing and every RAG lookup comes back
+            # empty. Worth saying out loud at startup rather than one ERROR per
+            # upload that nobody reads.
+            logger.warning(
+                "[Supabase] Client initialised with the PUBLIC key - no service role key found. "
+                "Writes to RLS-protected tables (document_chunks in particular) will be rejected, "
+                "leaving RAG search empty. Set SUPABASE_SERVICE_ROLE_KEY for server-side ingestion."
+            )
         return _sb_client
     except ImportError:
         logger.warning("[Supabase] supabase-py not installed — pip install supabase. Running in offline mode.")
