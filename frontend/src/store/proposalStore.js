@@ -9,6 +9,10 @@ import { assembleProposal } from '../services/assemblyService.js';
 import { useAuthStore } from './authStore.js';
 import { FinalProposalSchema } from '../schemas/proposalSchema.js';
 
+/** Saved proposals carry a database UUID; anything else is a client-side id. */
+const SAVED_PROPOSAL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const isSavedProposalId = (id) => Boolean(id) && SAVED_PROPOSAL_ID.test(String(id));
+
 const saveLocalBackup = (state) => {
   try {
     const id = state.proposal?.id || state.activeId;
@@ -507,7 +511,23 @@ export const useProposalStore = create((set, get) => ({
           ...overrides
         }
       },
-      itinerary: proposal?.itinerary,
+      // `proposals` has no column for the proposal body, so days, overview,
+      // inclusions and the extra sections are persisted together here. Passing
+      // `proposal?.itinerary` straight through used to save nothing, because
+      // the body lives on `proposal.days` and friends.
+      itinerary: {
+        ...(typeof proposal?.itinerary === 'object' && !Array.isArray(proposal?.itinerary) ? proposal.itinerary : {}),
+        days: proposal?.days || [],
+        overview: proposal?.overview || '',
+        inclusions: proposal?.inclusions ?? [],
+        exclusions: proposal?.exclusions ?? [],
+        extra_sections: proposal?.extra_sections || {},
+        sub_destinations: proposal?.sub_destinations || [],
+        total_price: proposal?.total_price ?? null,
+        price_per_person: proposal?.price_per_person ?? null,
+        duration_days: proposal?.duration_days ?? null,
+        cover_image_url: proposal?.cover_image_url || '',
+      },
       status: proposal?.status || 'Draft',
       visibility_mode: proposal?.visibility_mode || 'ITEMIZED',
     };
@@ -520,7 +540,12 @@ export const useProposalStore = create((set, get) => ({
     set({ status: 'saving' });
     try {
       const payload = get().buildPayload();
-      const currentId = get().proposal?.id || get().activeId;
+      // A proposal applied from the vault carries that package's id
+      // ("vault_1787509779893_0"). Treating it as an existing proposal made the
+      // update target a row that does not exist, so only a real database id
+      // counts as "already saved".
+      const candidateId = get().proposal?.id || get().activeId;
+      const currentId = isSavedProposalId(candidateId) ? candidateId : null;
       let p;
       if (currentId) {
         p = await updateProposal(currentId, payload);

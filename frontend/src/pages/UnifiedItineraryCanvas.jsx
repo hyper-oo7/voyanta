@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useProposalStore } from '../store/proposalStore.js';
+import { useProposalStore, isSavedProposalId } from '../store/proposalStore.js';
 import QuickIntakeModal from '../components/canvas/QuickIntakeModal.jsx';
 import TemplateGalleryModal from '../components/canvas/TemplateGalleryModal.jsx';
 import TemplateRenderer from '../components/TemplateRenderer.jsx';
@@ -23,7 +23,7 @@ export default function UnifiedItineraryCanvas() {
     showTemplateGallery, setShowTemplateGallery,
     showQuickIntake, setShowQuickIntake,
     activeTemplateSlug, setTemplateSlug,
-    setClient, setCostingPrefs, updateProposal, loadProposal
+    setClient, setCostingPrefs, updateProposal, loadProposal, saveDraftBackground
   } = useProposalStore();
 
   const [activeTab, setActiveTab] = useState('proposal');
@@ -418,7 +418,15 @@ export default function UnifiedItineraryCanvas() {
               if (exportingPdf) return;
               setExportingPdf(true);
               try {
-                await downloadProposalPdf(p, { style: activeTemplateSlug });
+                // The PDF is rendered from the saved proposal, so a draft — a
+                // vault package just applied to the canvas, say — is persisted
+                // first rather than sending the user away to find a save button.
+                let target = p;
+                if (!isSavedProposalId(target?.id)) {
+                  const saved = await saveDraftBackground();
+                  target = { ...useProposalStore.getState().proposal, ...saved };
+                }
+                await downloadProposalPdf(target, { style: activeTemplateSlug });
               } catch (err) {
                 window.alert(err?.message || 'PDF export failed. Please try again.');
               } finally {

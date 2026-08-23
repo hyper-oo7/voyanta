@@ -322,6 +322,11 @@ export default function MyVaultPage() {
     // is why applying a package used to land on an empty canvas.
     const nextProposal = {
       ...data,
+      // `data.id` identifies the vault package, not a proposal. Carrying it over
+      // made the canvas look like an already-saved proposal, so saving tried to
+      // update a row that does not exist and the PDF renderer could not load it.
+      id: undefined,
+      source_vault_package_id: item.id,
       destination,
       sub_destinations: data.sub_destinations || item.sub_destinations || [],
       duration_days: durationDays,
