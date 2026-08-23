@@ -11,6 +11,9 @@ from src.models.api_models import BaseResponse
 from src.services.rag_engine import rag_engine
 from src.services.vector_store import vector_store
 
+from src.core.security import OptionalUser
+from src.core.tenancy import resolve_agency_id
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rag", tags=["RAG & Search"])
@@ -30,14 +33,17 @@ class RAGQueryRequest(BaseModel):
     travel_style: str = "balanced"
     budget_inr: Optional[int] = None
     special_requests: Optional[str] = None
-    agency_id: Optional[str] = "global"
+    agency_id: Optional[str] = None
 
 @router.post("/query", response_model=RAGQueryResponse, summary="Execute RAG query against travel knowledge vector store")
 async def execute_rag_query(
     payload: RAGQueryRequest,
-    x_agency_id: Optional[str] = Header(None, alias="X-Agency-ID")
+    x_agency_id: Optional[str] = Header(None, alias="X-Agency-ID"),
+    user: OptionalUser = None,
 ):
-    agency_id = payload.agency_id or x_agency_id or "global"
+    # Must land on the same tenant the ingest path writes to; "global" here
+    # against chunks written under another key is what returned 0 matches.
+    agency_id = resolve_agency_id(user, payload.agency_id or x_agency_id)
     try:
         result = rag_engine.run_rag(
             agency_id=agency_id,
@@ -55,7 +61,8 @@ async def execute_rag_query(
 
 @router.get("/stats", response_model=RAGStatsResponse, summary="Get vector store index statistics")
 async def get_vector_stats(
-    agency_id: str = Query("global")
+    agency_id: Optional[str] = Query(None),
+    user: OptionalUser = None,
 ):
-    stats = vector_store.get_document_stats(agency_id=agency_id)
+    stats = vector_store.get_document_stats(agency_id=resolve_agency_id(user, agency_id))
     return {"status": "success", "data": stats}

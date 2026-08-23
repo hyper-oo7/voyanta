@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, B
 from fastapi.responses import JSONResponse
 
 from src.core.security import verify_token_optional, get_request_token, CurrentUser, OptionalUser, RequestToken
+from src.core.tenancy import resolve_agency_id, resolve_write_agency_id
 from src.models.api_models import (
     BaseResponse,
     ImportProcessResponse,
@@ -334,7 +335,9 @@ def _run_extraction_bg(
 async def process_file_import(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    agency_id: str = Form("demo-agency"),
+    # Accepted for backwards compatibility with older clients but no longer
+    # trusted: the effective tenant comes from the verified token below.
+    agency_id: str = Form(""),
     destination: str = Form(""),
     budget: float = Form(0.0),
     duration: int = Form(0),
@@ -382,16 +385,11 @@ async def process_file_import(
                 detail="Binary format or unsupported content detected. Please provide a valid plaintext CSV file."
             )
 
-    resolved_agency_id = agency_id
-    user_id = None
-    if isinstance(user, dict):
-        resolved_agency_id = (
-            (user.get("user_metadata") or {}).get("agency_id")
-            or (user.get("app_metadata") or {}).get("agency_id")
-            or user.get("agency_id")
-            or agency_id
-        )
-        user_id = user.get("sub") or user.get("id")
+    # Ingest is a write: the tenant comes from verified claims, falling back to
+    # the shared default. It must match what the read paths resolve to, or the
+    # chunks land under a key nothing ever queries.
+    resolved_agency_id = resolve_write_agency_id(user)
+    user_id = user.get("sub") or user.get("id") if isinstance(user, dict) else None
 
     job_id = str(uuid.uuid4())
     _prune_extraction_jobs()
@@ -470,21 +468,19 @@ async def confirm_file_import(
     and accumulates destination knowledge and agency rules.
     """
     try:
-        agency_id = None
-        user_id = None
-        if isinstance(user, dict):
-            agency_id = (
-                (user.get("user_metadata") or {}).get("agency_id")
-                or (user.get("app_metadata") or {}).get("agency_id")
-                or user.get("agency_id")
-            )
-            user_id = user.get("sub") or user.get("id")
+        # Same tenant rule as ingest. This used to leave agency_id as None for
+        # an anonymous session, which is a valid value for a uuid column, so the
+        # package saved under no tenant at all and no later query could find it.
+        agency_id = resolve_write_agency_id(user)
+        user_id = user.get("sub") or user.get("id") if isinstance(user, dict) else None
 
-        from src.services.supabase_client import get_user_supabase_client
-        sb = get_user_supabase_client(token, agency_id)
-
-        from src.services.supabase_client import get_user_supabase_client
-        sb = get_user_supabase_client(token, agency_id)
+        # Persisting the confirmed package is a trusted server-side write, and
+        # agency_id above is derived from the verified token, so the row is
+        # scoped in application code either way. get_user_supabase_client always
+        # builds on the PUBLIC key, which has no INSERT/UPDATE privilege on
+        # vault_packages — without a service-role fallback an unauthenticated
+        # confirm is rejected outright and the package is silently lost.
+        sb = get_user_supabase_client(token, agency_id) if token else get_supabase_client()
 
         filename = payload.pop("_pdf_filename", payload.get("pdf_filename", "confirmed_package.pdf"))
         file_hash = payload.pop("_pdf_hash", payload.get("pdf_hash", hashlib.md5(str(payload).encode()).hexdigest()))

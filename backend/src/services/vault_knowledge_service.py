@@ -246,7 +246,8 @@ def get_vault_package(pkg_id: str, agency_id: Optional[str] = None) -> Optional[
         if agency_id:
             query = query.eq("agency_id", agency_id)
         res = query.maybe_single().execute()
-        pkg = res.data
+        # maybe_single() yields None (not an empty response) when nothing matches.
+        pkg = res.data if res else None
         if pkg:
             if isinstance(pkg.get("parsed_data"), str):
                 try:
@@ -437,7 +438,11 @@ def accumulate_destination_knowledge(
                 query = query.eq("user_id", user_id)
 
             res = query.maybe_single().execute()
-            existing = res.data
+            # maybe_single() yields None (not an empty response) when nothing
+            # matches, which is the common case on the first import for a
+            # destination — every section used to die here with
+            # "'NoneType' object has no attribute 'data'".
+            existing = res.data if res else None
 
             if existing:
                 # Merge content
