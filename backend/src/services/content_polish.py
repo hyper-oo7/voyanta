@@ -4,21 +4,26 @@ content_polish.py
 Turns raw supplier-PDF text into copy an agency can send to a client unedited.
 
 Extracted text arrives carrying everything the supplier put in their brochure:
-mojibake from the PDF's encoding, the supplier's own phone number, validity
-windows that expired years ago, shouted route lines, and whole itineraries
-flattened into a single run-on paragraph. Dropping that straight into a proposal
-is what made exported documents look unfinished.
+mojibake from the PDF's encoding, decorative titles exploded one glyph per line,
+"[Page 4]" markers, the supplier's own phone number and bank account, validity
+windows that expired years ago, and whole itineraries flattened into a single
+run-on paragraph. Worse, the trailing pages — inclusions, exclusions, payment
+terms, contact details — routinely get swept into the final day's description,
+so the last day of an itinerary reads as the entire back half of the brochure.
+
+Two jobs, then:
+
+  1. Strip anything that is not client-facing content.
+  2. Keep days to day content, and route trailing material to the section it
+     belongs to.
 
 Everything here is deterministic — no model call, no network, no failure mode.
-It cannot invent facts, so it only removes and reshapes: fix the encoding, drop
-the supplier's marketing furniture, restore sentence case, and group sentences
-into paragraphs. That is the part that must always work; generating richer prose
-is a separate, optional step layered on top.
+It cannot invent facts, so it only removes, reshapes and re-files.
 """
 import logging
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +35,12 @@ _CHAR_FIXES = {
     "‘": "'", "’": "'", "‚": "'", "‛": "'",
     "“": '"', "”": '"', "„": '"', "‟": '"',
     "•": "-", "‣": "-", "●": "-", "▪": "-", "·": "-",
-    " ": " ", " ": " ", " ": " ", " ": " ", "﻿": "",
+    " ": " ", " ": " ", " ": " ", " ": " ", "﻿": "",
     "…": "...",
     "�": "",   # the replacement char — a byte that never decoded
 }
 
-# Lines that belong to the supplier, not to the agency's client.
+# Lines that belong to the supplier's brochure, not to the agency's client.
 _NOISE_PATTERNS = [
     re.compile(r"\bcall\s+us\b.*", re.I),
     re.compile(r"\bfor\s+(?:any\s+)?quer(?:y|ies)\b.*", re.I),
@@ -45,76 +50,185 @@ _NOISE_PATTERNS = [
     re.compile(r"\bhttps?://\S+", re.I),
     re.compile(r"\bwww\.\S+", re.I),
     re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.]+\b"),
-    # Bare phone numbers (>=9 digits) left on a line of their own.
     re.compile(r"^\s*\+?\d[\d\s\-()]{8,}\s*$"),
     # The supplier's own quote disclaimers.
     re.compile(r"\bthis\s+is\s+just\s+a\s+proposal\b.*", re.I),
-    re.compile(r"\bsubject\s+to\s+availability\b.*", re.I),
     re.compile(r"\bwe\s+are\s+not\s+holding\s+any\s+rooms\b.*", re.I),
-    # Expired commercial windows: "Package validity - 01st-Oct to 31st-March-2019"
+    # NB: "subject to availability" is deliberately not listed. It reads as a
+    # supplier disclaimer on its own line, but it is also a legitimate qualifier
+    # inside an inclusion — "Train ticket (subject to availability)" — and
+    # matching it there deleted the inclusion with it.
+    # Commercial windows that expire and then read as wrong.
     re.compile(r"\bpackage\s+validity\b.*", re.I),
     re.compile(r"\bvalid(?:ity)?\s*(?:till|until|upto|up\s+to)\b.*", re.I),
     re.compile(r"\brates?\s+valid\b.*", re.I),
-    # Page furniture from the source document.
+    # Page furniture injected by the extractor or present in the source.
     re.compile(r"^\s*page\s+\d+\s*(?:of\s+\d+)?\s*$", re.I),
-    re.compile(r"^\s*\[?extracted\s+tables?\s+from\s+page\s+\d+\]?\s*$", re.I),
+    re.compile(r"^\s*\[?\s*extracted\s+tables?\s+from\s+page\s+\d+\s*\]?\s*$", re.I),
+    re.compile(r"\[\s*page\s*\d+\s*\]", re.I),
+    # Decorative brochure furniture carrying no itinerary information.
+    re.compile(r"^\s*day\s*-?\s*wise\s+itinerary\s*$", re.I),
+    re.compile(r"^\s*daywise\s+itinerary\s*$", re.I),
+    re.compile(r"^\s*where\s+every\s+trip\s+starts\b.*", re.I),
+    # Fragments of decorative headings that arrive one word per line.
+    re.compile(r"^\s*sounds\s*$", re.I),
+    re.compile(r"^\s*awesome[,!.]?\s*$", re.I),
+    re.compile(r"^\s*click\s+here\b.*", re.I),
+    # Lone decorative words left standing once their exploded run is dropped.
+    re.compile(r"^\s*itinerary\s*$", re.I),
+    re.compile(r"^\s*overview\s*$", re.I),
+    re.compile(r"^\s*highlights?\s*$", re.I),
 ]
+
+# The supplier's settlement and identity details. These must never reach a
+# proposal the agency sends: it would put another company's bank account, UPI
+# handle and social profile on their own quote.
+_SUPPLIER_IDENTITY_PATTERNS = [
+    re.compile(r"\baccount\s*(?:name|number|no\.?|type)\s*[:.]?.*", re.I),
+    re.compile(r"\bbank\s*name\s*[:.]?.*", re.I),
+    re.compile(r"\bifsc\s*(?:code)?\s*[:.]?.*", re.I),
+    re.compile(r"\bupi\s*id\s*[:.]?.*", re.I),
+    re.compile(r"\b[\w.-]+@(?:icici|okhdfcbank|oksbi|okaxis|paytm|ybl|apl|upi)\b", re.I),
+    re.compile(r"\b(?:razorpay|payment\s+gate?way|phonepe)\b.*", re.I),
+    re.compile(r"\bno\s+cost\s+emi\b.*", re.I),
+    re.compile(r"^\s*\d\s*[).]\s*(?:by\s+)?(?:account\s+transfer|bank\s+transfer|upi|cash|cheque|card)\s*$", re.I),
+    re.compile(r"^\s*(?:cash|bank\s+transfer|upi|debit\s+card|credit\s+card)\s*$", re.I),
+    re.compile(r"\bwe\s+accept\s+payment\b.*", re.I),
+    re.compile(r"\bfollowing\s+mode\s+of\s+payments?\b.*", re.I),
+    re.compile(r"\b(?:private\s+limited|pvt\.?\s*ltd\.?|llp)\b.*", re.I),
+    re.compile(r"^\s*@[\w.]+\s*$"),
+]
+
+# Headings that mark the end of day content and the start of a back-matter
+# section. Matched on short standalone lines only, so a sentence that merely
+# mentions "inclusions" is not treated as a heading.
+_SECTION_HEADINGS: List[Tuple[re.Pattern, str]] = [
+    (re.compile(r"^\W*(?:package\s+)?inclusions?\b", re.I), "inclusions"),
+    (re.compile(r"^\W*(?:package\s+)?exclusions?\b", re.I), "exclusions"),
+    (re.compile(r"^\W*(?:price|cost|package)\s+(?:includes?|excludes?)\b", re.I), "inclusions"),
+    (re.compile(r"^\W*payment\s*(?:process|terms|methods?|policy|mode)?\b", re.I), "payment"),
+    (re.compile(r"^\W*(?:terms\s*(?:and|&)\s*conditions|general\s+terms)\b", re.I), "terms_and_conditions"),
+    (re.compile(r"^\W*cancellation\s*(?:policy|charges|terms)?\b", re.I), "cancellation_policy"),
+    (re.compile(r"^\W*refund\s*(?:policy)?\b", re.I), "refund"),
+    (re.compile(r"^\W*(?:package\s+costing|costing|tariff|price\s+details)\b", re.I), "package_costing"),
+    (re.compile(r"^\W*(?:what\s+to\s+pack|things\s+to\s+carry|packing\s+list)\b", re.I), "what_to_pack"),
+    (re.compile(r"^\W*visa\s*(?:guidelines|information|requirements|info)?\b", re.I), "visa_guidelines"),
+    (re.compile(r"^\W*(?:important\s+notes?|please\s+note|general\s+notes?)\b", re.I), "important_notes"),
+    (re.compile(r"^\W*(?:do'?s\s*(?:and|&)\s*don'?ts)\b", re.I), "dos_and_donts"),
+    (re.compile(r"^\W*(?:office\s+address|contact\s+us|our\s+address)\b", re.I), "office_address"),
+    (re.compile(r"^\W*(?:booking\s+(?:process|amount|policy))\b", re.I), "payment"),
+    (re.compile(r"^\W*reserve\s+your\s+seat\b", re.I), "payment"),
+    (re.compile(r"^\W*starting\s*@", re.I), "package_costing"),
+    # Marketing headings that introduce the pricing page. Treated as headings
+    # rather than noise so they switch section instead of vanishing and leaving
+    # the price copy filed under whatever came before.
+    (re.compile(r"^\W*how\s+much\s+do\s+i\s+pay\b", re.I), "package_costing"),
+    (re.compile(r"^\W*sounds\s+awesome\b", re.I), "package_costing"),
+]
+
+_MAX_HEADING_LEN = 60
 
 # Sentence boundary that tolerates "Rs. 4,500" and "1.5 hrs" without splitting.
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z(])")
 
-# A line that continues the previous one rather than starting a new block: PDF
-# extraction hard-wraps mid-sentence, so unwrapping is needed before paragraphs.
 _LIST_ITEM = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
-_CONTINUES = re.compile(r"[a-z0-9,;:\-(]$")
+# A line ending on any of these was cut mid-phrase by the PDF's wrap width.
+_CONTINUES = re.compile(r"[a-z0-9,;:\-(&/+]$")
 _STARTS_LOWER = re.compile(r"^[a-z]")
 
 _ACRONYMS = {
-    "AC", "CP", "MAP", "AP", "EP", "GST", "PAN", "ID", "VIP", "TBD", "DVD",
-    "SUV", "AM", "PM", "KM", "KMS", "HRS", "USD", "INR", "EUR", "GBP", "N", "D",
+    "AC", "CP", "MAP", "AP", "EP", "GST", "TCS", "PAN", "ID", "VIP", "TBD",
+    "SUV", "AM", "PM", "KM", "KMS", "HRS", "USD", "INR", "EUR", "GBP", "EMI",
+    "UPI", "IFSC", "N", "D",
 }
 
+
+# ── primitives ──────────────────────────────────────────────────────────────
 
 def _apply_char_fixes(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
     for bad, good in _CHAR_FIXES.items():
         text = text.replace(bad, good)
-    # Any remaining control characters other than newline/tab.
-    return "".join(ch for ch in text if ch == "\n" or ch == "\t" or unicodedata.category(ch)[0] != "C")
+    return "".join(
+        ch for ch in text
+        if ch in "\n\t" or unicodedata.category(ch)[0] != "C"
+    )
+
+
+def _is_letterspaced(line: str) -> bool:
+    """
+    True for design headings set with wide letter-spacing, which extract as
+    "O N A L L C R E D I T A N D D E B I T C A R D S". Word boundaries are
+    unrecoverable and such lines are always decorative, so they are dropped
+    rather than guessed at.
+    """
+    tokens = line.split()
+    if len(tokens) < 6:
+        return False
+    singles = sum(1 for tok in tokens if len(tok) == 1 and tok.isalpha())
+    return singles >= max(6, int(len(tokens) * 0.6))
+
+
+def _drop_exploded_runs(lines: List[str]) -> List[str]:
+    """
+    Drop vertically exploded headings — one glyph per line, as produced by large
+    letter-spaced titles ("D/A/Y/W/I/S/E"). Three or more consecutive
+    single-character lines are never itinerary content.
+    """
+    out: List[str] = []
+    run: List[str] = []
+
+    def flush() -> None:
+        if len(run) < 3:
+            out.extend(run)
+        run.clear()
+
+    for line in lines:
+        stripped = line.strip()
+        if len(stripped) == 1 and stripped.isalpha():
+            run.append(line)
+        else:
+            flush()
+            out.append(line)
+    flush()
+    return out
 
 
 def _is_noise(line: str) -> bool:
     stripped = line.strip()
     if not stripped:
         return False
+    if _is_letterspaced(stripped):
+        return True
     for pattern in _NOISE_PATTERNS:
+        if pattern.search(stripped):
+            return True
+    for pattern in _SUPPLIER_IDENTITY_PATTERNS:
         if pattern.search(stripped):
             return True
     return False
 
 
 def _strip_noise(line: str) -> str:
-    """Remove a trailing noise fragment but keep the useful head of the line."""
+    """Remove a noise fragment but keep the useful head of the line."""
     out = line
     for pattern in _NOISE_PATTERNS:
         out = pattern.sub("", out)
+    for pattern in _SUPPLIER_IDENTITY_PATTERNS:
+        out = pattern.sub("", out)
     return out
-
-
-def desho_ut(text: str) -> str:  # pragma: no cover - alias guard
-    return de_shout(text)
 
 
 def de_shout(text: str) -> str:
     """
     Restore sentence case for shouted runs like 'DELHI - SHIMLA - MANALI'.
 
-    Only touches runs of two or more all-caps words so genuine acronyms and
+    Only runs of two or more all-caps words are touched, so genuine acronyms and
     single tokens (CP, MAP, 6N7D) survive untouched.
     """
     def fix_word(word: str) -> str:
         core = re.sub(r"[^A-Za-z]", "", word)
-        if not core or core in _ACRONYMS or len(core) <= 1:
+        if not core or core.upper() in _ACRONYMS or len(core) <= 1:
             return word
         if word.isupper():
             return word[:1] + word[1:].lower()
@@ -124,7 +238,6 @@ def de_shout(text: str) -> str:
         # Preserve whatever separators joined the run (spaces, dashes, slashes).
         return re.sub(r"[A-Za-z][A-Za-z'&.]*", lambda w: fix_word(w.group(0)), match.group(0))
 
-    # Two or more shouted words, which may be joined by " - ", " / ", ", " etc.
     return re.sub(
         r"\b[A-Z][A-Z'&.]+(?:\s*[-/,&]\s*|\s+)(?:[A-Z][A-Z'&.]+(?:\s*[-/,&]\s*|\s+)?)+",
         fix_run,
@@ -140,15 +253,18 @@ def _unwrap(lines: List[str]) -> List[str]:
         if not stripped:
             out.append("")
             continue
-        # A bullet or numbered item always starts its own line, however the
-        # previous one ended — otherwise a clean list collapses into a blob.
         starts_item = bool(_LIST_ITEM.match(stripped))
         prev_is_item = bool(out and out[-1] and _LIST_ITEM.match(out[-1]))
+        # A section heading always starts its own line. Gluing "EXCLUSIONS" onto
+        # the tail of the last inclusion hides the heading, and everything that
+        # follows is then filed under the wrong section.
+        starts_section = bool(match_section_heading(stripped))
         if (
             out
             and out[-1]
             and not starts_item
             and not prev_is_item
+            and not starts_section
             and (_CONTINUES.search(out[-1]) or _STARTS_LOWER.match(stripped))
         ):
             out[-1] = f"{out[-1]} {stripped}"
@@ -157,10 +273,12 @@ def _unwrap(lines: List[str]) -> List[str]:
     return out
 
 
+# ── public API ──────────────────────────────────────────────────────────────
+
 def clean_text(value: Any) -> str:
     """
     Normalise one field of extracted text. Safe on any input, including None,
-    numbers and nested lists, and never raises.
+    numbers, lists and dicts, and never raises.
     """
     if value is None:
         return ""
@@ -173,14 +291,19 @@ def clean_text(value: Any) -> str:
 
     try:
         text = _apply_char_fixes(value)
-        lines = _unwrap(text.split("\n"))
+        # Exploded headings go first, or their glyphs get glued onto the end of
+        # the preceding sentence by the unwrapper.
+        lines = _drop_exploded_runs(text.split("\n"))
+        lines = _unwrap(lines)
 
         kept: List[str] = []
         for line in lines:
             if _is_noise(line):
-                salvaged = _strip_noise(line).strip(" -–—:;,")
-                # Keep the useful remainder only if it still reads as content.
-                if len(salvaged) > 25:
+                salvaged = _strip_noise(line).strip(" -:;,")
+                # Only keep a remainder when stripping genuinely removed a
+                # fragment. Without this a whole-line reject that no pattern
+                # rewrites — a letter-spaced heading, say — is re-added intact.
+                if salvaged and salvaged != line.strip() and len(salvaged) > 25:
                     kept.append(salvaged)
                 continue
             kept.append(line)
@@ -188,12 +311,17 @@ def clean_text(value: Any) -> str:
         text = "\n".join(kept)
         text = de_shout(text)
 
-        # Tidy spacing artefacts: " ." , "  ", " ,"
         text = re.sub(r"[ \t]+", " ", text)
         text = re.sub(r"\s+([.,;:!?])", r"\1", text)
         text = re.sub(r"\(\s+", "(", text)
         text = re.sub(r"\s+\)", ")", text)
         text = re.sub(r"-{2,}", "-", text)
+        # Stripping a parenthetical such as "(subject to availability)" leaves
+        # the opening bracket stranded on the end of the line.
+        text = re.sub(r"\(\s*(?=$|\n)", "", text)
+        text = re.sub(r"(?:^|(?<=\n))\s*\)", "", text)
+        text = re.sub(r"\(\s*\)", "", text)
+        text = re.sub(r"[ \t]+", " ", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
     except Exception as exc:  # pragma: no cover - defensive
@@ -201,12 +329,65 @@ def clean_text(value: Any) -> str:
         return value.strip()
 
 
+def match_section_heading(line: str) -> str:
+    """Return the section key a short standalone heading names, else ''."""
+    stripped = line.strip()
+    if not stripped or len(stripped) > _MAX_HEADING_LEN:
+        return ""
+    # A heading is a label, not a sentence.
+    if stripped.endswith((".", "!", "?")) and len(stripped.split()) > 6:
+        return ""
+    for pattern, key in _SECTION_HEADINGS:
+        if pattern.search(stripped):
+            return key
+    return ""
+
+
+def split_trailing_sections(value: Any) -> Tuple[str, Dict[str, str]]:
+    """
+    Separate day content from back-matter that followed it.
+
+    Supplier PDFs run the itinerary straight into inclusions, exclusions,
+    payment terms and contact pages, and the extractor hands the whole tail to
+    the final day. Everything before the first section heading stays with the
+    day; everything after is filed under the section it belongs to.
+
+    Returns (day_text, {section_key: section_text}).
+    """
+    text = clean_text(value)
+    if not text:
+        return "", {}
+
+    body: List[str] = []
+    sections: Dict[str, List[str]] = {}
+    current: str = ""
+
+    for line in text.split("\n"):
+        key = match_section_heading(line)
+        if key:
+            current = key
+            sections.setdefault(current, [])
+            continue
+        if current:
+            sections[current].append(line)
+        else:
+            body.append(line)
+
+    cleaned_sections = {}
+    for key, lines in sections.items():
+        joined = "\n".join(lines).strip()
+        if joined:
+            cleaned_sections[key] = joined
+
+    return "\n".join(body).strip(), cleaned_sections
+
+
 def to_paragraphs(value: Any, sentences_per_paragraph: int = 3) -> str:
     """
     Group a run-on block into paragraphs separated by a blank line.
 
-    Existing blank-line structure is respected; only stretches that are already
-    one long block get regrouped, so hand-written copy is left alone.
+    Existing blank-line structure and lists are respected; only stretches that
+    are already one long block get regrouped, so hand-written copy is untouched.
     """
     text = clean_text(value)
     if not text:
@@ -216,8 +397,7 @@ def to_paragraphs(value: Any, sentences_per_paragraph: int = 3) -> str:
     out: List[str] = []
 
     for block in blocks:
-        # A bullet/numbered list is already structured — leave it as-is.
-        if re.match(r"^\s*(?:[-*]|\d+[.)])\s+", block) or "\n" in block:
+        if _LIST_ITEM.match(block) or "\n" in block:
             out.append(block)
             continue
 
@@ -234,41 +414,61 @@ def to_paragraphs(value: Any, sentences_per_paragraph: int = 3) -> str:
 
 def polish_package(package: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Clean every client-facing string on an extracted package, in place.
+    Clean every client-facing string on an extracted package, in place, and move
+    any back-matter that leaked into a day into its proper section.
 
-    Structured values (prices, counts, ids) are untouched — this only reshapes
-    prose, so it is safe to run on any package regardless of source.
+    Structured values (prices, counts, ids) are untouched, and no key is
+    introduced that the package did not already carry.
     """
     if not isinstance(package, dict):
         return package
 
     try:
-        # Only reshape fields the package actually carries — never introduce a
-        # key, so a caller can tell "absent" apart from "empty after cleaning".
+        recovered: Dict[str, str] = {}
+
         if "overview" in package:
-            package["overview"] = to_paragraphs(package.get("overview"))
+            body, spilled = split_trailing_sections(package.get("overview"))
+            package["overview"] = to_paragraphs(body)
+            recovered.update(spilled)
 
         days = package.get("days")
         if isinstance(days, list):
             for day in days:
                 if not isinstance(day, dict):
                     continue
+
                 title = clean_text(day.get("title"))
-                # Titles read as headings, so keep them on one line.
-                day["title"] = re.sub(r"\s*\n\s*", " - ", title)
-                day["description"] = to_paragraphs(day.get("description"))
+                # A title is a heading: keep it on one line and drop any
+                # back-matter heading that was concatenated onto it.
+                title = re.sub(r"\s*\n\s*", " - ", title)
+                day["title"] = title
+
+                body, spilled = split_trailing_sections(day.get("description"))
+                day["description"] = to_paragraphs(body)
+                for key, text in spilled.items():
+                    # Earlier days win only if a later day adds nothing; joining
+                    # keeps content from being silently dropped.
+                    recovered[key] = f"{recovered[key]}\n{text}".strip() if key in recovered else text
+
                 for key in ("sub_destination", "schedule"):
                     if day.get(key):
                         day[key] = clean_text(day[key])
 
         sections = package.get("extra_sections")
-        if isinstance(sections, dict):
-            cleaned_sections: Dict[str, Any] = {}
-            for key, raw in sections.items():
+        if isinstance(sections, dict) or recovered:
+            merged: Dict[str, Any] = {}
+            for key, raw in (sections or {}).items():
                 text = to_paragraphs(raw)
                 if text:
-                    cleaned_sections[key] = text
-            package["extra_sections"] = cleaned_sections
+                    merged[key] = text
+            # Content recovered from a day only fills a section that is missing
+            # or empty — never overwrites what the extractor found directly.
+            for key, text in recovered.items():
+                if not merged.get(key):
+                    polished = to_paragraphs(text)
+                    if polished:
+                        merged[key] = polished
+            package["extra_sections"] = merged
 
         for list_key in ("inclusions", "exclusions"):
             items = package.get(list_key)

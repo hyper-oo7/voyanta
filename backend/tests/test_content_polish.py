@@ -3,7 +3,13 @@
 The samples here are taken from real supplier PDFs already in the vault, since
 those are the shapes that made exported proposals look unfinished.
 """
-from src.services.content_polish import clean_text, de_shout, polish_package, to_paragraphs
+from src.services.content_polish import (
+    clean_text,
+    de_shout,
+    polish_package,
+    split_trailing_sections,
+    to_paragraphs,
+)
 
 
 class TestEncodingRepair:
@@ -126,3 +132,109 @@ class TestNeverRaises:
         assert clean_text(42) == "42"
         assert clean_text(["a", "b"]) == "a\nb"
         assert clean_text({"content": "nested"}) == "nested"
+
+
+class TestBrochureArtefacts:
+    """Shapes taken from a real Sri Lanka supplier deck."""
+
+    def test_bracketed_page_markers_removed(self):
+        assert clean_text("[Page 4]\nArrive in Colombo.") == "Arrive in Colombo."
+
+    def test_vertically_exploded_heading_removed(self):
+        raw = "[Page 4]\nD\nA\nY\nW\nI\nS\nE\n\nITINERARY\n\nArrive in Colombo."
+        assert clean_text(raw) == "Arrive in Colombo."
+
+    def test_letterspaced_heading_removed(self):
+        raw = "O N A L L C R E D I T A N D D E B I T C A R D S"
+        assert clean_text(raw) == ""
+
+    def test_short_capitalised_line_is_not_mistaken_for_letterspacing(self):
+        assert clean_text("A B C") == "A B C"
+
+
+class TestSupplierIdentityNeverLeaks:
+    """A proposal must never carry another company's settlement details."""
+
+    def test_bank_details_removed(self):
+        raw = (
+            "Account Name: RAAHGIR TRAVELS PRIVATE LIMITED\n"
+            "Bank Name: ICICI Bank\n"
+            "Account Number: 022405005030\n"
+            "IFSC Code: ICIC0000224"
+        )
+        assert clean_text(raw) == ""
+
+    def test_upi_and_gateway_removed(self):
+        raw = "UPI ID: raahg02670.ibz@icici\nClick here to pay with Razorpay"
+        assert clean_text(raw) == ""
+
+    def test_social_handle_and_domain_removed(self):
+        raw = "@desh.videsh.in\ninfo@deshvideshtravels.com\nwww.deshvideshtravels.com"
+        assert clean_text(raw) == ""
+
+
+class TestDaysKeepOnlyDayContent:
+    def test_trailing_sections_are_split_off_the_day(self):
+        day = (
+            "DEPARTURE\n"
+            "After breakfast, transfer to the airport for your departure.\n\n"
+            "[Page 10]\nINCLUSION\n\n"
+            "All transfers in an air-conditioned vehicle\n\n"
+            "[Page 11]\nEXCLUSIONS\n\n"
+            "Airfare and visa fees"
+        )
+        body, sections = split_trailing_sections(day)
+
+        assert "transfer to the airport" in body
+        assert "air-conditioned" not in body
+        assert "Airfare" not in body
+        assert "air-conditioned" in sections["inclusions"]
+        assert "Airfare" in sections["exclusions"]
+
+    def test_recovered_content_lands_in_extra_sections(self):
+        pkg = {
+            "days": [{
+                "title": "DEPARTURE",
+                "description": (
+                    "After breakfast, transfer to the airport.\n\n"
+                    "INCLUSION\n\nAll transfers in an air-conditioned vehicle"
+                ),
+            }],
+            "extra_sections": {},
+        }
+        out = polish_package(pkg)
+        assert out["days"][0]["description"] == "After breakfast, transfer to the airport."
+        assert "air-conditioned" in out["extra_sections"]["inclusions"]
+
+    def test_directly_extracted_section_is_not_overwritten(self):
+        pkg = {
+            "days": [{
+                "title": "Day 8",
+                "description": "Depart.\n\nINCLUSION\n\nRecovered text",
+            }],
+            "extra_sections": {"inclusions": "Authoritative text"},
+        }
+        out = polish_package(pkg)
+        assert out["extra_sections"]["inclusions"] == "Authoritative text"
+
+    def test_section_heading_is_never_glued_onto_the_previous_line(self):
+        raw = "Train ticket (subject to availability)\n\nEXCLUSIONS\n\nAirfare"
+        _, sections = split_trailing_sections(raw)
+        assert "exclusions" in sections
+        assert "Airfare" in sections["exclusions"]
+
+
+class TestLegitimateContentSurvives:
+    def test_availability_qualifier_is_kept(self):
+        # A supplier disclaimer on its own line reads like noise, but the same
+        # words qualify a real inclusion.
+        assert clean_text("Train ticket (subject to availability)") == "Train ticket (subject to availability)"
+
+    def test_ampersand_wrap_is_rejoined(self):
+        raw = "Beverages, lunch & dinner throughout the tour (except dinner at Kandy &\nSigiriya)"
+        assert clean_text(raw) == "Beverages, lunch & dinner throughout the tour (except dinner at Kandy & Sigiriya)"
+
+    def test_blank_line_separated_items_stay_separate(self):
+        raw = "Accommodation in Colombo\n\nAll transfers by vehicle\n\nEnglish-speaking guide"
+        out = to_paragraphs(raw)
+        assert out.count("\n\n") == 2

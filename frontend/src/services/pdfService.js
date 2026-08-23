@@ -58,7 +58,13 @@ export async function downloadProposalPdf(proposal, options = {}) {
     { responseType: 'blob', timeout: 60000 }
   );
 
-  if (!blob || (blob.size !== undefined && blob.size === 0)) {
+  // A non-Blob here means the request layer parsed the response as text — the
+  // symptom is an opaque "createObjectURL: Overload resolution failed", so fail
+  // with something that names the cause instead.
+  if (!(blob instanceof Blob)) {
+    throw new Error('The PDF service did not return a document. Check that /api/pdf/generate is reachable.');
+  }
+  if (blob.size === 0) {
     throw new Error('The PDF service returned an empty document.');
   }
 

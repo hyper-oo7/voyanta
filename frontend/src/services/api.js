@@ -142,7 +142,15 @@ async function _fetchWithTimeout(url, options = {}) {
     // Parse body (handle empty responses gracefully)
     let data = null;
     const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
+    // Binary endpoints (PDF, XLSX) must not go through text(): decoding bytes as
+    // UTF-8 corrupts them and yields an object where the caller expects a Blob.
+    // A failed response still carries a readable error body, so only parse as
+    // binary on success.
+    const wantsBinary = options.responseType === 'blob';
+
+    if (response.ok && wantsBinary) {
+      data = response.status === 204 ? null : await response.blob();
+    } else if (contentType.includes('application/json')) {
       data = await response.json();
     } else if (response.status !== 204) {
       const text = await response.text();
