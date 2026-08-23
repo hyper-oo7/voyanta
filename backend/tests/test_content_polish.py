@@ -238,3 +238,49 @@ class TestLegitimateContentSurvives:
         raw = "Accommodation in Colombo\n\nAll transfers by vehicle\n\nEnglish-speaking guide"
         out = to_paragraphs(raw)
         assert out.count("\n\n") == 2
+
+
+class TestSectionSanity:
+    def test_section_echoing_only_its_heading_is_dropped(self):
+        pkg = {"extra_sections": {"terms_and_conditions": "Terms & Conditions"}}
+        assert "terms_and_conditions" not in polish_package(pkg)["extra_sections"]
+
+    def test_strapline_filed_as_an_address_is_dropped(self):
+        pkg = {"extra_sections": {"office_address": "A Smile And Ends With A Story"}}
+        assert "office_address" not in polish_package(pkg)["extra_sections"]
+
+    def test_a_real_address_is_kept(self):
+        pkg = {"extra_sections": {"office_address": "2nd Floor, MG Road, Bengaluru 560001"}}
+        assert "office_address" in polish_package(pkg)["extra_sections"]
+
+    def test_short_inclusion_is_not_mistaken_for_a_fragment(self):
+        # Guard against over-eager pruning: this line has no digit, no comma and
+        # no terminal punctuation, but it is genuine content.
+        pkg = {"extra_sections": {"inclusions": "All transfers in an air-conditioned vehicle"}}
+        assert "air-conditioned" in polish_package(pkg)["extra_sections"]["inclusions"]
+
+    def test_heading_repeated_inside_its_own_body_is_removed(self):
+        pkg = {"extra_sections": {"inclusions": "INCLUSIONS\nAll transfers by private vehicle"}}
+        out = polish_package(pkg)["extra_sections"]["inclusions"]
+        assert out == "All transfers by private vehicle"
+
+
+class TestPaymentMethodNoise:
+    def test_glued_payment_method_list_removed(self):
+        assert clean_text("Cash Bank Transfer UPI") == ""
+
+    def test_numbered_payment_method_removed(self):
+        assert clean_text("1) ACCOUNT TRANSFER") == ""
+        assert clean_text("2) BY UPI") == ""
+
+    def test_gateway_charge_note_removed(self):
+        raw = "Note: A Payment Gateway Charge 3% Will Be Levied On Using Above Given Payment Link."
+        assert clean_text(raw) == ""
+
+
+class TestHyphenWrap:
+    def test_hyphenated_wrap_rejoins_without_a_space(self):
+        assert clean_text("ocean-\nfacing views") == "ocean-facing views"
+
+    def test_plain_wrap_still_rejoins_with_a_space(self):
+        assert clean_text("drive to\nShimla today") == "drive to Shimla today"

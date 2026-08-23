@@ -172,10 +172,13 @@ def accumulate_agency_packing_rules(
     if not agency_id or not destination or not extra_sections:
         return
         
-    sb = get_user_supabase_client(token)
+    # agency_id reaching here was already resolved from verified claims, and the
+    # public key has no write grant on agency_packing_rules, so this upsert has
+    # to run with the service role or it is silently rejected.
+    sb = get_supabase_client()
     if not sb:
         return
-        
+
     dest_kw = destination.lower().strip()
     for sec_type, content in extra_sections.items():
         if not content or not content.strip():
@@ -259,7 +262,11 @@ def _run_extraction_bg(
 
         _set_job(job_id, progress={"stage": "Indexing Entities & Vector Knowledge", "current": 3, "total": 4})
 
-        sb = get_user_supabase_client(token, agency_id) if token else get_supabase_client()
+        # user_id is only set when the token actually verified. A token that
+        # Supabase rejected still arrives as a non-empty string, and building a
+        # client from it yields the anon role with no write grants — so gate on
+        # the verification result, not on the token being present.
+        sb = get_user_supabase_client(token, agency_id) if (user_id and token) else get_supabase_client()
 
         delta_summary = perform_pdf_delta_sync(
             extracted_pkg=normalized,
@@ -434,7 +441,9 @@ async def get_import_status(job_id: str):
 @router.post("/extract-text", response_model=RawTextExtractResponse, summary="Raw deterministic PDF text extraction")
 async def extract_raw_text(
     file: UploadFile = File(...),
-    agency_id: str = Form("demo-agency")
+    # Kept for backwards compatibility with older clients; the value is not
+    # trusted and the endpoint does not write, so nothing is scoped by it.
+    agency_id: str = Form(""),
 ):
     """
     Raw text fallback extraction using PyMuPDF / pdfminer without LLM processing.
@@ -478,9 +487,14 @@ async def confirm_file_import(
         # agency_id above is derived from the verified token, so the row is
         # scoped in application code either way. get_user_supabase_client always
         # builds on the PUBLIC key, which has no INSERT/UPDATE privilege on
-        # vault_packages — without a service-role fallback an unauthenticated
-        # confirm is rejected outright and the package is silently lost.
-        sb = get_user_supabase_client(token, agency_id) if token else get_supabase_client()
+        # vault_packages — without a service-role fallback the confirm is
+        # rejected outright and the package is silently lost.
+        #
+        # Gate on `user`, not on `token`: an expired session still sends a
+        # non-empty bearer string, Supabase answers 403, and the resulting
+        # client is plain anon. Falling back to the service role there is the
+        # difference between saving the package and dropping it.
+        sb = get_user_supabase_client(token, agency_id) if (user and token) else get_supabase_client()
 
         filename = payload.pop("_pdf_filename", payload.get("pdf_filename", "confirmed_package.pdf"))
         file_hash = payload.pop("_pdf_hash", payload.get("pdf_hash", hashlib.md5(str(payload).encode()).hexdigest()))
@@ -530,7 +544,7 @@ async def confirm_file_import(
 
         if hash_key:
             try:
-                sb = get_user_supabase_client(token, agency_id) if token else get_supabase_client()
+                sb = get_user_supabase_client(token, agency_id) if (user and token) else get_supabase_client()
                 asyncio.create_task(store_cached_recommendation(
                     hash_key,
                     dict(payload),

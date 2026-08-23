@@ -41,10 +41,16 @@ function toSafeFilename(name) {
  * @param {string} [options.filename]  download name, defaults to the proposal name
  * @returns {Promise<void>} rejects with a readable message the caller can surface
  */
+/** Saved proposals carry a database UUID. Anything else is a client-side id. */
+const SAVED_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function downloadProposalPdf(proposal, options = {}) {
   const id = proposal?.id;
-  if (!id) {
-    throw new Error('Save this proposal before exporting — the PDF is rendered from the saved version.');
+  // A proposal applied from the vault carries an id like "vault_1787509779893_0",
+  // which the renderer cannot load. Exporting anyway produced a one-page PDF
+  // reading "Error: Proposal ... not found", so refuse with something actionable.
+  if (!id || !SAVED_ID.test(String(id))) {
+    throw new Error('Save this proposal first — the PDF is rendered from the saved version, so unsaved drafts cannot be exported yet.');
   }
 
   const blob = await api.post(

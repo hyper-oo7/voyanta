@@ -92,7 +92,14 @@ _SUPPLIER_IDENTITY_PATTERNS = [
     re.compile(r"\b(?:razorpay|payment\s+gate?way|phonepe)\b.*", re.I),
     re.compile(r"\bno\s+cost\s+emi\b.*", re.I),
     re.compile(r"^\s*\d\s*[).]\s*(?:by\s+)?(?:account\s+transfer|bank\s+transfer|upi|cash|cheque|card)\s*$", re.I),
-    re.compile(r"^\s*(?:cash|bank\s+transfer|upi|debit\s+card|credit\s+card)\s*$", re.I),
+    # A payment-method list, whether one per line or run together by unwrapping
+    # ("Cash Bank Transfer UPI").
+    re.compile(
+        r"^\s*(?:cash|cheque|bank\s+transfer|upi|debit\s+card|credit\s+card)"
+        r"(?:\s+(?:cash|cheque|bank\s+transfer|upi|debit\s+card|credit\s+card))*\s*$",
+        re.I,
+    ),
+    re.compile(r"\bpayment\s+gate?way\s+charge\b.*", re.I),
     re.compile(r"\bwe\s+accept\s+payment\b.*", re.I),
     re.compile(r"\bfollowing\s+mode\s+of\s+payments?\b.*", re.I),
     re.compile(r"\b(?:private\s+limited|pvt\.?\s*ltd\.?|llp)\b.*", re.I),
@@ -267,7 +274,12 @@ def _unwrap(lines: List[str]) -> List[str]:
             and not starts_section
             and (_CONTINUES.search(out[-1]) or _STARTS_LOWER.match(stripped))
         ):
-            out[-1] = f"{out[-1]} {stripped}"
+            # A line broken on a hyphen rejoins without a space, or "ocean-\n
+            # facing" comes back as "ocean- facing".
+            if out[-1].endswith("-"):
+                out[-1] = f"{out[-1]}{stripped}"
+            else:
+                out[-1] = f"{out[-1]} {stripped}"
         else:
             out.append(stripped)
     return out
@@ -382,6 +394,50 @@ def split_trailing_sections(value: Any) -> Tuple[str, Dict[str, str]]:
     return "\n".join(body).strip(), cleaned_sections
 
 
+# An address carries a number, a comma-separated locality, or a place word.
+# Without any of those it is a strapline that landed in the wrong section —
+# "A Smile And Ends With A Story", the tail of a brochure footer.
+def _looks_like_address(text: str) -> bool:
+    return (
+        any(ch.isdigit() for ch in text)
+        or "," in text
+        or bool(re.search(r"\b(road|street|st\.|lane|avenue|floor|block|nagar|sector|plot|suite|pin|zip|city|state)\b", text, re.I))
+    )
+
+
+_SECTION_VALIDATORS = {
+    "office_address": _looks_like_address,
+}
+
+
+def _is_meaningful_section(text: str, key: str = "") -> bool:
+    """
+    True when a section body carries content rather than an echo of its own
+    heading or a leftover marketing line.
+
+    The extractor regularly returns "Terms & Conditions" as the entire body of
+    the terms section, and files a strapline ("...ends with a story") under
+    office_address. Rendering those produces a heading with nothing under it,
+    which reads worse in a client document than omitting the section.
+    """
+    if not text or len(text.strip()) < 12:
+        return False
+    lines = [ln for ln in (l.strip() for l in text.split("\n")) if ln]
+    if not lines:
+        return False
+    # Every line is just a section heading.
+    if all(match_section_heading(ln) for ln in lines):
+        return False
+    # Some sections can be sanity-checked against what they claim to hold. This
+    # is deliberately narrow: a general "too short / no punctuation" rule also
+    # rejected real content such as "All transfers in an air-conditioned
+    # vehicle", so only sections with an unmistakable shape are validated.
+    validator = _SECTION_VALIDATORS.get(key)
+    if validator and not validator(text):
+        return False
+    return True
+
+
 def to_paragraphs(value: Any, sentences_per_paragraph: int = 3) -> str:
     """
     Group a run-on block into paragraphs separated by a blank line.
@@ -458,15 +514,24 @@ def polish_package(package: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(sections, dict) or recovered:
             merged: Dict[str, Any] = {}
             for key, raw in (sections or {}).items():
-                text = to_paragraphs(raw)
-                if text:
+                # The extractor often repeats the heading as the first line of
+                # the body, and sometimes files content under the wrong key.
+                # Re-splitting drops the echoed heading and re-routes the rest.
+                body, spilled = split_trailing_sections(raw)
+                for spill_key, spill_text in spilled.items():
+                    if spill_key == key:
+                        body = f"{body}\n{spill_text}".strip() if body else spill_text
+                    elif not recovered.get(spill_key):
+                        recovered[spill_key] = spill_text
+                text = to_paragraphs(body)
+                if _is_meaningful_section(text, key):
                     merged[key] = text
             # Content recovered from a day only fills a section that is missing
             # or empty — never overwrites what the extractor found directly.
             for key, text in recovered.items():
                 if not merged.get(key):
                     polished = to_paragraphs(text)
-                    if polished:
+                    if _is_meaningful_section(polished, key):
                         merged[key] = polished
             package["extra_sections"] = merged
 

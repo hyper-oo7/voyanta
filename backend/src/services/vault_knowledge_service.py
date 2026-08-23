@@ -596,12 +596,18 @@ def perform_pdf_delta_sync(
 
             if sb:
                 try:
+                    # meal_type and room_type are not columns on `hotels`;
+                    # including them made PostgREST reject the whole insert with
+                    # PGRST204, so no extracted hotel ever reached the library.
+                    # They are kept on the `raw` payload instead.
                     hotel_record = {
                         "name": h_name,
                         "location": h.get("location") or destination or "Imported Location",
                         "price_per_night": float(h.get("price_per_night") or h.get("rate") or 5000),
-                        "meal_type": h.get("meal_plan") or h.get("meal_type") or "CP (Breakfast)",
-                        "room_type": h.get("room_type") or "Deluxe Room",
+                        "raw": {
+                            "meal_type": h.get("meal_plan") or h.get("meal_type") or "CP (Breakfast)",
+                            "room_type": h.get("room_type") or "Deluxe Room",
+                        },
                         "category": h.get("category") or "4 Star",
                         "rating": float(h.get("rating") or 4.5),
                         "amenities": h.get("amenities") if isinstance(h.get("amenities"), list) else ["WiFi", "Room Service"],
