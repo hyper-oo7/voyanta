@@ -64,6 +64,27 @@ def _build_prompt(req: AssembleRequest) -> str:
 
     catalog_block = "\n".join(catalog)
 
+    # Which grounding regime the LLM must follow. Rule 9 used to demand
+    # "insufficient_inventory" whenever the hotel catalog was empty — which it
+    # is for a vault built purely from PDFs — so the model refused even when the
+    # supplier documents below described complete itineraries, and every
+    # generate fell back to the generic template. Documents are inventory too.
+    if not hotels and chunks:
+        catalog_rules = (
+            "6. The catalog has no hotels, but the RELEVANT SUPPLIER DOCUMENTS describe real stays, sights and pricing. "
+            'Ground every day on those documents: use hotel and place names exactly as the documents state them, and set id "doc" on document-derived hotels and activities.\n'
+            "7. Use prices the documents state where present; otherwise estimate conservatively within the client's budget.\n"
+            "8. If no flights appear in the catalog or documents, omit the flights array entirely.\n"
+            '9. Set status to "insufficient_inventory" ONLY if the documents contain no usable itinerary content either.'
+        )
+    else:
+        catalog_rules = (
+            "6. Every hotel, activity, and flight MUST use an ID from the catalog above.\n"
+            "7. Do NOT hallucinate prices — use the exact prices shown in the catalog.\n"
+            "8. If no flights exist in the catalog, omit the flights array entirely.\n"
+            '9. If no hotels exist, set status to "insufficient_inventory" and explain why.'
+        )
+
     is_corporate = req.group_type == "corporate"
 
     child_str = ""
@@ -120,10 +141,7 @@ RULES:
 3. Day {req.duration_days} must include departure logistics (flight if available).
 4. Use the SAME hotel for consecutive nights unless the brief explicitly requires moving.
 5. Distribute 2–4 activities per day depending on pace (relaxed=2, medium=3, fast=4).
-6. Every hotel, activity, and flight MUST use an ID from the catalog above.
-7. Do NOT hallucinate prices — use the exact prices shown in the catalog.
-8. If no flights exist in the catalog, omit the flights array entirely.
-9. If no hotels exist, set status to "insufficient_inventory" and explain why.
+{catalog_rules}
 10. Write engaging, professional descriptions suitable for a client proposal.
 11. Include realistic meal plans based on hotel meal_type (CP=breakfast, MAP=breakfast+dinner, AP=all meals).
 12. Return ONLY valid JSON. No markdown, no explanations outside JSON.

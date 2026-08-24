@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Dict, Any
 
 # ── Vault Items (mirrors Supabase schema) ─────────────────────
@@ -57,9 +57,36 @@ class VaultTemplate(BaseModel):
 # ── RAG Context ────────────────────────────────────────────────────
 
 class RAGChunk(BaseModel):
+    """
+    One retrieved knowledge chunk.
+
+    The vector store returns rows shaped {content, metadata, similarity}; this
+    schema historically demanded {text, source, score} — a mismatch nobody hit
+    while a frontend bug kept chunks perpetually empty. The moment real chunks
+    flowed, every assemble call 422'd. Accept both shapes so retrieval output
+    can be passed through verbatim.
+    """
     text: str
     source: Optional[str] = None
     score: Optional[float] = None
+
+    model_config = {"extra": "ignore"}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_vector_store_shape(cls, values):
+        if not isinstance(values, dict):
+            return values
+        out = dict(values)
+        if not out.get("text"):
+            out["text"] = out.get("content") or ""
+        if out.get("source") is None:
+            meta = out.get("metadata") or {}
+            if isinstance(meta, dict):
+                out["source"] = meta.get("document_name") or meta.get("source_type")
+        if out.get("score") is None and out.get("similarity") is not None:
+            out["score"] = out.get("similarity")
+        return out
 
 
 class RAGContext(BaseModel):
