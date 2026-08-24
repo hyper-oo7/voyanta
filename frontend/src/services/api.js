@@ -349,8 +349,13 @@ export async function saveProposal(payload) {
 }
 
 export async function executeRAGQuery(payload) {
-  const data = await api.post('/api/rag/query', payload);
-  return { data };
+  const body = await api.post('/api/rag/query', payload);
+  // The endpoint responds {status, data: {query, chunks, ...}} while every
+  // caller reads ragRes.data.chunks. Returning the raw body put the payload one
+  // level deeper than anyone looked, so chunks was always undefined and every
+  // generate ran ungrounded — with the "no matching documents" caveat shown —
+  // no matter what the backend found. Unwrap here so the callers' shape holds.
+  return { data: body?.data ?? body };
 }
 
 export default api;
