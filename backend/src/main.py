@@ -79,6 +79,16 @@ async def lifespan(app: FastAPI):
         logger.warning(f"[Lifespan] Redis init notice: {e}")
         app.state.redis = None
 
+    # One-shot data heal: rows written under the legacy tenant fallbacks are
+    # re-stamped onto the shared default tenant so reads can find them. This is
+    # the canonical-agency migration applied automatically; it is idempotent and
+    # a no-op once the database is clean.
+    try:
+        from src.services.tenancy_selfheal import heal_legacy_tenants
+        asyncio.create_task(asyncio.to_thread(heal_legacy_tenants))
+    except Exception as e:
+        logger.warning(f"[Lifespan] Tenancy self-heal not started: {e}")
+
     yield
 
     # Shutdown: Graceful cancellation

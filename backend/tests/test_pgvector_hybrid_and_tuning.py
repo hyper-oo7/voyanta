@@ -43,16 +43,24 @@ def test_vector_store_search_hybrid_success():
         assert len(results) == 2
         assert results[0]["id"] == "chunk-1"
         assert results[0]["keyword_rank"] == 1
-        mock_sb.rpc.assert_called_once_with("match_document_chunks_hybrid", {
+        # A read now covers the caller's agency AND the shared default pool,
+        # where knowledge ingested before login lives. One call per tenant.
+        from src.core.tenancy import DEFAULT_AGENCY_ID
+        base = {
             "query_embedding": [0.1] * 768,
             "query_text": "Hotel Snow Valley Manali",
             "match_count": 2,
-            "p_agency_id": "agency-123",
             "rrf_k": 60,
             "vector_weight": 1.0,
             "keyword_weight": 1.0,
             "filter_destination": "manali",
-        })
+        }
+        assert mock_sb.rpc.call_count == 2
+        called_tenants = [call.args[1]["p_agency_id"] for call in mock_sb.rpc.call_args_list]
+        assert called_tenants == ["agency-123", DEFAULT_AGENCY_ID]
+        for call in mock_sb.rpc.call_args_list:
+            assert call.args[0] == "match_document_chunks_hybrid"
+            assert {k: v for k, v in call.args[1].items() if k != "p_agency_id"} == base
 
 def test_vector_store_search_hybrid_fallback():
     store = VectorStore()

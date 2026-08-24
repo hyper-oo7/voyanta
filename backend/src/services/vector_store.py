@@ -7,11 +7,38 @@ import logging
 from typing import List, Dict, Any, Optional
 from src.services.supabase_client import get_supabase_client
 from src.core.config import get_settings
+from src.core.tenancy import DEFAULT_AGENCY_ID
 
 logger = logging.getLogger(__name__)
 
 def get_supabase():
     return get_supabase_client()
+
+
+def search_tenants(agency_id: Optional[str]) -> List[str]:
+    """
+    The tenants a read should see: the agency itself plus the shared pool.
+
+    Knowledge ingested before login, or by the system, lives under the shared
+    default tenant. Scoping reads to the login's own agency alone made all of it
+    invisible the moment a user authenticated — the vault looked full while
+    every RAG lookup answered "no previous documents".
+    """
+    if not agency_id or agency_id == DEFAULT_AGENCY_ID:
+        return [DEFAULT_AGENCY_ID]
+    return [agency_id, DEFAULT_AGENCY_ID]
+
+
+def merge_ranked(result_sets: List[List[Dict[str, Any]]], k: int) -> List[Dict[str, Any]]:
+    """Merge per-tenant result lists: dedupe by id, rank by similarity, cap at k."""
+    best: Dict[str, Dict[str, Any]] = {}
+    for results in result_sets:
+        for row in results or []:
+            row_id = str(row.get("id"))
+            if row_id not in best or (row.get("similarity") or 0) > (best[row_id].get("similarity") or 0):
+                best[row_id] = row
+    ranked = sorted(best.values(), key=lambda r: r.get("similarity") or 0, reverse=True)
+    return ranked[:k]
 
 class VectorStore:
     def __init__(self):
@@ -67,25 +94,30 @@ class VectorStore:
             logger.warning("[VectorStore] Supabase client unavailable for vector search.")
             return []
 
-        params = {
+        base_params = {
             "query_embedding": query_embedding,
             "match_threshold": min_similarity,
             "match_count": k,
-            "p_agency_id": agency_id,
         }
         if destination:
-            params["filter_destination"] = destination.lower()
+            base_params["filter_destination"] = destination.lower()
         if chunk_type:
-            params["filter_chunk_type"] = chunk_type
-            
-        try:
-            response = client.rpc("match_document_chunks", params).execute()
-            results = response.data or []
-            logger.info(f"[VectorStore] Search complete: found {len(results)} matches for agency_id={agency_id}")
-            return results
-        except Exception as e:
-            logger.error(f"[VectorStore] Vector search failed: {e}")
-            return []
+            base_params["filter_chunk_type"] = chunk_type
+
+        result_sets: List[List[Dict[str, Any]]] = []
+        for tenant in search_tenants(agency_id):
+            try:
+                response = client.rpc("match_document_chunks", {**base_params, "p_agency_id": tenant}).execute()
+                result_sets.append(response.data or [])
+            except Exception as e:
+                logger.error(f"[VectorStore] Vector search failed for tenant {tenant}: {e}")
+
+        merged = merge_ranked(result_sets, k)
+        logger.info(
+            f"[VectorStore] Search complete: {len(merged)} matches for agency_id={agency_id} "
+            f"(tenants searched: {len(result_sets)})"
+        )
+        return merged
 
     def search_hybrid(
         self,
@@ -108,34 +140,40 @@ class VectorStore:
         if not client:
             return []
 
-        params = {
+        base_params = {
             "query_embedding": query_embedding,
             "query_text": query_text,
             "match_count": k,
-            "p_agency_id": agency_id,
             "rrf_k": rrf_k,
             "vector_weight": vector_weight,
             "keyword_weight": keyword_weight,
         }
         if destination:
-            params["filter_destination"] = destination.lower()
+            base_params["filter_destination"] = destination.lower()
         if chunk_type:
-            params["filter_chunk_type"] = chunk_type
+            base_params["filter_chunk_type"] = chunk_type
 
-        try:
-            response = client.rpc("match_document_chunks_hybrid", params).execute()
-            results = response.data or []
-            logger.info(f"[VectorStore] Hybrid search complete: found {len(results)} matches for agency_id={agency_id}")
-            return results
-        except Exception as e:
-            logger.warning(f"[VectorStore] Hybrid search fallback to standard vector search: {e}")
-            return self.search(
-                query_embedding=query_embedding,
-                agency_id=agency_id,
-                k=k,
-                destination=destination,
-                chunk_type=chunk_type,
-            )
+        result_sets: List[List[Dict[str, Any]]] = []
+        for tenant in search_tenants(agency_id):
+            try:
+                response = client.rpc("match_document_chunks_hybrid", {**base_params, "p_agency_id": tenant}).execute()
+                result_sets.append(response.data or [])
+            except Exception as e:
+                logger.warning(f"[VectorStore] Hybrid search failed for tenant {tenant}, falling back to vector-only: {e}")
+                return self.search(
+                    query_embedding=query_embedding,
+                    agency_id=agency_id,
+                    k=k,
+                    destination=destination,
+                    chunk_type=chunk_type,
+                )
+
+        merged = merge_ranked(result_sets, k)
+        logger.info(
+            f"[VectorStore] Hybrid search complete: {len(merged)} matches for agency_id={agency_id} "
+            f"(tenants searched: {len(result_sets)})"
+        )
+        return merged
 
     def search_exact(
         self,
