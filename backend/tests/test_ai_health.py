@@ -28,6 +28,6 @@ def test_ai_health_healthy():
             data = resp.json()
             assert data["status"] == "healthy"
             assert data["active_models"]["gemini"] == "gemini-2.5-flash"
-            assert data["active_models"]["openai"] == "gpt-4o-mini"
+            assert data["active_models"]["openai"] == "gpt-5.6-luna"
             assert data["providers"]["gemini"]["configured"] is True
             assert data["providers"]["gemini"]["status"] == "ok"

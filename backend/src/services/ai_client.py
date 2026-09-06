@@ -11,10 +11,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 logger = logging.getLogger(__name__)
 
 GEMINI_MODEL = "gemini-2.5-flash"
-OPENAI_MODEL = "gpt-4o-mini"
+OPENAI_MODEL = "gpt-5.6-luna"
 
 GEMINI_MAX_OUTPUT_TOKENS = 65536
-OPENAI_MAX_OUTPUT_TOKENS = 16384
+OPENAI_MAX_OUTPUT_TOKENS = 128000
 
 _MODEL_SPECIFIC_MARKERS = (
     "NOT_FOUND",
@@ -200,7 +200,7 @@ def _extract_openai_text(res: dict) -> str:
     if content:
         if finish_reason == "length":
             logger.warning(
-                "[AIClient] %s hit max_tokens; the response is likely truncated.",
+                "[AIClient] %s hit max_completion_tokens; the response is likely truncated.",
                 OPENAI_MODEL,
             )
         return content
@@ -445,7 +445,7 @@ async def call_llm(
                 "temperature": temperature
             }
             if max_tokens:
-                payload["max_tokens"] = min(max_tokens, OPENAI_MAX_OUTPUT_TOKENS)
+                payload["max_completion_tokens"] = min(max_tokens, OPENAI_MAX_OUTPUT_TOKENS)
             if response_schema:
                 payload["response_format"] = {"type": "json_object"}
 
@@ -645,7 +645,7 @@ async def stream_llm(
             "stream": True
         }
         if max_tokens:
-            payload_openai["max_tokens"] = min(max_tokens, OPENAI_MAX_OUTPUT_TOKENS)
+            payload_openai["max_completion_tokens"] = min(max_tokens, OPENAI_MAX_OUTPUT_TOKENS)
 
         try:
             async with httpx.AsyncClient(timeout=90.0) as client:

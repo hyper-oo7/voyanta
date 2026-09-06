@@ -7,7 +7,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
-from src.services.ai_client import call_llm
+from src.services.ai_client import call_llm, OPENAI_MODEL
 
 async def call_openai_with_retry(payload: dict, headers: dict):
     messages = payload.get("messages") or []
@@ -151,7 +151,7 @@ async def extract_itinerary(text: str) -> dict:
                 "Content-Type": "application/json"
             }
             payload = {
-                "model": "gpt-4o-mini",
+                "model": OPENAI_MODEL,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": text}
@@ -226,7 +226,7 @@ async def translate_proposal_content(proposal_data: dict, target_lang: str, glos
         else:
             headers = {"Authorization": f"Bearer {api_key_openai}", "Content-Type": "application/json"}
             payload = {
-                "model": "gpt-4o-mini",
+                "model": OPENAI_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.2

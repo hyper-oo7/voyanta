@@ -43,11 +43,11 @@ async def test_route_model_cascading_missing_key_error():
 async def test_route_model_cascading_openai_fallback(mock_call):
     mock_call.return_value = '{"destination": "Paris", "sub_destinations": ["Eiffel Tower"], "overview": "Verbatim intro", "duration_days": 3, "currency": "EUR", "total_price": 100000, "days": [], "inclusions": [], "exclusions": [], "extra_sections": {}}'
     
-    # We patch call_llm's side effect to dynamically populate cache_meta["model_used"] = "gpt-4o-mini"
+    # We patch call_llm's side effect to dynamically populate cache_meta["model_used"] = "gpt-5.6-luna"
     async def mock_call_side_effect(*args, **kwargs):
         cache_meta = kwargs.get("cache_meta")
         if cache_meta:
-            cache_meta["model_used"] = "gpt-4o-mini"
+            cache_meta["model_used"] = "gpt-5.6-luna"
         return mock_call.return_value
     mock_call.side_effect = mock_call_side_effect
 
@@ -61,7 +61,7 @@ async def test_route_model_cascading_openai_fallback(mock_call):
             currency="EUR"
         )
         assert res["success"] is True
-        assert res["model_used"] == "gpt-4o-mini (faithful-extraction)"
+        assert res["model_used"] == "gpt-5.6-luna (faithful-extraction)"
         assert res["detected_destination"] == "Paris"
         assert res["total_price"] == 100000
 
