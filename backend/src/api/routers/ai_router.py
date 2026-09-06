@@ -337,7 +337,7 @@ async def invalidate_cache_key(input: InvalidateCacheInput, user: Any = Depends(
 async def ai_health_check():
     """
     Single authoritative health check endpoint for verifying AI providers & LLM cascading.
-    Verifies active models: gemini-2.5-flash and gpt-5.6-luna.
+    Verifies active models: gemini-2.5-flash and gpt-4o-mini.
     """
     import os
     import time

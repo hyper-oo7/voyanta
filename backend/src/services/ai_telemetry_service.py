@@ -16,8 +16,6 @@ _COST_PER_1M_TOKENS = {
     "gemini-2.5-flash":    {"in": 0.075, "out": 0.30},
     "gemini-flash-latest": {"in": 0.075, "out": 0.30},
     "gemini-pro-latest":   {"in": 1.25,  "out": 5.00},
-    "gpt-5.6-luna":        {"in": 0.20,  "out": 1.20},
-    # Retained so historical rows written before the gpt-5.6-luna switch still cost out.
     "gpt-4o-mini":         {"in": 0.15,  "out": 0.60},
 }
 

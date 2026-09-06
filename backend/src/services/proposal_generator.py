@@ -1,5 +1,5 @@
 """
-Proposal generation service using Gemini 2.5 Flash / GPT-5.6 Luna with RAG context injection.
+Proposal generation service using Gemini 2.5 Flash / GPT-4o with RAG context injection.
 """
 import json
 import logging

@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any, Union
 
 from src.models.ir_schema import DocumentIR
 from src.models.proposal_schema import FinalProposalSchema
-from src.services.ai_client import call_llm, GEMINI_MODEL, OPENAI_MODEL
+from src.services.ai_client import call_llm
 from src.services.cascading_ai_service import EXTRACTION_PROMPT_TEMPLATE, detect_currency_from_text
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ async def orchestrate_proposal_extraction(
         "entity_type": "orchestrated_proposal",
         "prompt_version": f"instructor_{EXTRACTION_PROMPT_VERSION}",
         "schema_version": "FinalProposalSchema_v1.0.0",
-        "model": GEMINI_MODEL if provider == "gemini" else OPENAI_MODEL,
+        "model": "gemini-2.5-flash" if provider == "gemini" else "gpt-4o-mini",
         "input_text": document_text
     }
 
@@ -108,7 +108,7 @@ async def orchestrate_proposal_extraction(
         try:
             client = instructor.from_openai(AsyncOpenAI(api_key=api_key_openai))
             proposal: FinalProposalSchema = await client.chat.completions.create(
-                model=OPENAI_MODEL,
+                model="gpt-4o-mini",
                 response_model=FinalProposalSchema,
                 messages=[
                     {"role": "system", "content": "You are a faithful travel document extractor. Extract data exactly as written."},
@@ -203,7 +203,7 @@ def _postprocess_proposal(
             agency_id=cache_meta.get("agency_id"),
             entity_type=cache_meta.get("entity_type"),
             entity_id=None,
-            model=cache_meta.get("model", GEMINI_MODEL),
+            model=cache_meta.get("model", "gemini-2.5-flash"),
             prompt_version=cache_meta.get("prompt_version", "v1.0.0"),
             schema_version=cache_meta.get("schema_version", "v1.0.0"),
             normalized_input=input_text,

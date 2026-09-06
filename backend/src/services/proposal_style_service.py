@@ -4,7 +4,6 @@ import logging
 from typing import Optional, Dict, Any
 from src.services.supabase_client import get_supabase_client
 from src.services.ai_service import call_gemini_with_retry, call_openai_with_retry
-from src.services.ai_client import OPENAI_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +169,7 @@ async def rebuild_style_profile(agency_id: str) -> Optional[dict]:
                 "Content-Type": "application/json"
             }
             payload = {
-                "model": OPENAI_MODEL,
+                "model": "gpt-4o-mini",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": formatted_corpus}
@@ -182,7 +181,7 @@ async def rebuild_style_profile(agency_id: str) -> Optional[dict]:
                     "entity_type": "style_profile",
                     "prompt_version": "rebuild_v1.0.0",
                     "schema_version": "style_schema_v1.0.0",
-                    "model": OPENAI_MODEL,
+                    "model": "gpt-4o-mini",
                     "input_text": formatted_corpus
                 }
             }
@@ -341,7 +340,7 @@ async def auto_phrase_with_profile(
                 "Content-Type": "application/json"
             }
             payload = {
-                "model": OPENAI_MODEL,
+                "model": "gpt-4o-mini",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -353,7 +352,7 @@ async def auto_phrase_with_profile(
                     "entity_type": "auto_phrase",
                     "prompt_version": "phrase_v1.1.0",
                     "schema_version": "phrase_schema_v1.1.0",
-                    "model": OPENAI_MODEL,
+                    "model": "gpt-4o-mini",
                     "input_text": user_prompt
                 }
             }
@@ -571,7 +570,7 @@ async def validate_itinerary_sequence(days: list, agency_id: Optional[str] = Non
                 "Content-Type": "application/json"
             }
             payload = {
-                "model": OPENAI_MODEL,
+                "model": "gpt-4o-mini",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": full_itinerary_text}
@@ -583,7 +582,7 @@ async def validate_itinerary_sequence(days: list, agency_id: Optional[str] = Non
                     "entity_type": "sequence_validation",
                     "prompt_version": "sequence_v1.0.0",
                     "schema_version": "sequence_schema_v1.0.0",
-                    "model": OPENAI_MODEL,
+                    "model": "gpt-4o-mini",
                     "input_text": full_itinerary_text
                 }
             }
