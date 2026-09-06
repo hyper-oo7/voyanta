@@ -484,13 +484,16 @@ def extract_text_from_pdf(file_path: str) -> Tuple[str, Dict[str, Any]]:
 
     results: Dict[str, Optional[str]] = {}
     for name, fn in strategies:
-        # All strategies run unconditionally.
-        # pdfminer is complementary to PyMuPDF, not just a fallback.
         try:
             result = fn(file_path)
             results[name] = result
             status = f"{len(result)} chars" if result else "empty"
             logger.info(f"[PDF Extraction] Strategy '{name}': {status}")
+            
+            # EARLY EXIT: Prevent pdfminer timeouts if a robust strategy extracts substantial text
+            if result and len(result.strip()) >= 500:
+                logger.info(f"[PDF Extraction] Skipping remaining strategies; '{name}' extracted sufficient text.")
+                break
         except Exception as e:
             logger.warning(f"[PDF Extraction] Strategy '{name}' threw unexpected error: {e}")
             results[name] = None

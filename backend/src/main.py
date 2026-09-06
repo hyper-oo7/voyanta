@@ -1,19 +1,31 @@
 import os
+import time
 import logging
+import asyncio
 from pathlib import Path
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).parent.parent
 load_dotenv(ROOT_DIR / '.env')
 
-from fastapi import FastAPI, APIRouter, Request
+from fastapi import FastAPI, APIRouter, Request, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
 from starlette.middleware.cors import CORSMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
-from src.api.routers import pdf_router, ppt_router, ai_router, public_router, packing_rules_router, vault_router, storage_router, knowledge_router, maintenance_router, billing_router, import_router, destinations_router, admin_analytics_router, inventory_selection_router, rag_router, documents_router, proposals_router
+from src.api.routers import (
+    pdf_router, ppt_router, ai_router, public_router,
+    packing_rules_router, vault_router, storage_router,
+    knowledge_router, maintenance_router, billing_router,
+    import_router, destinations_router, admin_analytics_router,
+    inventory_selection_router, rag_router, documents_router,
+    proposals_router
+)
 from src.core.rate_limiter import DistributedRateLimiterMiddleware
+from src.services.pdf_vault_service import cleanup_old_temp_pdfs
 
 # Configure logging
 logging.basicConfig(
@@ -37,55 +49,167 @@ if sentry_dsn:
     except Exception as e:
         logger.warning(f"[Sentry] Failed to initialize sentry-sdk: {e}")
 
-import asyncio
-from src.services.pdf_vault_service import cleanup_old_temp_pdfs
-
 async def retention_cleanup_loop():
+    """
+    Background worker loop for temporary PDF retention cleanup.
+    Executes sync file operations inside a non-blocking thread to keep the asyncio loop responsive.
+    """
     logger.info("[Scheduler] Starting temporary PDF retention cleanup background loop.")
     while True:
         try:
-            cleanup_old_temp_pdfs(retention_days=15)
+            await asyncio.to_thread(cleanup_old_temp_pdfs, retention_days=15)
+        except asyncio.CancelledError:
+            break
         except Exception as e:
             logger.error(f"[Scheduler] Error running PDF retention loop: {e}")
-        await asyncio.sleep(24 * 3600)
+        try:
+            await asyncio.sleep(24 * 3600)
+        except asyncio.CancelledError:
+            break
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Start cleanup task
+    # Startup: Start cleanup worker task and attach singletons to app.state
     cleanup_task = asyncio.create_task(retention_cleanup_loop())
+    app.state.cleanup_task = cleanup_task
+    try:
+        from src.core.redis_client import get_redis_client
+        app.state.redis = get_redis_client()
+    except Exception as e:
+        logger.warning(f"[Lifespan] Redis init notice: {e}")
+        app.state.redis = None
+
+    # One-shot data heal: rows written under the legacy tenant fallbacks are
+    # re-stamped onto the shared default tenant so reads can find them. This is
+    # the canonical-agency migration applied automatically; it is idempotent and
+    # a no-op once the database is clean.
+    try:
+        from src.services.tenancy_selfheal import heal_legacy_tenants
+        asyncio.create_task(asyncio.to_thread(heal_legacy_tenants))
+    except Exception as e:
+        logger.warning(f"[Lifespan] Tenancy self-heal not started: {e}")
+
     yield
-    # Shutdown: Cancel cleanup task
+
+    # Shutdown: Graceful cancellation
     cleanup_task.cancel()
     try:
         await cleanup_task
     except asyncio.CancelledError:
         pass
+    except Exception as e:
+        logger.warning(f"[Lifespan] Cleanup task shutdown notice: {e}")
 
-import time
-from starlette.middleware.base import BaseHTTPMiddleware
+    try:
+        from src.core.redis_client import reset_redis_client
+        await reset_redis_client()
+    except Exception as e:
+        logger.warning(f"[Lifespan] Redis reset notice: {e}")
 
-class LongRequestHeartbeatMiddleware(BaseHTTPMiddleware):
+class LongRequestHeartbeatMiddleware:
     """
-    Logs slow requests (>10s) and monitors long-running LLM and extraction tasks.
+    Pure ASGI middleware: Logs slow requests (>10s) and monitors long-running LLM and extraction tasks
+    with zero body-buffering and streaming safety.
     """
-    async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-        long_endpoints = ("/api/assemble-1shot", "/api/import/process")
-        if not any(path.startswith(ep) for ep in long_endpoints):
-            return await call_next(request)
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        long_endpoints = ("/api/assemble-1shot", "/api/import/process", "/api/ai/stream-generate", "/api/stream-generate")
+        is_monitored = any(path.startswith(ep) for ep in long_endpoints)
+
+        if not is_monitored:
+            await self.app(scope, receive, send)
+            return
 
         start = time.time()
         try:
-            response = await call_next(request)
+            await self.app(scope, receive, send)
             duration = time.time() - start
             if duration > 10:
                 logger.info(f"[SLOW REQUEST] {path} took {duration:.1f}s")
-            return response
         except asyncio.TimeoutError:
             logger.error(f"[TIMEOUT] {path} exceeded worker limit")
             raise
 
-app = FastAPI(lifespan=lifespan)
+# Initialize FastAPI App with rich OpenAPI metadata
+app = FastAPI(
+    title="Voyanta API",
+    description="Enterprise-grade AI travel proposal, document generation, and knowledge vault engine.",
+    version="3.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_tags=[
+        {"name": "AI", "description": "LLM generation, translation, sensory enhancement, and SSE token streaming"},
+        {"name": "PDF Generation", "description": "High-fidelity PDF document rendering, preview, and token downloads"},
+        {"name": "PPT Generation", "description": "PowerPoint slide presentation generation"},
+        {"name": "Knowledge Vault", "description": "Supplier catalog extraction, knowledge graph, and destination rules"},
+        {"name": "RAG & Search", "description": "Hybrid full-text and pgvector semantic retrieval with Reciprocal Rank Fusion"},
+        {"name": "Proposals", "description": "Proposal assembly, pricing calculation, and draft orchestration"},
+        {"name": "Super Admin Operations & Analytics", "description": "Platform telemetry, admin dashboard, and tenant metrics"},
+    ],
+    lifespan=lifespan
+)
+
+# -------------------------------------------------------------
+# Global Exception Handlers for Unified, Clean JSON Error Responses
+# -------------------------------------------------------------
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Standardizes Pydantic input validation errors into clean JSON with field-level details.
+    """
+    logger.warning(f"[Validation Error] {request.method} {request.url.path}: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "Validation Error",
+            "message": "Input validation failed. Please check the request body.",
+            "details": exc.errors(),
+            "path": str(request.url.path),
+        }
+    )
+
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(StarletteHTTPException)
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """
+    Standardizes HTTP exceptions (including 404s and 401s) into clean, uniform JSON payloads.
+    """
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail if isinstance(exc.detail, str) else "HTTP Error",
+            "detail": exc.detail,
+            "status_code": exc.status_code,
+            "path": str(request.url.path),
+        },
+        headers=getattr(exc, "headers", None) or {}
+    )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """
+    Catches any unhandled 500 error, logs full traceback,
+    and returns a clean JSON error response without leaking internal stack traces.
+    """
+    logger.exception(f"[Unhandled Error] Uncaught exception on {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "message": "An unexpected server error occurred. Our engineering team has been notified.",
+            "path": str(request.url.path),
+        }
+    )
+
 app.add_middleware(LongRequestHeartbeatMiddleware)
 app.add_middleware(DistributedRateLimiterMiddleware, max_requests=1000, window_seconds=60)
 
@@ -112,14 +236,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 api_router = APIRouter(prefix="/api")
 
-@api_router.get("/")
+@api_router.get("/", tags=["System"])
 async def root():
     return {"message": "Voyanta API backend"}
 
-@api_router.get("/health")
+@api_router.get("/health", tags=["System"])
 async def health():
     return {
         "status": "ok",

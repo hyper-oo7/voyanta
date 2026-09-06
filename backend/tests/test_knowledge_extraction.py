@@ -459,7 +459,7 @@ async def test_get_best_rate_date_filtering():
     mock_table.execute.return_value = mock_res
     
     with patch("src.api.routers.knowledge_router.get_supabase_client", return_value=mock_sb):
-        res = await get_best_rate(obj_id="obj-123", user={"agency_id": "agency-123"})
+        res = await get_best_rate(obj_id="11111111-2222-3333-4444-555555555555", user={"agency_id": "agency-123"})
         
         import json
         body = json.loads(res.body)

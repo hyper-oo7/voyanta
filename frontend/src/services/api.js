@@ -5,8 +5,8 @@ import { supabase } from '../lib/supabaseClient.js';
 export function normalizeStorageUrl(url) {
   if (!url || typeof url !== 'string') return url;
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    if (url.startsWith('http://127.0.0.1:8001/api/') || url.startsWith('http://localhost:8001/api/')) {
-      const path = url.replace(/http:\/\/(127\.0\.0\.1|localhost):8001/, '');
+    if (url.startsWith('http://127.0.0.1:8000/api/') || url.startsWith('http://localhost:8000/api/') || url.startsWith('http://127.0.0.1:8001/api/') || url.startsWith('http://localhost:8001/api/')) {
+      const path = url.replace(/http:\/\/(127\.0\.0\.1|localhost):(8000|8001)/, '');
       return getBackendUrl(path);
     }
   }
@@ -14,8 +14,8 @@ export function normalizeStorageUrl(url) {
 }
 
 export function getBackendUrl(path = '') {
-  if (path && typeof path === 'string' && (path.startsWith('http://127.0.0.1:8001/api') || path.startsWith('http://localhost:8001/api'))) {
-    path = path.replace(/http:\/\/(127\.0\.0\.1|localhost):8001/, '');
+  if (path && typeof path === 'string' && (path.startsWith('http://127.0.0.1:8000/api') || path.startsWith('http://localhost:8000/api') || path.startsWith('http://127.0.0.1:8001/api') || path.startsWith('http://localhost:8001/api'))) {
+    path = path.replace(/http:\/\/(127\.0\.0\.1|localhost):(8000|8001)/, '');
   }
   let base = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -142,7 +142,15 @@ async function _fetchWithTimeout(url, options = {}) {
     // Parse body (handle empty responses gracefully)
     let data = null;
     const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
+    // Binary endpoints (PDF, XLSX) must not go through text(): decoding bytes as
+    // UTF-8 corrupts them and yields an object where the caller expects a Blob.
+    // A failed response still carries a readable error body, so only parse as
+    // binary on success.
+    const wantsBinary = options.responseType === 'blob';
+
+    if (response.ok && wantsBinary) {
+      data = response.status === 204 ? null : await response.blob();
+    } else if (contentType.includes('application/json')) {
       data = await response.json();
     } else if (response.status !== 204) {
       const text = await response.text();
@@ -341,8 +349,13 @@ export async function saveProposal(payload) {
 }
 
 export async function executeRAGQuery(payload) {
-  const data = await api.post('/api/rag/query', payload);
-  return { data };
+  const body = await api.post('/api/rag/query', payload);
+  // The endpoint responds {status, data: {query, chunks, ...}} while every
+  // caller reads ragRes.data.chunks. Returning the raw body put the payload one
+  // level deeper than anyone looked, so chunks was always undefined and every
+  // generate ran ungrounded — with the "no matching documents" caveat shown —
+  // no matter what the backend found. Unwrap here so the callers' shape holds.
+  return { data: body?.data ?? body };
 }
 
 export default api;

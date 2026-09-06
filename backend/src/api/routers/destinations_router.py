@@ -9,11 +9,16 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
-from src.core.security import verify_token_optional, get_request_token
+from src.core.security import verify_token_optional, get_request_token, CurrentUser, OptionalUser, RequestToken
+from src.models.api_models import BaseResponse
 from src.services.supabase_client import get_supabase_client, get_user_supabase_client
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/destinations", tags=["India Destination Knowledge Base"])
+router = APIRouter(prefix="/destinations", tags=["Knowledge Vault"])
+
+class DestinationAutocompleteResponse(BaseResponse):
+    destinations: List[Dict[str, Any]] = []
+    sub_destinations: List[Dict[str, Any]] = []
 
 class SubDestImagePayload(BaseModel):
     image_url: str
@@ -36,10 +41,10 @@ class ImportDestinationItem(BaseModel):
     description: Optional[str] = ""
     image_url: Optional[str] = None
 
-@router.get("/autocomplete")
+@router.get("/autocomplete", response_model=DestinationAutocompleteResponse, summary="Autocomplete destinations and associated sub-destinations")
 async def autocomplete_destinations(
     q: str = Query("", description="Query string e.g. Meghalaya or Shillong"),
-    token: Optional[str] = Depends(get_request_token)
+    token: RequestToken = None
 ):
     """
     Returns matching destinations and their full list of sub-destinations.

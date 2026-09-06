@@ -199,14 +199,98 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
     else if (band === 'high') setBudgetPerHead(45000);
   };
 
+  const isFormComplete = useMemo(() => {
+    const hasName = Boolean(clientName && clientName.trim() !== '');
+    const hasDest = Boolean(selectedDestinations.length > 0 || (destinationInput && destinationInput.trim() !== ''));
+    const hasAdults = Number(numAdults) >= 1;
+    const hasDuration = Number(durationDays) >= 1;
+    const hasBudget = Number(budgetPerHead) > 0;
+    const hasDates = Boolean(startDate && endDate);
+    return hasName && hasDest && hasAdults && hasDuration && hasBudget && hasDates;
+  }, [clientName, selectedDestinations, destinationInput, numAdults, durationDays, budgetPerHead, startDate, endDate]);
+
+  const getTomorrow = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  };
+  const tomorrowStr = getTomorrow();
+
+  const handleCraftManually = () => {
+    if (!isFormComplete) {
+      toast.warning('Please complete the required intake fields before proceeding.');
+      return;
+    }
+    const finalDest = selectedDestinations.length > 0 ? selectedDestinations.join(', ') : destinationInput.trim();
+    const countDays = Number(durationDays) || 1;
+    
+    // Create exactly countDays empty blocks
+    const emptyDays = Array.from({ length: countDays }, (_, i) => ({
+      day: i + 1,
+      day_number: i + 1,
+      title: '',
+      description: '',
+      sub_destination: selectedDestinations[i] || selectedDestinations[0] || finalDest,
+      content: []
+    }));
+
+    const nextClient = {
+      ...(client || {}),
+      customer_name: clientName.trim(),
+      contact_info: contactInfo.trim(),
+      destination: finalDest,
+      duration_days: countDays,
+      num_adults: Number(numAdults),
+      num_children: Number(numChildren),
+      budget: Number(budgetPerHead) * (Number(numAdults) + Number(numChildren)),
+      start_date: startDate,
+      end_date: endDate,
+      arrival_city: startCity,
+      pace: pace
+    };
+
+    const nextProposal = {
+      ...(proposal || {}),
+      id: proposal?.id || crypto.randomUUID(),
+      title: `${finalDest} Luxury Itinerary`,
+      destination: finalDest,
+      duration_days: countDays,
+      customer_name: clientName.trim(),
+      client_name: clientName.trim(),
+      num_travelers: Number(numAdults) + Number(numChildren),
+      days: emptyDays,
+      itinerary: {
+        ...(proposal?.itinerary || {}),
+        days: emptyDays
+      },
+      status: 'draft',
+      total_price: Number(budgetPerHead) * (Number(numAdults) + Number(numChildren))
+    };
+
+    useProposalStore.setState({
+      client: nextClient,
+      proposal: nextProposal,
+      status: 'idle',
+      showQuickIntake: false
+    });
+
+    toast.success(`Prepared ${countDays} itinerary day blocks for manual curation!`);
+    if (onClose) onClose();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const finalDest = selectedDestinations.length > 0 ? selectedDestinations.join(', ') : destinationInput;
+    if (!isFormComplete) {
+      toast.warning('Please fill in all required fields before generating.');
+      return;
+    }
+
+    const finalDest = selectedDestinations.length > 0 ? selectedDestinations.join(', ') : destinationInput.trim();
     
     await assemble1Shot({
-      client_name: clientName || 'Valued Traveler',
-      contact_info: contactInfo,
-      destination: finalDest || 'Custom Destination',
+      client_name: clientName.trim(),
+      contact_info: contactInfo.trim(),
+      destination: finalDest,
       days_per_destination: daysPerDestination,
       duration_days: Number(durationDays) || 3,
       group_type: groupType,
@@ -262,7 +346,7 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm overflow-hidden">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm overflow-hidden">
         <motion.div 
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -290,13 +374,16 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
             {/* Row 1: Client Name & Contact */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">Client Name</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                  Client Name <span className="text-error">*</span>
+                </label>
                 <input
                   type="text"
                   placeholder="e.g. Raman Kumar Jha"
                   value={clientName}
                   onChange={(e) => setClientName(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-surface border border-outline-variant rounded-xl text-on-surface focus:outline-none focus:border-primary transition-all text-sm"
+                  required
                 />
               </div>
               <div>
@@ -314,7 +401,7 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
             {/* Row 2: Destinations (Multi-Select) & Per-Destination Days */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
-                Destinations (Multi-Select)
+                Destinations (Multi-Select) <span className="text-error">*</span>
               </label>
               <div className="flex flex-wrap items-center gap-2 p-2.5 bg-surface border border-outline-variant rounded-xl min-h-[44px]">
                 {selectedDestinations.map(d => (
@@ -624,7 +711,21 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
                 <input
                   type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  min={tomorrowStr}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    if (endDate && e.target.value) {
+                      const d1 = new Date(e.target.value);
+                      const d2 = new Date(endDate);
+                      if (!isNaN(d1) && !isNaN(d2)) {
+                        if (d1 > d2) setEndDate('');
+                        else {
+                          const diff = Math.max(1, Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)));
+                          setDurationDays(diff);
+                        }
+                      }
+                    }
+                  }}
                   className="w-full px-3.5 py-2 bg-surface border border-outline-variant rounded-xl text-on-surface text-sm font-semibold"
                 />
               </div>
@@ -633,7 +734,18 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
                 <input
                   type="date"
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  min={startDate || tomorrowStr}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    if (startDate && e.target.value) {
+                      const d1 = new Date(startDate);
+                      const d2 = new Date(e.target.value);
+                      if (!isNaN(d1) && !isNaN(d2)) {
+                        const diff = Math.max(1, Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)));
+                        setDurationDays(diff);
+                      }
+                    }
+                  }}
                   className="w-full px-3.5 py-2 bg-surface border border-outline-variant rounded-xl text-on-surface text-sm font-semibold"
                 />
               </div>
@@ -666,31 +778,50 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
             </div>
 
             {/* Fixed Action Footer inside Form */}
-            <div className="pt-4 flex justify-end gap-3 border-t border-outline-variant bg-surface-container-high sticky bottom-0 z-10 py-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-5 py-2.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={status === 'loading'}
-                className="px-6 py-2.5 text-sm font-bold bg-primary text-on-primary hover:bg-primary/90 rounded-xl shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
-              >
-                {status === 'loading' ? (
-                  <>
-                    <FlyingLoader size="text-[18px]" />
-                    Assembling 1-Shot...
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
-                    Generate Full Proposal (1-Shot)
-                  </>
+            <div className="pt-4 flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant bg-surface-container-high sticky bottom-0 z-10 py-3">
+              <div>
+                {!isFormComplete && (
+                  <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">info</span>
+                    Required: Name, Destination, Dates, Travelers & Budget
+                  </span>
                 )}
-              </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 text-xs font-semibold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCraftManually}
+                  disabled={!isFormComplete || status === 'loading'}
+                  className="px-4 py-2 text-xs font-bold bg-surface border border-outline-variant hover:bg-surface-container text-on-surface rounded-xl shadow-xs transition-all disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[15px] text-primary">edit_calendar</span>
+                  <span>Craft Manually</span>
+                </button>
+                <button
+                  type="submit"
+                  disabled={!isFormComplete || status === 'loading'}
+                  className="px-5 py-2 text-xs font-bold bg-primary text-on-primary hover:bg-primary/90 rounded-xl shadow-lg transition-all flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+                >
+                  {status === 'loading' ? (
+                    <>
+                      <FlyingLoader size="text-[15px]" />
+                      <span>Composing with AI...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[15px]">auto_awesome</span>
+                      <span>Compose with AI ✦</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
             {/* Advanced Preferences */}
             <div className="col-span-full mt-2">
@@ -701,28 +832,6 @@ export default function QuickIntakeModal({ isOpen, onClose }) {
 
               {showAdvanced && (
                 <div className="flex flex-col gap-5 p-5 mt-3 rounded-xl border border-outline-variant bg-surface-container/50">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs text-on-surface-variant">Start Date</label>
-                      <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                        className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface" />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs text-on-surface-variant">End Date</label>
-                      <input type="date" value={endDate} min={startDate || undefined} onChange={e => {
-                        setEndDate(e.target.value);
-                        if (startDate && e.target.value) {
-                          const d1 = new Date(startDate);
-                          const d2 = new Date(e.target.value);
-                          if (!isNaN(d1) && !isNaN(d2)) {
-                            const diff = Math.max(1, Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)));
-                            setDurationDays(diff);
-                          }
-                        }
-                      }} className="px-3 py-2 text-sm border border-outline-variant rounded-lg bg-surface text-on-surface" />
-                    </div>
-                  </div>
-                  
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs text-on-surface-variant">Hotel Category</label>
                     <div className="flex flex-wrap gap-2">

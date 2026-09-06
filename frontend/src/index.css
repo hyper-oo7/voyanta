@@ -581,7 +581,7 @@ html.dark .pricing-plan-card:hover {
   .no-print {
     display: none !important;
   }
-  .glass-card, .rounded-xl, .rounded-2xl, .rounded-3xl, .border, table, tr, th, td, blockquote, figure, img, .day-block, .itinerary-day, .attached-service, .card, li {
+  .editorial-section, section, .glass-card, .rounded-xl, .rounded-2xl, .rounded-3xl, .border, table, tr, th, td, blockquote, figure, img, .day-block, .itinerary-day, .attached-service, .card, li {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
     -webkit-column-break-inside: avoid !important;
@@ -593,41 +593,101 @@ html.dark .pricing-plan-card:hover {
   a, a * {
     pointer-events: auto !important;
   }
+}
+/* ─────────────────────────────────────────────────────────────────────────────
+   Scrollbars
 
-  /* Reset specific layouts that prevent pagination */
-  html, body, #root, .print-reset-wrapper {
-    display: block !important;
-    height: auto !important;
-    min-height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
-    position: static !important;
-  }
+   custom-scrollbar / no-scrollbar / hide-scrollbar were referenced throughout
+   the app but never defined, so every scroll container fell back to the raw
+   browser scrollbar and clashed with the surrounding UI — in dark mode most
+   visibly, where the OS light bar sat on a dark panel.
 
-  /* Reset layout constraints on main wrappers but leave flexbox intact */
-  main, .overflow-y-auto, .overflow-hidden {
-    height: auto !important;
-    min-height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
-    position: static !important;
-  }
+   Colours come from the same tokens as the rest of the chrome, so these follow
+   light/dark automatically. Both the standards properties (Firefox, Chromium
+   121+) and the -webkit- pseudo-elements are set, since neither covers every
+   browser the app supports on its own.
+   ──────────────────────────────────────────────────────────────────────────── */
 
-  /* Reset the canvas wrapper styling */
-  .print-region {
-    padding: 0 !important;
-    margin: 0 !important;
-    height: auto !important;
-    min-height: auto !important;
-    overflow: visible !important;
-  }
+/* Site-wide default: slim, themed, unobtrusive. */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent;
+}
 
-  /* Hide explicit layout elements */
-  aside, 
-  header, 
-  nav:not(.print-nav), 
-  .no-print,
-  .fixed.bottom-6.right-6 {
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--muted-foreground) 32%, transparent);
+  border-radius: 9999px;
+  /* Inset the thumb so it reads as a floating pill rather than a full-width bar. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Opt-in class used by panels, modals and lists. Slightly tighter than default. */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 40%, transparent) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+}
+
+/* Horizontal tab strips and chip rows scroll but should show no bar at all. */
+.no-scrollbar,
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar,
+.hide-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* A scrollbar in an exported document would be rendered into the PDF. */
+@media print {
+  *::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
     display: none !important;
+  }
+  html,
+  * {
+    scrollbar-width: none !important;
   }
 }

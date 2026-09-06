@@ -874,7 +874,7 @@ export default function UnifiedLibraryPage() {
 
       {/* SMALL WINDOW (Detail & Edit Modal) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="glass-card w-full max-w-xl rounded-3xl border border-outline-variant shadow-2xl overflow-hidden bg-surface-container-lowest/95 animate-scale-up flex flex-col max-h-[88vh]">
             
             {/* Modal Header */}

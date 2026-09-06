@@ -64,46 +64,48 @@ export default function RAGContextPanel({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-2xl border-l border-gray-200 z-50 flex flex-col">
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-        <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          <Layers className="w-5 h-5 text-blue-600" />
-          AI Context
+    <div className="w-full h-full bg-surface text-on-surface flex flex-col">
+      {/* ── Header (shown only when onClose is provided) ── */}
+      <div className="flex items-center justify-between pb-3 border-b border-outline-variant">
+        <h2 className="text-base font-bold text-on-surface flex items-center gap-2">
+          <Layers className="w-4 h-4 text-primary" />
+          RAG Vector Grounding & Matches
         </h2>
         <div className="flex items-center gap-2">
           <button
             onClick={loadContext}
             disabled={loading}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+            className="p-1.5 hover:bg-surface-container rounded-lg text-on-surface-variant transition-colors disabled:opacity-50"
             title="Refresh context"
           >
-            <RefreshCw className={`w-4 h-4 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 text-on-surface-variant ${loading ? 'animate-spin' : ''}`} />
           </button>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="w-4 h-4 text-gray-600" />
-          </button>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1.5 hover:bg-surface-container rounded-lg text-on-surface-variant transition-colors"
+            >
+              <X className="w-4 h-4 text-on-surface-variant" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* ── Tabs ── */}
-      <div className="flex border-b border-gray-100">
+      <div className="flex border-b border-outline-variant mt-2">
         <button
           onClick={() => setActiveTab('rag')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 px-4 py-2.5 text-xs font-bold transition-colors ${
             activeTab === 'rag'
-              ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              ? 'text-primary border-b-2 border-primary bg-primary/10'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
           }`}
         >
           <span className="flex items-center justify-center gap-2">
-            <BookOpen className="w-4 h-4" />
-            Retrieved Docs
+            <BookOpen className="w-3.5 h-3.5" />
+            Retrieved Chunks
             {ragData?.chunks?.length > 0 && (
-              <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">
+              <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full font-bold">
                 {ragData.chunks.length}
               </span>
             )}
@@ -111,17 +113,17 @@ export default function RAGContextPanel({ isOpen, onClose }) {
         </button>
         <button
           onClick={() => setActiveTab('vault')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 px-4 py-2.5 text-xs font-bold transition-colors ${
             activeTab === 'vault'
-              ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              ? 'text-primary border-b-2 border-primary bg-primary/10'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
           }`}
         >
           <span className="flex items-center justify-center gap-2">
-            <Database className="w-4 h-4" />
+            <Database className="w-3.5 h-3.5" />
             Vault Matches
             {vaultData && (
-              <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">
+              <span className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
                 {(vaultData.hotels?.length || 0) +
                   (vaultData.activities?.length || 0) +
                   (vaultData.flights?.length || 0)}
@@ -132,32 +134,32 @@ export default function RAGContextPanel({ isOpen, onClose }) {
       </div>
 
       {/* ── Content ── */}
-      <div className="flex-1 overflow-y-auto p-5">
+      <div className="flex-1 overflow-y-auto pt-4 space-y-4">
         {loading && (
-          <div className="flex items-center justify-center py-10 text-gray-400 text-sm">
-            <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-            Loading AI context...
+          <div className="flex items-center justify-center py-10 text-on-surface-variant text-xs font-medium">
+            <RefreshCw className="w-4 h-4 animate-spin mr-2 text-primary" />
+            Grounding AI with Vector Knowledge Base...
           </div>
         )}
 
         {/* RAG Chunks Tab */}
         {!loading && activeTab === 'rag' && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {ragData?.query && (
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                  Assembled Query
+              <div className="p-3 bg-surface-container rounded-xl border border-outline-variant/60">
+                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">
+                  Grounding Query
                 </p>
-                <p className="text-sm text-gray-800 font-medium">{ragData.query}</p>
+                <p className="text-xs text-on-surface font-medium">{ragData.query}</p>
               </div>
             )}
 
             {ragData?.chunks?.length === 0 && (
-              <div className="text-center py-8 text-gray-400">
-                <FileText className="w-8 h-8 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">No documents retrieved yet.</p>
-                <p className="text-xs mt-1 max-w-[240px] mx-auto">
-                  Upload supplier PDFs to your vault so RAG can ground the AI with real inventory.
+              <div className="text-center py-8 text-on-surface-variant">
+                <FileText className="w-8 h-8 mx-auto mb-2 opacity-40 text-primary" />
+                <p className="text-xs font-bold text-on-surface">No documents retrieved yet.</p>
+                <p className="text-[11px] mt-1 max-w-[260px] mx-auto text-on-surface-variant">
+                  Upload supplier PDFs using the tab above to ground the AI with authentic pricing & itineraries.
                 </p>
               </div>
             )}

@@ -78,7 +78,7 @@ const buildDayDescription = (vaultDay, name, contentBlocks = [], vaultItems = []
   return `Explore the beautiful sights, luxury accommodations, and bespoke experiences in ${name}.`;
 };
 
-export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItinerary, client, items, setItems, proposalCurrency, addItemsOptimistic, saveDraft }) {
+export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItinerary, client, items, setItems, proposalCurrency, addItemsOptimistic, saveDraft, onOpenIntake, hideSidebar = false }) {
   const toast = useToast();
   const { saveDraftBackground, updateProposal } = useProposalStore();
   const days = proposal?.itinerary?.days || proposal?.days || [];
@@ -374,13 +374,13 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
     const dest = proposal?.destination || client?.destination || 'Luxury Destination';
 
     // Determine dynamic duration from Step 1
-    let numDays = 5; // fallback
+    let numDays = 1; // fallback
     if (client?.date_mode === 'days' && client?.duration_days) {
-      numDays = parseInt(client.duration_days, 10) || 5;
+      numDays = parseInt(client.duration_days, 10) || 1;
     } else if (client?.date_mode === 'dates' && client?.start_date && client?.end_date) {
       const ms = new Date(client.end_date).getTime() - new Date(client.start_date).getTime();
       const diffDays = Math.round(ms / (1000 * 60 * 60 * 24)) + 1;
-      numDays = diffDays > 0 ? diffDays : 5;
+      numDays = diffDays > 0 ? diffDays : 1;
     } else if (days.length > 0) {
       numDays = days.length;
     }
@@ -404,12 +404,14 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
         // 1. First priority: Check if vaultItems has real parsed days from PDF for this exact destination
         const destLower = dest.toLowerCase().trim();
         let vaultDays = null;
+        let matchedVaultExtra = null;
         for (const vt of vaultItems || []) {
           const vtDest = (vt.destination || vt.parsed_data?.destination || '').toLowerCase().trim();
           if (destLower && vtDest && (destLower.includes(vtDest) || vtDest.includes(destLower))) {
             const data = vt.parsed_data || vt;
             if (Array.isArray(data.days) && data.days.length > 0) {
               vaultDays = data.days;
+              matchedVaultExtra = vt.extra_sections || data.extra_sections || null;
               break;
             }
           }
@@ -448,7 +450,18 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           toast.success(`✨ VI generated a complete ${numDays}-day climate-intelligent itinerary for ${dest} (${climate.seasonName})!`);
         }
 
-        updateProposal({ itinerary: { days: nextDays } });
+        const proposalUpdates = {
+          days: nextDays,
+          itinerary: { days: nextDays }
+        };
+        if (matchedVaultExtra && typeof matchedVaultExtra === 'object' && Object.keys(matchedVaultExtra).length > 0) {
+          proposalUpdates.extra_sections = {
+            ...(proposal?.extra_sections || {}),
+            ...matchedVaultExtra
+          };
+        }
+
+        updateProposal(proposalUpdates);
         logActivity('vi_itinerary_generated', `VI generated ${numDays}-day itinerary for ${dest}`, client?.name || 'Agency Team');
       } else {
         const enriched = days.map(d => {
@@ -555,6 +568,10 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   }, []);
 
   useEffect(() => {
+    // Only pre-populate if days is completely empty (initial state)
+    // This prevents re-syncing/locking when user manually deletes or adds a day block
+    if (days && days.length > 0) return;
+
     let numDays = 0;
     if (client?.date_mode === 'days' && client?.duration_days) {
       numDays = parseInt(client.duration_days, 10) || 1;
@@ -562,38 +579,24 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       const ms = new Date(client.end_date).getTime() - new Date(client.start_date).getTime();
       const diffDays = Math.round(ms / (1000 * 60 * 60 * 24)) + 1;
       numDays = diffDays > 0 ? diffDays : 1;
-    } else if (proposal?.id && days.length === 0) {
+    } else if (proposal?.id && (!days || days.length === 0)) {
       numDays = 1; // Fallback if saved but no dates
     }
 
-    if (numDays > 0 && days.length !== numDays) {
-      const nextDays = [...days];
-      if (nextDays.length < numDays) {
-        // Add days
-        for (let i = nextDays.length; i < numDays; i++) {
-          nextDays.push({
-            day: i + 1,
-            title: '',
-            description: '',
-            image_url: null,
-            block_type: i === 0 ? 'arrival' : (i === numDays - 1 ? 'departure' : 'day')
-          });
-        }
-      } else {
-        // Truncate days
-        nextDays.length = numDays;
-      }
-      
-      // Update block_type for first and last
-      if (nextDays.length > 0) {
-        nextDays[0].block_type = 'arrival';
-        if (nextDays.length > 1) {
-          nextDays[nextDays.length - 1].block_type = 'departure';
-        }
+    if (numDays > 0) {
+      const nextDays = [];
+      for (let i = 0; i < numDays; i++) {
+        nextDays.push({
+          day: i + 1,
+          title: '',
+          description: '',
+          image_url: null,
+          block_type: i === 0 ? 'arrival' : (i === numDays - 1 ? 'departure' : 'day')
+        });
       }
       setProposal(prev => ({ ...(prev || {}), days: nextDays }));
     }
-  }, [days.length, proposal?.id, client?.date_mode, client?.duration_days, client?.start_date, client?.end_date, setProposal]);
+  }, [client?.date_mode, client?.duration_days, client?.start_date, client?.end_date, days?.length, proposal?.id, setProposal]);
 
   const updateDay = useCallback((index, patch) => {
     setProposal(prev => {
@@ -628,12 +631,28 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
 
   // Inventory handling
   const defaultQtyFor = (kind) => {
-    const travelers = (parseInt(client.num_adults, 10) || 0) + (parseInt(client.num_children, 10) || 0) || 1;
+    const travelers = (parseInt(client?.num_adults, 10) || 0) + (parseInt(client?.num_children, 10) || 0) || 1;
     if (kind === 'hotel') return 1; // 1 room default, nights handled in costing usually
     return travelers;
   };
 
+  const checkClientIntake = () => {
+    const name = client?.customer_name?.trim();
+    if (!name || name.toLowerCase() === 'valued traveler') {
+      toast.info('Please fill in the Client Intake Form first to personalize and cost your itinerary.');
+      if (onOpenIntake) {
+        onOpenIntake();
+      } else {
+        useProposalStore.getState().setShowQuickIntake?.(true);
+      }
+      return false;
+    }
+    return true;
+  };
+
   const onAddItemToDay = async (resourceItem, kind, dayIndex) => {
+    if (!checkClientIntake()) return;
+
     let pid = proposal?.id;
     if (!pid) {
       try {
@@ -941,10 +960,10 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
   });
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-xl relative items-start" data-testid="step-2">
+    <div className={`grid grid-cols-1 ${hideSidebar ? 'w-full' : 'lg:grid-cols-12'} gap-xl relative items-start`} data-testid="step-2">
 
-      {/* Left Column: Timeline Builder */}
-      <div className="lg:col-span-8 min-w-0 space-y-xl">
+      {/* Left / Main Column: Timeline Builder */}
+      <div className={`${hideSidebar ? 'w-full' : 'lg:col-span-8'} min-w-0 space-y-xl`}>
         <div className="glass-card rounded-2xl p-lg space-y-md border border-outline-variant/60 shadow-lg bg-surface-container-lowest/80 dark:bg-surface-container-low/80 backdrop-blur-xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-md border-b border-outline-variant/40 pb-md">
             <div>
@@ -999,6 +1018,8 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
                 onAddResourceItem={onAddItemToDay}
                 proposalDestination={proposal?.destination}
                 tourType={proposal?.tour_type || proposal?.preferences?.tour_type || ''}
+                client={client}
+                onOpenIntake={onOpenIntake}
               />
             );
           })}
@@ -1013,8 +1034,8 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
       </div>
 
       {/* Right Column: Inventory Library Sidebar */}
-      <div className="lg:col-span-4 sticky top-6 space-y-md h-[calc(100vh-120px)] flex flex-col">
-
+      {!hideSidebar && (
+        <div className="lg:col-span-4 sticky top-6 space-y-md h-[calc(100vh-120px)] flex flex-col">
 
         {/* Suggested from your Vault Panel */}
         <div className="glass-card rounded-2xl border border-outline-variant/50 overflow-hidden flex flex-col h-full shadow-lg">
@@ -1220,6 +1241,7 @@ export function Step2Itinerary({ proposal, setProposal, itineraries, onApplyItin
           </div>
         </div>
       </div>
+      )}
     </div >
   );
 }

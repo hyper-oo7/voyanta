@@ -2,6 +2,7 @@ import React from 'react';
 import GlassCard from '../components/utility/GlassCard.jsx';
 import StatBadge from '../components/utility/StatBadge.jsx';
 import { DayInventorySections } from '../../components/common/UniversalTemplateExtras.jsx';
+import RichText from '../components/utility/RichText.jsx';
 
 // ── Shared Helper for Activities Display ─────────────────────────────────────
 function ActivityTags({ activities, accentColor, day, theme, vibe }) {
@@ -40,9 +41,7 @@ export function LeftImage({ day, dayImage, theme, index }) {
         <h3 className="text-2xl md:text-3xl font-bold" style={{ color: primary, fontFamily: theme.typography?.headline }}>
           {day.title || `Day ${num}: Discovery & Adventure`}
         </h3>
-        <p className="text-sm md:text-base leading-relaxed" style={{ color: textSec }}>
-          {day.description || 'Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure.'}
-        </p>
+        <RichText as="p" className="text-sm md:text-base leading-relaxed" style={{ color: textSec }} text={day.description} fallback="Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure." />
         <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
@@ -69,9 +68,7 @@ export function RightImage({ day, dayImage, theme, index }) {
         <h3 className="text-2xl md:text-3xl font-bold" style={{ color: primary, fontFamily: theme.typography?.headline }}>
           {day.title || `Day ${num}: Discovery & Adventure`}
         </h3>
-        <p className="text-sm md:text-base leading-relaxed" style={{ color: textSec }}>
-          {day.description || 'Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure.'}
-        </p>
+        <RichText as="p" className="text-sm md:text-base leading-relaxed" style={{ color: textSec }} text={day.description} fallback="Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure." />
         <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
@@ -96,9 +93,7 @@ export function TopImage({ day, dayImage, theme, index }) {
           </div>
         </div>
       </div>
-      <p className="text-base leading-relaxed max-w-4xl" style={{ color: textSec }}>
-        {day.description || 'Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure.'}
-      </p>
+      <RichText as="p" className="text-base leading-relaxed max-w-4xl" style={{ color: textSec }} text={day.description} fallback="Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure." />
       <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
     </div>
   );
@@ -122,9 +117,7 @@ export function BottomGallery({ day, dayImage, theme, index }) {
           <h3 className="text-2xl font-bold" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
         </div>
       </div>
-      <p className="text-base leading-relaxed mb-6" style={{ color: textSec }}>
-        {day.description || 'Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure.'}
-      </p>
+      <RichText as="p" className="text-base leading-relaxed mb-6" style={{ color: textSec }} text={day.description} fallback="Spend the day exploring iconic landmarks, cultural treasures, and scenic views at your leisure." />
       <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       
       <div className="grid grid-cols-3 gap-4 mt-6">
@@ -154,7 +147,7 @@ export function MasonryGallery({ day, dayImage, theme, index }) {
       <div className="md:col-span-6 space-y-4">
         <div className="text-xs uppercase tracking-widest font-semibold" style={{ color: accent }}>Day 0{num}</div>
         <h3 className="text-3xl font-serif font-bold" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
-        <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'Immerse yourself in scenic beauty and private tours.'}</p>
+        <RichText as="p" className="text-base leading-relaxed" style={{ color: textSec }} text={day.description} fallback="Immerse yourself in scenic beauty and private tours." />
         <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
       <div className="md:col-span-6 grid grid-cols-2 gap-4">
@@ -188,7 +181,7 @@ export function PinterestStyle({ day, dayImage, theme, index }) {
         <div className="md:w-2/3 flex flex-col justify-between">
           <div>
             <h3 className="text-2xl font-bold mb-4" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
-            <p className="text-sm md:text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'An inspiring day full of memorable moments.'}</p>
+            <RichText as="p" className="text-sm md:text-base leading-relaxed" style={{ color: textSec }} text={day.description} fallback="An inspiring day full of memorable moments." />
           </div>
           <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
         </div>
@@ -252,7 +245,7 @@ export function Timeline({ day, dayImage, theme, index }) {
       <div className="flex-1 pb-6">
         <div className="text-xs uppercase tracking-widest font-semibold mb-1" style={{ color: accent }}>Schedule</div>
         <h3 className="text-2xl font-bold mb-3" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
-        <p className="text-sm md:text-base leading-relaxed mb-4" style={{ color: textSec }}>{day.description || 'An unforgettable day of private excursions.'}</p>
+        <RichText as="p" className="text-sm md:text-base leading-relaxed mb-4" style={{ color: textSec }} text={day.description} fallback="An unforgettable day of private excursions." />
         <div className="h-56 rounded-xl overflow-hidden shadow-md mb-4 max-w-lg">
           <img src={dayImage} alt={`Day ${num}`} className="w-full h-full object-cover" />
         </div>
@@ -281,7 +274,7 @@ export function SplitScreen({ day, dayImage, theme, index }) {
       <div className={`p-8 md:p-12 flex flex-col justify-center bg-white ${isEven ? 'md:order-1' : ''}`}>
         <span className="text-xs uppercase tracking-widest font-semibold mb-2" style={{ color: accent }}>Itinerary Segment</span>
         <h3 className="text-2xl md:text-3xl font-serif font-bold mb-4" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
-        <p className="text-sm md:text-base leading-relaxed mb-4" style={{ color: textSec }}>{day.description || 'Explore the wonders of your destination in complete luxury.'}</p>
+        <RichText as="p" className="text-sm md:text-base leading-relaxed mb-4" style={{ color: textSec }} text={day.description} fallback="Explore the wonders of your destination in complete luxury." />
         <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
@@ -305,7 +298,7 @@ export function FloatingCards({ day, dayImage, theme, index }) {
           Day 0{num}
         </span>
         <h3 className="text-2xl md:text-3xl font-serif font-bold mb-3" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
-        <p className="text-sm md:text-base leading-relaxed mb-4" style={{ color: textSec }}>{day.description || 'A remarkable day crafted around VIP access and comfort.'}</p>
+        <RichText as="p" className="text-sm md:text-base leading-relaxed mb-4" style={{ color: textSec }} text={day.description} fallback="A remarkable day crafted around VIP access and comfort." />
         <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
@@ -330,7 +323,7 @@ export function GlassCards({ day, dayImage, theme, index }) {
             <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: textSec }}>Curated Experience</span>
           </div>
           <h3 className="text-2xl md:text-3xl font-bold font-serif" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
-          <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'Delight in breathtaking sights and private hospitality.'}</p>
+          <RichText as="p" className="text-base leading-relaxed" style={{ color: textSec }} text={day.description} fallback="Delight in breathtaking sights and private hospitality." />
           <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
         </div>
         <div className="w-full md:w-5/12 h-64 rounded-2xl overflow-hidden shadow-lg">
@@ -356,7 +349,7 @@ export function BentoGrid({ day, dayImage, theme, index }) {
             Day 0{num} Chronicle
           </span>
           <h3 className="text-2xl md:text-3xl font-bold font-serif mb-4" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
-          <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'A full day of extraordinary discovery and VIP comfort.'}</p>
+          <RichText as="p" className="text-base leading-relaxed" style={{ color: textSec }} text={day.description} fallback="A full day of extraordinary discovery and VIP comfort." />
         </div>
         <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
@@ -391,7 +384,7 @@ export function PolaroidStyle({ day, dayImage, theme, index }) {
       <div className="flex-1 space-y-4">
         <span className="text-xs uppercase tracking-widest font-semibold block" style={{ color: accent }}>Travel Snapshot</span>
         <h3 className="text-3xl font-bold" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
-        <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'Capture the spirit of adventure with private guides and unforgettable scenery.'}</p>
+        <RichText as="p" className="text-base leading-relaxed" style={{ color: textSec }} text={day.description} fallback="Capture the spirit of adventure with private guides and unforgettable scenery." />
         <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
       </div>
     </div>
@@ -417,7 +410,7 @@ export function LuxuryCardStack({ day, dayImage, theme, index }) {
             <span className="text-xs font-mono px-3 py-1 rounded-full bg-black/5">VIP Access</span>
           </div>
           <h3 className="text-3xl font-serif font-bold mb-4" style={{ color: primary, fontFamily: theme.typography?.headline }}>{day.title || `Day ${num}`}</h3>
-          <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'Experience premier luxury and exclusive access to cultural icons.'}</p>
+          <RichText as="p" className="text-base leading-relaxed" style={{ color: textSec }} text={day.description} fallback="Experience premier luxury and exclusive access to cultural icons." />
           <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
         </div>
       </div>
@@ -448,9 +441,7 @@ export function FullBleedImage({ day, dayImage, theme, index }) {
         <h3 className="text-4xl md:text-5xl font-serif font-bold mb-4 leading-tight" style={{ fontFamily: theme.typography?.headline }}>
           {day.title || `Day ${num}`}
         </h3>
-        <p className="text-base md:text-lg text-white/90 leading-relaxed font-light">
-          {day.description || 'An immersive day surrounded by dramatic vistas and personalized luxury.'}
-        </p>
+        <RichText as="p" className="text-base md:text-lg text-white/90 leading-relaxed font-light" text={day.description} fallback="An immersive day surrounded by dramatic vistas and personalized luxury." />
         <ActivityTags activities={day.activities} accentColor="#fbbf24" day={day} theme={theme} />
       </div>
     </div>
@@ -476,7 +467,7 @@ export function HeroImageGallery({ day, dayImage, theme, index }) {
       <div className="h-80 rounded-2xl overflow-hidden shadow-xl">
         <img src={dayImage} alt={`Day ${num}`} className="w-full h-full object-cover" />
       </div>
-      <p className="text-base leading-relaxed" style={{ color: textSec }}>{day.description || 'Spend the day exploring iconic landmarks and cultural treasures.'}</p>
+      <RichText as="p" className="text-base leading-relaxed" style={{ color: textSec }} text={day.description} fallback="Spend the day exploring iconic landmarks and cultural treasures." />
       <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
     </div>
   );
@@ -497,9 +488,7 @@ export function TwoColumnEditorial({ day, dayImage, theme, index }) {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
         <div className="space-y-4">
-          <p className="text-base leading-relaxed font-serif" style={{ color: textSec }}>
-            {day.description || 'An inspiring journey designed for those who appreciate fine hospitality and authentic local encounters.'}
-          </p>
+          <RichText as="p" className="text-base leading-relaxed font-serif" style={{ color: textSec }} text={day.description} fallback="An inspiring journey designed for those who appreciate fine hospitality and authentic local encounters." />
           <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
         </div>
         <div className="h-64 rounded-xl overflow-hidden shadow-lg">
@@ -525,9 +514,7 @@ export function ThreeColumnMagazine({ day, dayImage, theme, index }) {
           <h4 className="text-xl font-bold mt-2" style={{ color: primary }}>{day.title || `Day ${num}`}</h4>
         </div>
         <div className="md:col-span-5">
-          <p className="text-sm md:text-base leading-relaxed" style={{ color: textSec }}>
-            {day.description || 'Spend the day discovering hidden gems and enjoying VIP treatment.'}
-          </p>
+          <RichText as="p" className="text-sm md:text-base leading-relaxed" style={{ color: textSec }} text={day.description} fallback="Spend the day discovering hidden gems and enjoying VIP treatment." />
           <ActivityTags activities={day.activities} accentColor={accent} day={day} theme={theme} />
         </div>
         <div className="md:col-span-4 h-52 rounded-xl overflow-hidden shadow">

@@ -2,26 +2,34 @@
 Document Upload, Search, and Vector Management API Router.
 Exposes endpoints for processing travel PDFs, listing uploaded documents, and deleting document vectors.
 """
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
 from pydantic import BaseModel
 import logging
 
+from src.models.api_models import BaseResponse
 from src.services.pdf_processor import pdf_processor
 from src.services.vector_store import vector_store
 from src.services.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/documents", tags=["documents"])
+router = APIRouter(prefix="/documents", tags=["Knowledge Vault"])
 
-class DocumentUploadResponse(BaseModel):
+class DocumentUploadResponse(BaseResponse):
     document_id: str
     status: str
     chunks_indexed: int
     message: str
 
-@router.post("/upload", response_model=DocumentUploadResponse)
+class DocumentListResponse(BaseResponse):
+    documents: List[Dict[str, Any]] = []
+
+class DocumentDeleteResponse(BaseResponse):
+    status: str = "deleted"
+    document_id: str
+
+@router.post("/upload", response_model=DocumentUploadResponse, summary="Upload and vector-index a travel PDF/image document")
 async def upload_document(
     file: UploadFile = File(...),
     agency_id: str = Form(...),
@@ -49,7 +57,7 @@ async def upload_document(
         logger.error(f"[DocumentsRouter] Upload failed for filename={file.filename}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process document: {str(e)}")
 
-@router.get("/")
+@router.get("/", response_model=DocumentListResponse, summary="List all indexed documents for an agency")
 async def list_documents(agency_id: str = Query("global")):
     sb = get_supabase_client()
     if not sb:
@@ -61,7 +69,7 @@ async def list_documents(agency_id: str = Query("global")):
         logger.error(f"[DocumentsRouter] Error listing documents: {e}")
         return {"documents": []}
 
-@router.delete("/{document_id}")
+@router.delete("/{document_id}", response_model=DocumentDeleteResponse, summary="Delete document and purge its vector embeddings")
 async def delete_document(document_id: str, agency_id: str = Query("global")):
     vector_store.delete_document_chunks(document_id)
     sb = get_supabase_client()

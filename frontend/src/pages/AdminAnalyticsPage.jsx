@@ -546,7 +546,7 @@ export default function AdminAnalyticsPage() {
 
       {/* Add Admin Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-md">
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-md">
           <div className="bg-surface-container-lowest w-full max-w-md rounded-2xl p-xl shadow-2xl border border-outline-variant space-y-md">
             <div className="flex justify-between items-center">
               <h3 className="font-headline-sm text-lg font-bold text-primary">Add Platform Admin</h3>
@@ -609,7 +609,7 @@ export default function AdminAnalyticsPage() {
       )}
       {/* Subscription Tier Breakdown Modal */}
       {showSubBreakdownModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-md animate-fade-in">
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-md animate-fade-in">
           <div className="bg-surface-container-lowest w-full max-w-lg rounded-2xl p-xl shadow-2xl border border-outline-variant space-y-md">
             <div className="flex justify-between items-center border-b border-outline-variant/60 pb-sm">
               <h3 className="font-headline-sm text-base font-bold text-primary flex items-center gap-xs">

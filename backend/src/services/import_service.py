@@ -3,6 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 import pandas as pd
+from src.services.content_polish import polish_package
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +164,10 @@ def compile_normalized_package(extracted: Dict[str, Any], source_type: str, dest
         "cover_image_url": extracted.get("cover_image_url", "")
     }
     
+    # Reshape the supplier's prose into client-ready copy before anything
+    # downstream (vault package, proposal, PDF) can persist or render it.
+    normalized = polish_package(normalized)
+
     fields_dict = build_normalized_fields(normalized, source_type)
     normalized["fields"] = fields_dict
     

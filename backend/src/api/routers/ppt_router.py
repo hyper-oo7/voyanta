@@ -4,14 +4,14 @@ from typing import Any
 import logging
 
 from src.models.api_models import PPTGenerateRequest
-from src.core.security import verify_token
+from src.core.security import verify_token, CurrentUser
 from src.services.ppt_service import generate_ppt_from_proposal
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/ppt")
+router = APIRouter(prefix="/ppt", tags=["PPT Generation"])
 
-@router.post("/generate")
-async def ppt_generate(request: PPTGenerateRequest, user: Any = Depends(verify_token)):
+@router.post("/generate", summary="Generate PowerPoint slide presentation from itinerary")
+async def ppt_generate(request: PPTGenerateRequest, user: CurrentUser):
     payload = request.model_dump()
     try:
         proposal = payload.get("proposal", {})

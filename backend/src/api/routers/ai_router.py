@@ -1,16 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException
-from typing import Any, Dict, Optional
-from pydantic import BaseModel
+import json
 import logging
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from typing import Any, Dict, Optional, List
+from pydantic import BaseModel
 
 from src.models.api_models import ParseItineraryInput
-from src.core.security import verify_token, verify_token_optional, get_request_token
+from src.core.security import verify_token, verify_token_optional, get_request_token, CurrentUser, OptionalUser
 from src.services.supabase_client import get_user_supabase_client
-
+from src.services.ai_client import stream_llm
 from src.services.ai_service import extract_itinerary, translate_proposal_content, generate_luxury_title, enhance_luxury_text
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(tags=["AI"])
+
+class StreamGenerateInput(BaseModel):
+    prompt: str
+    system_prompt: Optional[str] = None
+    provider: Optional[str] = None
+    temperature: float = 0.0
+    max_tokens: Optional[int] = None
 
 class TranslateProposalInput(BaseModel):
     proposal: Dict[str, Any]
@@ -32,16 +41,59 @@ class EnhanceTextInput(BaseModel):
     format: Optional[str] = None
     tier: Optional[str] = None
 
-@router.post("/parse-itinerary")
-async def parse_itinerary(input: ParseItineraryInput, user: Any = Depends(verify_token_optional)):
+@router.post("/ai/stream-generate", summary="Stream LLM generation via Server-Sent Events (SSE)")
+@router.post("/stream-generate", summary="Stream LLM generation via Server-Sent Events (SSE)")
+async def stream_generate(input: StreamGenerateInput, user: OptionalUser):
+    """
+    Streams LLM text generation in real-time token-by-token using SSE (text/event-stream).
+    Eliminates long waiting times for generative AI responses.
+    """
+    async def event_generator():
+        try:
+            async for token in stream_llm(
+                prompt=input.prompt,
+                system_prompt=input.system_prompt,
+                provider=input.provider,
+                temperature=input.temperature,
+                max_tokens=input.max_tokens,
+            ):
+                yield f"data: {json.dumps({'token': token})}\n\n"
+            yield f"data: [DONE]\n\n"
+        except Exception as e:
+            logger.error(f"[StreamRoute] Error during generation streaming: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+@router.post("/parse-itinerary", summary="Extract structured itinerary from raw text")
+async def parse_itinerary(input: ParseItineraryInput, user: OptionalUser):
     try:
         return await extract_itinerary(input.text)
     except Exception as e:
         logger.exception("AI itinerary parsing failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/translate-proposal")
-async def translate_proposal(input: TranslateProposalInput, user: Any = Depends(verify_token_optional)):
+from src.models.api_models import (
+    ParseItineraryInput,
+    TranslateProposalInput,
+    TranslateProposalResponse,
+    GenerateTitleInput,
+    GenerateTitleResponse,
+    EnhanceTextInput,
+    EnhanceTextResponse
+)
+
+@router.post("/translate-proposal", response_model=TranslateProposalResponse, summary="Translate proposal content into target language")
+async def translate_proposal(input: TranslateProposalInput, user: OptionalUser = None):
     try:
         translated = await translate_proposal_content(input.proposal, input.target_lang, input.glossary)
         return {"success": True, "translated_proposal": translated}
@@ -49,8 +101,8 @@ async def translate_proposal(input: TranslateProposalInput, user: Any = Depends(
         logger.exception("AI proposal translation failed")
         return {"success": False, "translated_proposal": input.proposal, "error": str(e)}
 
-@router.post("/generate-title")
-async def generate_title(input: GenerateTitleInput, user: Any = Depends(verify_token_optional)):
+@router.post("/generate-title", response_model=GenerateTitleResponse, summary="Generate luxury marketing title for itinerary")
+async def generate_title(input: GenerateTitleInput, user: OptionalUser = None):
     try:
         title = await generate_luxury_title(
             input.destination, 
@@ -64,8 +116,8 @@ async def generate_title(input: GenerateTitleInput, user: Any = Depends(verify_t
         logger.exception("AI generate-title failed")
         return {"success": False, "title": f"{input.destination or 'Luxury'} Collection: A Curated {input.duration}-Day {input.tour_type or 'Journey'}", "error": str(e)}
 
-@router.post("/enhance-text")
-async def enhance_text(input: EnhanceTextInput, user: Any = Depends(verify_token_optional)):
+@router.post("/enhance-text", response_model=EnhanceTextResponse, summary="Sensory text enhancement and tone enrichment")
+async def enhance_text(input: EnhanceTextInput, user: OptionalUser = None):
     try:
         model = "gemini"
         prompt_version = "v1.1.0"
@@ -414,6 +466,11 @@ async def assemble_1shot_route(
 class GenerateDayModuleInput(BaseModel):
     sub_destination: str
     agency_id: Optional[str] = "global"
+    day_number: int = 1
+    selected_hotels: Optional[List[Dict[str, Any]]] = None
+    selected_activities: Optional[List[Dict[str, Any]]] = None
+    selected_sub_destinations: Optional[List[str]] = None
+    notes: Optional[str] = None
 
 @router.post("/generate-day-module")
 async def generate_day_module(
@@ -421,7 +478,7 @@ async def generate_day_module(
     user: Any = Depends(verify_token_optional)
 ):
     """
-    Generate a dynamic ProposalDay block using RAG data for a specific sub-destination.
+    Generate a dynamic ProposalDay block using RAG data and curated selections for a specific sub-destination.
     """
     agency_id = "global"
     if isinstance(user, dict):
@@ -442,20 +499,33 @@ async def generate_day_module(
         travel_style="standard",
     )
     
+    overrides_text = ""
+    if input.selected_sub_destinations and len(input.selected_sub_destinations) > 0:
+        overrides_text += f"\nSelected Sub-Destinations for this day: {', '.join(input.selected_sub_destinations)}"
+    if input.selected_hotels and len(input.selected_hotels) > 0:
+        hotel_names = [h.get("name") or str(h) for h in input.selected_hotels if h]
+        overrides_text += f"\nSelected Accommodations: {', '.join(hotel_names)}"
+    if input.selected_activities and len(input.selected_activities) > 0:
+        act_names = [a.get("name") or str(a) for a in input.selected_activities if a]
+        overrides_text += f"\nSelected Activities/Attractions: {', '.join(act_names)}"
+    if input.notes:
+        overrides_text += f"\nCurator Special Notes: {input.notes}"
+
     prompt = f"""
-    Based on the following retrieved knowledge from our past proposals/PDFs, generate a single Day itinerary block for the sub-destination: {input.sub_destination}.
-    Do NOT invent attractions or hotels that are not present in the context. If the context is empty, provide a generic but realistic day for {input.sub_destination}.
+    Based on the following retrieved knowledge from our past proposals/PDFs and curator selections, generate a single Day itinerary block for the sub-destination: {input.sub_destination}.
+    This day will be Day {input.day_number} of the itinerary. Ensure the title explicitly starts with 'Day {input.day_number}:'.
+    {overrides_text}
     
     CONTEXT:
     {rag_result['context']}
     
     Respond strictly in JSON format matching this schema:
     {{
-        "title": "Day X: Title here",
-        "description": "Narrative description of the day",
+        "title": "Day {input.day_number}: Title here",
+        "description": "Narrative description of the day incorporating the selected sights and accommodations",
         "sub_destination": "{input.sub_destination}",
         "activities": [
-            {{"name": "Activity Name", "timing": "10:00 AM"}}
+            {{"name": "Activity Name", "timing": "10:00 AM", "details": "Optional details"}}
         ],
         "hotels": [
             {{"name": "Hotel Name", "category": "4 Star", "meal_plan": "MAP"}}
@@ -479,6 +549,16 @@ async def generate_day_module(
             clean_json = clean_json[3:-3].strip()
             
         day_module = json.loads(clean_json)
+        if isinstance(day_module, dict):
+            import re
+            raw_title = day_module.get("title") or f"Exploring {input.sub_destination}"
+            # Strip any leading Day X:, Day 1:, Day 2:, Day ?: etc.
+            cleaned_title = re.sub(r'^(Day\s*([0-9]+|[a-zA-Z]+|\?)\s*:\s*)', '', str(raw_title), flags=re.IGNORECASE).strip()
+            if not cleaned_title:
+                cleaned_title = f"Exploring {input.sub_destination}"
+            day_module["title"] = f"Day {input.day_number}: {cleaned_title}"
+            day_module["day"] = input.day_number
+
         return {"status": "success", "day_module": day_module}
     except Exception as e:
         logger.error(f"[AI GenerateDay] Failed: {e}")

@@ -74,11 +74,13 @@ async def orchestrate_proposal_extraction(
     if not api_key_gemini and not api_key_openai:
         raise RuntimeError("Neither GEMINI_API_KEY nor OPENAI_API_KEY is configured.")
 
+    from src.services.cascading_ai_service import EXTRACTION_PROMPT_VERSION
+
     # Check semantic AI cache before running LLM
     cache_meta = {
         "agency_id": agency_id,
         "entity_type": "orchestrated_proposal",
-        "prompt_version": "instructor_v2.0.0",
+        "prompt_version": f"instructor_{EXTRACTION_PROMPT_VERSION}",
         "schema_version": "FinalProposalSchema_v1.0.0",
         "model": "gemini-2.5-flash" if provider == "gemini" else "gpt-4o-mini",
         "input_text": document_text

@@ -9,6 +9,10 @@ import { assembleProposal } from '../services/assemblyService.js';
 import { useAuthStore } from './authStore.js';
 import { FinalProposalSchema } from '../schemas/proposalSchema.js';
 
+/** Saved proposals carry a database UUID; anything else is a client-side id. */
+const SAVED_PROPOSAL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const isSavedProposalId = (id) => Boolean(id) && SAVED_PROPOSAL_ID.test(String(id));
+
 const saveLocalBackup = (state) => {
   try {
     const id = state.proposal?.id || state.activeId;
@@ -77,7 +81,6 @@ function buildProposalFromVault(intakeData, vault) {
               id: hotel.id,
               name: hotel.name,
               category: hotel.category || (intakeData.hotel_category ? intakeData.hotel_category.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : '4 Star'),
-              category: hotel.category || (intakeData.hotel_category ? intakeData.hotel_category.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : '4 Star'),
               meal_plan: hotel.meal_type || 'CP (Breakfast)',
               price_per_night: hotel.price_per_night || 0,
               location: hotel.location,
@@ -101,7 +104,6 @@ function buildProposalFromVault(intakeData, vault) {
         origin: f.origin,
         destination: f.destination,
         cost: f.cost || 0,
-        class: f.class || (intakeData.flight_class ? intakeData.flight_class.charAt(0).toUpperCase() + intakeData.flight_class.slice(1) : 'Economy'),
         class: f.class || (intakeData.flight_class ? intakeData.flight_class.charAt(0).toUpperCase() + intakeData.flight_class.slice(1) : 'Economy'),
       })),
       day_total: dayPrice,
@@ -179,8 +181,6 @@ export const useProposalStore = create((set, get) => ({
   status: 'idle',
   ragStatus: 'ok', // 'ok' | 'degraded' | 'empty'
   vaultStatus: 'ok', // 'ok' | 'empty'
-  ragStatus: 'ok', // 'ok' | 'degraded' | 'empty'
-  vaultStatus: 'ok', // 'ok' | 'empty'
 
   // Canvas Actions
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -194,8 +194,9 @@ export const useProposalStore = create((set, get) => ({
   }),
 
   /* ── ONE-SHOT ASSEMBLY (RAG + Vault integrated) ───────────────── */
-  assemble1Shot: async (intakeData) => {
+  assemble1Shot: async (intakeData, onProgress) => {
     set({ status: 'loading' });
+    if (onProgress) onProgress(0); // 0: Searching your vault...
 
     try {
       // Get the real agency_id from Auth store instead of hardcoded demo-agency
@@ -214,7 +215,6 @@ export const useProposalStore = create((set, get) => ({
         }).catch((err) => {
           console.warn('[1-Shot] RAG query failed, continuing without doc context:', err);
           return { data: { chunks: [], query: '' }, isError: true };
-          return { data: { chunks: [], query: '' }, isError: true };
         }),
 
         matchVaultResources({
@@ -229,13 +229,22 @@ export const useProposalStore = create((set, get) => ({
         }),
       ]);
 
+      if (onProgress) onProgress(1); // 1: Selecting best hotels...
+
       const ragChunks = ragRes?.data?.chunks || [];
       const ragQuery = ragRes?.data?.query || '';
       
       const newRagStatus = ragRes?.isError ? 'degraded' : (ragChunks.length === 0 ? 'empty' : 'ok');
-      const newVaultStatus = vaultMatches?.isError || (vaultMatches?.hotels?.length === 0 && vaultMatches?.activities?.length === 0) ? 'empty' : 'ok';
+      // vaultStatus: consider RAG chunks as valid inventory (PDF uploads = vault content)
+      const hasStructuredInventory = vaultMatches?.hotels?.length > 0 || vaultMatches?.activities?.length > 0;
+      const hasPDFInventory = ragChunks.length > 0;
+      const newVaultStatus = (vaultMatches?.isError && !hasPDFInventory) ? 'empty'
+        : (hasStructuredInventory || hasPDFInventory) ? 'ok'
+        : 'empty';
       
       set({ ragStatus: newRagStatus, vaultStatus: newVaultStatus });
+
+      if (onProgress) onProgress(2); // 2: Building day-by-day itinerary...
 
       // 2. Call assembly API with full grounding context via assembleProposal service
       const p = await assembleProposal(
@@ -244,6 +253,8 @@ export const useProposalStore = create((set, get) => ({
         vaultMatches,
         intakeData.costing_prefs || get().costingPrefs
       );
+
+      if (onProgress) onProgress(3); // 3: Calculating pricing & margins...
 
       if (p) {
 
@@ -258,6 +269,7 @@ export const useProposalStore = create((set, get) => ({
           end_date: intakeData.end_date || '',
         };
 
+        if (onProgress) onProgress(4); // 4: Finalizing your proposal...
         set({
           proposal: p,
           client: nextClient,
@@ -499,7 +511,23 @@ export const useProposalStore = create((set, get) => ({
           ...overrides
         }
       },
-      itinerary: proposal?.itinerary,
+      // `proposals` has no column for the proposal body, so days, overview,
+      // inclusions and the extra sections are persisted together here. Passing
+      // `proposal?.itinerary` straight through used to save nothing, because
+      // the body lives on `proposal.days` and friends.
+      itinerary: {
+        ...(typeof proposal?.itinerary === 'object' && !Array.isArray(proposal?.itinerary) ? proposal.itinerary : {}),
+        days: proposal?.days || [],
+        overview: proposal?.overview || '',
+        inclusions: proposal?.inclusions ?? [],
+        exclusions: proposal?.exclusions ?? [],
+        extra_sections: proposal?.extra_sections || {},
+        sub_destinations: proposal?.sub_destinations || [],
+        total_price: proposal?.total_price ?? null,
+        price_per_person: proposal?.price_per_person ?? null,
+        duration_days: proposal?.duration_days ?? null,
+        cover_image_url: proposal?.cover_image_url || '',
+      },
       status: proposal?.status || 'Draft',
       visibility_mode: proposal?.visibility_mode || 'ITEMIZED',
     };
@@ -512,7 +540,12 @@ export const useProposalStore = create((set, get) => ({
     set({ status: 'saving' });
     try {
       const payload = get().buildPayload();
-      const currentId = get().proposal?.id || get().activeId;
+      // A proposal applied from the vault carries that package's id
+      // ("vault_1787509779893_0"). Treating it as an existing proposal made the
+      // update target a row that does not exist, so only a real database id
+      // counts as "already saved".
+      const candidateId = get().proposal?.id || get().activeId;
+      const currentId = isSavedProposalId(candidateId) ? candidateId : null;
       let p;
       if (currentId) {
         p = await updateProposal(currentId, payload);

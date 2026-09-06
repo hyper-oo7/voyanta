@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useProposalStore } from '../store/proposalStore.js';
+import { useProposalStore, isSavedProposalId } from '../store/proposalStore.js';
 import QuickIntakeModal from '../components/canvas/QuickIntakeModal.jsx';
 import TemplateGalleryModal from '../components/canvas/TemplateGalleryModal.jsx';
 import TemplateRenderer from '../components/TemplateRenderer.jsx';
@@ -10,7 +10,9 @@ import PDFUploader from '../components/PDFUploader.jsx';
 import RAGContextPanel from '../components/RAGContextPanel.jsx';
 import { executeRAGQuery } from '../services/api.js';
 import AIProposalChatDrawer from '../components/canvas/AIProposalChatDrawer.jsx';
+import ExtraSectionsEditor from '../components/canvas/ExtraSectionsEditor.jsx';
 import { getAgencyId } from '../lib/supabaseClient.js';
+import { downloadProposalPdf } from '../services/pdfService.js';
 
 export default function UnifiedItineraryCanvas() {
   const navigate = useNavigate();
@@ -21,10 +23,11 @@ export default function UnifiedItineraryCanvas() {
     showTemplateGallery, setShowTemplateGallery,
     showQuickIntake, setShowQuickIntake,
     activeTemplateSlug, setTemplateSlug,
-    setClient, setCostingPrefs, updateProposal, loadProposal
+    setClient, setCostingPrefs, updateProposal, loadProposal, saveDraftBackground
   } = useProposalStore();
 
   const [activeTab, setActiveTab] = useState('proposal');
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [showRAGDrawer, setShowRAGDrawer] = useState(false);
   const [showAIChat, setShowAIChat] = useState(false);
   const [ragActiveTab, setRagActiveTab] = useState('query');
@@ -41,11 +44,14 @@ export default function UnifiedItineraryCanvas() {
     (p.items && p.items.length > 0)
   );
 
+  const [subtotalOverride, setSubtotalOverride] = useState(null);
+
   // Dynamic Costing & Margins Calculation (No Hardcoded Fractions)
   const marginType = costingPrefs.margin_type || 'percentage';
   const marginVal = Number(costingPrefs.pct_markup !== undefined ? costingPrefs.pct_markup : (costingPrefs.margin_value || 15));
   const taxRate = Number(costingPrefs.tax !== undefined ? costingPrefs.tax : 5);
   const discountVal = Number(costingPrefs.discount || 0);
+  const discountType = costingPrefs.discount_type || 'flat';
 
   const itemSum = (p.items || []).reduce((acc, item) => acc + (Number(item.qty || 1) * Number(item.unit_price || item.price || 0)), 0);
 
@@ -63,16 +69,20 @@ export default function UnifiedItineraryCanvas() {
     return dayAcc + dayTotal;
   }, 0);
 
-  let subtotal = itemSum + dayBlockSum;
+  const calculatedSubtotal = itemSum + dayBlockSum;
+  const effectiveSubtotal = subtotalOverride !== null ? Number(subtotalOverride) : calculatedSubtotal;
+
   let marginAmount = 0;
   let taxAmount = 0;
+  let discountAmount = 0;
   let computedFinalTotal = 0;
 
-  if (hasPlanContent && subtotal > 0) {
-    marginAmount = marginType === 'percentage' ? subtotal * (marginVal / 100) : marginVal;
-    const grossAmount = subtotal + marginAmount;
+  if (hasPlanContent || effectiveSubtotal > 0) {
+    marginAmount = marginType === 'percentage' ? effectiveSubtotal * (marginVal / 100) : marginVal;
+    const grossAmount = effectiveSubtotal + marginAmount;
     taxAmount = grossAmount * (taxRate / 100);
-    computedFinalTotal = Math.max(0, (grossAmount + taxAmount) - discountVal);
+    discountAmount = discountType === 'percentage' ? (grossAmount + taxAmount) * (discountVal / 100) : discountVal;
+    computedFinalTotal = Math.max(0, (grossAmount + taxAmount) - discountAmount);
   }
 
   // For display purposes at the top header
@@ -86,7 +96,10 @@ export default function UnifiedItineraryCanvas() {
   useEffect(() => {
     const fetchVaultSubDestinations = async () => {
       try {
-        const res = await fetch('/api/vault/sub-destinations', {
+        const query = selectedSubDestinations.length > 0 
+          ? `?selected=${encodeURIComponent(selectedSubDestinations.join(','))}` 
+          : '';
+        const res = await fetch(`/api/vault/sub-destinations${query}`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('voyanta_token')}` }
         });
         if (res.ok) {
@@ -100,7 +113,7 @@ export default function UnifiedItineraryCanvas() {
       }
     };
     fetchVaultSubDestinations();
-  }, []);
+  }, [selectedSubDestinations]);
 
   // Hydrate from AI Quick Generate if ai_generated=1
   useEffect(() => {
@@ -159,6 +172,9 @@ export default function UnifiedItineraryCanvas() {
     setSelectedSubDestinations(nextSubs);
     setIsGeneratingDay(true);
 
+    const existingDays = p.days || p.itinerary?.days || [];
+    const newDayNum = existingDays.length + 1;
+
     try {
       const res = await fetch('/api/generate-day-module', {
         method: 'POST',
@@ -166,16 +182,15 @@ export default function UnifiedItineraryCanvas() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('voyanta_token')}`
         },
-        body: JSON.stringify({ sub_destination: name })
+        body: JSON.stringify({ sub_destination: name, day_number: newDayNum })
       });
       
-      const newDayNum = (p.days || []).length + 1;
       let newDay = null;
       
       if (res.ok) {
         const data = await res.json();
         if (data.status === 'success' && data.day_module) {
-          newDay = { ...data.day_module, day_number: newDayNum };
+          newDay = { ...data.day_module, day: newDayNum, day_number: newDayNum };
         }
       }
       
@@ -183,28 +198,73 @@ export default function UnifiedItineraryCanvas() {
         throw new Error('Failed to generate day');
       }
 
+      const nextDays = [...existingDays, newDay];
       updateProposal({
         ...p,
-        days: [...(p.days || []), newDay]
+        days: nextDays,
+        itinerary: {
+          ...(p.itinerary || {}),
+          days: nextDays
+        }
       });
     } catch (err) {
       console.error('Failed to generate AI day block:', err);
       // Fallback
-      const newDayNum = (p.days || []).length + 1;
       const newDay = {
+        day: newDayNum,
         day_number: newDayNum,
         title: `Day ${newDayNum}: Excursion to ${name}`,
         description: `Explore key attractions, scenic spots, and local experiences in ${name}.`,
         sub_destination: name,
         activities: [{ name: `${name} Sightseeing & Local Walk`, timing: '10:00 AM' }]
       };
+      const nextDays = [...existingDays, newDay];
       updateProposal({
         ...p,
-        days: [...(p.days || []), newDay]
+        days: nextDays,
+        itinerary: {
+          ...(p.itinerary || {}),
+          days: nextDays
+        }
       });
     } finally {
       setIsGeneratingDay(false);
     }
+  };
+
+  const handleOpenWebViewStudio = (isClientMode = false) => {
+    const token = p.share_token || p.id || 'draft_preview';
+    const liveDays = p.days || p.itinerary?.days || [];
+    const liveProposal = {
+      ...p,
+      id: p.id || 'draft_preview',
+      share_token: token,
+      title: p.title || `${currentClient.destination || 'Custom'} Travel Proposal`,
+      destination: currentClient.destination || p.destination || '',
+      customer_name: currentClient.customer_name || p.customer_name || 'Valued Traveler',
+      num_travelers: currentClient.num_adults || p.num_travelers || 2,
+      travelers: currentClient.num_adults || p.num_travelers || 2,
+      days: liveDays,
+      itinerary: { ...(p.itinerary || {}), days: liveDays },
+      client: currentClient,
+      branding: branding,
+      template_style: activeTemplateSlug || p.template_style || 'classic',
+      total_price: computedFinalTotal || p.total_price || 0,
+      total_amount: computedFinalTotal || p.total_price || 0,
+      costingPrefs: costingPrefs,
+      visibility_mode: costingPrefs.visibility_mode || 'ITEMIZED'
+    };
+    try {
+      localStorage.setItem('voyanta_draft_preview', JSON.stringify(liveProposal));
+      if (p.id) {
+        localStorage.setItem(`voyanta_proposal_${p.id}`, JSON.stringify(liveProposal));
+      }
+    } catch (e) {
+      console.warn('Failed to snapshot draft proposal for web view:', e);
+    }
+    
+    const url = isClientMode ? `/view/${token}?mode=client` : `/view/${token}`;
+    window.open(url, '_blank');
   };
 
   return (
@@ -232,14 +292,23 @@ export default function UnifiedItineraryCanvas() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold font-headline text-on-surface line-clamp-1">
-                {p.destination || 'Custom Proposal'} — {currentClient.customer_name || 'Valued Traveler'}
+                {p.destination || currentClient.destination || 'Custom Proposal'} — {currentClient.customer_name || 'Valued Traveler'}
               </h1>
+              <button
+                type="button"
+                onClick={() => setShowQuickIntake(true)}
+                className="px-2.5 py-1 bg-surface-container hover:bg-surface-container-highest text-primary border border-outline-variant rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                title="Open Client Intake & Trip Parameters"
+              >
+                <span className="material-symbols-outlined text-[14px]">edit</span>
+                <span>Edit Brief</span>
+              </button>
               <span className="px-2 py-0.5 bg-primary/10 text-primary text-[11px] font-bold rounded-md uppercase">
                 {p.duration_days || (p.days || []).length || 3} Days
               </span>
             </div>
             <p className="text-xs text-on-surface-variant">
-              Full Budget: ₹{finalTotal.toLocaleString()} · ₹{pricePerPerson.toLocaleString()}/head
+              Full Budget: ₹{Math.round(finalTotal).toLocaleString()} · ₹{pricePerPerson.toLocaleString()}/head
             </p>
           </div>
         </div>
@@ -296,15 +365,24 @@ export default function UnifiedItineraryCanvas() {
 
           <button
             onClick={() => setShowQuickIntake(true)}
-            className="px-3 py-1.5 bg-primary text-on-primary font-bold text-xs rounded-xl shadow hover:bg-primary/90 transition-all flex items-center gap-1.5"
+            className="px-3 py-1.5 bg-primary text-on-primary font-bold text-xs rounded-xl shadow hover:bg-primary/90 transition-all flex items-center gap-1.5 cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
-            1-Shot Quick Intake
+            <span className="material-symbols-outlined text-[16px]">tune</span>
+            <span>Intake Form</span>
+          </button>
+
+          <button
+            onClick={() => setShowAIChat(true)}
+            className="px-3 py-1.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Open AI Curator Chat Assistant"
+          >
+            <span className="material-symbols-outlined text-[16px]">smart_toy</span>
+            <span>AI Curator ✦</span>
           </button>
 
           <button
             onClick={() => setShowTemplateGallery(true)}
-            className="px-3 py-1.5 bg-surface-container hover:bg-surface-container-highest text-on-surface text-xs font-semibold rounded-xl border border-outline-variant transition-all flex items-center gap-1.5"
+            className="px-3 py-1.5 bg-surface-container hover:bg-surface-container-highest text-on-surface text-xs font-semibold rounded-xl border border-outline-variant transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <span className="material-symbols-outlined text-primary text-[16px]">palette</span>
             <span>Theme: <strong>{(activeTemplateSlug || 'classic').toUpperCase()}</strong></span>
@@ -315,26 +393,7 @@ export default function UnifiedItineraryCanvas() {
         {/* Right: Web View Studio & Print PDF */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              const storeState = useProposalStore.getState();
-              let token = p?.share_token || p?.id || storeState.activeId;
-              if (!token || token === 'demo') {
-                token = crypto.randomUUID();
-                useProposalStore.getState().setActiveId(token);
-              }
-              try {
-                const currentData = {
-                  ...p,
-                  id: token,
-                  preferences: { ...(p?.preferences || {}), branding: branding || storeState.branding }
-                };
-                localStorage.setItem(`voyanta_proposal_${token}`, JSON.stringify(currentData));
-              } catch(e) {
-                console.error('Failed to sync draft to local cache before opening web view', e);
-                alert('Warning: Failed to sync your live draft to the Web View. If you uploaded large images, they may exceed your browser\'s local storage limits. Please save your draft to the database first.');
-              }
-              window.open(`/view/${token}`, '_blank');
-            }}
+            onClick={() => handleOpenWebViewStudio(false)}
             className="px-3 py-1.5 bg-purple-100 dark:bg-purple-900/50 text-purple-900 dark:text-purple-100 hover:bg-purple-200 dark:hover:bg-purple-900 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
           >
             <span className="material-symbols-outlined text-[16px]">open_in_new</span>
@@ -343,23 +402,7 @@ export default function UnifiedItineraryCanvas() {
 
           <button
             onClick={() => {
-              const storeState = useProposalStore.getState();
-              let token = p?.share_token || p?.id || storeState.activeId;
-              if (!token || token === 'demo') {
-                token = crypto.randomUUID();
-                useProposalStore.getState().setActiveId(token);
-              }
-              try {
-                const currentData = {
-                  ...p,
-                  id: token,
-                  preferences: { ...(p?.preferences || {}), branding: branding || storeState.branding }
-                };
-                localStorage.setItem(`voyanta_proposal_${token}`, JSON.stringify(currentData));
-              } catch(e) {
-                console.error('Failed to sync draft to local cache before opening web view', e);
-                alert('Warning: Failed to sync your live draft to the Web View. If you uploaded large images, they may exceed your browser\'s local storage limits. Please save your draft to the database first.');
-              }
+              const token = p.share_token || p.id || 'draft_preview';
               const clientUrl = `${window.location.origin}/view/${token}?mode=client`;
               navigator.clipboard.writeText(clientUrl);
               alert('Copied Client Web Link to clipboard!\nSend this link to your client: ' + clientUrl);
@@ -371,11 +414,32 @@ export default function UnifiedItineraryCanvas() {
           </button>
 
           <button
-            onClick={() => window.print()}
-            className="p-2 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-xl border border-outline-variant transition-colors"
-            title="Download / Print PDF"
+            onClick={async () => {
+              if (exportingPdf) return;
+              setExportingPdf(true);
+              try {
+                // The PDF is rendered from the saved proposal, so a draft — a
+                // vault package just applied to the canvas, say — is persisted
+                // first rather than sending the user away to find a save button.
+                let target = p;
+                if (!isSavedProposalId(target?.id)) {
+                  const saved = await saveDraftBackground();
+                  target = { ...useProposalStore.getState().proposal, ...saved };
+                }
+                await downloadProposalPdf(target, { style: activeTemplateSlug });
+              } catch (err) {
+                window.alert(err?.message || 'PDF export failed. Please try again.');
+              } finally {
+                setExportingPdf(false);
+              }
+            }}
+            disabled={exportingPdf}
+            className="p-2 bg-surface-container hover:bg-surface-container-highest text-on-surface rounded-xl border border-outline-variant transition-colors disabled:opacity-60 disabled:cursor-wait"
+            title="Download PDF"
           >
-            <span className="material-symbols-outlined text-[18px]">download</span>
+            <span className="material-symbols-outlined text-[18px]">
+              {exportingPdf ? 'hourglass_top' : 'download'}
+            </span>
           </button>
         </div>
       </header>
@@ -392,105 +456,13 @@ export default function UnifiedItineraryCanvas() {
               transition={{ duration: 0.2 }}
               className="max-w-5xl mx-auto space-y-6"
             >
-              {/* Section 1: Client & Trip Parameters Card with Sub-Destination Auto-Fill */}
-              <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold font-headline text-lg text-on-surface flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary">person</span> Client & Trip Parameters
-                  </h3>
-                  <span className="text-xs text-primary font-semibold">1-Shot Editable</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase text-on-surface-variant mb-1">Client Name</label>
-                    <input
-                      type="text"
-                      value={currentClient.customer_name}
-                      onChange={(e) => setClient({ customer_name: e.target.value })}
-                      className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-xl text-xs text-on-surface"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase text-on-surface-variant mb-1">Destination</label>
-                    <input
-                      type="text"
-                      value={currentClient.destination}
-                      onChange={(e) => {
-                        setClient({ destination: e.target.value });
-                        updateProposal({ ...p, destination: e.target.value });
-                      }}
-                      placeholder="e.g. Himachal Pradesh, Manali, Kerala"
-                      className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-xl text-xs text-on-surface font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase text-on-surface-variant mb-1">Target Budget (₹)</label>
-                    <input
-                      type="number"
-                      value={currentClient.budget}
-                      onChange={(e) => {
-                        const newBudget = e.target.value;
-                        setClient({ budget: newBudget });
-                        // Update the proposal total if the budget changes directly to keep them in sync for estimates
-                        updateProposal({ ...p, total_price: Number(newBudget) || p.total_price });
-                      }}
-                      placeholder="e.g. 50000"
-                      className="w-full px-3 py-2 bg-surface border border-outline-variant rounded-xl text-xs text-on-surface font-semibold"
-                    />
-                  </div>
-                </div>
-
-                {/* Sub-Destinations Auto-Fill Options Extracted from Vault PDFs */}
-                <div className="p-3.5 bg-surface border border-outline-variant/60 rounded-xl space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-on-surface flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-primary text-[16px]">location_city</span>
-                      ✨ Sub-destinations Extracted from Vault PDFs:
-                    </span>
-                    <span className="text-[11px] text-on-surface-variant">
-                      {isGeneratingDay ? 'Generating day module with AI...' : 'Click pill to add to itinerary'}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {subDestCandidates.length > 0 ? (
-                      subDestCandidates.map((sd) => {
-                        const sdName = typeof sd === 'string' ? sd : sd.name;
-                        const isAdded = selectedSubDestinations.includes(sdName);
-                        return (
-                          <button
-                            key={sdName}
-                            type="button"
-                            disabled={isAdded || isGeneratingDay}
-                            onClick={() => handleAddSubDestination(sd)}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 border ${
-                              isAdded
-                                ? 'bg-primary-container text-on-primary-container border-primary opacity-50'
-                                : 'bg-surface border-outline-variant text-on-surface hover:border-primary hover:text-primary'
-                            }`}
-                          >
-                            {isAdded ? <span className="material-symbols-outlined text-[14px]">check</span> : <span className="material-symbols-outlined text-[14px]">add</span>}
-                            <span>{sdName}</span>
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <span className="text-xs text-on-surface-variant italic">
-                        Type a destination above (e.g. Manali, Himachal, Kerala) to extract sub-destinations from Vault PDFs.
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Rich WYSIWYG Day-by-Day Itinerary Editor */}
+              {/* Section 1: Rich WYSIWYG Day-by-Day Itinerary Editor */}
               <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-5 space-y-4">
                 <div className="flex items-center justify-between pb-2 border-b border-outline-variant">
                   <h3 className="font-bold font-headline text-lg text-on-surface flex items-center gap-2">
                     <span className="material-symbols-outlined text-primary">edit_note</span> Rich WYSIWYG Itinerary Editor
                   </h3>
-                  <span className="text-xs text-primary font-semibold">Block Drag-and-Drop Enabled</span>
+                  <span className="text-xs text-primary font-semibold">Block Drag-and-Drop & Guided Assemble</span>
                 </div>
 
                 <Step2Itinerary
@@ -499,14 +471,17 @@ export default function UnifiedItineraryCanvas() {
                     const nextP = typeof upd === 'function' ? upd(p) : { ...p, ...upd };
                     updateProposal(nextP);
                   }}
+                  client={currentClient}
                   items={p.items || []}
                   setItems={() => {}}
                   addItemsOptimistic={() => {}}
                   saveDraft={() => {}}
+                  onOpenIntake={() => setShowQuickIntake(true)}
+                  hideSidebar={true}
                 />
               </div>
 
-              {/* Section 3: Costing & Margins */}
+              {/* Section 2: Full Costing & Margins Editor */}
               <div className="bg-surface-container-low border border-outline-variant rounded-2xl p-5 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h3 className="font-bold font-headline text-lg text-on-surface flex items-center gap-2 m-0">
@@ -517,17 +492,29 @@ export default function UnifiedItineraryCanvas() {
                   </span>
                 </div>
 
-                {/* Interactive Costing Controls */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-surface rounded-xl border border-outline-variant/60 text-xs">
+                {/* Interactive Costing Controls Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4 bg-surface rounded-xl border border-outline-variant/60 text-xs">
+                  {/* Margin Control */}
                   <div>
-                    <label className="block text-[11px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
-                      Agency Margin ({costingPrefs.margin_type === 'flat' ? '₹' : '%'})
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+                        Agency Margin
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextType = marginType === 'percentage' ? 'flat' : 'percentage';
+                          setCostingPrefs({ ...costingPrefs, margin_type: nextType });
+                        }}
+                        className="px-1.5 py-0.5 bg-primary/10 hover:bg-primary/20 text-primary font-bold rounded text-[10px] transition-colors"
+                      >
+                        {marginType === 'percentage' ? '% (Percent)' : '₹ (Flat)'}
+                      </button>
+                    </div>
                     <input
                       type="number"
                       min="0"
-                      max="100"
-                      value={costingPrefs.pct_markup !== undefined ? costingPrefs.pct_markup : (costingPrefs.margin_value || 15)}
+                      value={marginVal}
                       onChange={(e) => {
                         const val = parseFloat(e.target.value) || 0;
                         setCostingPrefs({ ...costingPrefs, pct_markup: val, margin_value: val });
@@ -536,6 +523,7 @@ export default function UnifiedItineraryCanvas() {
                     />
                   </div>
 
+                  {/* GST / Taxes Control */}
                   <div>
                     <label className="block text-[11px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
                       GST / Taxes (%)
@@ -544,7 +532,7 @@ export default function UnifiedItineraryCanvas() {
                       type="number"
                       min="0"
                       max="30"
-                      value={costingPrefs.tax !== undefined ? costingPrefs.tax : 5}
+                      value={taxRate}
                       onChange={(e) => {
                         const val = parseFloat(e.target.value) || 0;
                         setCostingPrefs({ ...costingPrefs, tax: val });
@@ -553,9 +541,40 @@ export default function UnifiedItineraryCanvas() {
                     />
                   </div>
 
+                  {/* Discount Control */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+                        Special Discount
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextType = discountType === 'flat' ? 'percentage' : 'flat';
+                          setCostingPrefs({ ...costingPrefs, discount_type: nextType });
+                        }}
+                        className="px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold rounded text-[10px] transition-colors"
+                      >
+                        {discountType === 'percentage' ? '% (Percent)' : '₹ (Flat)'}
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      value={discountVal}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setCostingPrefs({ ...costingPrefs, discount: val });
+                      }}
+                      placeholder="0"
+                      className="w-full px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container text-xs font-bold text-emerald-600 dark:text-emerald-400 outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Visibility Mode */}
                   <div>
                     <label className="block text-[11px] font-bold text-on-surface-variant mb-1 uppercase tracking-wider">
-                      Visibility Mode
+                      Client Visibility
                     </label>
                     <select
                       value={costingPrefs.visibility_mode || 'ITEMIZED'}
@@ -566,6 +585,43 @@ export default function UnifiedItineraryCanvas() {
                       <option value="TOTAL_ONLY">TOTAL_ONLY (Hide Breakdown)</option>
                       <option value="HIDDEN">HIDDEN (No Pricing)</option>
                     </select>
+                  </div>
+                </div>
+
+                {/* Subtotal Manual Override Toggle Row */}
+                <div className="px-4 py-2 bg-surface/60 border border-outline-variant/50 rounded-xl flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-on-surface-variant font-medium">Calculated Base Net Subtotal:</span>
+                    <span className="font-bold text-on-surface">₹{Math.round(calculatedSubtotal).toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {subtotalOverride !== null ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-amber-600 dark:text-amber-400 font-bold text-[11px]">Override Active:</span>
+                        <input
+                          type="number"
+                          value={subtotalOverride}
+                          onChange={(e) => setSubtotalOverride(e.target.value)}
+                          className="w-28 px-2 py-1 rounded bg-surface border border-amber-500 text-xs font-bold text-on-surface"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setSubtotalOverride(null)}
+                          className="text-[11px] text-primary hover:underline font-semibold"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setSubtotalOverride(calculatedSubtotal)}
+                        className="text-[11px] text-primary hover:underline font-semibold flex items-center gap-1"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">edit</span>
+                        <span>Override Subtotal Manually</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -583,7 +639,7 @@ export default function UnifiedItineraryCanvas() {
                     <span className="material-symbols-outlined text-2xl text-on-surface-variant/40 block">payments</span>
                     <p className="font-bold text-on-surface text-sm m-0">No Itinerary Days or Plan Items Added Yet</p>
                     <p className="text-[11px] text-on-surface-variant m-0">
-                      Add day blocks above or click "1-Shot Quick Intake" to generate a complete itinerary plan with costing.
+                      Add day blocks above or click "Intake Form" to generate a complete itinerary plan with costing.
                     </p>
                   </div>
                 ) : costingPrefs.visibility_mode === 'TOTAL_ONLY' ? (
@@ -600,7 +656,7 @@ export default function UnifiedItineraryCanvas() {
                   <div className="p-4 bg-surface border border-outline-variant rounded-xl space-y-3 text-xs">
                     <div className="flex justify-between py-1 border-b border-outline-variant/30">
                       <span className="text-on-surface-variant">Net Trip Subtotal (Hotels + Transfers + Activities):</span>
-                      <span className="font-bold text-on-surface">₹{Math.round(subtotal).toLocaleString('en-IN')}</span>
+                      <span className="font-bold text-on-surface">₹{Math.round(effectiveSubtotal).toLocaleString('en-IN')}</span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-outline-variant/30">
                       <span className="text-on-surface-variant">Agency Margin ({marginVal}{marginType === 'percentage' ? '%' : ' Flat'}):</span>
@@ -610,10 +666,10 @@ export default function UnifiedItineraryCanvas() {
                       <span className="text-on-surface-variant">GST / Taxes ({taxRate}%):</span>
                       <span className="font-bold text-on-surface">+₹{Math.round(taxAmount).toLocaleString('en-IN')}</span>
                     </div>
-                    {discountVal > 0 && (
+                    {discountAmount > 0 && (
                       <div className="flex justify-between py-1 border-b border-outline-variant/30">
-                        <span className="text-on-surface-variant">Special Discount:</span>
-                        <span className="font-bold text-emerald-500">-₹{Math.round(discountVal).toLocaleString('en-IN')}</span>
+                        <span className="text-on-surface-variant">Special Discount ({discountVal}{discountType === 'percentage' ? '%' : ' Flat'}):</span>
+                        <span className="font-bold text-emerald-500">-₹{Math.round(discountAmount).toLocaleString('en-IN')}</span>
                       </div>
                     )}
                     <div className="flex justify-between pt-2 text-sm font-bold text-primary">
@@ -623,6 +679,12 @@ export default function UnifiedItineraryCanvas() {
                   </div>
                 )}
               </div>
+
+              {/* Section 3: Extra Sections & Trip Policies Editor (What to Pack, Visa, Guidelines) */}
+              <ExtraSectionsEditor
+                proposal={p}
+                updateProposal={updateProposal}
+              />
             </motion.div>
           ) : (
             <motion.div
@@ -633,39 +695,15 @@ export default function UnifiedItineraryCanvas() {
               transition={{ duration: 0.2 }}
               className="max-w-6xl mx-auto w-full"
             >
-              <div className="bg-surface border border-outline-variant rounded-2xl shadow-xl overflow-hidden flex flex-col min-h-[calc(100vh-140px)] print-reset-wrapper print:border-none print:shadow-none print:bg-transparent">
-                <div className="px-5 py-3 bg-surface-container-high border-b border-outline-variant flex items-center justify-between text-xs no-print">
+              <div className="bg-surface border border-outline-variant rounded-2xl shadow-xl overflow-hidden flex flex-col min-h-[calc(100vh-140px)]">
+                <div className="px-5 py-3 bg-surface-container-high border-b border-outline-variant flex items-center justify-between text-xs">
                   <span className="font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-2">
                     <span className="material-symbols-outlined text-[18px] text-primary">description</span>
                     Layout Preview: <strong className="text-on-surface">{(activeTemplateSlug || 'classic').toUpperCase()}</strong>
                   </span>
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => {
-                        const storeState = useProposalStore.getState();
-                        let token = p?.share_token || p?.id || storeState.activeId;
-                        if (!token || token === 'demo') {
-                          token = crypto.randomUUID();
-                          useProposalStore.getState().setActiveId(token);
-                        }
-                        
-                        // Force save current live preview to local cache so the web view picks it up exactly as is
-                        try {
-                          const currentData = {
-                            ...p,
-                            id: token,
-                            preferences: {
-                              ...(p?.preferences || {}),
-                              branding: branding || storeState.branding
-                            }
-                          };
-                          localStorage.setItem(`voyanta_proposal_${token}`, JSON.stringify(currentData));
-                        } catch(e) {
-                          console.error('Failed to sync draft to local cache before opening web view', e);
-                          alert('Warning: Failed to sync your live draft to the Web View. If you uploaded large images, they may exceed your browser\'s local storage limits. Please save your draft to the database first.');
-                        }
-                        window.open(`/view/${token}`, '_blank');
-                      }}
+                      onClick={() => handleOpenWebViewStudio(false)}
                       className="text-primary hover:underline font-bold text-xs flex items-center gap-1.5"
                     >
                       <span className="material-symbols-outlined text-[16px]">open_in_new</span>
@@ -674,7 +712,7 @@ export default function UnifiedItineraryCanvas() {
                   </div>
                 </div>
 
-                <div className="flex-1 p-6 bg-surface-container-lowest overflow-y-auto print-region">
+                <div className="flex-1 p-6 bg-surface-container-lowest overflow-y-auto">
                   <TemplateRenderer 
                     style={activeTemplateSlug || 'classic'}
                     data={{
@@ -709,7 +747,7 @@ export default function UnifiedItineraryCanvas() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex justify-end"
+            className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-xs flex justify-end"
           >
             <motion.div
               initial={{ x: '100%' }}

@@ -21,20 +21,56 @@ import ImageSearchPicker from '../components/common/ImageSearchPicker.jsx';
 import GoogleTranslateWidget from '../components/GoogleTranslateWidget.jsx';
 import { createInvoiceFromProposal } from '../services/invoiceService.js';
 import { logActivity } from '../services/activityLogService.js';
-import { fetchSimilarImages } from '../services/imageService.js';
 
 const INDIAN_LANGUAGES = [
   { code: 'en', label: 'English', native: 'English' },
   { code: 'hi', label: 'Hindi', native: 'हिंदी' },
   { code: 'bn', label: 'Bengali', native: 'বাংলা' },
   { code: 'te', label: 'Telugu', native: 'తెలుగు' },
-  { code: 'mr', label: 'Marathi', native: 'मਰਾਠी' },
+  { code: 'mr', label: 'Marathi', native: 'मરાਠी' },
   { code: 'ta', label: 'Tamil', native: 'தமிழ்' },
   { code: 'gu', label: 'Gujarati', native: 'ગુજરાતી' },
   { code: 'kn', label: 'Kannada', native: 'ಕನ್ನಡ' },
   { code: 'pa', label: 'Punjabi', native: 'ਪੰਜਾਬੀ' },
   { code: 'ml', label: 'Malayalam', native: 'മലയാളം' }
 ];
+
+const safeList = (raw) => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map(item => {
+      if (item == null) return '';
+      if (typeof item === 'string') return item;
+      if (typeof item === 'number' || typeof item === 'boolean') return String(item);
+      return item.text || item.content || item.name || item.title || item.label || JSON.stringify(item);
+    }).filter(Boolean);
+  }
+  if (typeof raw === 'string') {
+    return raw.split('\n').map(s => s.trim()).filter(Boolean);
+  }
+  if (typeof raw === 'object') {
+    if (raw.content) return safeList(raw.content);
+    if (raw.items) return safeList(raw.items);
+    if (raw.inclusions) return safeList(raw.inclusions);
+    if (raw.exclusions) return safeList(raw.exclusions);
+    return Object.values(raw).map(v => typeof v === 'string' ? v : JSON.stringify(v)).filter(Boolean);
+  }
+  return [String(raw)];
+};
+
+const safeRenderText = (val) => {
+  if (val == null) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  if (Array.isArray(val)) return val.map(safeRenderText).join('\n');
+  if (typeof val === 'object') {
+    if (val.content !== undefined) return safeRenderText(val.content);
+    if (val.text !== undefined) return safeRenderText(val.text);
+    if (val.value !== undefined) return safeRenderText(val.value);
+    return Object.values(val).map(safeRenderText).join('\n');
+  }
+  return String(val);
+};
 
 export default function WebViewPage() {
   const { token } = useParams();
@@ -81,33 +117,12 @@ export default function WebViewPage() {
   // Confetti trigger
   const [showConfetti, setShowConfetti] = useState(false);
 
-  // Auto-fetched hero images if none are provided
-  const [autoHeroImages, setAutoHeroImages] = useState([]);
-
   const toast = useToast();
 
   // Activity click, details modal, and stock photo picker states
   const [selectedActivityBlock, setSelectedActivityBlock] = useState(null);
   const [selectedActivityDayIdx, setSelectedActivityDayIdx] = useState(null);
   const [showStockPicker, setShowStockPicker] = useState(false);
-
-  // Auto-fetch hero images if missing
-  useEffect(() => {
-    if (!data || isDemo) return;
-    const p = data.proposal || {};
-    const branding = p.preferences?.branding || {};
-    const explicitImages = (Array.isArray(p.heroImages) && p.heroImages.length > 0 ? p.heroImages : null) ||
-                           (branding.cover_image_url ? [branding.cover_image_url] : null) ||
-                           (p.cover_image_url ? [p.cover_image_url] : null);
-    
-    if (!explicitImages && p.destination && autoHeroImages.length === 0) {
-      fetchSimilarImages(p.destination, 2).then(res => {
-        if (res && res.length > 0) {
-          setAutoHeroImages(res.filter(r => r && r.url).map(r => r.url));
-        }
-      }).catch(() => {});
-    }
-  }, [data, isDemo, autoHeroImages.length]);
 
   const markProposalSent = () => {
     try {
@@ -243,31 +258,44 @@ export default function WebViewPage() {
       })
       .catch(() => {
         if (mounted) {
-          // Check local proposal cache (by id or token)
+          // Check local proposal cache (by draft_preview, id, or token)
           let cachedLocalProp = null;
           try {
-            const listCache = JSON.parse(localStorage.getItem('voyanta_proposals_list_cache') || '[]');
-            cachedLocalProp = listCache.find(p => String(p.id) === String(token) || String(p.share_token) === String(token));
+            if (token === 'draft_preview' || token === 'demo') {
+              const draftStr = localStorage.getItem('voyanta_draft_preview');
+              if (draftStr) cachedLocalProp = JSON.parse(draftStr);
+            }
             if (!cachedLocalProp && token) {
               const singleCache = localStorage.getItem(`voyanta_proposal_${token}`);
               if (singleCache) cachedLocalProp = JSON.parse(singleCache);
             }
-            if (!cachedLocalProp && token) {
-              const draftCache = localStorage.getItem(`voyanta_proposal_draft_${token}`);
-              if (draftCache) {
-                const draftData = JSON.parse(draftCache);
-                if (draftData.proposal) {
-                  cachedLocalProp = draftData.proposal;
-                }
-              }
+            if (!cachedLocalProp) {
+              const listCache = JSON.parse(localStorage.getItem('voyanta_proposals_list_cache') || '[]');
+              cachedLocalProp = listCache.find(p => String(p.id) === String(token) || String(p.share_token) === String(token));
+            }
+            if (!cachedLocalProp) {
+              const draftStr = localStorage.getItem('voyanta_draft_preview');
+              if (draftStr) cachedLocalProp = JSON.parse(draftStr);
             }
           } catch {}
 
           if (cachedLocalProp) {
+            const rawItems = cachedLocalProp.items || [];
+            const grouped = {};
+            for (const it of rawItems) {
+              const k = (it.kind || 'custom').toLowerCase();
+              (grouped[k] ||= []).push(it);
+            }
+            const total = rawItems.reduce((s, it) => s + (Number(it.qty) || 1) * (Number(it.unit_price || it.price) || 0), 0);
+
             setData({
               proposal: cachedLocalProp,
-              items: cachedLocalProp.items || [],
-              totals: { subtotal: cachedLocalProp.total_amount || 0, currency: cachedLocalProp.currency || 'INR' },
+              items: rawItems,
+              items_by_kind: grouped,
+              totals: {
+                subtotal: cachedLocalProp.total_price || cachedLocalProp.total_amount || total || 0,
+                currency: cachedLocalProp.currency || 'INR'
+              },
             });
             setIsDemo(false);
             setLoading(false);
@@ -301,9 +329,11 @@ export default function WebViewPage() {
   const branding = p.preferences?.branding || {};
   const daysList = (p.days && Array.isArray(p.days) && p.days.length > 0)
     ? p.days
-    : (p.trip_details && Array.isArray(p.trip_details.days) && p.trip_details.days.length > 0
-      ? p.trip_details.days
-      : []);
+    : (p.itinerary?.days && Array.isArray(p.itinerary.days) && p.itinerary.days.length > 0
+      ? p.itinerary.days
+      : (p.trip_details && Array.isArray(p.trip_details.days) && p.trip_details.days.length > 0
+        ? p.trip_details.days
+        : []));
 
   const include = p.preferences?.include_sections || ALL_SECTIONS;
   const sectionOrder = p.preferences?.section_order || SECTIONS;
@@ -774,8 +804,7 @@ export default function WebViewPage() {
             (Array.isArray(p.heroImages) && p.heroImages.length > 0 ? p.heroImages : null) ||
             (branding.cover_image_url ? [branding.cover_image_url] : null) ||
             (p.cover_image_url ? [p.cover_image_url] : null) ||
-            (daysList.length > 0 && (daysList[0].images?.[0] || daysList[0].image_url) ? [daysList[0].images?.[0] || daysList[0].image_url] : null) ||
-            (autoHeroImages.length > 0 ? autoHeroImages : null) || [
+            (daysList.length > 0 && (daysList[0].images?.[0] || daysList[0].image_url) ? [daysList[0].images?.[0] || daysList[0].image_url] : null) || [
               'https://images.unsplash.com/photo-1599661046289-e31897846e41?w=1200&q=80',
               'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=1200&q=80',
             ]
@@ -905,17 +934,17 @@ export default function WebViewPage() {
           )}
 
           {/* Inclusions & Exclusions */}
-          {((include.inclusions && p.inclusions) || (include.exclusions && p.exclusions)) && (
+          {((include.inclusions && (p.inclusions || p.included_items)) || (include.exclusions && (p.exclusions || p.excluded_items))) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-              {include.inclusions && p.inclusions && (
+              {include.inclusions && (p.inclusions || p.included_items) && (
                 <div id="inclusions-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
                   <h3 className="text-lg font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
                     <span className="material-symbols-outlined">check_circle</span>
                     Inclusions
                   </h3>
                   <ul className="space-y-2.5 text-sm text-on-surface-variant">
-                    {p.inclusions.split('\n').map((item, i) => {
-                      const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                    {safeList(p.inclusions || p.included_items).map((item, i) => {
+                      const clean = String(item).replace(/^[-•*+]\s*/, '').trim();
                       return clean ? (
                         <li key={i} className="flex items-start gap-2.5">
                           <span className="material-symbols-outlined text-emerald-500 text-base mt-0.5 shrink-0">check_circle</span>
@@ -926,15 +955,15 @@ export default function WebViewPage() {
                   </ul>
                 </div>
               )}
-              {include.exclusions && p.exclusions && (
+              {include.exclusions && (p.exclusions || p.excluded_items) && (
                 <div id="exclusions-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
                   <h3 className="text-lg font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
                     <span className="material-symbols-outlined">cancel</span>
                     Exclusions
                   </h3>
                   <ul className="space-y-2.5 text-sm text-on-surface-variant">
-                    {p.exclusions.split('\n').map((item, i) => {
-                      const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                    {safeList(p.exclusions || p.excluded_items).map((item, i) => {
+                      const clean = String(item).replace(/^[-•*+]\s*/, '').trim();
                       return clean ? (
                         <li key={i} className="flex items-start gap-2.5">
                           <span className="material-symbols-outlined text-rose-500 text-base mt-0.5 shrink-0">cancel</span>
@@ -956,9 +985,7 @@ export default function WebViewPage() {
                 What to Pack & Packing Guidelines
               </h3>
               <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
-                {typeof (p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines) === 'string'
-                  ? (p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines)
-                  : JSON.stringify(p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines, null, 2)}
+                {safeRenderText(p.what_to_pack || p.preferences?.what_to_pack || p.packing_guidelines)}
               </div>
             </div>
           )}
@@ -971,9 +998,7 @@ export default function WebViewPage() {
                 Important Notes & Advisories
               </h3>
               <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
-                {typeof (p.important_notes || p.preferences?.important_notes) === 'string'
-                  ? (p.important_notes || p.preferences?.important_notes)
-                  : JSON.stringify(p.important_notes || p.preferences?.important_notes, null, 2)}
+                {safeRenderText(p.important_notes || p.preferences?.important_notes)}
               </div>
             </div>
           )}
@@ -986,9 +1011,7 @@ export default function WebViewPage() {
                 Visa & Travel Documentation
               </h3>
               <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">
-                {typeof (p.visa_guidelines || p.preferences?.visa_guidelines) === 'string'
-                  ? (p.visa_guidelines || p.preferences?.visa_guidelines)
-                  : JSON.stringify(p.visa_guidelines || p.preferences?.visa_guidelines, null, 2)}
+                {safeRenderText(p.visa_guidelines || p.preferences?.visa_guidelines)}
               </div>
             </div>
           )}
@@ -1020,13 +1043,16 @@ export default function WebViewPage() {
                   <div key={cb.id} id={cb.id} className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4">
                     <h3 className="text-xl font-display font-bold text-on-surface">{cb.label}</h3>
                     {cb.type === 'text' ? (
-                      <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">{contentVal}</div>
+                      <div className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-wrap">{safeRenderText(contentVal)}</div>
                     ) : cb.type === 'list' ? (
                       <ul className="space-y-2 text-sm text-on-surface-variant pl-4 list-disc">
-                        {contentVal.split('\n').map((item, i) => item.trim() && <li key={i}>{item}</li>)}
+                        {safeList(contentVal).map((item, i) => {
+                          const clean = String(item).trim();
+                          return clean ? <li key={i}>{clean}</li> : null;
+                        })}
                       </ul>
                     ) : cb.type === 'image' && contentVal ? (
-                      <img src={contentVal} className="w-full max-h-96 object-cover rounded-xl" alt={cb.label} />
+                      <img src={typeof contentVal === 'string' ? contentVal : contentVal?.url} className="w-full max-h-96 object-cover rounded-xl" alt={cb.label} />
                     ) : null}
                   </div>
                 );
@@ -1042,8 +1068,8 @@ export default function WebViewPage() {
                 Terms of Payment
               </h3>
               <ul className="space-y-2.5 text-sm text-on-surface-variant">
-                {(p.terms_of_payment || p.preferences?.branding?.terms_of_payment || branding?.terms_of_payment).split('\n').map((item, i) => {
-                  const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                {safeList(p.terms_of_payment || p.preferences?.branding?.terms_of_payment || branding?.terms_of_payment).map((item, i) => {
+                  const clean = String(item).replace(/^[-•*+]\s*/, '').trim();
                   return clean ? (
                     <li key={i} className="flex items-start gap-2.5">
                       <span className="material-symbols-outlined text-primary text-base mt-0.5 shrink-0">check_circle</span>
@@ -1056,15 +1082,15 @@ export default function WebViewPage() {
           )}
 
           {/* Terms & Conditions */}
-          {include.terms && p.terms && (
+          {include.terms && (p.terms || p.terms_conditions) && (
             <div id="terms-sec" className="glass-card rounded-2xl p-6 border border-outline-variant shadow-xs space-y-4 pt-4">
               <h3 className="text-xl font-display font-bold text-on-surface flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">gavel</span>
                 Terms & Conditions
               </h3>
               <ul className="space-y-2.5 text-sm text-on-surface-variant">
-                {p.terms.split('\n').map((item, i) => {
-                  const clean = item.replace(/^[-•*+]\s*/, '').trim();
+                {safeList(p.terms || p.terms_conditions).map((item, i) => {
+                  const clean = String(item).replace(/^[-•*+]\s*/, '').trim();
                   return clean ? (
                     <li key={i} className="flex items-start gap-2.5">
                       <span className="material-symbols-outlined text-primary/70 text-base mt-0.5 shrink-0">arrow_right</span>
@@ -1385,7 +1411,7 @@ export default function WebViewPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 no-print"
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 no-print"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -1466,7 +1492,7 @@ export default function WebViewPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 no-print"
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 no-print"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -1584,7 +1610,7 @@ export default function WebViewPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 no-print"
+            className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 no-print"
             onClick={() => setSelectedActivityBlock(null)}
           >
             <motion.div
@@ -1701,42 +1727,6 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
     setOpen(defaultExpanded);
   }, [defaultExpanded]);
 
-  const initialDayImages = Array.isArray(day.images) && day.images.length > 0
-    ? day.images
-    : (Array.isArray(day.photos) && day.photos.length > 0
-      ? day.photos
-      : (day.image_url ? [day.image_url] : []));
-
-  const [fetchedImages, setFetchedImages] = useState([]);
-
-  useEffect(() => {
-    if (initialDayImages.length === 0 && day.title) {
-      let query = day.title || '';
-      if (query.toLowerCase().includes('day')) {
-        query = query.replace(/Day \d+:?/i, '').trim();
-      }
-      
-      const contentKeywords = (day.content || [])
-        .filter(b => b.data && b.data.name)
-        .map(b => b.data.name)
-        .join(' ');
-      
-      if (contentKeywords) {
-        query = `${query} ${contentKeywords}`.trim().substring(0, 100);
-      }
-      
-      if (query && query.length > 2) {
-        fetchSimilarImages(query, 1).then(res => {
-          if (res && res.length > 0 && res[0].url) {
-            setFetchedImages([res[0].url]);
-          }
-        }).catch(() => {});
-      }
-    }
-  }, [day.title, initialDayImages.length, day.content]);
-
-  const finalDayImages = initialDayImages.length > 0 ? initialDayImages : fetchedImages;
-
   return (
     <div className="border border-outline-variant rounded-2xl overflow-hidden bg-surface transition-all shadow-xs hover:shadow-sm">
       {/* Accordion Header (Always visible) */}
@@ -1777,16 +1767,24 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
               <p>{day.description || 'No description provided.'}</p>
 
               {/* Day Block Image Carousel */}
-              {finalDayImages.length > 0 && (
-                <div className="h-52 md:h-64 rounded-xl overflow-hidden border border-outline-variant/60 shadow-xs">
-                  <MediaCarousel
-                    images={finalDayImages}
-                    autoPlay={finalDayImages.length > 1}
-                    interval={4500}
-                    className="w-full h-full"
-                  />
-                </div>
-              )}
+              {(() => {
+                const dayImages = Array.isArray(day.images) && day.images.length > 0
+                  ? day.images
+                  : (Array.isArray(day.photos) && day.photos.length > 0
+                    ? day.photos
+                    : (day.image_url ? [day.image_url] : []));
+                if (dayImages.length === 0) return null;
+                return (
+                  <div className="h-52 md:h-64 rounded-xl overflow-hidden border border-outline-variant/60 shadow-xs">
+                    <MediaCarousel
+                      images={dayImages}
+                      autoPlay={dayImages.length > 1}
+                      interval={4500}
+                      className="w-full h-full"
+                    />
+                  </div>
+                );
+              })()}
 
               {/* Render Day Content Blocks */}
               {Array.isArray(day.content) && day.content.length > 0 && (
@@ -1802,7 +1800,7 @@ function ItineraryDayAccordionCard({ day, dayNumber, lang, defaultExpanded }) {
                       return <img key={block.id} src={block.data.url} alt="" className="rounded-xl w-full max-h-72 object-cover my-2 shadow-xs border border-outline-variant/30" />;
                     }
                     if (block.type === 'gallery' && block.data?.urls) {
-                      const urls = block.data.urls.split('\n').map(u => u.trim()).filter(Boolean);
+                      const urls = safeList(block.data.urls);
                       if (urls.length === 0) return null;
                       return (
                         <div key={block.id} className="grid grid-cols-2 sm:grid-cols-3 gap-2 my-2">

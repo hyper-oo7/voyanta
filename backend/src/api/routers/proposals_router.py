@@ -24,12 +24,12 @@ from src.services.vector_store import vector_store
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/proposals", tags=["proposals"])
+router = APIRouter(prefix="/proposals", tags=["Proposals"])
 
 def get_supabase():
     return get_supabase_client()
 
-@router.post("/generate", response_model=GeneratedProposal)
+@router.post("/generate", response_model=GeneratedProposal, summary="Generate full AI proposal with day plans and pricing")
 async def generate_proposal(request: ProposalGenerateRequest):
     try:
         sb = get_supabase()

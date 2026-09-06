@@ -19,6 +19,14 @@ def compute_cache_key(agency_id: Optional[str], model: str, prompt_version: str,
     
     return cache_key, input_hash
 
+def compute_prompt_hash(prompt_template: str) -> str:
+    """
+    Derives a short, deterministic hash from the prompt template content.
+    When the prompt changes, the hash changes — automatically invalidating
+    stale cache entries without requiring manual version string bumps.
+    """
+    return hashlib.sha256(prompt_template.strip().encode("utf-8")).hexdigest()[:12]
+
 async def get_cached_extraction(
     agency_id: Optional[str],
     model: str,
@@ -42,6 +50,11 @@ async def get_cached_extraction(
         if redis_client:
             redis_data = await redis_client.get(f"ai_cache:{cache_key}")
             if redis_data:
+                # Refresh TTL on hit (sliding expiry)
+                try:
+                    await redis_client.expire(f"ai_cache:{cache_key}", 2592000)
+                except Exception:
+                    pass
                 parsed_out = json.loads(redis_data) if isinstance(redis_data, str) else redis_data
                 saved_tokens = (len(normalized_input) + len(json.dumps(parsed_out))) // 4
                 await increment_hits(saved_tokens)
@@ -149,40 +162,82 @@ async def save_cached_extraction(
 
 async def increment_hits(saved_tokens: int):
     """
-    Atomically increments cache hit counts and token savings estimate.
+    Atomically increments cache hit counts and token savings estimate using Redis / RPC.
     """
+    # 1. Atomic Redis increment if available
+    try:
+        from src.core.redis_client import get_redis_client
+        rc = get_redis_client()
+        if rc:
+            if hasattr(rc, "pipeline"):
+                pipe = rc.pipeline(transaction=False)
+                pipe.incr("stats:cache_hits")
+                if hasattr(pipe, "incrby"):
+                    pipe.incrby("stats:saved_tokens", saved_tokens)
+                else:
+                    pipe.incr("stats:saved_tokens")
+                await pipe.execute()
+            else:
+                await rc.incr("stats:cache_hits")
+                if hasattr(rc, "incrby"):
+                    await rc.incrby("stats:saved_tokens", saved_tokens)
+                else:
+                    await rc.incr("stats:saved_tokens")
+    except Exception as re_err:
+        logger.debug(f"[AICache] Redis hit increment error: {re_err}")
+
+    # 2. Atomic Supabase RPC increment if available
     sb = get_supabase_client()
     if not sb:
         return
     try:
-        # Fetch current stats
-        res = sb.table("ai_cache_stats").select("*").eq("id", "global").maybe_single().execute()
-        if res and getattr(res, "data", None):
-            current_hits = res.data.get("cache_hits") or 0
-            current_tokens = res.data.get("saved_tokens_estimate") or 0
-            sb.table("ai_cache_stats").update({
-                "cache_hits": current_hits + 1,
-                "saved_tokens_estimate": current_tokens + saved_tokens
-            }).eq("id", "global").execute()
-    except Exception as e:
-        logger.error(f"[AICache] Failed to increment hits: {e}")
+        sb.rpc("increment_cache_stat", {"stat_name": "hits", "delta": 1}).execute()
+        if saved_tokens > 0:
+            sb.rpc("increment_cache_stat", {"stat_name": "tokens", "delta": saved_tokens}).execute()
+    except Exception:
+        # Fallback to direct table update if RPC function does not exist in DB yet
+        try:
+            res = sb.table("ai_cache_stats").select("*").eq("id", "global").maybe_single().execute()
+            if res and getattr(res, "data", None):
+                current_hits = res.data.get("cache_hits") or 0
+                current_tokens = res.data.get("saved_tokens_estimate") or 0
+                sb.table("ai_cache_stats").update({
+                    "cache_hits": current_hits + 1,
+                    "saved_tokens_estimate": current_tokens + saved_tokens
+                }).eq("id", "global").execute()
+        except Exception as e:
+            logger.debug(f"[AICache] Table hit increment skipped: {e}")
 
 async def increment_misses():
     """
-    Atomically increments cache miss counts.
+    Atomically increments cache miss counts using Redis / RPC.
     """
+    # 1. Atomic Redis increment if available
+    try:
+        from src.core.redis_client import get_redis_client
+        rc = get_redis_client()
+        if rc:
+            await rc.incr("stats:cache_misses")
+    except Exception as re_err:
+        logger.debug(f"[AICache] Redis miss increment error: {re_err}")
+
+    # 2. Atomic Supabase RPC increment if available
     sb = get_supabase_client()
     if not sb:
         return
     try:
-        res = sb.table("ai_cache_stats").select("cache_misses").eq("id", "global").maybe_single().execute()
-        if res and getattr(res, "data", None):
-            current_misses = res.data.get("cache_misses") or 0
-            sb.table("ai_cache_stats").update({
-                "cache_misses": current_misses + 1
-            }).eq("id", "global").execute()
-    except Exception as e:
-        logger.error(f"[AICache] Failed to increment misses: {e}")
+        sb.rpc("increment_cache_stat", {"stat_name": "misses", "delta": 1}).execute()
+    except Exception:
+        # Fallback to direct table update
+        try:
+            res = sb.table("ai_cache_stats").select("cache_misses").eq("id", "global").maybe_single().execute()
+            if res and getattr(res, "data", None):
+                current_misses = res.data.get("cache_misses") or 0
+                sb.table("ai_cache_stats").update({
+                    "cache_misses": current_misses + 1
+                }).eq("id", "global").execute()
+        except Exception as e:
+            logger.debug(f"[AICache] Table miss increment skipped: {e}")
 
 async def get_cache_stats() -> dict:
     """

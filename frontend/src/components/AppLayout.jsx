@@ -290,7 +290,7 @@ export default function AppLayout() {
   return (
     <div className="flex h-screen overflow-hidden bg-surface text-on-surface">
       {/* Sidebar Navigation */}
-      <aside className="w-64 flex-shrink-0 flex flex-col py-lg space-y-xs overflow-y-auto bg-surface border-r border-outline-variant z-50">
+      <aside className="w-64 flex-shrink-0 flex flex-col py-lg space-y-xs overflow-y-auto bg-surface border-r border-outline-variant z-20">
         <div className="px-lg mb-xl">
           <div className="flex items-center gap-md">
             <div className="w-10 h-10 bg-primary flex items-center justify-center rounded-lg">
@@ -333,13 +333,13 @@ export default function AppLayout() {
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Dynamic Top Banner */}
         {upiReminder && (
-          <div className="flex-shrink-0 bg-amber-600 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-50 text-xs font-semibold no-print">
+          <div className="flex-shrink-0 bg-amber-600 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-20 text-xs font-semibold">
             <span>🔔 Upcoming UPI / Bank Renewal: Your subscription renews in 4 days. Make payment now to ensure continuous access.</span>
             <button onClick={() => setUpgradeModalOpen(true)} className="px-3 py-1 bg-white text-amber-900 font-bold rounded-lg border-none cursor-pointer">Pay Now</button>
           </div>
         )}
         {!upiReminder && (
-          <div className={`flex-shrink-0 bg-gradient-to-r from-primary/90 via-emerald-600 to-primary text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-50 text-xs no-print`}>
+          <div className={`flex-shrink-0 bg-gradient-to-r from-primary/90 via-emerald-600 to-primary text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-md z-20 text-xs`}>
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded-full bg-white/20 text-white font-extrabold uppercase text-[10px] tracking-wider">
                 Full Access
@@ -359,7 +359,7 @@ export default function AppLayout() {
 
         {/* Top Navigation Bar */}
         {isDashboard && (
-          <header className="flex-shrink-0 flex justify-between items-center w-full px-lg py-md bg-surface shadow-sm z-40 no-print">
+          <header className="flex-shrink-0 flex justify-between items-center w-full px-lg py-md bg-surface shadow-sm z-20">
             <div className="flex items-center gap-sm">
               <span className="material-symbols-outlined text-primary text-[24px]">dashboard</span>
               <h2 className="font-headline-md text-lg font-bold text-on-surface m-0 tracking-tight">Agent Dashboard</h2>
@@ -427,7 +427,7 @@ export default function AppLayout() {
                   <span className="material-symbols-outlined">help</span>
                 </button>
                 {showHelp && (
-                  <aside className="w-[280px] absolute right-0 top-full mt-sm bg-surface border border-outline-variant rounded-xl shadow-xl z-50 p-lg no-print">
+                  <div className="absolute right-0 top-full mt-sm w-64 bg-surface border border-outline-variant rounded-xl shadow-xl z-50 p-lg">
                     <h4 className="font-headline-sm text-sm font-bold text-on-surface mb-sm">Voyanta Support</h4>
                     <p className="font-body-md text-xs text-on-surface-variant mb-md leading-relaxed">Need help configuring your account or creating a proposal? Our concierge team is here for you.</p>
                     <div className="space-y-xs">
@@ -443,9 +443,9 @@ export default function AppLayout() {
                         <span className="material-symbols-outlined text-[18px] text-primary font-bold">menu_book</span>
                         <Link to="/how-to-use" className="text-primary hover:underline font-bold transition-colors">How to Use Guide</Link>
                       </div>
-                      </div>
-                    </aside>
-                  )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </header>
@@ -569,7 +569,7 @@ export default function AppLayout() {
       {isProcessing && (
         <div 
           onClick={() => navigate('/vault')}
-          className="fixed bottom-6 right-6 z-[99999] max-w-sm bg-surface/90 dark:bg-surface-container/95 border border-outline-variant/80 rounded-2xl p-4 shadow-2xl backdrop-blur-md cursor-pointer hover:border-primary/50 hover:shadow-primary/5 transition-all flex items-center gap-3 select-none no-print"
+          className="fixed bottom-6 right-6 z-[99999] max-w-sm bg-surface/90 dark:bg-surface-container/95 border border-outline-variant/80 rounded-2xl p-4 shadow-2xl backdrop-blur-md cursor-pointer hover:border-primary/50 hover:shadow-primary/5 transition-all flex items-center gap-3 select-none"
         >
           <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
             <span className="material-symbols-outlined text-[20px] animate-spin">sync</span>

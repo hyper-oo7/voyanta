@@ -1,4 +1,5 @@
 import { supabase, getAgencyId, isDemoSession } from '../lib/supabaseClient.js';
+import { hydrateProposalContent } from './proposalService.js';
 
 // Proposal items (junction): hotels/flights/activities/transfers/etc on a proposal.
 // Pricing fields (qty * unit_price) are summed by the cost calculator.
@@ -163,6 +164,10 @@ export async function buildProposalExport(proposalId) {
   if (!proposal) {
     throw new Error(`Proposal ${proposalId} not found`);
   }
+  // Rows come straight from the table here, so the proposal body still sits
+  // inside `itinerary`. Templates read proposal.days, so without this the
+  // exported PDF renders an itinerary with no days in it.
+  proposal = hydrateProposalContent(proposal);
   if ((!items || items.length === 0) && Array.isArray(proposal.items)) {
     items = proposal.items;
   } else if ((!items || items.length === 0)) {

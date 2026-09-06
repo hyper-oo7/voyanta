@@ -17,8 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import Response, JSONResponse
 from typing import Any, Optional
 
-from src.models.api_models import PDFGenerateRequest
-from src.core.security import verify_token, verify_token_optional, get_request_token
+from src.models.api_models import PDFGenerateRequest, HealthResponse, VaultPDFProcessResponse
+from src.core.security import verify_token, verify_token_optional, get_request_token, CurrentUser, OptionalUser, RequestToken
 from src.services.pdf_vault_service import (
     save_temporary_pdf,
     extract_text_from_pdf,
@@ -40,26 +40,26 @@ from src.services.embedder import embedder
 from src.services.vector_store import vector_store
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/pdf")
+router = APIRouter(prefix="/pdf", tags=["PDF Generation"])
 PDF_SERVICE_URL = os.environ.get("PDF_SERVICE_URL", "http://127.0.0.1:8002")
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY")
 if not INTERNAL_API_KEY:
     raise RuntimeError("FATAL: INTERNAL_API_KEY environment variable is not set.")
 
 
-@router.get("/health")
+@router.get("/health", response_model=HealthResponse, summary="PDF microservice health check")
 async def pdf_health():
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             res = await client.get(f"{PDF_SERVICE_URL}/health")
-            return JSONResponse(status_code=res.status_code, content=res.json())
+            return res.json()
         except Exception as e:
             logger.exception("PDF service health check failed")
-            return JSONResponse(status_code=503, content={"ok": False, "error": str(e)})
+            return {"status": "error", "ok": False, "error": str(e)}
 
 
-@router.post("/generate")
-async def pdf_generate(request: PDFGenerateRequest, user: Any = Depends(verify_token_optional)):
+@router.post("/generate", summary="Generate high-fidelity PDF document via Puppeteer microservice")
+async def pdf_generate(request: PDFGenerateRequest, user: OptionalUser = None):
     payload = request.model_dump(exclude_none=True)
     if not payload.get("proposal_id") and not payload.get("html"):
         raise HTTPException(status_code=400, detail="Missing proposal_id or html")
@@ -86,7 +86,7 @@ async def pdf_generate(request: PDFGenerateRequest, user: Any = Depends(verify_t
             raise HTTPException(status_code=500, detail=f"PDF service failure: {str(e)}")
 
 
-@router.post("/vault-process")
+@router.post("/vault-process", response_model=VaultPDFProcessResponse, summary="Parse supplier PDF and ingest into agency knowledge vault")
 async def process_vault_pdf(
     file: UploadFile = File(...),
     destination: str = Form(""),          # Optional hint — actual destination extracted from PDF
@@ -94,8 +94,8 @@ async def process_vault_pdf(
     duration: int = Form(0),             # Optional duration hint — actual duration extracted from PDF
     currency: str = Form("INR"),          # Default but overridden by PDF-detected currency
     reparse: bool = Form(True),           # True by default to force re-parsing & finding new items
-    user: Any = Depends(verify_token),
-    token: Optional[str] = Depends(get_request_token),
+    user: CurrentUser = None,
+    token: RequestToken = None,
 ):
     """
     Vault V2 Pipeline with Delta Extraction:
@@ -234,16 +234,27 @@ async def process_vault_pdf(
                     "data": cached_result,
                 })
 
-        # ── Step 6: Gemini faithful re-extraction ──────────────────────────
-        ai_result = await route_model_cascading(
-            compressed_text=compressed_text,
-            images=images_list,
-            destination=destination,
-            budget=budget,
-            duration=duration,
-            currency=currency,
-            agency_id=agency_id,
-        )
+        # ── Step 6: Gemini faithful re-extraction (Protected by Distributed Redlock)
+        from src.core.redis_client import get_redis_client, acquire_lock, release_lock
+        rc = get_redis_client()
+        lock_token = None
+        lock_key = f"pdf_ai_extract:{pdf_hash[:16]}"
+        if rc:
+            lock_token = await acquire_lock(rc, lock_key, ttl_seconds=120)
+
+        try:
+            ai_result = await route_model_cascading(
+                compressed_text=compressed_text,
+                images=images_list,
+                destination=destination,
+                budget=budget,
+                duration=duration,
+                currency=currency,
+                agency_id=agency_id,
+            )
+        finally:
+            if rc and lock_token:
+                await release_lock(rc, lock_key, lock_token)
 
         extracted_pkg = ai_result.get("extracted_package") or (
             ai_result.get("recommendations", [{}])[0]
@@ -295,6 +306,26 @@ async def process_vault_pdf(
                 if chunks:
                     chunk_texts = [c["content"] for c in chunks]
                     embeddings = await asyncio.to_thread(embedder.embed_texts, chunk_texts)
+
+                    # Use admin/service-role client for vector store writes to bypass RLS
+                    admin_sb = get_supabase_client()
+
+                    # Pre-create a documents row using the vault_package_id as the document ID
+                    # so the chunk records are traceable, even without the FK constraint
+                    if admin_sb:
+                        try:
+                            admin_sb.table("documents").upsert({
+                                "id": vault_package_id,
+                                "agency_id": agency_id,
+                                "filename": file.filename or "supplier_package.pdf",
+                                "document_type": "pdf",
+                                "page_count": extraction_metrics.get("page_count", 1) if 'extraction_metrics' in dir() else 1,
+                                "status": "processed",
+                            }).execute()
+                            logger.info(f"[VaultProcess] Upserted documents row: id={vault_package_id}")
+                        except Exception as doc_err:
+                            logger.warning(f"[VaultProcess] documents upsert skipped (non-fatal): {doc_err}")
+
                     stored_count = vector_store.store_chunks(
                         agency_id=agency_id,
                         document_id=vault_package_id,
@@ -305,7 +336,7 @@ async def process_vault_pdf(
                     delta_summary["chunks_indexed"] = stored_count
                     logger.info(f"[VaultProcess] RAG: {stored_count} chunks indexed for '{doc_dest}' (agency={agency_id})")
             except Exception as embed_err:
-                logger.error(f"[VaultProcess] RAG embedding pipeline failed (non-fatal): {embed_err}")
+                logger.error(f"[VaultProcess] RAG embedding pipeline failed (non-fatal): {embed_err}", exc_info=True)
 
         # ── Step 8: Accumulate destination knowledge ───────────────────────
         extra_sections = ai_result.get("extra_sections") or {}

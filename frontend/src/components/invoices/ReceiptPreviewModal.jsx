@@ -151,7 +151,7 @@ export function ReceiptPreviewModal({ invoice, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-start justify-center p-2 md:p-6 overflow-y-auto animate-fade-in print:p-0 print:bg-white print:static">
+    <div className="fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm flex items-start justify-center p-2 md:p-6 overflow-y-auto animate-fade-in print:p-0 print:bg-white print:static">
       <div className="bg-surface-container-lowest w-full max-w-2xl rounded-3xl shadow-2xl border border-outline-variant flex flex-col my-8 print:my-0 print:shadow-none print:border-none print:w-full">
         
         {/* Toolbar (Hidden on Print) */}

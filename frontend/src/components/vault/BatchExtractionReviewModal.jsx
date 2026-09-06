@@ -352,7 +352,7 @@ export default function BatchExtractionReviewModal({ isOpen, onClose, batchData 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-hidden animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-hidden animate-fade-in">
       <div className="bg-surface border border-subtle rounded-3xl shadow-2xl w-full max-w-6xl h-[88vh] flex flex-col overflow-hidden">
         
         {/* Header */}

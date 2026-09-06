@@ -8,8 +8,10 @@ from src.services.supabase_client import get_supabase_client
 import os
 import httpx
 
+from src.models.api_models import BaseResponse
+
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/public")
+router = APIRouter(prefix="/public", tags=["Public Shared Proposals"])
 
 class ProposalActionInput(BaseModel):
     action: str
@@ -18,7 +20,14 @@ class ProposalActionInput(BaseModel):
     client_notes: Optional[str] = None
     modifications: Optional[Dict[str, Any]] = None
 
-@router.post("/proposals/{token}/action")
+class ProposalActionResponse(BaseResponse):
+    success: bool
+    status: str
+    message: str
+    audit_id: str
+    timestamp: str
+
+@router.post("/proposals/{token}/action", response_model=ProposalActionResponse, summary="Client approval or change request on public proposal")
 async def client_proposal_action(token: str, input: ProposalActionInput, request: Request):
     """
     Handle client actions (Approval, Request Changes) for a public shared proposal token.

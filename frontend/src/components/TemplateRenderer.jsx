@@ -53,12 +53,21 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
   const branding = brandingProp || b || {};
   const lang = p.language || p.lang || branding.language || 'en';
   const items = data.items_by_kind || {};
-  const total = (data.totals && data.totals.subtotal !== undefined) 
-    ? Number(data.totals.subtotal) 
-    : (Number(p.total_price) || Number(p.total_amount) || (Number(p.price_per_person || p.pricePerPerson) ? (Number(p.price_per_person || p.pricePerPerson) * (Number(p.num_travelers || brief.num_adults || 2))) : 0) || 50000);
   const currency = data.totals?.currency || 'INR';
   const days = (p.days && Array.isArray(p.days)) ? p.days : [];
   const brief = p.brief || {};
+  // Priced-by-line-item proposals carry a subtotal; vault and AI proposals price
+  // the trip on the proposal itself and have no items, so a subtotal of exactly
+  // 0 must fall through rather than win. The old chain also ended in `|| 50000`,
+  // which printed a fabricated price on a client quote when everything was 0.
+  const itemSubtotal = Number(data.totals?.subtotal) || 0;
+  const proposalPrice =
+    Number(p.total_price) ||
+    Number(p.total_amount) ||
+    (Number(p.price_per_person || p.pricePerPerson)
+      ? Number(p.price_per_person || p.pricePerPerson) * (Number(p.num_travelers || brief.num_adults || 2))
+      : 0);
+  const total = itemSubtotal > 0 ? itemSubtotal : proposalPrice;
   const visibilityMode = (p.visibility_mode || data.visibility_mode || 'ITEMIZED').toUpperCase();
   const adults = Number(brief.num_adults ?? p.travelers ?? 1) || 0;
   const children = Number(brief.num_children ?? 0) || 0;
@@ -344,11 +353,14 @@ const ClassicTemplateRenderer = memo(function ClassicTemplateRenderer({ style = 
         );
 
       case 'inclusions':
-        return <section key={key} className={sectionClass} style={sectionStyle}><Title>{getI18nLabel('whatsIncluded', lang)}</Title><div className="whitespace-pre-wrap">{safeText(b.inclusions) || '—'}</div></section>;
+        // Branding carries agency-wide boilerplate; the proposal carries what was
+        // extracted for this trip. Reading only branding left every vault and
+        // AI proposal showing an em dash here.
+        return <section key={key} className={sectionClass} style={sectionStyle}><Title>{getI18nLabel('whatsIncluded', lang)}</Title><div className="whitespace-pre-wrap">{safeText(b.inclusions) || safeText(p.inclusions) || '—'}</div></section>;
       case 'exclusions':
-        return <section key={key} className={sectionClass} style={sectionStyle}><Title>{getI18nLabel('whatsExcluded', lang)}</Title><div className="whitespace-pre-wrap">{safeText(b.exclusions) || '—'}</div></section>;
+        return <section key={key} className={sectionClass} style={sectionStyle}><Title>{getI18nLabel('whatsExcluded', lang)}</Title><div className="whitespace-pre-wrap">{safeText(b.exclusions) || safeText(p.exclusions) || '—'}</div></section>;
       case 'terms':
-        return <section key={key} className={sectionClass} style={sectionStyle}><Title>{getI18nLabel('termsOfPayment', lang)}</Title><div className="whitespace-pre-wrap">{safeText(b.terms_of_payment) || '—'}</div></section>;
+        return <section key={key} className={sectionClass} style={sectionStyle}><Title>{getI18nLabel('termsOfPayment', lang)}</Title><div className="whitespace-pre-wrap">{safeText(b.terms_of_payment) || safeText(p.extra_sections?.payment) || safeText(p.extra_sections?.terms_and_conditions) || '—'}</div></section>;
       
       case 'contacts':
         return (

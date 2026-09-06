@@ -116,6 +116,10 @@ export async function createProposal(payload) {
     currency: payload.currency || 'INR',
     preferences: payload.preferences || null,
     trip_details: payload.trip_details || null,
+    // Without this the very first save dropped the whole itinerary: updates
+    // pass the patch straight through, but this row was built field by field
+    // and simply omitted it, so a newly created proposal had no days.
+    itinerary: payload.itinerary || null,
     brief: payload.brief || null,
     status: payload.status || 'Draft',
     visibility_mode: payload.visibility_mode || 'ITEMIZED',
@@ -298,9 +302,40 @@ export async function archiveProposal(id) {
   return normalize(data);
 }
 
-function normalize(row) {
+/**
+ * Lift the renderable proposal body back to the top level.
+ *
+ * `proposals` has no column for days, overview, inclusions or extra sections —
+ * they live together in the `itinerary` jsonb. Every template reads
+ * `proposal.days`, so a row loaded straight from the database renders as an
+ * empty proposal unless its itinerary is unpacked first.
+ */
+export function hydrateProposalContent(row) {
+  if (!row || typeof row !== 'object') return row;
+  const it = row.itinerary;
+  if (!it || typeof it !== 'object') return row;
+
+  // Tolerate the older shape where `itinerary` was the days array itself.
+  const body = Array.isArray(it) ? { days: it } : it;
+
   return {
     ...row,
+    days: row.days ?? body.days ?? [],
+    overview: row.overview ?? body.overview ?? '',
+    inclusions: row.inclusions ?? body.inclusions ?? [],
+    exclusions: row.exclusions ?? body.exclusions ?? [],
+    extra_sections: row.extra_sections ?? body.extra_sections ?? {},
+    sub_destinations: row.sub_destinations ?? body.sub_destinations ?? [],
+    total_price: row.total_price ?? body.total_price ?? null,
+    price_per_person: row.price_per_person ?? body.price_per_person ?? null,
+    duration_days: row.duration_days ?? body.duration_days ?? null,
+    cover_image_url: row.cover_image_url ?? body.cover_image_url ?? '',
+  };
+}
+
+function normalize(row) {
+  return {
+    ...hydrateProposalContent(row),
     visibility_mode: row.visibility_mode || 'ITEMIZED',
     date: row.created_at ? new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '',
   };

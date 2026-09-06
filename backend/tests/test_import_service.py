@@ -126,7 +126,7 @@ def test_import_process_endpoint_pdf(mock_gemini, mock_r2, mock_supabase, mock_e
         mock_page.get_images.return_value = []
         mock_fitz_open.return_value = mock_doc
         
-        # Test default preview_only=True workflow
+        # Test async job queue workflow
         response = client.post(
             "/api/import/process",
             files={"file": ("itinerary.pdf", b"%PDF-1.4 mock content")},
@@ -135,22 +135,15 @@ def test_import_process_endpoint_pdf(mock_gemini, mock_r2, mock_supabase, mock_e
         
         assert response.status_code == 200
         json_data = response.json()
-        assert json_data["status"] == "success"
-        assert json_data["cache_hit"] is False
-        assert json_data["preview_only"] is True
-        assert json_data["data"]["destination"] == "Paris"
-        assert json_data["data"]["source_type"] == "pdf"
-        assert "overall_confidence_score" in json_data["data"]
+        assert json_data["status"] == "queued"
+        assert "job_id" in json_data
+        job_id = json_data["job_id"]
 
-        # Test preview_only=False direct save workflow
-        response_direct = client.post(
-            "/api/import/process",
-            files={"file": ("itinerary.pdf", b"%PDF-1.4 mock content")},
-            data={"destination": "Paris", "budget": "2000", "duration": "3", "preview_only": "false"}
-        )
-        assert response_direct.status_code == 200
-        json_direct = response_direct.json()
-        assert json_direct["data"]["vault_package_id"] == "mock-package-id"
+        # Poll status
+        status_resp = client.get(f"/api/import/status/{job_id}")
+        assert status_resp.status_code == 200
+        status_data = status_resp.json()
+        assert status_data["status"] in ("queued", "extracting", "completed")
 
 def test_import_confirm_endpoint(mock_gemini, mock_r2, mock_supabase, mock_entitlements, mock_semantic_cache):
     confirm_payload = {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useToast } from '../context/ToastContext.jsx';
 import { logActivity } from '../services/activityLogService.js';
 import { getAgencyId } from '../lib/supabaseClient.js';
@@ -395,8 +396,8 @@ export default function ContactsPage() {
       </div>
 
       {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      {showModal && createPortal(
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-surface border border-outline-variant max-w-lg w-full rounded-3xl p-6 shadow-2xl">
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-outline-variant">
               <h3 className="font-display text-lg font-bold m-0">{editingId ? 'Edit Contact' : 'Add New Contact'}</h3>
@@ -455,7 +456,8 @@ export default function ContactsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

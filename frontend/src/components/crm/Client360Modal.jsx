@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useToast } from '../../context/ToastContext.jsx';
 import { fetchProposalsFlat } from '../../services/proposalService.js';
 import { fetchInvoices, createInvoiceFromProposal, createInvoice } from '../../services/invoiceService.js';
@@ -119,8 +120,8 @@ export function Client360Modal({ client, onClose }) {
   const totalReceived = invoices.reduce((acc, inv) => acc + (Number(inv.paid_amount) || 0), 0);
   const totalOutstanding = invoices.reduce((acc, inv) => acc + (Number(inv.remaining_balance) || 0), 0);
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 md:p-6 overflow-y-auto animate-fade-in">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 md:p-6 overflow-y-auto animate-fade-in">
       <div className="bg-surface-container-lowest w-full max-w-5xl rounded-3xl shadow-2xl border border-outline-variant flex flex-col max-h-[92vh] overflow-hidden">
         
         {/* Header Drawer Banner */}
@@ -399,6 +400,7 @@ export function Client360Modal({ client, onClose }) {
           }}
         />
       )}
-    </div>
+    </div>,
+    document.body
   );
 }

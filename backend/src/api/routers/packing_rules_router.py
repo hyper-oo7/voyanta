@@ -2,15 +2,14 @@ import logging
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from src.core.security import verify_token, get_request_token
+from src.core.security import verify_token, get_request_token, CurrentUser, RequestToken
+from src.models.api_models import BaseResponse
 from src.services.supabase_client import get_user_supabase_client
 
 
 logger = logging.getLogger(__name__)
 
-# Same double-prefix issue as billing_router: mounted under an "/api" router,
-# so this must not repeat the segment. MyVaultPage calls /api/packing-rules/upsert.
-router = APIRouter(prefix="/packing-rules", tags=["Agency Packing Memory"])
+router = APIRouter(prefix="/packing-rules", tags=["Knowledge Vault"])
 
 class PackingRuleUpsertRequest(BaseModel):
     destination_keyword: str
@@ -18,15 +17,23 @@ class PackingRuleUpsertRequest(BaseModel):
     section_title: str = "What to Pack"
     content: str
 
+class PackingRulesMatchResponse(BaseResponse):
+    status: str = "success"
+    rules: List[Dict[str, Any]] = []
+
+class PackingRulesUpsertResponse(BaseResponse):
+    status: str = "success"
+    message: str
+
 # In-memory local fallback store for demo/unauthenticated mode or sqlite fallback
 _LOCAL_AGENCY_MEMORY: Dict[str, Dict[str, Any]] = {}
 
-@router.get("/match")
+@router.get("/match", response_model=PackingRulesMatchResponse, summary="Match agency packing rules by destination keyword")
 async def match_agency_packing_rules(
+    user: CurrentUser,
     destination: str = Query("", description="Primary destination e.g. Kashmir"),
     sub_destinations: str = Query("", description="Comma-separated sub-destinations e.g. Srinagar,Gulmarg"),
-    user: Any = Depends(verify_token),
-    token: Optional[str] = Depends(get_request_token)
+    token: RequestToken = None
 ):
     """
     Returns agency-exclusive packing rules and extra sections matching either
@@ -73,11 +80,11 @@ async def match_agency_packing_rules(
         logger.error(f"[PackingRules] Failed to query DB: {e}")
         return {"status": "success", "rules": []}
 
-@router.post("/upsert")
+@router.post("/upsert", response_model=PackingRulesUpsertResponse, summary="Save or update agency-exclusive packing rule")
 async def upsert_agency_packing_rule(
     payload: PackingRuleUpsertRequest,
-    user: Any = Depends(verify_token),
-    token: Optional[str] = Depends(get_request_token)
+    user: CurrentUser,
+    token: RequestToken = None
 ):
     """
     Saves or updates an agency-exclusive packing rule or extra section.

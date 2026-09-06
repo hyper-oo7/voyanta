@@ -9,7 +9,15 @@ from typing import Any, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import JSONResponse
 
-from src.core.security import verify_token_optional, get_request_token
+from src.core.security import verify_token_optional, get_request_token, CurrentUser, OptionalUser, RequestToken
+from src.core.tenancy import resolve_agency_id, resolve_write_agency_id
+from src.models.api_models import (
+    BaseResponse,
+    ImportProcessResponse,
+    ImportStatusResponse,
+    RawTextExtractResponse,
+    ImportConfirmResponse,
+)
 from src.services.supabase_client import get_supabase_client, get_user_supabase_client
 from src.services.chunker import TravelDocumentChunker
 from src.services.embedder import embedder
@@ -26,7 +34,7 @@ from src.services.pdf_vault_service import deterministic_pre_parse_and_compress
 from src.services.import_service import PdfExtractor, XlsxExtractor, CsvExtractor
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/import")
+router = APIRouter(prefix="/import", tags=["Knowledge Vault"])
 
 JOB_TTL_SECONDS = 60 * 60
 MAX_TRACKED_JOBS = 500
@@ -65,25 +73,91 @@ def _assert_pdf_within_page_limit(file_bytes: bytes) -> None:
     try:
         import fitz
         with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-            page_count = doc.page_count
+            page_count = getattr(doc, "page_count", 0)
+            if isinstance(page_count, int) and page_count > MAX_PDF_PAGES:
+                raise ValueError(
+                    f"PDF has {page_count} pages (max allowed: {MAX_PDF_PAGES}). "
+                    "Split the file or remove unnecessary pages."
+                )
+    except ValueError:
+        raise
     except Exception as e:
         logger.warning(f"[ImportProcess] Could not pre-read page count: {e}")
         return
 
-    if page_count > MAX_PDF_PAGES:
-        raise ValueError(
-            f"PDF has {page_count} pages (max allowed: {MAX_PDF_PAGES}). "
-            "Split the file or remove unnecessary pages."
-        )
+
+def _persist_job_to_redis_sync(job_id: str, fields: Dict[str, Any]) -> None:
+    """Helper to safely persist job state to distributed Redis Hash from sync or async contexts."""
+    try:
+        from src.core.redis_client import get_redis_client
+        rc = get_redis_client()
+        if not rc:
+            return
+
+        key = f"voyanta:job:{job_id}"
+        serialized = {
+            k: json.dumps(v) if not isinstance(v, (str, int, float, bool)) else json.dumps(v)
+            for k, v in fields.items()
+        }
+
+        async def _do_hset():
+            try:
+                await rc.hset(key, mapping=serialized)
+                await rc.expire(key, JOB_TTL_SECONDS)
+            except Exception as ex:
+                logger.debug(f"[JobStore] Redis hset failed: {ex}")
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_do_hset())
+        except RuntimeError:
+            asyncio.run(_do_hset())
+    except Exception as e:
+        logger.debug(f"[JobStore] Failed to write job to Redis: {e}")
 
 
 def _set_job(job_id: str, **fields: Any) -> None:
-    """Create or update a tracked job, preserving its created_at stamp."""
+    """Create or update a tracked job in local memory and distributed Redis Hash."""
     job = EXTRACTION_JOBS.get(job_id)
     if job is None:
         job = {"created_at": time.time()}
         EXTRACTION_JOBS[job_id] = job
     job.update(fields)
+    _persist_job_to_redis_sync(job_id, job)
+
+
+async def _get_job(job_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve job state, preferring the in-process record over the Redis mirror.
+
+    `_run_extraction_bg` is a sync function, so FastAPI runs it in a worker
+    thread with no event loop. The Redis mirror written from there is therefore
+    best-effort and can lag behind (or never arrive), while the in-memory dict is
+    always up to date inside the process that owns the job. Reading Redis first
+    would pin the poller to the stale "queued" snapshot written at request time
+    and the extraction would never appear to finish. Redis is still consulted as
+    a fallback so a poll that lands on a different worker can find the job.
+    """
+    local = EXTRACTION_JOBS.get(job_id)
+    if local:
+        return local
+
+    try:
+        from src.core.redis_client import get_redis_client
+        rc = get_redis_client()
+        if rc:
+            key = f"voyanta:job:{job_id}"
+            raw = await rc.hgetall(key)
+            if raw:
+                deserialized = {}
+                for k, v in raw.items():
+                    try:
+                        deserialized[k] = json.loads(v)
+                    except Exception:
+                        deserialized[k] = v
+                return deserialized
+    except Exception as e:
+        logger.debug(f"[JobStore] Redis hgetall error ({e}), no memory fallback available")
+    return None
 
 def accumulate_agency_packing_rules(
     destination: str,
@@ -98,10 +172,13 @@ def accumulate_agency_packing_rules(
     if not agency_id or not destination or not extra_sections:
         return
         
-    sb = get_user_supabase_client(token)
+    # agency_id reaching here was already resolved from verified claims, and the
+    # public key has no write grant on agency_packing_rules, so this upsert has
+    # to run with the service role or it is silently rejected.
+    sb = get_supabase_client()
     if not sb:
         return
-        
+
     dest_kw = destination.lower().strip()
     for sec_type, content in extra_sections.items():
         if not content or not content.strip():
@@ -185,7 +262,11 @@ def _run_extraction_bg(
 
         _set_job(job_id, progress={"stage": "Indexing Entities & Vector Knowledge", "current": 3, "total": 4})
 
-        sb = get_user_supabase_client(token, agency_id) if token else get_supabase_client()
+        # user_id is only set when the token actually verified. A token that
+        # Supabase rejected still arrives as a non-empty string, and building a
+        # client from it yields the anon role with no write grants — so gate on
+        # the verification result, not on the token being present.
+        sb = get_user_supabase_client(token, agency_id) if (user_id and token) else get_supabase_client()
 
         delta_summary = perform_pdf_delta_sync(
             extracted_pkg=normalized,
@@ -216,7 +297,20 @@ def _run_extraction_bg(
                     )
                     normalized["chunks_indexed"] = stored_count
             except Exception as embed_err:
-                logger.error(f"[ImportProcess] Background RAG embedding error: {embed_err}")
+                # A failure here used to vanish into the log: the job still
+                # reported "completed", so a document could look imported while
+                # contributing nothing to RAG. Record it on the result instead.
+                detail = str(embed_err)
+                logger.error(f"[ImportProcess] Background RAG embedding error: {detail}")
+                if "permission denied" in detail or "42501" in detail:
+                    logger.error(
+                        "[ImportProcess] The vector store rejected the write. The backend is "
+                        "using the public Supabase key, which has no INSERT privilege on "
+                        "document_chunks. Set SUPABASE_SERVICE_ROLE_KEY so ingestion runs with "
+                        "the service role."
+                    )
+                normalized["chunks_indexed"] = 0
+                normalized["rag_index_error"] = detail
 
         _set_job(
             job_id,
@@ -244,19 +338,21 @@ def _run_extraction_bg(
     finally:
         _prune_extraction_jobs()
 
-@router.post("/process")
+@router.post("/process", response_model=ImportProcessResponse, summary="Start async supplier catalog extraction job")
 async def process_file_import(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    agency_id: str = Form("demo-agency"),
+    # Accepted for backwards compatibility with older clients but no longer
+    # trusted: the effective tenant comes from the verified token below.
+    agency_id: str = Form(""),
     destination: str = Form(""),
     budget: float = Form(0.0),
     duration: int = Form(0),
     currency: str = Form("INR"),
     preview_only: bool = Form(False),
     reparse: bool = Form(True),
-    user: Any = Depends(verify_token_optional),
-    token: Optional[str] = Depends(get_request_token),
+    user: OptionalUser = None,
+    token: RequestToken = None,
 ):
     """
     Unified Import Processing Endpoint:
@@ -275,17 +371,32 @@ async def process_file_import(
 
     file_bytes = await file.read()
     filename = file.filename or "uploaded_doc.pdf"
+    ext = (filename.split(".")[-1] if "." in filename else "").lower()
 
-    resolved_agency_id = agency_id
-    user_id = None
-    if isinstance(user, dict):
-        resolved_agency_id = (
-            (user.get("user_metadata") or {}).get("agency_id")
-            or (user.get("app_metadata") or {}).get("agency_id")
-            or user.get("agency_id")
-            or agency_id
-        )
-        user_id = user.get("sub") or user.get("id")
+    if ext == "pdf":
+        if b"%PDF-" not in file_bytes[:1024]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid file structure. Only valid PDF files starting with '%PDF-' magic bytes are allowed."
+            )
+    elif ext in ("xlsx", "xls"):
+        if not (file_bytes.startswith(b"PK\x03\x04") or file_bytes.startswith(b"\xd0\xcf\x11\xe0")):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid spreadsheet structure. Only valid spreadsheet files (.xlsx, .xls) are allowed."
+            )
+    elif ext == "csv":
+        if file_bytes.startswith(b"PK\x03\x04") or file_bytes.startswith(b"%PDF-") or file_bytes.startswith(b"\x89PNG"):
+            raise HTTPException(
+                status_code=400,
+                detail="Binary format or unsupported content detected. Please provide a valid plaintext CSV file."
+            )
+
+    # Ingest is a write: the tenant comes from verified claims, falling back to
+    # the shared default. It must match what the read paths resolve to, or the
+    # chunks land under a key nothing ever queries.
+    resolved_agency_id = resolve_write_agency_id(user)
+    user_id = user.get("sub") or user.get("id") if isinstance(user, dict) else None
 
     job_id = str(uuid.uuid4())
     _prune_extraction_jobs()
@@ -314,22 +425,25 @@ async def process_file_import(
         token=token
     )
 
-    return JSONResponse(content={"status": "queued", "job_id": job_id})
+    return {"status": "queued", "job_id": job_id}
 
-@router.get("/status/{job_id}")
+@router.get("/status/{job_id}", response_model=ImportStatusResponse, summary="Poll async extraction job status")
 async def get_import_status(job_id: str):
     """
     Polls current status of an async extraction job by job_id.
+    Checks distributed Redis Hash store first, falling back to local memory.
     """
-    job = EXTRACTION_JOBS.get(job_id)
+    job = await _get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Extraction job '{job_id}' not found.")
-    return JSONResponse(content=job)
+    return job
 
-@router.post("/extract-text")
+@router.post("/extract-text", response_model=RawTextExtractResponse, summary="Raw deterministic PDF text extraction")
 async def extract_raw_text(
     file: UploadFile = File(...),
-    agency_id: str = Form("demo-agency")
+    # Kept for backwards compatibility with older clients; the value is not
+    # trusted and the endpoint does not write, so nothing is scoped by it.
+    agency_id: str = Form(""),
 ):
     """
     Raw text fallback extraction using PyMuPDF / pdfminer without LLM processing.
@@ -347,37 +461,40 @@ async def extract_raw_text(
             import io
             raw_text = extract_text(io.BytesIO(file_bytes))
 
-        return JSONResponse(content={"status": "success", "text": raw_text})
+        return {"status": "success", "text": raw_text}
     except Exception as e:
         logger.error(f"[ExtractText] Failed to extract raw text: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "text": "", "message": str(e)})
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/confirm")
+@router.post("/confirm", response_model=ImportConfirmResponse, summary="Confirm and persist extracted supplier package")
 async def confirm_file_import(
     payload: Dict[str, Any],
-    user: Any = Depends(verify_token_optional),
-    token: Optional[str] = Depends(get_request_token),
+    user: OptionalUser = None,
+    token: RequestToken = None,
 ):
     """
     Saves a confirmed/agent-reviewed extraction package to vault_packages,
     and accumulates destination knowledge and agency rules.
     """
     try:
-        agency_id = None
-        user_id = None
-        if isinstance(user, dict):
-            agency_id = (
-                (user.get("user_metadata") or {}).get("agency_id")
-                or (user.get("app_metadata") or {}).get("agency_id")
-                or user.get("agency_id")
-            )
-            user_id = user.get("sub") or user.get("id")
+        # Same tenant rule as ingest. This used to leave agency_id as None for
+        # an anonymous session, which is a valid value for a uuid column, so the
+        # package saved under no tenant at all and no later query could find it.
+        agency_id = resolve_write_agency_id(user)
+        user_id = user.get("sub") or user.get("id") if isinstance(user, dict) else None
 
-        from src.services.supabase_client import get_user_supabase_client
-        sb = get_user_supabase_client(token, agency_id)
-
-        from src.services.supabase_client import get_user_supabase_client
-        sb = get_user_supabase_client(token, agency_id)
+        # Persisting the confirmed package is a trusted server-side write, and
+        # agency_id above is derived from the verified token, so the row is
+        # scoped in application code either way. get_user_supabase_client always
+        # builds on the PUBLIC key, which has no INSERT/UPDATE privilege on
+        # vault_packages — without a service-role fallback the confirm is
+        # rejected outright and the package is silently lost.
+        #
+        # Gate on `user`, not on `token`: an expired session still sends a
+        # non-empty bearer string, Supabase answers 403, and the resulting
+        # client is plain anon. Falling back to the service role there is the
+        # difference between saving the package and dropping it.
+        sb = get_user_supabase_client(token, agency_id) if (user and token) else get_supabase_client()
 
         filename = payload.pop("_pdf_filename", payload.get("pdf_filename", "confirmed_package.pdf"))
         file_hash = payload.pop("_pdf_hash", payload.get("pdf_hash", hashlib.md5(str(payload).encode()).hexdigest()))
@@ -427,7 +544,7 @@ async def confirm_file_import(
 
         if hash_key:
             try:
-                sb = get_user_supabase_client(token, agency_id) if token else get_supabase_client()
+                sb = get_user_supabase_client(token, agency_id) if (user and token) else get_supabase_client()
                 asyncio.create_task(store_cached_recommendation(
                     hash_key,
                     dict(payload),

@@ -77,7 +77,24 @@ def save_vault_package(
 
     if not sb:
         logger.warning("[VaultKnowledge] No Supabase client — package not persisted to DB.")
-        return None
+    def _schedule_summary_task(package_id: str):
+        if not package_id:
+            return
+        text_source = raw_text or parsed_data.get("overview") or json.dumps(parsed_data.get("days", []))
+        if text_source and len(text_source) > 30:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(_generate_and_store_doc_summary(
+                    document_id=package_id,
+                    agency_id=agency_id or "global",
+                    document_text=text_source,
+                    table_name="vault_packages",
+                ))
+            except RuntimeError:
+                pass
+            except Exception as e:
+                logger.debug(f"[VaultKnowledge] Summary schedule skipped: {e}")
 
     try:
         # Check for existing record with same hash for same agent
@@ -91,6 +108,7 @@ def save_vault_package(
             pkg_id = existing.data[0]["id"]
             sb.table("vault_packages").update(record).eq("id", pkg_id).execute()
             logger.info(f"[VaultKnowledge] Updated existing vault package id={pkg_id}")
+            _schedule_summary_task(pkg_id)
             return {"id": pkg_id, **record}
         else:
             # Mark previous versions of the same file for the same agency as superseded
@@ -109,12 +127,50 @@ def save_vault_package(
             # Insert new
             res = sb.table("vault_packages").insert(record).execute()
             if res.data:
-                logger.info(f"[VaultKnowledge] Saved new vault package: {res.data[0].get('id')}")
+                saved_id = res.data[0].get("id")
+                logger.info(f"[VaultKnowledge] Saved new vault package: {saved_id}")
+                _schedule_summary_task(saved_id)
                 return res.data[0]
     except Exception as e:
         logger.error(f"[VaultKnowledge] Failed to save vault package: {e}")
 
     return None
+
+
+async def _generate_and_store_doc_summary(
+    document_id: str,
+    agency_id: str,
+    document_text: str,
+    table_name: str = "vault_packages",
+) -> None:
+    """Background task: generate doc-level summary embedding for Document Summary routing."""
+    try:
+        from src.services.ai_client import call_llm
+        from src.services.embedder import embedder
+        from src.services.vector_store import vector_store
+
+        summary = await call_llm(
+            prompt=(
+                f"Summarize this travel supplier document in 2-3 concise sentences. "
+                f"Include destination, trip duration, star category, key attractions, and price range if visible:\n\n"
+                f"{document_text[:3500]}"
+            ),
+            system_prompt="You are a travel document indexer. Produce a concise, factual summary for search routing.",
+            temperature=0.0,
+            max_tokens=150,
+        )
+        if summary and len(summary.strip()) > 10:
+            summary_emb = embedder.embed_text(summary.strip())
+            vector_store.store_document_summary(
+                document_id=document_id,
+                agency_id=agency_id,
+                summary_text=summary.strip(),
+                summary_embedding=summary_emb,
+                table_name=table_name,
+            )
+            logger.info(f"[VaultKnowledge] Stored document summary embedding for id={document_id}")
+    except Exception as e:
+        logger.debug(f"[VaultKnowledge] Background doc summary generation skipped: {e}")
 
 
 def list_vault_packages(
@@ -190,7 +246,8 @@ def get_vault_package(pkg_id: str, agency_id: Optional[str] = None) -> Optional[
         if agency_id:
             query = query.eq("agency_id", agency_id)
         res = query.maybe_single().execute()
-        pkg = res.data
+        # maybe_single() yields None (not an empty response) when nothing matches.
+        pkg = res.data if res else None
         if pkg:
             if isinstance(pkg.get("parsed_data"), str):
                 try:
@@ -381,7 +438,11 @@ def accumulate_destination_knowledge(
                 query = query.eq("user_id", user_id)
 
             res = query.maybe_single().execute()
-            existing = res.data
+            # maybe_single() yields None (not an empty response) when nothing
+            # matches, which is the common case on the first import for a
+            # destination — every section used to die here with
+            # "'NoneType' object has no attribute 'data'".
+            existing = res.data if res else None
 
             if existing:
                 # Merge content
@@ -535,12 +596,18 @@ def perform_pdf_delta_sync(
 
             if sb:
                 try:
+                    # meal_type and room_type are not columns on `hotels`;
+                    # including them made PostgREST reject the whole insert with
+                    # PGRST204, so no extracted hotel ever reached the library.
+                    # They are kept on the `raw` payload instead.
                     hotel_record = {
                         "name": h_name,
                         "location": h.get("location") or destination or "Imported Location",
                         "price_per_night": float(h.get("price_per_night") or h.get("rate") or 5000),
-                        "meal_type": h.get("meal_plan") or h.get("meal_type") or "CP (Breakfast)",
-                        "room_type": h.get("room_type") or "Deluxe Room",
+                        "raw": {
+                            "meal_type": h.get("meal_plan") or h.get("meal_type") or "CP (Breakfast)",
+                            "room_type": h.get("room_type") or "Deluxe Room",
+                        },
                         "category": h.get("category") or "4 Star",
                         "rating": float(h.get("rating") or 4.5),
                         "amenities": h.get("amenities") if isinstance(h.get("amenities"), list) else ["WiFi", "Room Service"],

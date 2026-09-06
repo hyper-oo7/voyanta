@@ -106,7 +106,6 @@ function syncVaultItemsToLibrary(items) {
 export default function MyVaultPage() {
   const navigate = useNavigate();
   const toast = useToast();
-  const setProposalField = useProposalStore(state => state.setField);
   const addRecommendationOption = useProposalStore(state => state.addRecommendationOption);
 
   // Upload form state
@@ -210,11 +209,24 @@ export default function MyVaultPage() {
         }
       });
 
-      setVaultItems(combined);
-      try {
-        localStorage.setItem('voyanta_vault_items', JSON.stringify(combined));
-      } catch {}
-      syncVaultItemsToLibrary(combined);
+      // Save FULL combined list to localStorage ONLY if no filters are active!
+      if (!filterDest && !filterBudget) {
+        try {
+          localStorage.setItem('voyanta_vault_items', JSON.stringify(combined));
+        } catch {}
+      }
+
+      // Filter local items for display
+      const displayItems = combined.filter(item => {
+        if (filterDest) {
+           const d = (item.destination || item.parsed_data?.destination || '').toLowerCase();
+           if (!d.includes(filterDest.toLowerCase()) && !filterDest.toLowerCase().includes(d)) return false;
+        }
+        return true;
+      });
+
+      setVaultItems(displayItems);
+      syncVaultItemsToLibrary(displayItems);
     } catch (err) {
       console.error('[MyVault] Failed to load vault items:', err);
       setVaultItems(localItems);
@@ -288,14 +300,6 @@ export default function MyVaultPage() {
     const data = item.parsed_data || item;
     const extraSections = item.extra_sections || data.extra_sections || {};
 
-    // Set proposal fields from faithfully extracted data
-    setProposalField('destination', data.destination || item.destination || '');
-    setProposalField('subDestinations', data.sub_destinations || item.sub_destinations || []);
-    setProposalField('duration', data.duration_days || item.duration_days || 7);
-    setProposalField('currency', data.currency || item.currency || 'INR');
-    setProposalField('budget', data.total_price || item.total_price || data.price_per_person);
-    setProposalField('days', data.days || []);
-    setProposalField('overview', data.overview || '');
     const safeSecText = (val) => {
       if (val == null) return '';
       if (typeof val === 'string' || typeof val === 'number') return String(val);
@@ -306,11 +310,52 @@ export default function MyVaultPage() {
       }
       return String(val);
     };
-    setProposalField('inclusions', Array.isArray(data.inclusions) ? data.inclusions.join('\n') : safeSecText(data.inclusions));
-    setProposalField('exclusions', Array.isArray(data.exclusions) ? data.exclusions.join('\n') : safeSecText(data.exclusions));
-    setProposalField('what_to_pack', safeSecText(extraSections.what_to_pack));
-    setProposalField('extra_sections', extraSections);
-    setProposalField('recommendationStatus', 'From Vault');
+
+    const destination = data.destination || item.destination || '';
+    const days = data.days || [];
+    const durationDays = data.duration_days || item.duration_days || days.length || 7;
+    const totalPrice = data.total_price ?? item.total_price ?? data.price_per_person ?? 0;
+
+    // The canvas renders off `proposal`, so the package has to be committed as a
+    // whole proposal object. `setField` alone cannot do it: it only merges into
+    // `proposal` when one already exists, and `proposal` starts out null — which
+    // is why applying a package used to land on an empty canvas.
+    const nextProposal = {
+      ...data,
+      // `data.id` identifies the vault package, not a proposal. Carrying it over
+      // made the canvas look like an already-saved proposal, so saving tried to
+      // update a row that does not exist and the PDF renderer could not load it.
+      id: undefined,
+      source_vault_package_id: item.id,
+      destination,
+      sub_destinations: data.sub_destinations || item.sub_destinations || [],
+      duration_days: durationDays,
+      currency: data.currency || item.currency || 'INR',
+      total_price: totalPrice,
+      days,
+      overview: data.overview || item.overview || '',
+      // Inclusions/exclusions are passed through untouched — the section
+      // renderers already accept either an array or a newline-joined string.
+      inclusions: data.inclusions ?? [],
+      exclusions: data.exclusions ?? [],
+      extra_sections: extraSections,
+      cover_image_url: item.cover_image_url || data.cover_image_url || '',
+    };
+
+    const prevClient = useProposalStore.getState().client || {};
+    useProposalStore.setState({
+      proposal: nextProposal,
+      items: [],
+      client: {
+        ...prevClient,
+        destination,
+        duration_days: durationDays,
+        duration_nights: Math.max(0, durationDays - 1),
+        budget: totalPrice,
+        what_to_pack: safeSecText(extraSections.what_to_pack),
+        recommendationStatus: 'From Vault',
+      },
+    });
 
     // Add as recommendation option to store
     if (addRecommendationOption) {
@@ -334,7 +379,7 @@ export default function MyVaultPage() {
 
     toast.success(`Applied "${data.destination || item.destination}" vault package to Proposal Wizard!`);
     navigate('/proposals/wizard');
-  }, [setProposalField, addRecommendationOption, navigate, toast]);
+  }, [addRecommendationOption, navigate, toast]);
 
   // ── Delete vault item ─────────────────────────────────────────────────────
   const handleDeleteItem = async (itemId, e) => {
@@ -343,9 +388,19 @@ export default function MyVaultPage() {
 
     // Save backup of current state for rollback if server request fails
     const backupItems = [...vaultItems];
+    const backupLocal = [];
+    try {
+      const raw = localStorage.getItem('voyanta_vault_items');
+      if (raw) backupLocal.push(...JSON.parse(raw));
+    } catch {}
 
     // Optimistic UI Update: remove from local state immediately (instant UI response)
     setVaultItems(prev => prev.filter(i => i.id !== itemId));
+    
+    // Also remove from localStorage so it doesn't come back!
+    const newLocal = backupLocal.filter(i => i.id !== itemId);
+    localStorage.setItem('voyanta_vault_items', JSON.stringify(newLocal));
+    
     toast.success('Package removed from Vault');
 
     try {
@@ -358,17 +413,25 @@ export default function MyVaultPage() {
       const headers = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`/api/vault/packages/${itemId}`, { method: 'DELETE', headers });
-      if (!res.ok) {
-        console.error('Failed to delete package from server');
-        // Rollback optimistic update
-        setVaultItems(backupItems);
-        toast.error('Failed to remove package from server. Item restored.');
+      // Only attempt server delete if it's a real server UUID (not a local timestamp or fake ID)
+      // Supabase UUID throws PostgreSQL type error if not a valid UUID string, causing 500 error
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(itemId));
+      
+      if (isUUID) {
+        const res = await fetch(`/api/vault/packages/${itemId}`, { method: 'DELETE', headers });
+        if (!res.ok) {
+          console.error('Failed to delete package from server');
+          // Rollback optimistic update
+          setVaultItems(backupItems);
+          localStorage.setItem('voyanta_vault_items', JSON.stringify(backupLocal));
+          toast.error('Failed to remove package from server. Item restored.');
+        }
       }
     } catch (err) {
       console.error('Error deleting package:', err);
       // Rollback optimistic update
       setVaultItems(backupItems);
+      localStorage.setItem('voyanta_vault_items', JSON.stringify(backupLocal));
       toast.error('Error removing package. Item restored.');
     }
   };

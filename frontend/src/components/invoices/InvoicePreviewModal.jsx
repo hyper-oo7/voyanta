@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useToast } from '../../context/ToastContext.jsx';
 import { updateInvoice, createInvoice, INVOICE_STATUSES, generateRemainingBalanceInvoice } from '../../services/invoiceService.js';
 import { settingsService } from '../../services/resourceService.js';
@@ -349,8 +350,8 @@ export function InvoicePreviewModal({ invoice, onClose, onUpdate }) {
   };
   const activeTheme = themeStyles[theme] || themeStyles.safari;
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-2 md:p-6 overflow-y-auto animate-fade-in print:p-0 print:bg-white print:static">
+  return createPortal(
+    <div className="fixed inset-0 z-[110] bg-black/70 backdrop-blur-sm flex items-center justify-center p-2 md:p-6 overflow-y-auto animate-fade-in print:p-0 print:bg-white print:static">
       <div className="bg-surface-container-lowest w-full max-w-5xl rounded-3xl shadow-2xl border border-outline-variant flex flex-col max-h-[92vh] overflow-hidden print:max-h-none print:shadow-none print:border-none print:w-full">
         
         {/* UI Toolbar (Hidden on Print) */}
@@ -804,6 +805,7 @@ export function InvoicePreviewModal({ invoice, onClose, onUpdate }) {
           }}
         />
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
